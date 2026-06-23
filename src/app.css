@@ -1,0 +1,170 @@
+@import "./styles/shared/menu.css";
+@import "./styles/shared/kbd.css";
+@import "./styles/shared/toast.css";
+@import "./styles/shared/transparency.css";
+@import "./styles/chrome/titlebar.css";
+@import "./styles/chrome/breadcrumb.css";
+@import "./styles/chrome/statusbar.css";
+@import "./styles/editor/prose.css";
+@import "./styles/editor/image-viewer.css";
+@import "./styles/editor/tabs.css";
+@import "./styles/files/sidebar.css";
+@import "./styles/overlays/overlay.css";
+@import "./styles/overlays/palette.css";
+@import "./styles/overlays/help.css";
+@import "./styles/overlays/welcome.css";
+@import "./styles/overlays/drop.css";
+@import "./styles/overlays/about.css";
+
+/* shell layout */
+.mdv-app {
+  --mdv-writing-font-size: 14px;
+  --mdv-writing-line-height: 1.55;
+  --mdv-prose-font-size: 15px;
+  --mdv-prose-line-height: 1.65;
+  display: grid;
+  grid-template-rows: var(--titlebar-h) var(--breadcrumb-h) 1fr var(--statusbar-h);
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg);
+  color: var(--fg);
+  transition:
+    background-color var(--dur-base) var(--easing),
+    color var(--dur-base) var(--easing);
+}
+
+.mdv-app > .mdv-titlebar { grid-row: 1; }
+.mdv-app > .mdv-breadcrumb { grid-row: 2; }
+.mdv-app > .mdv-shell { grid-row: 3; }
+.mdv-app > .mdv-statusbar { grid-row: 4; }
+
+/* shell = sidebar + workspace row */
+.mdv-shell {
+  display: flex;
+  overflow: hidden;
+}
+
+.mdv-workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.mdv-shell__editor-solo {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+/* titlebar hidden mode */
+.mdv-app.has-hidden-titlebar {
+  grid-template-rows: 0 var(--breadcrumb-h) 1fr var(--statusbar-h);
+}
+.mdv-app.has-hidden-titlebar .mdv-titlebar {
+  display: none;
+}
+
+
+
+/* theme transition smoothing — common surfaces fade between palettes */
+.mdv-titlebar,
+.mdv-statusbar,
+.mdv-popover,
+.mdv-menu__item,
+.mdv-btn,
+.mdv-prose,
+.mdv-prose pre,
+.mdv-prose code,
+.mdv-prose blockquote,
+.cm-editor,
+.cm-gutters {
+  transition:
+    background-color var(--dur-base) var(--easing),
+    color var(--dur-base) var(--easing),
+    border-color var(--dur-base) var(--easing);
+}
+
+/* prosemark CSS variable defaults — map to existing theme tokens.
+   Set on .mdv-editor so .cm-content (inside) inherits everything
+   that prosemarkBaseThemeSetup() references via var(--). */
+.mdv-editor {
+  --font: var(--font-ui);
+  --pm-header-mark-color: var(--syntax-keyword);
+  --pm-link-color: var(--accent);
+  --pm-muted-color: var(--muted);
+  --pm-code-background-color: var(--surface);
+  --pm-code-font: var(--font-mono);
+  --pm-code-btn-background-color: var(--surface-hover);
+  --pm-code-btn-hover-background-color: var(--border);
+  --pm-blockquote-vertical-line-background-color: var(--border);
+  --pm-cursor-color: var(--accent);
+  --pm-latex-math-delimiter-color: var(--syntax-keyword);
+  --pm-latex-math-formula-color: var(--syntax-function);
+  --pm-latex-math-formula-font: var(--font-mono);
+  --pm-latex-math-error-color: #e64553;
+  --pm-latex-math-error-background-color: rgba(230, 69, 83, 0.1);
+
+  --pm-syntax-link: var(--syntax-function);
+  --pm-syntax-keyword: var(--syntax-keyword);
+  --pm-syntax-atom: var(--syntax-constant);
+  --pm-syntax-literal: var(--syntax-string);
+  --pm-syntax-string: var(--syntax-string);
+  --pm-syntax-regexp: var(--syntax-string);
+  --pm-syntax-definition-variable: var(--syntax-function);
+  --pm-syntax-local-variable: var(--fg);
+  --pm-syntax-type-namespace: var(--syntax-type);
+  --pm-syntax-class-name: var(--syntax-type);
+  --pm-syntax-special-variable-macro: var(--syntax-keyword);
+  --pm-syntax-definition-property: var(--syntax-function);
+  --pm-syntax-comment: var(--syntax-comment);
+  --pm-syntax-invalid: #e64553;
+}
+
+/* prosemark rendered-HTML widget — typography */
+.cm-html-widget {
+  --font: var(--font-ui);
+  font-family: var(--font-ui);
+  line-height: var(--mdv-prose-line-height);
+  font-size: var(--mdv-prose-font-size);
+  color: var(--fg);
+}
+.cm-html-widget h1,
+.cm-html-widget h2,
+.cm-html-widget h3,
+.cm-html-widget h4 {
+  font-weight: 600;
+  letter-spacing: -0.018em;
+}
+.cm-html-widget h1 { font-size: 2.1em; margin: 0 0 0.5em; }
+.cm-html-widget h2 { font-size: 1.55em; margin: 2em 0 0.5em; }
+.cm-html-widget h3 { font-size: 1.25em; margin: 1.6em 0 0.5em; }
+.cm-html-widget h4 { font-size: 1em; margin: 1.4em 0 0.4em; }
+.cm-html-widget p { margin: 0 0 1em; }
+.cm-html-widget a { color: var(--accent); text-decoration: underline; }
+.cm-html-widget code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--surface);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.cm-html-widget pre {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+.cm-html-widget blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 16px;
+  color: var(--muted);
+  font-style: italic;
+  margin: 0 0 1em;
+}
+.cm-html-widget img { max-width: 100%; height: auto; border-radius: 6px; }

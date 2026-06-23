@@ -1,0 +1,114 @@
+.mdv-tabs {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 32px;
+  flex-shrink: 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  gap: 0;
+}
+
+.mdv-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 6px;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: color var(--dur-base) var(--easing);
+}
+
+.mdv-tab:hover {
+  color: var(--fg);
+}
+
+.mdv-tab.is-active {
+  color: var(--fg);
+  background: var(--surface);
+}
+
+.mdv-tab.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.mdv-tab__select {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+}
+
+.mdv-tab__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.mdv-tab.is-dirty .mdv-tab__dot {
+  background: var(--accent);
+}
+
+.mdv-tab__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.mdv-tab__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--easing);
+  flex-shrink: 0;
+}
+
+.mdv-tab:hover .mdv-tab__close {
+  opacity: 0.6;
+}
+
+.mdv-tab__close:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+
+.mdv-tab.is-dragging {
+  opacity: 0.4;
+}
+
+.mdv-tab.is-drag-over::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+.mdv-tabs.is-reordering {
+  cursor: grabbing;
+}
+
+.mdv-tabs.is-reordering .mdv-tab {
+  user-select: none;
+}
