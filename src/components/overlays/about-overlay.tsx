@@ -138,7 +138,7 @@ export function AboutOverlay({ open, onClose, onCheckForUpdates }: AboutOverlayP
       </div>
 
       <footer className="mdv-about__footer">
-        <span>basé sur marka.md · MIT</span>
+        <span>fork de marka.md · MIT</span>
       </footer>
     </Overlay>
   );

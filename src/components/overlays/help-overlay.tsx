@@ -197,7 +197,7 @@ export function HelpOverlay({ open, onClose, onReplayTutorial, onCheckForUpdates
       </div>
 
       <footer className="mdv-help__footer">
-        <span>AZprose · basé sur marka.md · MIT</span>
+        <span>AZprose · fork de marka.md · MIT</span>
         <div className="mdv-help__actions">
           {onCheckForUpdates ? (
             <button

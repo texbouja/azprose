@@ -123,7 +123,7 @@ les directives d'événements (`on:pointerdown`) au lieu des props JSX. ~2h.
 
 #### `FolderNode` — DnD fichiers
 
-Même logique MIME type custom (`application/x-marka-path`), vérification
+Même logique MIME type custom (`application/x-azprose-path`), vérification
 de descendance pour éviter le drop dans un sous-dossier. Pattern identique,
 syntaxe différente. ~2h.
 

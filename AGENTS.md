@@ -1,6 +1,6 @@
-# AGENTS (marka.md)
+# AGENTS
 
-- This repo is the marka.md desktop app: React + TypeScript + Vite frontend, Tauri v2 Rust shell.
+- This repo is the AZprose desktop app: React + TypeScript + Vite frontend, Tauri v2 Rust shell.
 - Keep edits scoped. Avoid broad refactors unless the task explicitly asks for structure cleanup.
 - Match the existing UI style: dense, local-first, calm, keyboard-friendly, and lowercase copy where the app already uses it.
 - Prefer existing primitives from `src/components/primitives` and icons from `lucide-react` through the local `Icon` wrapper.
@@ -21,8 +21,8 @@
 
 ## structure
 
-- `src/components` contains chrome, editor, files/sidebar, overlays, and primitives.
+- `src/components` contains chrome, editor (CodeMirror + ImageViewer), files/sidebar, overlays, and primitives.
 - `src/hooks` owns stateful app flows.
-- `src/lib` owns markdown, files, commands, context bundling, updater, themes, i18n, and platform helpers.
+- `src/lib` owns files, commands, updater, themes, i18n, writing-display, and platform helpers.
 - `src/styles` is split by UI domain and imported from `src/app.css`.
 - `src-tauri` contains Rust commands, capabilities, and bundle config.

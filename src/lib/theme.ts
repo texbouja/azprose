@@ -217,11 +217,11 @@ export function setTransparency(opacity: number): void {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __markaThemeInit: boolean | undefined;
+  var __azproseThemeInit: boolean | undefined;
 }
 
-if (typeof window !== "undefined" && !globalThis.__markaThemeInit) {
-  globalThis.__markaThemeInit = true;
+if (typeof window !== "undefined" && !globalThis.__azproseThemeInit) {
+  globalThis.__azproseThemeInit = true;
   apply(readMode());
   applyTransparencyOpacity(readTransparencyOpacity());
   const mq = window.matchMedia(MQ);

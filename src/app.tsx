@@ -1,8 +1,7 @@
-import "mathjax/tex-svg.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { EditorView } from "@codemirror/view";
 import { Breadcrumb, StatusBar, TitleBar, type VimMode } from "@/components/chrome";
-import { Editor, ImageViewer, OpenTabs, PdfViewer, ProseMarkEditor } from "@/components/editor";
+import { Editor, ImageViewer, OpenTabs } from "@/components/editor";
 import { ContextMenu, Sidebar, type ContextMenuItem } from "@/components/files";
 import { AboutOverlay, CommandPalette, DropOverlay, HelpOverlay, Toast, WelcomeOverlay } from "@/components/overlays";
 import { TooltipRoot } from "@/components/primitives";
@@ -15,7 +14,6 @@ import {
   useOverlays,
   usePersistedState,
   useScrollMemory,
-  useSelectionSyncText,
   useShortcuts,
   useUpdateFlow,
 } from "@/hooks";
@@ -29,22 +27,14 @@ import {
   buildCommands,
   CHANGELOG_URL,
   DEFAULT_WRITING_DISPLAY,
-  estimateTokens,
-  exportPreviewToPdf,
-  formatContextBundle,
-  getWritingDisplayVars,
-  getContextBundleStats,
   getWhatsNewToastMessage,
+  getWritingDisplayVars,
   isImagePath,
-  isMarkdownPath,
-  isPdfPath,
   isSupportedTextPath,
   normalizeWritingFontSize,
   normalizeWritingLineHeight,
-  PdfExportError,
   pickAnyFile,
   pickFolder,
-  readContextFiles,
   relativePath,
   removeEntry,
   STORAGE_KEYS,
@@ -70,7 +60,6 @@ export function App() {
     copyMarkdown: copyMarkdownCore,
   } = useNotifications();
 
-  // Per-extension preference: 'text' | 'default', remembered until app closes.
   const extPrefs = useRef<Map<string, "text" | "default">>(new Map());
   const loadPlainTextFileRef = useRef<((path: string) => Promise<void>) | undefined>(undefined);
 
@@ -131,27 +120,12 @@ export function App() {
 
   useEffect(() => { loadPlainTextFileRef.current = loadPlainTextFile; }, [loadPlainTextFile]);
 
-  const [sidebarOpen, setSidebarOpen] = usePersistedState<boolean>(
-    STORAGE_KEYS.sidebarOpen,
-    false,
-  );
-  const [sidebarWidth, setSidebarWidth] = usePersistedState<number>(
-    STORAGE_KEYS.sidebarWidth,
-    240,
-  );
-  const [folders, setFolders] = usePersistedState<string[]>(
-    STORAGE_KEYS.folders,
-    [],
-  );
-  const [favorites, setFavorites] = usePersistedState<string[]>(
-    STORAGE_KEYS.favorites,
-    [],
-  );
+  const [sidebarOpen, setSidebarOpen] = usePersistedState<boolean>(STORAGE_KEYS.sidebarOpen, false);
+  const [sidebarWidth, setSidebarWidth] = usePersistedState<number>(STORAGE_KEYS.sidebarWidth, 240);
+  const [folders, setFolders] = usePersistedState<string[]>(STORAGE_KEYS.folders, []);
+  const [favorites, setFavorites] = usePersistedState<string[]>(STORAGE_KEYS.favorites, []);
   const didHydrateFoldersRef = useRef(false);
 
-  // migrate the legacy single-folder session into the multi-folder list,
-  // and keep useFileSession.rootPath pointed at the first folder so context
-  // bundling / save-as / search keep working against a concrete root.
   useEffect(() => {
     if (!didHydrateFoldersRef.current) {
       didHydrateFoldersRef.current = true;
@@ -174,14 +148,7 @@ export function App() {
     if (activePath && isPathWithin(activePath, path)) {
       startNewBuffer();
     }
-  }, [
-    activePath,
-    folders,
-    isPathWithin,
-    setFolders,
-    setRootPath,
-    startNewBuffer,
-  ]);
+  }, [activePath, folders, isPathWithin, setFolders, setRootPath, startNewBuffer]);
 
   const toggleFavorite = useCallback((path: string) => {
     setFavorites((prev) =>
@@ -198,13 +165,10 @@ export function App() {
       return next;
     });
   }, [setFavorites]);
-  const [titlebarVisible, setTitlebarVisible] = usePersistedState<boolean>(
-    STORAGE_KEYS.titlebarVisible,
-    true,
-  );
-  const handleToggleTitlebar = useCallback(() => {
-    setTitlebarVisible((v: boolean) => !v);
-  }, [setTitlebarVisible]);
+
+  const [titlebarVisible, setTitlebarVisible] = usePersistedState<boolean>(STORAGE_KEYS.titlebarVisible, true);
+  const handleToggleTitlebar = useCallback(() => setTitlebarVisible((v: boolean) => !v), [setTitlebarVisible]);
+
   const {
     treeVersion,
     bumpTree,
@@ -216,13 +180,7 @@ export function App() {
     handleSubmitRename,
     handleSubmitNew,
     handleUndoFileOp,
-  } = useFileOps({
-    activePath,
-    setActivePath,
-    loadFile,
-    startNewBuffer,
-    onError: setLoadError,
-  });
+  } = useFileOps({ activePath, setActivePath, loadFile, startNewBuffer, onError: setLoadError });
 
   const {
     paletteOpen,
@@ -251,7 +209,6 @@ export function App() {
   } = useUpdateFlow({ onError: setLoadError });
 
   const [vimOn, setVimOn] = usePersistedState<boolean>(STORAGE_KEYS.vimMode, false);
-  const [prosemarkOn, setProsemarkOn] = usePersistedState<boolean>("prosemarkOn", true);
   const [vimMode, setVimMode] = useState<VimMode | null>(null);
   const [writingFontSize, setWritingFontSize] = usePersistedState<WritingFontSize>(
     STORAGE_KEYS.writingFontSize,
@@ -262,8 +219,6 @@ export function App() {
     DEFAULT_WRITING_DISPLAY.lineHeight,
   );
   const [dragActive, setDragActive] = useState(false);
-  const [stagedPaths, setStagedPaths] = useState<string[]>([]);
-  const [stagedTokenLabel, setStagedTokenLabel] = useState("0");
   const [whatsNewVersion, setWhatsNewVersion] = useState<string | null>(null);
 
   const writingDisplay = useMemo<WritingDisplay>(
@@ -284,23 +239,7 @@ export function App() {
     setWritingLineHeight(DEFAULT_WRITING_DISPLAY.lineHeight);
   }, [setWritingFontSize, setWritingLineHeight]);
 
-  const handleToggleSidebar = useCallback(() => {
-    setSidebarOpen((v: boolean) => !v);
-  }, [setSidebarOpen]);
-
-  const exportToPdf = useCallback(async () => {
-    try {
-      const documentName = tabs.find((tab) => tab.id === activeTabId)?.title;
-      await exportPreviewToPdf({ source, activePath, documentName });
-    } catch (err) {
-      const message = err instanceof PdfExportError
-        ? err.message
-        : t("app.pdfFailed");
-      console.error("azprose: pdf export failed", err);
-      setLoadError({ message });
-    }
-  }, [source, activePath, tabs, activeTabId, setLoadError, t]);
-
+  const handleToggleSidebar = useCallback(() => setSidebarOpen((v: boolean) => !v), [setSidebarOpen]);
 
   const toggleFullscreen = useCallback(async () => {
     const win = getCurrentWindow();
@@ -314,60 +253,6 @@ export function App() {
 
   const copyMarkdown = useCallback(() => copyMarkdownCore(source), [copyMarkdownCore, source]);
 
-  const toggleStagedPath = useCallback((path: string) => {
-    setStagedPaths((prev) =>
-      prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path],
-    );
-  }, []);
-
-  const clearContextBundle = useCallback(() => setStagedPaths([]), []);
-
-  const copyContextBundle = useCallback(async () => {
-    if (stagedPaths.length === 0) {
-      setLoadError({ message: t("app.stageFirst") });
-      return;
-    }
-    try {
-      const files = await readContextFiles(stagedPaths, activePath, source);
-      const bundle = formatContextBundle(files, rootPath);
-      const stats = getContextBundleStats(files);
-      const filesLabel = stats.files === 1
-        ? t("app.fileSingular", { count: stats.files })
-        : t("app.filePlural", { count: stats.files });
-      await copyMarkdownCore(
-        bundle,
-        t("app.contextCopied", { files: filesLabel, tokens: stats.formattedTokens }),
-      );
-    } catch (err) {
-      console.error("azprose: context bundle copy failed", err);
-      setLoadError({ message: `${t("app.contextCopyFailed")} — ${String(err)}` });
-    }
-  }, [stagedPaths, activePath, source, rootPath, copyMarkdownCore, setLoadError, t]);
-
-  useEffect(() => {
-    if (stagedPaths.length === 0) {
-      setStagedTokenLabel("0");
-      return;
-    }
-    let cancelled = false;
-    void readContextFiles(stagedPaths, activePath, source)
-      .then((files) => {
-        if (!cancelled) setStagedTokenLabel(getContextBundleStats(files).formattedTokens);
-      })
-      .catch((err) => {
-        console.warn("azprose: staged context stats failed", err);
-        if (!cancelled) setStagedTokenLabel("?");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [stagedPaths, activePath, source]);
-
-  useEffect(() => {
-    setStagedPaths([]);
-  }, [rootPath]);
-
-  // Keep the webview document title in sync with the active file.
   useEffect(() => {
     const tabTitle = tabs.find((tab) => tab.id === activeTabId)?.title;
     document.title = tabTitle ?? "untitled";
@@ -385,12 +270,9 @@ export function App() {
         window.localStorage.setItem(STORAGE_KEYS.lastSeenVersion, version);
       })
       .catch((err) => console.warn("azprose: version check failed", err));
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // Mount-time: detect ?folder= URL param (new window from "Open Folder")
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const folderParam = params.get("folder");
@@ -402,19 +284,15 @@ export function App() {
   }, [setFolders, setSidebarOpen]);
 
   const editorViewRef = useRef<EditorView | null>(null);
-
   useScrollMemory(activePath);
-  useSelectionSyncText(editorViewRef, activePath ?? "untitled");
 
-  const { words, minutes, docTokens } = useMemo(() => {
+  const { words, minutes } = useMemo(() => {
     const trimmed = source.trim();
     const w = trimmed.length ? trimmed.split(/\s+/).length : 0;
     const m = Math.max(1, Math.round(w / 220));
-    const t = estimateTokens(source);
-    return { words: w, minutes: m, docTokens: t };
+    return { words: w, minutes: m };
   }, [source]);
 
-  // wraps useFileSession's saveAs to bump the sidebar tree + show landing toast.
   const saveAs = useCallback(async () => {
     const target = await saveAsCore();
     if (!target) return;
@@ -431,23 +309,16 @@ export function App() {
 
   const handleOpenFile = useCallback(async () => {
     const file = await pickAnyFile();
-    if (file) {
-      void loadFile(file);
-    }
+    if (file) void loadFile(file);
   }, [loadFile]);
 
-  const handleNewFile = useCallback(() => {
-    startNewBuffer();
-  }, [startNewBuffer]);
+  const handleNewFile = useCallback(() => startNewBuffer(), [startNewBuffer]);
 
   const contextItems = useMemo<ContextMenuItem[]>(() => {
     if (!contextMenu) return [];
     const { path, isDir } = contextMenu;
     const items: ContextMenuItem[] = [
-      {
-        label: t("menu.rename"),
-        onSelect: () => setEditingPath(path),
-      },
+      { label: t("menu.rename"), onSelect: () => setEditingPath(path) },
       "divider",
       {
         label: t("menu.copyPath"),
@@ -471,19 +342,10 @@ export function App() {
     });
     if (isDir) {
       items.push("divider");
-      items.push({
-        label: t("menu.newFile"),
-        onSelect: () => setNewEntry({ parent: path, kind: "file" }),
-      });
-      items.push({
-        label: t("menu.newFolder"),
-        onSelect: () => setNewEntry({ parent: path, kind: "folder" }),
-      });
+      items.push({ label: t("menu.newFile"), onSelect: () => setNewEntry({ parent: path, kind: "file" }) });
+      items.push({ label: t("menu.newFolder"), onSelect: () => setNewEntry({ parent: path, kind: "folder" }) });
     } else {
-      items.push({
-        label: t("menu.openDefault"),
-        onSelect: () => void openPath(path),
-      });
+      items.push({ label: t("menu.openDefault"), onSelect: () => void openPath(path) });
     }
     items.push("divider");
     items.push({
@@ -498,157 +360,85 @@ export function App() {
         void (async () => {
           try {
             await removeEntry(path, isDir);
-            // if the deleted file was active, clear the editor back to demo
-            if (!isDir && activePath === path) {
-              loadDemo();
-            }
-            // if the deleted folder contained the active file, clear too
-            if (isDir && activePath && activePath.startsWith(path + "/")) {
-              loadDemo();
-            }
+            if (!isDir && activePath === path) loadDemo();
+            if (isDir && activePath && activePath.startsWith(path + "/")) loadDemo();
             bumpTree();
           } catch (err) {
-            console.error("azprose: delete failed", err);
             setLoadError({ message: `couldn't delete: ${String(err)}` });
           }
         })();
       },
     });
     return items;
-  }, [contextMenu, activePath, setActivePath, bumpTree, t]);
+  }, [contextMenu, activePath, bumpTree, t, setEditingPath, setNewEntry, rootPath, showSaveAsToast, loadDemo, setLoadError]);
 
-  // OS "Open With → AZprose" from Finder — Rust emits azprose:open-file
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     void listen<string>("azprose:open-file", (event) => {
       const path = event.payload;
-      if (typeof path === "string" && path.length > 0) {
-        void loadFile(path);
-      }
+      if (typeof path === "string" && path.length > 0) void loadFile(path);
     }).then((un) => {
       unlisten = un;
       void invoke<string[]>("take_pending_open_files")
         .then((paths) => {
           const latest = paths[paths.length - 1];
-          if (latest) {
-            void loadFile(latest);
-          }
+          if (latest) void loadFile(latest);
         })
-        .catch((err) => {
-          console.warn("azprose: pending open-file check failed", err);
-        });
+        .catch((err) => console.warn("azprose: pending open-file check failed", err));
     });
-    return () => {
-      unlisten?.();
-    };
+    return () => { unlisten?.(); };
   }, [loadFile]);
 
-  // OS drop via Tauri events (dragDropEnabled: true).
-  // Tauri intercepts file drags before the browser sees them, giving us real file paths.
   useEffect(() => {
     type DragPayload = { paths: string[] };
     let unlistenEnter: (() => void) | undefined;
     let unlistenDrop: (() => void) | undefined;
     let unlistenLeave: (() => void) | undefined;
 
-    const isDroppable = (p: string) => isSupportedTextPath(p) || isImagePath(p) || isPdfPath(p);
+    const isDroppable = (p: string) => isSupportedTextPath(p) || isImagePath(p);
 
     void listen<DragPayload>("tauri://drag-enter", (event) => {
-      const paths = event.payload.paths ?? [];
-      setDragActive(paths.some(isDroppable));
+      setDragActive(event.payload.paths?.some(isDroppable) ?? false);
     }).then((ul) => { unlistenEnter = ul; });
 
     void listen<DragPayload>("tauri://drag-drop", (event) => {
       setDragActive(false);
       const paths = event.payload.paths ?? [];
-      const firstSupported = paths.find(isDroppable);
-      if (firstSupported) {
-        void loadFile(firstSupported);
-      } else if (paths.length > 0) {
-        setLoadError({ message: t("app.dropMarkdownOnly") });
-      }
+      const first = paths.find(isDroppable);
+      if (first) void loadFile(first);
+      else if (paths.length > 0) setLoadError({ message: t("app.dropMarkdownOnly") });
     }).then((ul) => { unlistenDrop = ul; });
 
-    void listen("tauri://drag-leave", () => {
-      setDragActive(false);
-    }).then((ul) => { unlistenLeave = ul; });
+    void listen("tauri://drag-leave", () => setDragActive(false)).then((ul) => { unlistenLeave = ul; });
 
-    return () => {
-      unlistenEnter?.();
-      unlistenDrop?.();
-      unlistenLeave?.();
-    };
+    return () => { unlistenEnter?.(); unlistenDrop?.(); unlistenLeave?.(); };
   }, [loadFile, setLoadError, t]);
 
   const shortcuts = useMemo(
     () => ({
-      "mod+k": (e: KeyboardEvent) => {
-        e.preventDefault();
-        setPaletteOpen((v) => !v);
-      },
-      "mod+/": (e: KeyboardEvent) => {
-        e.preventDefault();
-        setHelpOpen((v) => !v);
-      },
-      "mod+b": (e: KeyboardEvent) => {
-        e.preventDefault();
-        // functional update — avoids stale closure on rapid double-tap when
-        // shortcuts memo hasn't rebuilt yet
-        setSidebarOpen((v: boolean) => !v);
-      },
+      "mod+k": (e: KeyboardEvent) => { e.preventDefault(); setPaletteOpen((v) => !v); },
+      "mod+/": (e: KeyboardEvent) => { e.preventDefault(); setHelpOpen((v) => !v); },
+      "mod+b": (e: KeyboardEvent) => { e.preventDefault(); setSidebarOpen((v: boolean) => !v); },
       "mod+s": (e: KeyboardEvent) => {
         e.preventDefault();
         if (activePath) {
-          // existing file — only write if dirty
           if (source !== savedContent) void saveNow(activePath, source);
         } else {
-          // untitled buffer — open native save dialog (resolves #17 save half + macOS parity)
           void saveAs();
         }
       },
-      "mod+shift+s": (e: KeyboardEvent) => {
-        e.preventDefault();
-        // explicit "save as" — works on both untitled and existing buffers
-        void saveAs();
-      },
-      "mod+n": (e: KeyboardEvent) => {
-        e.preventDefault();
-        handleNewFile();
-      },
-      "mod+o": (e: KeyboardEvent) => {
-        e.preventDefault();
-        void handleOpenFile();
-      },
-      "mod+shift+o": (e: KeyboardEvent) => {
-        e.preventDefault();
-        void handleOpenFolder();
-      },
-      "mod+shift+c": (e: KeyboardEvent) => {
-        e.preventDefault();
-        void copyMarkdown();
-      },
-      "mod+p": (e: KeyboardEvent) => {
-        e.preventDefault();
-        exportToPdf();
-      },
-      "mod+ctrl+f": (e: KeyboardEvent) => {
-        e.preventDefault();
-        void toggleFullscreen();
-      },
+      "mod+shift+s": (e: KeyboardEvent) => { e.preventDefault(); void saveAs(); },
+      "mod+n": (e: KeyboardEvent) => { e.preventDefault(); handleNewFile(); },
+      "mod+o": (e: KeyboardEvent) => { e.preventDefault(); void handleOpenFile(); },
+      "mod+shift+o": (e: KeyboardEvent) => { e.preventDefault(); void handleOpenFolder(); },
+      "mod+shift+c": (e: KeyboardEvent) => { e.preventDefault(); void copyMarkdown(); },
+      "mod+ctrl+f": (e: KeyboardEvent) => { e.preventDefault(); void toggleFullscreen(); },
     }),
     [
-      activePath,
-      source,
-      savedContent,
-      saveNow,
-      saveAs,
-      handleOpenFile,
-      handleOpenFolder,
-      handleNewFile,
-      handleToggleSidebar,
-      copyMarkdown,
-      exportToPdf,
-      toggleFullscreen,
+      activePath, source, savedContent, saveNow, saveAs,
+      handleOpenFile, handleOpenFolder, handleNewFile,
+      copyMarkdown, toggleFullscreen,
+      setPaletteOpen, setHelpOpen, setSidebarOpen,
     ],
   );
   useShortcuts(shortcuts);
@@ -659,11 +449,7 @@ export function App() {
         newFile: handleNewFile,
         openFile: handleOpenFile,
         openFolder: handleOpenFolder,
-        save: () => {
-          if (activePath && source !== savedContent) {
-            void saveNow(activePath, source);
-          }
-        },
+        save: () => { if (activePath && source !== savedContent) void saveNow(activePath, source); },
         toggleSidebar: handleToggleSidebar,
         showHelp,
         showWelcome,
@@ -672,41 +458,19 @@ export function App() {
         undoFileOp: handleUndoFileOp,
         checkForUpdates: handleManualUpdateCheck,
         copyMarkdown,
-        copyContextBundle,
-        clearContextBundle,
-        exportToPdf,
         toggleFullscreen,
         openRecent: (path: string) => void loadFile(path),
         recentFiles,
         hasActivePath: activePath != null,
         sidebarOpen,
-        contextCount: stagedPaths.length,
       }, t),
     [
-      handleNewFile,
-      handleOpenFile,
-      handleOpenFolder,
-      activePath,
-      source,
-      savedContent,
-      saveNow,
-      sidebarOpen,
-      copyMarkdown,
-      copyContextBundle,
-      clearContextBundle,
-      showHelp,
-      showWelcome,
-      showAbout,
-      loadDemo,
-      handleUndoFileOp,
-      handleManualUpdateCheck,
-      exportToPdf,
-      toggleFullscreen,
-      handleToggleSidebar,
-      loadFile,
-      recentFiles,
-      stagedPaths.length,
-      t,
+      handleNewFile, handleOpenFile, handleOpenFolder,
+      activePath, source, savedContent, saveNow, sidebarOpen,
+      copyMarkdown, showHelp, showWelcome, showAbout,
+      loadDemo, handleUndoFileOp, handleManualUpdateCheck,
+      toggleFullscreen, handleToggleSidebar, loadFile,
+      recentFiles, t,
     ],
   );
 
@@ -719,21 +483,13 @@ export function App() {
   }, [activePath]);
 
   const isImage = activePath ? isImagePath(activePath) : false;
-  const isPdf = activePath ? isPdfPath(activePath) : false;
-  const isMarkdown = activePath ? isMarkdownPath(activePath) : false;
 
   const handleCloseTab = useCallback((id: string) => {
     const tab = tabs.find((item) => item.id === id);
     if (!tab) return;
-    if (tab.source !== tab.savedContent && !window.confirm(t("tabs.closeUnsaved", { name: tab.title }))) {
-      return;
-    }
+    if (tab.source !== tab.savedContent && !window.confirm(t("tabs.closeUnsaved", { name: tab.title }))) return;
     closeTab(id);
   }, [closeTab, tabs, t]);
-
-  const handleToggleProsemark = useCallback(() => {
-    setProsemarkOn((v: boolean) => !v);
-  }, [setProsemarkOn]);
 
   return (
     <div
@@ -746,7 +502,6 @@ export function App() {
         dirty={dirty}
         onCopyMarkdown={activePath || source ? () => void copyMarkdown() : undefined}
         copyPulse={copyPulse}
-        onExportPdf={exportToPdf}
         vimOn={vimOn}
         onToggleVim={() => setVimOn((v) => !v)}
         writingDisplay={writingDisplay}
@@ -765,7 +520,6 @@ export function App() {
         onOpenFile={handleOpenFile}
         onOpenFolder={handleOpenFolder}
         onCopyMarkdown={activePath || source ? () => void copyMarkdown() : undefined}
-        onExportPdf={exportToPdf}
         copyPulse={copyPulse}
         titlebarVisible={titlebarVisible}
         onToggleTitlebar={handleToggleTitlebar}
@@ -775,8 +529,6 @@ export function App() {
         onWritingFontSizeChange={setWritingFontSize}
         onWritingLineHeightChange={setWritingLineHeight}
         onResetWritingDisplay={resetWritingDisplay}
-        prosemarkOn={isMarkdown ? prosemarkOn : undefined}
-        onToggleProsemark={isMarkdown ? handleToggleProsemark : undefined}
       />
 
       <main className="mdv-shell">
@@ -792,14 +544,9 @@ export function App() {
           onSelectFile={(path) => void loadFile(path)}
           onMove={handleMove}
           onContextMenu={handleContextMenu}
-          stagedPaths={stagedPaths}
-          stagedTokenLabel={stagedTokenLabel}
-          onToggleStage={toggleStagedPath}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
           onReorderFavorites={reorderFavorites}
-          onCopyContext={() => void copyContextBundle()}
-          onClearContext={clearContextBundle}
           editingPath={editingPath}
           onSubmitRename={handleSubmitRename}
           onCancelEdit={() => setEditingPath(null)}
@@ -820,12 +567,15 @@ export function App() {
           <div className="mdv-shell__editor-solo">
             {isImage && activePath ? (
               <ImageViewer path={activePath} />
-            ) : isPdf && activePath ? (
-              <PdfViewer path={activePath} />
-            ) : isMarkdown && prosemarkOn ? (
-              <ProseMarkEditor value={source} onChange={setSource} vimOn={vimOn} onVimMode={setVimMode} viewRef={editorViewRef} />
             ) : (
-              <Editor value={source} onChange={setSource} language={activeFileExt} vimOn={vimOn} onVimMode={setVimMode} viewRef={editorViewRef} />
+              <Editor
+                value={source}
+                onChange={setSource}
+                language={activeFileExt}
+                vimOn={vimOn}
+                onVimMode={setVimMode}
+                viewRef={editorViewRef}
+              />
             )}
           </div>
         </div>
@@ -841,14 +591,8 @@ export function App() {
                 label: t("app.openDefault"),
                 onClick: async () => {
                   if (loadError.path) {
-                    if (loadError.canOpenAsText) {
-                      extPrefs.current.set(getExt(loadError.path), "default");
-                    }
-                    try {
-                      await openPath(loadError.path);
-                    } catch (err) {
-                      console.error("azprose: openPath failed", err);
-                    }
+                    if (loadError.canOpenAsText) extPrefs.current.set(getExt(loadError.path), "default");
+                    try { await openPath(loadError.path); } catch (err) { console.error("azprose: openPath failed", err); }
                   }
                 },
               }
@@ -869,19 +613,8 @@ export function App() {
         }
       />
 
-      <Toast
-        open={copyToast != null && loadError == null}
-        message={copyToast ?? ""}
-        variant="info"
-        onDismiss={dismissCopyToast}
-      />
-
-      <Toast
-        open={saveAsToast != null && loadError == null}
-        message={saveAsToast ?? ""}
-        variant="info"
-        onDismiss={dismissSaveAsToast}
-      />
+      <Toast open={copyToast != null && loadError == null} message={copyToast ?? ""} variant="info" onDismiss={dismissCopyToast} />
+      <Toast open={saveAsToast != null && loadError == null} message={saveAsToast ?? ""} variant="info" onDismiss={dismissSaveAsToast} />
 
       <Toast
         open={updateAvail != null && loadError == null}
@@ -893,11 +626,7 @@ export function App() {
         variant="info"
         durationMs={null}
         onDismiss={() => setUpdateAvail(null)}
-        action={
-          updateInstalling
-            ? undefined
-            : { label: t("app.install"), onClick: () => void handleApplyUpdate() }
-        }
+        action={updateInstalling ? undefined : { label: t("app.install"), onClick: () => void handleApplyUpdate() }}
       />
 
       <Toast
@@ -913,20 +642,10 @@ export function App() {
         variant="info"
         durationMs={null}
         onDismiss={() => setWhatsNewVersion(null)}
-        action={{
-          label: t("app.releaseNotes"),
-          onClick: () => {
-            void openUrl(CHANGELOG_URL);
-          },
-        }}
+        action={{ label: t("app.releaseNotes"), onClick: () => void openUrl(CHANGELOG_URL) }}
       />
 
-      <Toast
-        open={externalReloadToast && loadError == null}
-        message={t("app.fileReloaded")}
-        variant="info"
-        onDismiss={dismissExternalReload}
-      />
+      <Toast open={externalReloadToast && loadError == null} message={t("app.fileReloaded")} variant="info" onDismiss={dismissExternalReload} />
 
       <Toast
         open={externalConflict != null && loadError == null}
@@ -937,19 +656,13 @@ export function App() {
         action={{
           label: t("app.reloadDiscard"),
           onClick: () => {
-            if (externalConflict != null) {
-              setSource(externalConflict);
-            }
+            if (externalConflict != null) setSource(externalConflict);
             setExternalConflict(null);
           },
         }}
       />
 
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        commands={commands}
-      />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
 
       <HelpOverlay
         open={helpOpen}
@@ -958,17 +671,9 @@ export function App() {
         onCheckForUpdates={handleManualUpdateCheck}
       />
 
-      <AboutOverlay
-        open={aboutOpen}
-        onClose={() => setAboutOpen(false)}
-        onCheckForUpdates={handleManualUpdateCheck}
-      />
+      <AboutOverlay open={aboutOpen} onClose={() => setAboutOpen(false)} onCheckForUpdates={handleManualUpdateCheck} />
 
-      <WelcomeOverlay
-        open={welcomeOpen}
-        onClose={dismissWelcome}
-        onOpenFolder={handleOpenFolder}
-      />
+      <WelcomeOverlay open={welcomeOpen} onClose={dismissWelcome} onOpenFolder={handleOpenFolder} />
 
       <DropOverlay active={dragActive} />
       <TooltipRoot />
@@ -981,11 +686,10 @@ export function App() {
         onClose={closeContextMenu}
       />
 
-        <StatusBar
+      <StatusBar
         fileName={displayName}
         words={words}
         minutes={minutes}
-        docTokens={docTokens}
         onShowHelp={() => setHelpOpen(true)}
         vimMode={vimMode}
       />

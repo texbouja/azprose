@@ -4,8 +4,6 @@ import {
   CircleHelp,
   Copy,
   FilePlus2,
-  FileDown,
-  Files,
   FileText,
   FolderOpen,
   FolderPlus,
@@ -39,7 +37,6 @@ export type Command = {
   action: () => void | Promise<void>;
 };
 
-/** Inputs the app shell knows about — actions and state slices needed for hint text. */
 export type CommandActions = {
   newFile: () => void;
   openFile: () => void | Promise<void>;
@@ -53,15 +50,11 @@ export type CommandActions = {
   undoFileOp: () => void | Promise<void>;
   checkForUpdates: () => void | Promise<void>;
   copyMarkdown: () => void | Promise<void>;
-  copyContextBundle: () => void | Promise<void>;
-  clearContextBundle: () => void;
-  exportToPdf: () => void;
   toggleFullscreen: () => void | Promise<void>;
   openRecent: (path: string) => void;
   recentFiles: readonly string[];
   hasActivePath: boolean;
   sidebarOpen: boolean;
-  contextCount: number;
 };
 
 const THEME_ICONS: Record<ThemeMode, LucideIcon> = {
@@ -201,43 +194,8 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       shortcut: "⌘⇧C",
       icon: Copy,
       category: "share",
-      keywords: ["copy", "markdown", "clipboard", "ai", "chat"],
+      keywords: ["copy", "markdown", "clipboard"],
       action: actions.copyMarkdown,
-    },
-    {
-      id: "copy-context",
-      label: t("command.copyContext"),
-      hint: actions.contextCount > 0
-        ? t("command.copyContextHint", {
-            count: actions.contextCount,
-            files: actions.contextCount === 1
-              ? t("app.fileSingular", { count: actions.contextCount })
-              : t("app.filePlural", { count: actions.contextCount }),
-          })
-        : t("app.stageFirst"),
-      icon: Files,
-      category: "share",
-      keywords: ["context", "bundle", "tokens", "stage", "prompt", "ai"],
-      action: actions.copyContextBundle,
-    },
-    {
-      id: "clear-context",
-      label: t("command.clearContext"),
-      hint: actions.contextCount > 0 ? t("command.clearContextHintReady") : t("command.clearContextHintEmpty"),
-      icon: Files,
-      category: "share",
-      keywords: ["clear", "context", "bundle", "stage", "staged"],
-      action: actions.clearContextBundle,
-    },
-    {
-      id: "export-pdf",
-      label: t("app.exportPdf"),
-      hint: t("command.exportPdfHint"),
-      shortcut: "⌘P",
-      icon: FileDown,
-      category: "share",
-      keywords: ["pdf", "print", "export", "document"],
-      action: actions.exportToPdf,
     },
     ...THEME_COMMANDS.map(
       (theme): Command => ({

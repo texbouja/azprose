@@ -20,7 +20,13 @@ export function ImageViewer({ path }: ImageViewerProps) {
       try {
         const bytes = await readFile(path);
         if (cancelled) return;
-        const blob = new Blob([bytes]);
+        const ext = path.split(".").pop()?.toLowerCase() ?? "";
+        const mime =
+          ext === "svg" ? "image/svg+xml" :
+          ext === "png" ? "image/png" :
+          ext === "webp" ? "image/webp" :
+          "image/jpeg";
+        const blob = new Blob([bytes], { type: mime });
         const url = URL.createObjectURL(blob);
         if (cancelled) { URL.revokeObjectURL(url); return; }
         setSrc(url);
