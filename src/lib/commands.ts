@@ -1,4 +1,8 @@
-import type { LucideIcon } from "lucide-react";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SvelteIcon = any;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type LucideIcon = any;
 import {
   Circle,
   CircleHelp,
@@ -19,7 +23,7 @@ import {
   Save,
   Sparkles,
   Sun,
-} from "lucide-react";
+} from "lucide-svelte";
 import { basename, dirname } from "./files";
 import { setThemeMode, setTransparency, THEME_CHOICES, THEME_HINTS, type ThemeMode } from "./theme";
 import type { Translate } from "./i18n";
@@ -31,7 +35,7 @@ export type Command = {
   label: string;
   hint?: string;
   shortcut?: string;
-  icon?: LucideIcon;
+  icon?: SvelteIcon;
   category?: CommandCategory;
   keywords?: string[];
   action: () => void | Promise<void>;

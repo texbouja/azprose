@@ -1,7 +1,7 @@
-export { Button } from "./button";
-export { Icon } from "./icon";
-export { Popover } from "./popover";
-export { Overlay } from "./overlay";
-export { Kbd } from "./kbd";
-export { Shortcut } from "./shortcut";
-export { TooltipRoot } from "./tooltip-root";
+export { default as Button } from "./Button.svelte";
+export { default as Icon } from "./Icon.svelte";
+export { default as Popover } from "./Popover.svelte";
+export { default as Overlay } from "./Overlay.svelte";
+export { default as Kbd } from "./Kbd.svelte";
+export { default as Shortcut } from "./Shortcut.svelte";
+export { default as TooltipRoot } from "./TooltipRoot.svelte";

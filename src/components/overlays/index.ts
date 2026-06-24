@@ -1,6 +1,6 @@
-export { CommandPalette, type Command } from "./command-palette";
-export { HelpOverlay } from "./help-overlay";
-export { AboutOverlay } from "./about-overlay";
-export { WelcomeOverlay } from "./welcome-overlay";
-export { DropOverlay } from "./drop-overlay";
-export { Toast, type ToastAction } from "./toast";
+export { default as CommandPalette } from "./CommandPalette.svelte";
+export { default as HelpOverlay } from "./HelpOverlay.svelte";
+export { default as AboutOverlay } from "./AboutOverlay.svelte";
+export { default as WelcomeOverlay } from "./WelcomeOverlay.svelte";
+export { default as DropOverlay } from "./DropOverlay.svelte";
+export { default as Toast } from "./Toast.svelte";

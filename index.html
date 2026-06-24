@@ -10,6 +10,9 @@
     <title>AZprose</title>
     <script>
       window.MathJax = {
+        tex: {
+          packages: { "[+]": ["mathtools"] },
+        },
         startup: { typeset: false },
         options: {
           enableSpeech: false,
@@ -20,9 +23,8 @@
       };
     </script>
   </head>
-
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -2,16 +2,15 @@
 
 <p align="center"><em>éditeur de texte scientifique — Markdown · LaTeX · PDF</em></p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0-orange?style=flat-square" alt="version" />
-  <img src="https://img.shields.io/badge/license-MIT-black?style=flat-square" alt="mit" />
-  <img src="https://img.shields.io/badge/tauri-2-black?style=flat-square" alt="tauri" />
-  <img src="https://img.shields.io/badge/Linux-x86__64-black?style=flat-square" alt="linux" />
-</p>
 
-Application desktop cross-platform (**macOS · Windows · Linux**) pour la rédaction et la gestion de texte scientifique. Approche **WYSIWYM** (What You See Is What You Mean) pour l'édition Markdown et LaTeX, avec rendu MathJax, visualiseur PDF complet et gestion de projets orientée fichiers.
 
-> Fork de [marka.md](https://github.com/mattenarle10/markamd) — le conteneur Tauri/React a été conservé et étendu ; la couche d'édition est remplacée par [ProseMark](https://github.com/prosemark) (Phase 2, à venir).
+Application desktop cross-platform (**macOS · Windows · Linux**) pour la rédaction et la gestion de texte scientifique. 
+
+Approche **WYSIWYM** (What You See Is What You Mean) pour l'édition Markdown, avec rendu MathJax.
+
+Visualiseur PDF complet avec LaTeX.
+
+> À la base c'est un fork de [marka.md](https://github.com/mattenarle10/markamd) — le conteneur Tauri/React a été migré vers Tauri/Svelte ; la couche d'édition Markdown est remplacée par [ProseMark](https://github.com/prosemark). 
 
 ## fonctionnalités (Phase 1)
 
@@ -63,10 +62,11 @@ Modificateurs **macOS** ci-dessous. Sur **Windows / Linux** : `⌘` → `Ctrl`, 
 
 ## roadmap
 
-- [x] Phase 1 — conteneur Tauri/React : sidebar, gestion de fichiers, onglets, thèmes, CodeMirror, ImageViewer
+- [ ] Phase 1 — migration du conteneur vers Tauri/Svelte : sidebar, gestion de fichiers, onglets, thèmes, CodeMirror, ImageViewer
 - [ ] Phase 2 — support Markdown WYSIWYM via ProseMark + MathJax
 - [ ] Phase 3 — visualiseur PDF vectoriel (sélection, liens, DPR)
 - [ ] Phase 4 — support LaTeX étendu
+- [ ] Phase 5 - support Typst. 
 
 ## licence
 

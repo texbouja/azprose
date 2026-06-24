@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import { STORAGE_KEYS } from "./storage";
 
 export type Theme =
@@ -105,7 +104,7 @@ const MQ = "(prefers-color-scheme: dark)";
 const modeListeners = new Set<() => void>();
 const transparencyListeners = new Set<() => void>();
 
-function readMode(): ThemeMode {
+export function readMode(): ThemeMode {
   if (typeof window === "undefined") return "latte";
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
@@ -157,14 +156,14 @@ export function previewTheme(theme: Theme | null): void {
   document.documentElement.setAttribute("data-theme", theme);
 }
 
-function subscribeMode(fn: () => void): () => void {
+export function subscribeMode(fn: () => void): () => void {
   modeListeners.add(fn);
   return () => {
     modeListeners.delete(fn);
   };
 }
 
-function subscribeTransparency(fn: () => void): () => void {
+export function subscribeTransparency(fn: () => void): () => void {
   transparencyListeners.add(fn);
   return () => {
     transparencyListeners.delete(fn);
@@ -177,7 +176,7 @@ const TRANSPARENCY_DEFAULT_ON = 74;
 
 // Opacity is a 0-100 integer. 100 = fully opaque (off). <100 = transparency on
 // at that opacity. Migrates legacy "on"/"off" string values from prior versions.
-function readTransparencyOpacity(): number {
+export function readTransparencyOpacity(): number {
   if (typeof window === "undefined") return TRANSPARENCY_OFF;
   try {
     const v = window.localStorage.getItem(TRANSPARENCY_KEY);
@@ -237,30 +236,4 @@ export function getSystemTheme(): Theme {
   return systemTheme();
 }
 
-export function useThemeMode(): { mode: ThemeMode; resolved: Theme; setMode: (m: ThemeMode) => void } {
-  const mode = useSyncExternalStore(
-    subscribeMode,
-    readMode,
-    () => "latte" as ThemeMode,
-  );
-  return { mode, resolved: resolve(mode), setMode: setThemeMode };
-}
 
-export function useTransparency(): {
-  /** opacity 0-100. 100 = fully opaque (off). <100 = transparency on. */
-  opacity: number;
-  /** convenience boolean: true when transparency is active (opacity < 100). */
-  on: boolean;
-  set: (opacity: number) => void;
-} {
-  const opacity = useSyncExternalStore(
-    subscribeTransparency,
-    readTransparencyOpacity,
-    () => TRANSPARENCY_OFF,
-  );
-  return { opacity, on: opacity < TRANSPARENCY_OFF, set: setTransparency };
-}
-
-export function useTheme(): Theme {
-  return useThemeMode().resolved;
-}
