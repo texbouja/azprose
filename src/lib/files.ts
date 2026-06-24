@@ -96,9 +96,13 @@ export function isImagePath(path: string): boolean {
   return IMAGE_EXTENSIONS.has(ext);
 }
 
+export function isPdfPath(path: string): boolean {
+  return /\.pdf$/i.test(path);
+}
+
 export function isEditablePath(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return TEXT_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(ext);
+  return TEXT_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(ext) || isPdfPath(path);
 }
 
 export function isMarkdownPath(path: string): boolean {

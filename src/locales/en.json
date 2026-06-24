@@ -38,6 +38,7 @@
   "breadcrumb.unsaved": "unsaved",
   "breadcrumb.saved": "saved",
   "breadcrumb.path": "path",
+  "breadcrumb.reloadMath": "rerender math",
   "sidebar.noFolder": "no folder",
   "sidebar.explorer": "explorer",
   "sidebar.favorites": "favorites",

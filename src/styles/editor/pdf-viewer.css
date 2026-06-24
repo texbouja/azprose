@@ -1,0 +1,156 @@
+.mdv-pdf-viewer {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg);
+}
+
+.mdv-pdf-viewer__canvas {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 0;
+}
+
+.mdv-pdf-viewer__toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.mdv-pdf-viewer__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mdv-pdf-viewer__btn:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.mdv-pdf-viewer__zoom-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  padding: 2px 0;
+  user-select: none;
+}
+
+.mdv-pdf-viewer__info {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 32px;
+}
+
+.mdv-pdf-viewer__error {
+  font-size: 14px;
+  color: var(--muted);
+  padding: 32px;
+}
+
+/* ------------------------------------------------------------------ */
+/* PDF.js — Text layer (transparent, selectable text over canvas)      */
+/* ------------------------------------------------------------------ */
+
+.mdv-pdf-page {
+  position: relative;
+}
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.textLayer.selecting {
+  pointer-events: auto;
+}
+
+.textLayer span,
+.textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  pointer-events: auto;
+}
+
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: -1;
+  cursor: default;
+  user-select: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0;
+}
+
+.textLayer ::selection,
+.textLayer span::selection {
+  background-color: color-mix(in srgb, var(--accent, #4a90d9) 35%, transparent);
+  color: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* PDF.js — Annotation layer (links, widgets)                          */
+/* ------------------------------------------------------------------ */
+
+.annotationLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform-origin: 0 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.annotationLayer section {
+  position: absolute;
+  text-align: initial;
+  pointer-events: auto;
+}
+
+.annotationLayer .linkAnnotation,
+.annotationLayer .buttonWidgetAnnotation.pushButton {
+  pointer-events: auto;
+}
+
+.annotationLayer .linkAnnotation > a,
+.annotationLayer .buttonWidgetAnnotation.pushButton > a {
+  position: absolute;
+  font-size: 1em;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.annotationLayer .linkAnnotation > a:hover,
+.annotationLayer .buttonWidgetAnnotation.pushButton > a:hover {
+  background-color: rgba(255, 255, 0, 0.2);
+}

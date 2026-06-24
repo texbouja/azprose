@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   basename,
   isImagePath,
+  isPdfPath,
   joinPath,
   pathExists,
   pickSaveMarkdown,
@@ -227,6 +228,26 @@ export function useFileSession({ onLoadError }: UseFileSessionArgs = {}): UseFil
 
       // Image files: skip text validation/reading, just open as view-only tab
       if (isImagePath(path)) {
+        if (seq !== loadSeq.current) return;
+        setSource("");
+        setSavedContent("");
+        setActivePath(path);
+        const tab: FileTab = {
+          id: makeTabId(),
+          path,
+          title: titleForPath(path),
+          source: "",
+          savedContent: "",
+        };
+        setTabs((prev) => [...snapshotActiveTab(prev), tab]);
+        setActiveTabId(tab.id);
+        setSaveStatus("idle");
+        setRecentFiles((prev) => [path, ...prev.filter((p) => p !== path)].slice(0, 8));
+        return;
+      }
+
+      // PDF files: skip text validation/reading, just open as view-only tab
+      if (isPdfPath(path)) {
         if (seq !== loadSeq.current) return;
         setSource("");
         setSavedContent("");

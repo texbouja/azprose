@@ -68,6 +68,7 @@ export {
   isSupportedTextPath,
   isTextPath,
   isImagePath,
+  isPdfPath,
   isEditablePath,
   basename,
   dirname,

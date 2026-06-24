@@ -20,6 +20,7 @@ import { pasteRichTextExtension } from "@prosemark/paste-rich-text";
 import {
   latexMarkdownSyntaxTheme,
   latexMarkdownEditorExtensions,
+  type LatexMarkdownEditorOptions,
 } from "@prosemark/latex";
 
 
@@ -37,6 +38,8 @@ export function ProseMarkEditor({ value, onChange, vimOn = false, onVimMode, vie
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const vimCompartment = useRef(new Compartment());
+  const prosemarkCompartment = useRef(new Compartment());
+  const mathOpts: LatexMarkdownEditorOptions = { mathJaxLoadMode: "static-import", renderCacheSize: 128 };
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -63,7 +66,7 @@ export function ProseMarkEditor({ value, onChange, vimOn = false, onVimMode, vie
         htmlBlockExtension,
         pasteRichTextExtension(),
         ...latexMarkdownSyntaxTheme,
-        ...latexMarkdownEditorExtensions(),
+        prosemarkCompartment.current.of(latexMarkdownEditorExtensions(mathOpts)),
         EditorView.lineWrapping,
         vimCompartment.current.of([]),
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),

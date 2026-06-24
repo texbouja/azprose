@@ -38,6 +38,7 @@
   "breadcrumb.unsaved": "non enregistré",
   "breadcrumb.saved": "enregistré",
   "breadcrumb.path": "chemin",
+  "breadcrumb.reloadMath": "re-rendu math",
   "sidebar.noFolder": "aucun dossier",
   "sidebar.searchFolder": "rechercher dans le dossier",
   "sidebar.closeSearch": "fermer la recherche",

@@ -1,7 +1,8 @@
+import "mathjax/tex-svg.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { EditorView } from "@codemirror/view";
 import { Breadcrumb, StatusBar, TitleBar, type VimMode } from "@/components/chrome";
-import { Editor, ImageViewer, OpenTabs, ProseMarkEditor } from "@/components/editor";
+import { Editor, ImageViewer, OpenTabs, PdfViewer, ProseMarkEditor } from "@/components/editor";
 import { ContextMenu, Sidebar, type ContextMenuItem } from "@/components/files";
 import { AboutOverlay, CommandPalette, DropOverlay, HelpOverlay, Toast, WelcomeOverlay } from "@/components/overlays";
 import { TooltipRoot } from "@/components/primitives";
@@ -36,6 +37,7 @@ import {
   getWhatsNewToastMessage,
   isImagePath,
   isMarkdownPath,
+  isPdfPath,
   isSupportedTextPath,
   normalizeWritingFontSize,
   normalizeWritingLineHeight,
@@ -549,15 +551,17 @@ export function App() {
     let unlistenDrop: (() => void) | undefined;
     let unlistenLeave: (() => void) | undefined;
 
+    const isDroppable = (p: string) => isSupportedTextPath(p) || isImagePath(p) || isPdfPath(p);
+
     void listen<DragPayload>("tauri://drag-enter", (event) => {
       const paths = event.payload.paths ?? [];
-      setDragActive(paths.some((p) => isSupportedTextPath(p) || isImagePath(p)));
+      setDragActive(paths.some(isDroppable));
     }).then((ul) => { unlistenEnter = ul; });
 
     void listen<DragPayload>("tauri://drag-drop", (event) => {
       setDragActive(false);
       const paths = event.payload.paths ?? [];
-      const firstSupported = paths.find((p) => isSupportedTextPath(p) || isImagePath(p));
+      const firstSupported = paths.find(isDroppable);
       if (firstSupported) {
         void loadFile(firstSupported);
       } else if (paths.length > 0) {
@@ -715,6 +719,7 @@ export function App() {
   }, [activePath]);
 
   const isImage = activePath ? isImagePath(activePath) : false;
+  const isPdf = activePath ? isPdfPath(activePath) : false;
   const isMarkdown = activePath ? isMarkdownPath(activePath) : false;
 
   const handleCloseTab = useCallback((id: string) => {
@@ -815,6 +820,8 @@ export function App() {
           <div className="mdv-shell__editor-solo">
             {isImage && activePath ? (
               <ImageViewer path={activePath} />
+            ) : isPdf && activePath ? (
+              <PdfViewer path={activePath} />
             ) : isMarkdown && prosemarkOn ? (
               <ProseMarkEditor value={source} onChange={setSource} vimOn={vimOn} onVimMode={setVimMode} viewRef={editorViewRef} />
             ) : (

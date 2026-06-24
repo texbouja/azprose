@@ -7,6 +7,7 @@
 @import "./styles/chrome/statusbar.css";
 @import "./styles/editor/prose.css";
 @import "./styles/editor/image-viewer.css";
+@import "./styles/editor/pdf-viewer.css";
 @import "./styles/editor/tabs.css";
 @import "./styles/files/sidebar.css";
 @import "./styles/overlays/overlay.css";
