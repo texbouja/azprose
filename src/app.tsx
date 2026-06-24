@@ -1,7 +1,8 @@
+import "mathjax/tex-svg.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { EditorView } from "@codemirror/view";
 import { Breadcrumb, StatusBar, TitleBar, type VimMode } from "@/components/chrome";
-import { Editor, ImageViewer, OpenTabs } from "@/components/editor";
+import { Editor, ImageViewer, OpenTabs, ProseMarkEditor } from "@/components/editor";
 import { ContextMenu, Sidebar, type ContextMenuItem } from "@/components/files";
 import { AboutOverlay, CommandPalette, DropOverlay, HelpOverlay, Toast, WelcomeOverlay } from "@/components/overlays";
 import { TooltipRoot } from "@/components/primitives";
@@ -30,6 +31,7 @@ import {
   getWhatsNewToastMessage,
   getWritingDisplayVars,
   isImagePath,
+  isMarkdownPath,
   isSupportedTextPath,
   normalizeWritingFontSize,
   normalizeWritingLineHeight,
@@ -209,7 +211,10 @@ export function App() {
   } = useUpdateFlow({ onError: setLoadError });
 
   const [vimOn, setVimOn] = usePersistedState<boolean>(STORAGE_KEYS.vimMode, false);
+  const [prosemarkOn, setProsemarkOn] = usePersistedState<boolean>("prosemarkOn", true);
   const [vimMode, setVimMode] = useState<VimMode | null>(null);
+
+  const handleToggleProsemark = useCallback(() => setProsemarkOn((v: boolean) => !v), [setProsemarkOn]);
   const [writingFontSize, setWritingFontSize] = usePersistedState<WritingFontSize>(
     STORAGE_KEYS.writingFontSize,
     DEFAULT_WRITING_DISPLAY.fontSize,
@@ -483,6 +488,7 @@ export function App() {
   }, [activePath]);
 
   const isImage = activePath ? isImagePath(activePath) : false;
+  const isMarkdown = activePath ? isMarkdownPath(activePath) : false;
 
   const handleCloseTab = useCallback((id: string) => {
     const tab = tabs.find((item) => item.id === id);
@@ -529,6 +535,8 @@ export function App() {
         onWritingFontSizeChange={setWritingFontSize}
         onWritingLineHeightChange={setWritingLineHeight}
         onResetWritingDisplay={resetWritingDisplay}
+        prosemarkOn={isMarkdown ? prosemarkOn : undefined}
+        onToggleProsemark={isMarkdown ? handleToggleProsemark : undefined}
       />
 
       <main className="mdv-shell">
@@ -567,6 +575,8 @@ export function App() {
           <div className="mdv-shell__editor-solo">
             {isImage && activePath ? (
               <ImageViewer path={activePath} />
+            ) : isMarkdown && prosemarkOn ? (
+              <ProseMarkEditor value={source} onChange={setSource} vimOn={vimOn} onVimMode={setVimMode} viewRef={editorViewRef} />
             ) : (
               <Editor
                 value={source}

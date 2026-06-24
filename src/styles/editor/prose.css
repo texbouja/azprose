@@ -1,0 +1,72 @@
+/* ProseMark WYSIWYM — widget typography
+   Applied to .cm-html-widget rendered within the CodeMirror editor.
+   Additional base variables are set on .mdv-editor in app.css.           */
+
+/* ── tables ─────────────────────────────────────────────────────────── */
+.cm-html-widget table {
+  border-collapse: collapse;
+  font-size: 0.93em;
+  margin: 0.75em 0;
+}
+
+.cm-html-widget th,
+.cm-html-widget td {
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  text-align: left;
+}
+
+.cm-html-widget th {
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  font-weight: 600;
+}
+
+/* ── lists ───────────────────────────────────────────────────────────── */
+.cm-html-widget ul,
+.cm-html-widget ol {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+
+.cm-html-widget li + li {
+  margin-top: 0.2em;
+}
+
+/* task-list checkboxes */
+.cm-html-widget .task-list-item {
+  list-style: none;
+  margin-left: -1.4em;
+}
+
+.cm-html-widget .task-list-item input[type="checkbox"] {
+  margin-right: 0.5em;
+  accent-color: var(--accent);
+  width: 0.9em;
+  height: 0.9em;
+  vertical-align: -0.1em;
+  cursor: default;
+}
+
+/* ── inline formatting ───────────────────────────────────────────────── */
+.cm-html-widget strong { font-weight: 600; }
+.cm-html-widget em { font-style: italic; }
+
+.cm-html-widget s,
+.cm-html-widget del {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  opacity: 0.7;
+}
+
+.cm-html-widget mark {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: inherit;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.cm-html-widget hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.4em 0;
+}
