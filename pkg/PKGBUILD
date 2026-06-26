@@ -1,0 +1,55 @@
+# Maintainer: Sadik Boujaida <alijouahri61@gmail.com>
+#
+# Paquet local — installer après `bun run tauri build` depuis la racine du projet.
+# Usage :
+#   bun run tauri build
+#   cd pkg && makepkg -si
+
+pkgname=azprose
+pkgver=0.0.1.beta
+pkgrel=1
+pkgdesc="Éditeur WYSIWYM LaTeX/Markdown pour CPGE"
+arch=('x86_64')
+url="https://github.com/texbouja/azprose"
+license=('MIT')
+depends=('webkit2gtk-4.1')
+provides=('azprose')
+conflicts=('azprose-bin')
+
+# Aucune source distante — tout vient du build local
+source=()
+sha256sums=()
+
+# Racine du dépôt (deux niveaux au-dessus de pkg/)
+_root="${startdir}/.."
+
+package() {
+    # Binaire
+    install -Dm755 "${_root}/src-tauri/target/release/azprose" \
+        "${pkgdir}/usr/bin/azprose"
+
+    # Icônes hicolor
+    install -Dm644 "${_root}/src-tauri/icons/32x32.png" \
+        "${pkgdir}/usr/share/icons/hicolor/32x32/apps/azprose.png"
+    install -Dm644 "${_root}/src-tauri/icons/128x128.png" \
+        "${pkgdir}/usr/share/icons/hicolor/128x128/apps/azprose.png"
+    install -Dm644 "${_root}/src-tauri/icons/128x128@2x.png" \
+        "${pkgdir}/usr/share/icons/hicolor/256x256/apps/azprose.png"
+
+    # Entrée .desktop
+    install -Dm644 /dev/stdin \
+        "${pkgdir}/usr/share/applications/azprose.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AZprose
+Comment=Éditeur WYSIWYM LaTeX/Markdown pour CPGE
+Exec=azprose %F
+Icon=azprose
+Terminal=false
+Categories=Office;TextEditor;Education;
+MimeType=text/markdown;text/x-markdown;text/plain;
+Keywords=markdown;latex;éditeur;prose;cpge;
+StartupWMClass=azprose
+EOF
+}
