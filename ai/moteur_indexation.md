@@ -20,9 +20,24 @@ au processus Tauri en arrière-plan.
 | Format | Extraction |
 |--------|-----------|
 | `.md` | `parseFrontMatter` (déjà présent) + corps texte brut |
+| `.tex` | Parser Rust maison — extrait métadonnées (`\title`, `\author`, `\section`…) et corps ; fallback `detex` (GPL) si installé |
 | `.pdf` | `pdf-extract` (crate Rust MIT) ; fallback `pdftotext` (poppler, GPL) si installé |
 
 Les fichiers scannés sont exclusivement ceux du **dossier projet ouvert**.
+
+### Parser LaTeX
+
+Pas de crate Rust dédié à l'extraction de texte LaTeX — un parser maison basé sur
+la crate `regex` (MIT) est suffisant pour l'indexation :
+
+- Extraire les métadonnées : `\title{}`, `\author{}`, `\date{}`, `\section{}`, `\subsection{}`
+- Supprimer les commandes : `\command[…]{…}` → garder le contenu des accolades
+- Supprimer les environnements de mise en forme : `\begin{itemize}…\end{itemize}` → garder le texte
+- Supprimer les mathématiques : `$…$`, `$$…$$`, `\(…\)`, `\[…\]` → remplacer par ` `
+- Supprimer les commentaires : `% …` jusqu'à fin de ligne
+
+Le résultat est du texte brut indexable, sans chercher à rendre le LaTeX.
+Fallback : `detex` système (outil GNU, GPL) s'il est installé.
 
 ## Stack technique
 
