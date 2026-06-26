@@ -15,7 +15,7 @@ Fonctions de base d'un éditeur LaTeX avec viualisation PDF intégrée et prise 
 - [x] Phase 1 — Réectriture de Marka.md  
   - [x] migration de React vers Svelte; 
   - [x] conversion du système Markdown de base en mode Preview sans Split;  
-  - [x] ajout d'un mode WISYWYM avec ProseMark;
+  - [x] ajout d'un mode WYSIWYM avec ProseMark;
   - [x] ajout d'un mode Presentation (du pauvre en attendant Marp);   
   - [x] ajout du support du texte mathématique avec Mathjax, compatible prosemark/latex; 
 
