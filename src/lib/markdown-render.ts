@@ -1,4 +1,5 @@
 import MarkdownIt from "markdown-it";
+import type { RenderRule } from "markdown-it/lib/renderer.mjs";
 import mark from "markdown-it-mark";
 import taskLists from "markdown-it-task-lists";
 import { createHighlighter, type Highlighter } from "shiki";
@@ -170,14 +171,14 @@ const slugify = (text: string): string =>
     .replace(/ /g, "-")
     .replace(/^-|-$/g, "");
 
-md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
+md.renderer.rules.heading_open = ((tokens, idx, options, _env, self) => {
   const inline = tokens[idx + 1];
   if (inline?.type === "inline") {
     const id = slugify(inline.content);
     if (id) tokens[idx].attrSet("id", id);
   }
   return self.renderToken(tokens, idx, options);
-};
+}) as RenderRule;
 
 export async function ensurePreviewReady(): Promise<void> {
   await getHighlighter();
