@@ -16,6 +16,9 @@ export const STORAGE_KEYS = {
   favorites: "mdview.favorites",
   writingFontSize: "mdview.writing.fontSize",
   writingLineHeight: "mdview.writing.lineHeight",
+  proseStyle: "mdview.prose.style",
+  mathJaxPreamble: "mdview.mathjax.preamble",
+  mathJaxPackages: "mdview.mathjax.packages",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

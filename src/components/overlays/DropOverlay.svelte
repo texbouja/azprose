@@ -1,5 +1,6 @@
 <script lang="ts">
-import { FileText } from "lucide-svelte";
+import { FileText } from "@/lib/icons";
+import { Icon } from "@/components/primitives";
 import inspectUrl from "@/assets/mascot/inspect.png";
 
 let { active }: { active: boolean } = $props();
@@ -18,7 +19,7 @@ let { active }: { active: boolean } = $props();
         class="mdv-drop__art"
       />
       <div class="mdv-drop__icon-row">
-        <FileText size={16} strokeWidth={1.5} />
+        <Icon icon={FileText} size={16} strokeWidth={1.5} />
         <span>drop your markdown here</span>
       </div>
       <span class="mdv-drop__hint">.md · .markdown · .mdx</span>

@@ -49,6 +49,8 @@ let entries = $state<FileEntry[] | null>(null);
 let error = $state<string | null>(null);
 
 $effect(() => {
+  // Read treeVersion so Svelte 5 re-runs this effect when the parent bumps it.
+  void treeVersion;
   let cancelled = false;
   error = null;
   listFolder(rootPath)

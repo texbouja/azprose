@@ -1,8 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SvelteIcon = any;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type LucideIcon = any;
+import type { IconData } from "./icons";
 import {
   Circle,
   CircleHelp,
@@ -23,7 +19,7 @@ import {
   Save,
   Sparkles,
   Sun,
-} from "lucide-svelte";
+} from "./icons";
 import { basename, dirname } from "./files";
 import { setThemeMode, setTransparency, THEME_CHOICES, THEME_HINTS, type ThemeMode } from "./theme";
 import type { Translate } from "./i18n";
@@ -35,7 +31,7 @@ export type Command = {
   label: string;
   hint?: string;
   shortcut?: string;
-  icon?: SvelteIcon;
+  icon?: IconData;
   category?: CommandCategory;
   keywords?: string[];
   action: () => void | Promise<void>;
@@ -61,7 +57,7 @@ export type CommandActions = {
   sidebarOpen: boolean;
 };
 
-const THEME_ICONS: Record<ThemeMode, LucideIcon> = {
+const THEME_ICONS: Record<ThemeMode, IconData> = {
   system: Monitor,
   latte: Sun,
   mono: Circle,
@@ -79,7 +75,7 @@ const THEME_ICONS: Record<ThemeMode, LucideIcon> = {
   cursor: Circle,
 };
 
-const THEME_COMMANDS: Array<{ mode: ThemeMode; label: string; hint: string; icon: LucideIcon }> =
+const THEME_COMMANDS: Array<{ mode: ThemeMode; label: string; hint: string; icon: IconData }> =
   THEME_CHOICES.map((theme) => ({
     mode: theme.value,
     label: theme.label,

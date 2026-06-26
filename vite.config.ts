@@ -35,8 +35,8 @@ export default defineConfig(async () => ({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          mathjax: ["mathjax/tex-svg.js"],
+        manualChunks(id) {
+          if (id.includes("/node_modules/mathjax/")) return "mathjax";
         },
       },
     },

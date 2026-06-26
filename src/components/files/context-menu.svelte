@@ -1,11 +1,11 @@
 <script lang="ts">
-import type { Component } from "svelte";
+import type { IconData } from "@/lib/icons";
 import Icon from "@/components/primitives/Icon.svelte";
 
 export type ContextMenuItem =
   | {
       label: string;
-      icon?: Component<any>;
+      icon?: IconData;
       onSelect: () => void;
       disabled?: boolean;
       hint?: string;

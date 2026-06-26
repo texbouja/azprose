@@ -15,8 +15,8 @@
     Sunset,
     Terminal,
     Waves,
-  } from "lucide-svelte";
-  import type { Component } from "svelte";
+  } from "@/lib/icons";
+  import type { IconData } from "@/lib/icons";
   import { Button, Icon, Popover } from "@/components/primitives";
   import { language, getT, setLanguage, LANGUAGE_CHOICES } from "@/lib/i18n";
   import {
@@ -48,7 +48,7 @@
 
   let t = $derived(getT($language));
 
-  const THEME_ICONS: Record<string, Component<any>> = {
+  const THEME_ICONS: Record<string, IconData> = {
     system: Monitor,
     latte: Sun,
     mono: Circle,
@@ -78,7 +78,7 @@
     )?.label,
   );
 
-  let ActiveIcon = $derived(
+  let activeIcon = $derived(
     theme.mode === "system" ? Monitor : THEME_ICONS[theme.resolved] ?? Sun,
   );
 
@@ -128,7 +128,7 @@
     onclick={() => menuOpen = !menuOpen}
   >
     {#snippet icon()}
-      <Icon icon={ActiveIcon} size={14} strokeWidth={1.5} />
+      <Icon icon={activeIcon} size={14} strokeWidth={1.5} />
     {/snippet}
   </Button>
   <Popover

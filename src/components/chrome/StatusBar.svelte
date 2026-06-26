@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CircleHelp } from "lucide-svelte";
+  import { CircleHelp } from "@/lib/icons";
   import { Button, Icon } from "@/components/primitives";
   import { shortcutLabel } from "@/lib";
 

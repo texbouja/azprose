@@ -13,7 +13,7 @@ Le conteneur doit offrir de base
 - gestion de fichier solide qui gère toutes les opérations usuelles, la gestion doit être orientée projets,  
 - un modal de configuration avec plusieurs modules (à venir). 
 ### Base adoptée
-L'application [Marka.md](https://github.com/mattenarle10/markamd) a été adoptée comme base du projet (fork). Architecture Tauri/React. Elle fournit la sidebar, le gestionnaire de fichier et le chrome d'interface. Inconvénient : React. Possibilité de migration de l'UI est de la gestion FS vers Tauri/Svelte ?
+L'application [Marka.md](https://github.com/mattenarle10/markamd) a été adoptée comme base du projet (fork). Architecture Tauri/React. Elle fournit la sidebar, le gestionnaire de fichier et le chrome d'interface. Inconvénient : React. On procède à une migration de l'UI est de la gestion FS vers Tauri/Svelte. 
 
 ## Phase 2:  Support du Markdown 
 La gestion Markdown devrait adopter un paradigme WYSIWYM (LyX). L'application doit supporter MathJax tout en restant réactive et utilisable même pour de grands projets et des fichiers qui peuvent être lourds (1000+ lignes).  Elle doit gérer l'inclusion de fichiers locaux en plus des autres types d'inclusions dans les standards Markdown (comme dans Obsidian).  
@@ -24,10 +24,10 @@ le projet Nodejs  @prosemark semble tout indiqué. Il implémente une approche W
 Sans support PDF étendu, point d'application de gestion de contenu. Le composant doit pouvoir fonctionner de façon autonome ou en collaboration avec les autres composants (éditeur LaTeX, mais aussi avec ProseMark et éventuellement Typst). L'accessibilité n'est pas une priorité. 
 
 ### Piste logicielle 
-[embed-pdf-viewer](https://github.com/embedpdf/embed-pdf-viewer) 
+[embed-pdf-viewer](https://github.com/embedpdf/embed-pdf-viewer) avec le sous-ensemble Svelte. 
 
 ## Phase 4 : support LaTeX 
 Non documentée pour l'instant. 
 
 ## Phase 5 : support Typst 
-Non documentée pour l'instant. 
+Non documentée pour l'instant.  

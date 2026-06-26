@@ -10,6 +10,8 @@
   "app.openFileShortcut": "open file (⌘O)",
   "app.openFolder": "open folder",
   "app.openFolderShortcut": "open folder (⌘⇧O)",
+  "app.openProject": "open project",
+  "app.openProjectShortcut": "open project in new window",
   "app.close": "close",
   "app.closeEsc": "close (esc)",
   "app.install": "install",

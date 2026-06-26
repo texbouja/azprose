@@ -325,7 +325,17 @@ export async function createMarkdownFile(parent: string, name: string): Promise<
   return target;
 }
 
-/** Permanently delete a file or empty folder. Used by undo of "create" ops. */
+/** Create any file with the exact name given (extension included). */
+export async function createFile(parent: string, name: string): Promise<string> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("empty name");
+  const target = joinPath(parent, trimmed);
+  if (await pathExists(target)) throw new Error(FS_CONFLICT);
+  await writeTextFile(target, "");
+  return target;
+}
+
+/** Permanently delete a file or folder (recursive for dirs). */
 export async function removeEntry(path: string, isDir: boolean): Promise<void> {
-  await remove(path, isDir ? { recursive: false } : undefined);
+  await remove(path, isDir ? { recursive: true } : undefined);
 }

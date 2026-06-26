@@ -1,6 +1,107 @@
 /* ProseMark WYSIWYM — widget typography
    Applied to .cm-html-widget rendered within the CodeMirror editor.
-   Additional base variables are set on .mdv-editor in app.css.           */
+   Additional base variables and h1–h4/p/a/code/pre/blockquote are in app.css.
+   Layout and CodeMirror decoration overrides are in ProseMarkEditor.svelte via
+   EditorView.theme() — the correct ProseMark way (prosemark.com/reference/styling/). */
+
+/* ── headings h5, h6 ────────────────────────────────────────────────── */
+.cm-html-widget h5,
+.cm-html-widget h6 {
+  font-weight: 600;
+  margin: 1.2em 0 0.35em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cm-html-widget h5 { font-size: 0.88em; }
+.cm-html-widget h6 { font-size: 0.80em; }
+
+/* ── first element after a heading: no top gap ───────────────────────── */
+.cm-html-widget h2 + p,
+.cm-html-widget h3 + p,
+.cm-html-widget h4 + p { margin-top: 0; }
+
+/* ── keyboard shortcuts ──────────────────────────────────────────────── */
+.cm-html-widget kbd {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--fg);
+  white-space: nowrap;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+/* ── details / summary (collapsible sections) ────────────────────────── */
+.cm-html-widget details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  margin: 0.6em 0;
+}
+.cm-html-widget details[open] { padding-bottom: 10px; }
+.cm-html-widget summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+  list-style: none;
+  color: var(--accent);
+  user-select: none;
+}
+.cm-html-widget summary::-webkit-details-marker { display: none; }
+.cm-html-widget summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 160ms var(--easing, ease);
+}
+.cm-html-widget details[open] > summary::before { transform: rotate(90deg); }
+.cm-html-widget details > *:not(summary):first-of-type { margin-top: 0.4em; }
+
+/* ── figure / figcaption ─────────────────────────────────────────────── */
+.cm-html-widget figure {
+  margin: 0.8em 0;
+  text-align: center;
+}
+.cm-html-widget figcaption {
+  font-size: 0.85em;
+  color: var(--muted);
+  margin-top: 0.4em;
+  font-style: italic;
+}
+
+/* ── subscript / superscript (important for scientific notation) ─────── */
+.cm-html-widget sub,
+.cm-html-widget sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+.cm-html-widget sup { top: -0.5em; }
+.cm-html-widget sub { bottom: -0.25em; }
+
+/* ── abbreviations ───────────────────────────────────────────────────── */
+.cm-html-widget abbr[title] {
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
+/* ── definition lists ────────────────────────────────────────────────── */
+.cm-html-widget dl { margin: 0.5em 0; }
+.cm-html-widget dt {
+  font-weight: 600;
+  margin-top: 0.6em;
+}
+.cm-html-widget dd {
+  margin-left: 1.6em;
+  color: var(--muted);
+  margin-top: 0.1em;
+}
 
 /* ── tables ─────────────────────────────────────────────────────────── */
 .cm-html-widget table {
@@ -24,18 +125,40 @@
 /* ── lists ───────────────────────────────────────────────────────────── */
 .cm-html-widget ul,
 .cm-html-widget ol {
-  padding-left: 1.4em;
+  padding-left: 1.6em;
   margin: 0.4em 0;
 }
 
-.cm-html-widget li + li {
-  margin-top: 0.2em;
+/* Nested lists: slightly reduced indent, tighter spacing */
+.cm-html-widget ul ul,
+.cm-html-widget ol ol,
+.cm-html-widget ul ol,
+.cm-html-widget ol ul {
+  padding-left: 1.4em;
+  margin: 0.1em 0;
 }
+
+.cm-html-widget li + li {
+  margin-top: 0.25em;
+}
+
+/* Nested li spacing is tighter */
+.cm-html-widget li li + li {
+  margin-top: 0.1em;
+}
+
+/* Unordered list visual markers per level */
+.cm-html-widget ul { list-style-type: disc; }
+.cm-html-widget ul ul { list-style-type: circle; }
+.cm-html-widget ul ul ul { list-style-type: square; }
+
+/* OL list-style-type applies only to literal HTML blocks (<ol>…</ol> in Markdown source).
+   Markdown 1./2./3. lists are rendered via ProseMark list mark widgets — not <ol> elements. */
 
 /* task-list checkboxes */
 .cm-html-widget .task-list-item {
   list-style: none;
-  margin-left: -1.4em;
+  margin-left: -1.6em;
 }
 
 .cm-html-widget .task-list-item input[type="checkbox"] {

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ChevronLeft, ChevronRight, FolderOpen, Sparkles } from "lucide-svelte";
+import { ChevronLeft, ChevronRight, FolderOpen, Sparkles } from "@/lib/icons";
 import { Button, Icon, Kbd, Overlay, Shortcut } from "@/components/primitives";
 import logoUrl from "@/assets/mascot/mdview-transpa-bg.png";
 import notebookUrl from "@/assets/mascot/notebook.png";

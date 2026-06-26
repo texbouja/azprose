@@ -89,6 +89,13 @@
         "description": "Image file",
         "role": "Viewer",
         "rank": "Alternate"
+      },
+      {
+        "ext": ["pdf"],
+        "name": "PDF",
+        "description": "PDF document",
+        "role": "Viewer",
+        "rank": "Alternate"
       }
     ]
   }

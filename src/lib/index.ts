@@ -32,8 +32,13 @@ export {
   writeMarkdown,
   isSupportedTextPath,
   isImagePath,
+  isPdfPath,
   basename,
   dirname,
+  createFile,
+  createFolder,
+  renameEntry,
+  removeEntry,
   type FileEntry,
   type FlatFileEntry,
 } from "./files";

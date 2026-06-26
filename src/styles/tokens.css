@@ -37,6 +37,9 @@
   --surface: #e6e9ef;       /* mantle */
   --surface-hover: #bcc0cc; /* surface1 */
   --shadow-soft: 0 1px 2px rgba(76, 79, 105, 0.06), 0 2px 8px rgba(76, 79, 105, 0.05);
+  --color-error: #d20f39;
+  --backdrop: rgba(0, 0, 0, 0.22);
+  --shadow-color: 76, 79, 105;
   --syntax-keyword: #8839ef;
   --syntax-string: #40a02b;
   --syntax-number: #fe640b;
@@ -59,6 +62,9 @@
   --surface: #f5f5f5;
   --surface-hover: #ececec;
   --shadow-soft: 0 1px 2px rgba(17, 17, 17, 0.05), 0 2px 8px rgba(17, 17, 17, 0.04);
+  --color-error: #cc1122;
+  --backdrop: rgba(0, 0, 0, 0.22);
+  --shadow-color: 17, 17, 17;
   --syntax-keyword: #111111;
   --syntax-string: #111111;
   --syntax-number: #111111;
@@ -81,6 +87,9 @@
   --surface: #191919;
   --surface-hover: #262626;
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --color-error: #ff6b6b;
+  --backdrop: rgba(0, 0, 0, 0.55);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #f7f7f7;
   --syntax-string: #f7f7f7;
   --syntax-number: #f7f7f7;
@@ -103,6 +112,9 @@
   --surface: #292c3c;       /* mantle */
   --surface-hover: #51576d; /* surface1 */
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --color-error: #e78284;
+  --backdrop: rgba(0, 0, 0, 0.52);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #ca9ee6;
   --syntax-string: #a6d189;
   --syntax-number: #ef9f76;
@@ -125,6 +137,9 @@
   --surface: #1e2030;       /* mantle */
   --surface-hover: #494d64; /* surface1 */
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.22);
+  --color-error: #ed8796;
+  --backdrop: rgba(0, 0, 0, 0.52);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #c6a0f6;
   --syntax-string: #a6da95;
   --syntax-number: #f5a97f;
@@ -147,6 +162,9 @@
   --surface: #ede9d8;
   --surface-hover: #e3dcc4;
   --shadow-soft: 0 1px 2px rgba(45, 54, 36, 0.05), 0 2px 8px rgba(45, 54, 36, 0.04);
+  --color-error: #a33b20;
+  --backdrop: rgba(0, 0, 0, 0.22);
+  --shadow-color: 45, 54, 36;
   --syntax-keyword: #5a7a3e;
   --syntax-string: #6b8f3e;
   --syntax-number: #bc6c25;
@@ -170,6 +188,9 @@
   --surface: #181825;       /* mantle */
   --surface-hover: #45475a; /* surface1 */
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --color-error: #f38ba8;
+  --backdrop: rgba(0, 0, 0, 0.52);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #cba6f7;
   --syntax-string: #a6e3a1;
   --syntax-number: #fab387;
@@ -192,6 +213,9 @@
   --surface: #2a2a37;       /* sumiInk2 */
   --surface-hover: #363646; /* sumiInk3 */
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --color-error: #c34043;
+  --backdrop: rgba(0, 0, 0, 0.55);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #957fb8;
   --syntax-string: #98bb6c;
   --syntax-number: #e6c384;
@@ -214,6 +238,9 @@
   --surface: #191e2a;       /* editor.gutter */
   --surface-hover: #2d3343; /* ui.selection.bg */
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --color-error: #f07178;
+  --backdrop: rgba(0, 0, 0, 0.55);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #ffa759;
   --syntax-string: #bae67e;
   --syntax-number: #ffa759;
@@ -236,6 +263,9 @@
   --surface: #1f1d2e;       /* surface */
   --surface-hover: #26233a; /* overlay */
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.28);
+  --color-error: #eb6f92;
+  --backdrop: rgba(0, 0, 0, 0.52);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #c4a7e7;
   --syntax-string: #9ccfd8;
   --syntax-number: #ebbcba;
@@ -258,6 +288,9 @@
   --surface: #ebe6dc;
   --surface-hover: #e0d8ca;
   --shadow-soft: 0 1px 2px rgba(43, 33, 24, 0.06), 0 2px 8px rgba(43, 33, 24, 0.05);
+  --color-error: #bf4030;
+  --backdrop: rgba(0, 0, 0, 0.22);
+  --shadow-color: 43, 33, 24;
   --syntax-keyword: #5a3a72;
   --syntax-string: #4c7a4a;
   --syntax-number: #b85a30;
@@ -280,6 +313,9 @@
   --surface: #171715;
   --surface-hover: #242420;
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.32);
+  --color-error: #ff5c5c;
+  --backdrop: rgba(0, 0, 0, 0.58);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #10a37f;
   --syntax-string: #10a37f;
   --syntax-number: #f4f4f0;
@@ -302,6 +338,9 @@
   --surface: #eef2ff;
   --surface-hover: #e2e8ff;
   --shadow-soft: 0 1px 2px rgba(71, 150, 227, 0.08), 0 2px 10px rgba(145, 119, 199, 0.08);
+  --color-error: #c5221f;
+  --backdrop: rgba(0, 0, 0, 0.22);
+  --shadow-color: 32, 33, 36;
   --syntax-keyword: #5a4fcf;
   --syntax-string: #408040;
   --syntax-number: #b06030;
@@ -324,6 +363,9 @@
   --surface: #1d1b13;
   --surface-hover: #26251e;
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --color-error: #ff5c5c;
+  --backdrop: rgba(0, 0, 0, 0.58);
+  --shadow-color: 0, 0, 0;
   --syntax-keyword: #f7f7f4;
   --syntax-string: #f7f7f4;
   --syntax-number: #f7f7f4;
@@ -345,6 +387,9 @@
   --accent: #fe640b;
   --surface: #e6e9ef;
   --surface-hover: #bcc0cc;
+  --color-error: #d20f39;
+  --backdrop: rgba(0, 0, 0, 0.22);
+  --shadow-color: 76, 79, 105;
   --syntax-keyword: #8839ef;
   --syntax-string: #40a02b;
   --syntax-number: #fe640b;
@@ -366,6 +411,9 @@
     --accent: #fab387;
     --surface: #181825;
     --surface-hover: #45475a;
+    --color-error: #f38ba8;
+    --backdrop: rgba(0, 0, 0, 0.52);
+    --shadow-color: 0, 0, 0;
     --syntax-keyword: #cba6f7;
     --syntax-string: #a6e3a1;
     --syntax-number: #fab387;

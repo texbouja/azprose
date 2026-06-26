@@ -1,8 +1,8 @@
 <script lang="ts">
-import { Check, FilePlus2, FileText, Star, Table2 } from "lucide-svelte";
+import { Check, FilePlus2, FileText, Image as ImageIcon, Star, Table2 } from "@/lib/icons";
 import Icon from "@/components/primitives/Icon.svelte";
 import { DRAG_MIME } from "./folder-node.svelte";
-import { isCsvPath, type FileEntry } from "@/lib";
+import { isCsvPath, isImagePath, type FileEntry } from "@/lib";
 
 let {
   entry,
@@ -60,7 +60,7 @@ function handleClick(e: MouseEvent) {
     title={entry.path}
   >
     <span class="mdv-tree__icon">
-      <Icon icon={isCsvPath(entry.name) ? Table2 : FileText} size={13} strokeWidth={1.5} />
+      <Icon icon={isCsvPath(entry.name) ? Table2 : isImagePath(entry.path) ? ImageIcon : FileText} size={13} strokeWidth={1.5} />
     </span>
     <span class="mdv-tree__name">{entry.name}</span>
   </button>

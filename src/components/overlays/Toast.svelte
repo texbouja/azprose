@@ -1,5 +1,5 @@
 <script lang="ts">
-import { X } from "lucide-svelte";
+import { X } from "@/lib/icons";
 import { Button, Icon } from "@/components/primitives";
 import sadUrl from "@/assets/mascot/sad.png";
 import exciteUrl from "@/assets/mascot/excite.png";

@@ -443,9 +443,9 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 10px 28px rgba(0, 0, 0, 0.22),
-    0 2px 8px rgba(0, 0, 0, 0.08);
+    0 1px 0 color-mix(in srgb, white 4%, transparent) inset,
+    0 10px 28px rgba(var(--shadow-color), 0.22),
+    0 2px 8px rgba(var(--shadow-color), 0.08);
   z-index: 950;
   gap: 0;
 }
@@ -476,8 +476,8 @@
 
 /* destructive action (delete) — accent red only on hover so it doesn't shout */
 .mdv-context-menu .mdv-menu__item--destructive:hover {
-  background: color-mix(in srgb, #ef4444 12%, transparent);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  color: var(--color-error);
 }
 
 .mdv-context-menu .mdv-menu__item-hint {

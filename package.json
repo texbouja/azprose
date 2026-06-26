@@ -31,6 +31,8 @@
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.42.1",
+    "@fontsource/fira-code": "^5.2.7",
+    "@fontsource/fira-sans": "^5.2.7",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@prosemark/core": "^0.0.9",
@@ -45,7 +47,12 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "i18next": "^26.3.0",
     "lucide-svelte": "^1.0.1",
+    "markdown-it": "^14.2.0",
+    "markdown-it-mark": "^4.0.0",
+    "markdown-it-task-lists": "^2.1.1",
     "mathjax": "^4.1.2",
+    "pdfjs-dist": "4.10.38",
+    "shiki": "^4.3.0",
     "svelte": "^5.56.4"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Icon } from "@/components/primitives";
-import { X } from "lucide-svelte";
+import { X } from "@/lib/icons";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 

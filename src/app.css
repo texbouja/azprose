@@ -17,6 +17,10 @@
 @import "./styles/overlays/welcome.css";
 @import "./styles/overlays/drop.css";
 @import "./styles/overlays/about.css";
+@import "./styles/overlays/settings.css";
+@import "pdfjs-dist/web/pdf_viewer.css";
+@import "./styles/pdf/pdf.css";
+@import "./styles/preview/preview.css";
 
 /* shell layout */
 .mdv-app {
@@ -105,8 +109,8 @@
   --pm-latex-math-delimiter-color: var(--syntax-keyword);
   --pm-latex-math-formula-color: var(--syntax-function);
   --pm-latex-math-formula-font: var(--font-mono);
-  --pm-latex-math-error-color: #e64553;
-  --pm-latex-math-error-background-color: rgba(230, 69, 83, 0.1);
+  --pm-latex-math-error-color: var(--color-error);
+  --pm-latex-math-error-background-color: color-mix(in srgb, var(--color-error) 10%, transparent);
 
   --pm-syntax-link: var(--syntax-function);
   --pm-syntax-keyword: var(--syntax-keyword);
@@ -121,17 +125,20 @@
   --pm-syntax-special-variable-macro: var(--syntax-keyword);
   --pm-syntax-definition-property: var(--syntax-function);
   --pm-syntax-comment: var(--syntax-comment);
-  --pm-syntax-invalid: #e64553;
+  --pm-syntax-invalid: var(--color-error);
 }
 
 /* prosemark rendered-HTML widget — typography */
 .cm-html-widget {
-  --font: var(--font-ui);
-  font-family: var(--font-ui);
+  --font: var(--font-prose);
+  font-family: var(--font-prose);
   line-height: var(--mdv-prose-line-height);
   font-size: var(--mdv-prose-font-size);
   color: var(--fg);
 }
+/* Heading base styles for literal HTML blocks inside .cm-html-widget.
+   Markdown # H1 headings are styled via HighlightStyle in ProseMarkEditor
+   (tags.heading1/2/3) — not via these rules. */
 .cm-html-widget h1,
 .cm-html-widget h2,
 .cm-html-widget h3,
@@ -139,22 +146,19 @@
   font-weight: 600;
   letter-spacing: -0.018em;
 }
-.cm-html-widget h1 { font-size: 2.1em; margin: 0 0 0.5em; }
-.cm-html-widget h2 { font-size: 1.55em; margin: 2em 0 0.5em; }
-.cm-html-widget h3 { font-size: 1.25em; margin: 1.6em 0 0.5em; }
 .cm-html-widget h4 { font-size: 1em; margin: 1.4em 0 0.4em; }
 .cm-html-widget p { margin: 0 0 1em; }
 .cm-html-widget a { color: var(--accent); text-decoration: underline; }
 .cm-html-widget code {
-  font-family: var(--font-mono);
+  font-family: var(--font-prose-mono);
   font-size: 0.88em;
   background: var(--surface);
   padding: 1px 6px;
   border-radius: 4px;
 }
 .cm-html-widget pre {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-family: var(--font-prose-mono);
+  font-size: 13px;
   line-height: 1.55;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -170,3 +174,26 @@
   margin: 0 0 1em;
 }
 .cm-html-widget img { max-width: 100%; height: auto; border-radius: 6px; }
+
+/* loading state for lazy-loaded editor components */
+.mdv-editor--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: 0.85rem;
+  border: 0;
+}
+
+/* empty workspace state (no file open) */
+.mdv-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ChevronRight, Folder, FolderOpen, X } from "lucide-svelte";
+import { ChevronRight, Folder, FolderOpen, X } from "@/lib/icons";
 import Icon from "@/components/primitives/Icon.svelte";
 import { basename, type FileEntry } from "@/lib";
 import FileTree from "./file-tree.svelte";

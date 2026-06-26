@@ -3,7 +3,7 @@ export const DRAG_MIME = "application/x-azprose-path";
 </script>
 
 <script lang="ts">
-import { ChevronRight, Folder, FolderOpen } from "lucide-svelte";
+import { ChevronRight, Folder, FolderOpen } from "@/lib/icons";
 import Icon from "@/components/primitives/Icon.svelte";
 import { type FileEntry } from "@/lib";
 import FileTree from "./file-tree.svelte";

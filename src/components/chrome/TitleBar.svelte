@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, Copy, FileDown, Minimize2 } from "lucide-svelte";
+  import { Check, Copy, FileDown, Minimize2 } from "@/lib/icons";
   import { Button, Icon } from "@/components/primitives";
   import { language, getT } from "@/lib/i18n";
   import { shortcutLabel } from "@/lib";

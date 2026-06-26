@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Download, FileText, Layers3, Palette, Sparkles, Table2, X } from "lucide-svelte";
+import { Download, FileText, Layers3, Palette, Sparkles, Table2, X } from "@/lib/icons";
 import { Button, Icon, Kbd, Overlay, Shortcut } from "@/components/primitives";
 import { shortcutLabel, type Translate } from "@/lib";
 import { language, getT } from "@/lib/i18n";
@@ -189,7 +189,7 @@ $effect(() => {
           onclick={() => void handleCheck()}
           disabled={checking}
         >
-          <Download size={11} strokeWidth={1.75} />
+          <Icon icon={Download} size={11} strokeWidth={1.75} />
           {checking ? "checking…" : t("command.checkUpdates")}
         </button>
       {/if}
@@ -199,7 +199,7 @@ $effect(() => {
           class="mdv-help__action"
           onclick={() => { onClose(); onReplayTutorial(); }}
         >
-          <Sparkles size={11} strokeWidth={1.75} />
+          <Icon icon={Sparkles} size={11} strokeWidth={1.75} />
           {t("help.replay")}
         </button>
       {/if}

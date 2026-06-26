@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ChevronRight, FileText, Star, Table2 } from "lucide-svelte";
+import { ChevronRight, FileText, Star, Table2 } from "@/lib/icons";
 import Icon from "@/components/primitives/Icon.svelte";
 import { basename, isCsvPath, type FileEntry } from "@/lib";
 

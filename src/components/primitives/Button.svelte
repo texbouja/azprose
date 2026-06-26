@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { Snippet } from "svelte";
+import type { HTMLButtonAttributes } from "svelte/elements";
 
 let {
   variant = "ghost",
@@ -16,7 +17,7 @@ let {
   iconRight?: Snippet;
   children?: Snippet;
   class?: string;
-} = $props();
+} & Omit<HTMLButtonAttributes, "class"> = $props();
 
 let classes = $derived(
   ["mdv-btn", `mdv-btn--${variant}`, `mdv-btn--${size}`, className]

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Copy, FolderPlus, Search, Trash2, X } from "lucide-svelte";
+import { Copy, FilePlus2, FolderInput, FolderPlus, Search, Trash2, X } from "@/lib/icons";
 import { Button, Icon } from "@/components/primitives";
 import { language, getT } from "@/lib/i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -18,6 +18,8 @@ let {
   width,
   onWidthChange,
   onAddFolder,
+  onNewFile,
+  onNewFolder,
   onCloseFolder,
   onSelectFile,
   onMove,
@@ -45,6 +47,8 @@ let {
   width: number;
   onWidthChange: (next: number) => void;
   onAddFolder: () => void;
+  onNewFile?: () => void;
+  onNewFolder?: () => void;
   onCloseFolder: (path: string) => void;
   onSelectFile: (path: string) => void;
   onMove?: (src: string, dstParent: string) => void;
@@ -172,15 +176,33 @@ function onHeaderMouseDown(e: MouseEvent) {
             onclick={() => (searchOpen ? closeSearch() : searchOpen = true)}
             icon={searchBtnIcon}
           />
+          {#snippet newFileIcon()}
+            <Icon icon={FilePlus2} size={13} strokeWidth={1.5} />
+          {/snippet}
+          <Button
+            data-tooltip={t("menu.newFile")}
+            aria-label={t("menu.newFile")}
+            onclick={() => onNewFile?.(rootPath ?? undefined)}
+            icon={newFileIcon}
+          />
+          {#snippet newFolderIcon()}
+            <Icon icon={FolderPlus} size={13} strokeWidth={1.5} />
+          {/snippet}
+          <Button
+            data-tooltip={t("menu.newFolder")}
+            aria-label={t("menu.newFolder")}
+            onclick={() => onNewFolder?.(rootPath ?? undefined)}
+            icon={newFolderIcon}
+          />
         {/if}
-        {#snippet addFolderIcon()}
-          <Icon icon={FolderPlus} size={13} strokeWidth={1.5} />
+        {#snippet addWorkspaceFolderIcon()}
+          <Icon icon={FolderInput} size={13} strokeWidth={1.5} />
         {/snippet}
         <Button
           data-tooltip={t("sidebar.addFolder")}
           aria-label={t("sidebar.addFolder")}
           onclick={onAddFolder}
-          icon={addFolderIcon}
+          icon={addWorkspaceFolderIcon}
         />
       </div>
     </header>

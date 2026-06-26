@@ -1,0 +1,294 @@
+/* ── Shell ─────────────────────────────────────────── */
+.pdf-shell {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+/* ── Top hover toolbar ──────────────────────────────── */
+.pdf-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+
+  /* Hidden by default, revealed on shell hover */
+  opacity: 0;
+  transform: translateY(-100%);
+  pointer-events: none;
+  /* Fast show, slower hide to avoid accidental dismissal */
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.pdf-shell:hover .pdf-topbar {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition: opacity 0.12s ease, transform 0.12s ease, opacity 0s 0.25s;
+}
+
+/* Keep toolbar visible while interacting with its own elements */
+.pdf-topbar:hover {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  pointer-events: auto !important;
+}
+
+.pdf-topbar__section {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.pdf-topbar__left  { justify-content: flex-start; }
+.pdf-topbar__center { justify-content: center; flex: 2; }
+.pdf-topbar__right { justify-content: flex-end; }
+
+/* ── Toolbar buttons ─────────────────────────────────── */
+.pdf-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.pdf-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.pdf-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Page number input */
+.pdf-page-input {
+  width: 38px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  text-align: center;
+  padding: 0 4px;
+  outline: none;
+}
+
+.pdf-page-input:focus {
+  border-color: var(--accent, color-mix(in srgb, var(--fg) 40%, transparent));
+}
+
+.pdf-page-input:disabled {
+  opacity: 0.4;
+}
+
+.pdf-page-sep {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.pdf-scale-chip {
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 36px;
+  text-align: center;
+}
+
+.pdf-vsep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ── Left panel (TOC / attachments) ─────────────────── */
+.pdf-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(8px);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: 4px 0 16px rgba(var(--shadow-color), 0.15);
+}
+
+.pdf-panel__tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.pdf-panel__tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 34px;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.pdf-panel__tab:hover {
+  color: var(--fg);
+}
+
+.pdf-panel__tab.is-active {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
+}
+
+.pdf-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
+}
+
+.pdf-panel__empty {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  padding: 20px 12px;
+  margin: 0;
+}
+
+/* TOC items */
+.pdf-toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  padding-right: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fg);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pdf-toc-item:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* Attachment items */
+.pdf-att-item {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── PDF viewport — scrollbar on left ───────────────── */
+
+/* pdfjs requires the container to be position:absolute.
+   direction:rtl moves the native scrollbar to the left side. */
+.pdf-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background: var(--surface);
+}
+
+.pdf-viewport .pdfViewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 16px;
+  gap: 10px;
+  min-height: 100%;
+}
+
+.pdf-viewport .pdfViewer .page {
+  box-shadow: 0 2px 10px rgba(var(--shadow-color), 0.25);
+  border-radius: 1px;
+  margin: 0 !important;
+}
+
+/* Text layer — transparent hit-test surface only */
+.pdf-viewport .textLayer :is(span, br) {
+  color: transparent !important;
+}
+
+.pdf-viewport .textLayer ::selection {
+  background: color-mix(in srgb, AccentColor, transparent 60%);
+}
+
+/* ── Loading / error overlays ────────────────────────── */
+.pdf-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--bg);
+  z-index: 5;
+}
+
+.pdf-loading-text {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pdf-error-overlay {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.pdf-error-overlay p {
+  margin: 0;
+  font-weight: 500;
+}
+
+.pdf-error-overlay code {
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  color: var(--syntax-comment);
+  max-width: 80%;
+  text-align: center;
+  word-break: break-all;
+}

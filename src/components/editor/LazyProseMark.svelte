@@ -2,9 +2,11 @@
 let {
   value,
   onChange,
+  readOnly = false,
 }: {
   value: string;
-  onChange: (next: string) => void;
+  onChange?: (next: string) => void;
+  readOnly?: boolean;
 } = $props();
 
 let Cmp = $state<typeof import("./ProseMarkEditor.svelte").default | null>(null);
@@ -27,7 +29,7 @@ $effect(() => {
 </script>
 
 {#if loading}
-  <div class="mdv-editor" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:0.85rem;border:0">loading prose editor…</div>
+  <div class="mdv-editor mdv-editor--loading">loading prose editor…</div>
 {:else if Cmp}
-  <Cmp {value} {onChange} />
+  <Cmp {value} {onChange} {readOnly} />
 {/if}

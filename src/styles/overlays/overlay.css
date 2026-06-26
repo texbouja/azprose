@@ -1,7 +1,7 @@
 .mdv-overlay__backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.34);
+  background: var(--backdrop);
   backdrop-filter: blur(2px);
   z-index: 1000;
   animation: mdv-overlay-fade 140ms var(--easing);
@@ -17,7 +17,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 24px 60px rgba(var(--shadow-color), 0.35), 0 4px 12px rgba(var(--shadow-color), 0.15);
   z-index: 1001;
   overflow: hidden;
   display: flex;

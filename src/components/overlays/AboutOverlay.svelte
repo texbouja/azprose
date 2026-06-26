@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Download, FileText, FolderOpen, Globe, Palette, Star, Workflow, X } from "lucide-svelte";
+import { Download, FileText, FolderOpen, Globe, Palette, Star, Workflow, X } from "@/lib/icons";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button, Icon, Overlay } from "@/components/primitives";
