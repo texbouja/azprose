@@ -2,7 +2,7 @@
 name = "azprose"
 version = "0.1.0"
 description = "AZprose — éditeur de texte scientifique"
-authors = []
+authors = ["Sadik Boujaida <alijouahri61@gmail.com>", "Anthropic Claude <claude@anthropic.com>"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

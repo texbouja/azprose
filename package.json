@@ -2,6 +2,10 @@
   "name": "azprose",
   "private": true,
   "version": "0.1.0",
+  "author": "Sadik Boujaida <alijouahri61@gmail.com>",
+  "contributors": [
+    "Anthropic Claude <claude@anthropic.com>"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
