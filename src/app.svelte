@@ -56,7 +56,7 @@ import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
 import LazyMarkdownPreview from "@/components/preview/LazyMarkdownPreview.svelte";
 import LazyMarpPreview from "@/components/preview/LazyMarpPreview.svelte";
-import MarpDeck from "@/components/editor/MarpDeck.svelte";
+import LazyMarpDeck from "@/components/editor/LazyMarpDeck.svelte";
 import { parseFrontMatter } from "@/lib/markdown-render";
 import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
@@ -846,7 +846,7 @@ let cmds = $derived(
           {:else if isMarp && previewOn}
             <LazyMarpPreview value={source} />
           {:else if isMarp && prosemarkOn && presentationOn}
-            <MarpDeck value={source} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
+            <LazyMarpDeck value={source} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
           {:else if previewOn && extFromPath(activePath) === "md"}
             <LazyMarkdownPreview value={source} filePath={activePath} />
           {:else if prosemarkOn && presentationOn && extFromPath(activePath) === "md"}

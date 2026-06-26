@@ -29,6 +29,12 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // mathjax-full (via @marp-team/marp-core) calls MathJax.loader.preLoad() at
+      // module init — incompatible with mathjax/tex-svg.js which has no loader API.
+      // Safe stub since marp-core is used with math:false.
+      "mathjax-full/js/input/tex/AllPackages.js": path.resolve(
+        __dirname, "./src/stubs/mathjax-all-packages.js"
+      ),
     },
   },
 
