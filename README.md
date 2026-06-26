@@ -4,7 +4,7 @@
 
 
 
-Application desktop cross-platform (**macOS · Windows · Linux**) pour la rédaction et la gestion de documents scientifiques.
+Application desktop multi-platforme (**macOS · Windows · Linux**) et multi-langage de composition (**Markdown • LaTeX • Typst) pour la rédaction et la gestion de documents scientifiques.
 
 Approche **WYSIWYM** (What You See Is What You Mean) pour l'édition Markdown, avec rendu MathJax.
 
