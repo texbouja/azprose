@@ -193,7 +193,7 @@ interface FrontMatter {
   body: string;
 }
 
-function parseFrontMatter(src: string): FrontMatter {
+export function parseFrontMatter(src: string): FrontMatter {
   const m = FM_RE.exec(src);
   if (!m) return { meta: {}, body: src };
 

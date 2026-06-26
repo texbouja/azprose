@@ -39,6 +39,7 @@
     "@fontsource/fira-sans": "^5.2.7",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@marp-team/marp-core": "^4.3.0",
     "@prosemark/core": "^0.0.9",
     "@prosemark/latex": "^0.0.4",
     "@prosemark/paste-rich-text": "^0.0.5",

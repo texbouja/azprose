@@ -55,6 +55,9 @@ import SlideDeck from "@/components/editor/SlideDeck.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
 import LazyMarkdownPreview from "@/components/preview/LazyMarkdownPreview.svelte";
+import LazyMarpPreview from "@/components/preview/LazyMarpPreview.svelte";
+import MarpDeck from "@/components/editor/MarpDeck.svelte";
+import { parseFrontMatter } from "@/lib/markdown-render";
 import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { saveSession, loadSession, saveDraft, loadDraft, clearDraft } from "@/lib/session";
@@ -293,10 +296,24 @@ $effect(() => {
   if (activePath) window.localStorage.setItem(STORAGE_KEYS.lastFile, activePath);
 });
 
+// isMarp : true si le fichier actif contient marp: true dans son front matter
+let isMarp = $derived(
+  activePath && extFromPath(activePath) === "md"
+    ? parseFrontMatter(source).meta["marp"] === "true"
+    : false
+);
+
 $effect(() => {
   if (!activePath || extFromPath(activePath) !== "md") {
     presentationOn = false;
     previewOn = false;
+  }
+});
+
+// Marp n'a pas de mode Prose — revenir en Raw si nécessaire
+$effect(() => {
+  if (isMarp && prosemarkOn && !presentationOn && !previewOn) {
+    prosemarkOn = false;
   }
 });
 
@@ -786,6 +803,7 @@ let cmds = $derived(
     onWritingLineHeightChange={handleWritingLineHeightChange}
     onResetWritingDisplay={handleResetWritingDisplay}
     {editorMode}
+    {isMarp}
     onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}
     onToggleFullscreen={toggleFullscreen}
     onOpenSettings={overlays.showSettings}
@@ -825,6 +843,10 @@ let cmds = $derived(
             <LazyPdfViewer path={activePath} />
           {:else if isImagePath(activePath)}
             <ImageViewer path={activePath} />
+          {:else if isMarp && previewOn}
+            <LazyMarpPreview value={source} />
+          {:else if isMarp && prosemarkOn && presentationOn}
+            <MarpDeck value={source} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
           {:else if previewOn && extFromPath(activePath) === "md"}
             <LazyMarkdownPreview value={source} filePath={activePath} />
           {:else if prosemarkOn && presentationOn && extFromPath(activePath) === "md"}

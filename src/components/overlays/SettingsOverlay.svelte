@@ -11,6 +11,7 @@ import {
 } from "@/stores/prose-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
+import { marpSettings, type MarpTheme, type MarpSize } from "@/stores/marp-settings.svelte";
 import { restartApp } from "@/lib/restart";
 
 let {
@@ -21,8 +22,8 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "style-writing" | "style-presentation" | "preamble-mathjax";
-type SectionId = "prose";
+type ModuleId = "style-writing" | "style-presentation" | "preamble-mathjax" | "marp-style";
+type SectionId = "prose" | "marp";
 
 const SECTIONS: { id: SectionId; label: string; modules: { id: ModuleId; label: string }[] }[] = [
   {
@@ -32,6 +33,13 @@ const SECTIONS: { id: SectionId; label: string; modules: { id: ModuleId; label: 
       { id: "style-writing", label: "Normal" },
       { id: "style-presentation", label: "Présentation" },
       { id: "preamble-mathjax", label: "MathJax" },
+    ],
+  },
+  {
+    id: "marp",
+    label: "Marp",
+    modules: [
+      { id: "marp-style", label: "Présentation" },
     ],
   },
 ];
@@ -354,6 +362,34 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; label: string }[] = [
             ></textarea>
           {/if}
 
+          {#if activeModule === "marp-style"}
+            <p class="mdv-settings__section-title">Thème</p>
+            <div class="mdv-settings__radio-group">
+              {#each (["default", "gaia", "uncover"] as MarpTheme[]) as t}
+                <label class="mdv-settings__radio">
+                  <input type="radio" name="marp-theme"
+                    value={t}
+                    checked={marpSettings.current.theme === t}
+                    onchange={() => { marpSettings.current = { ...marpSettings.current, theme: t }; }} />
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </label>
+              {/each}
+            </div>
+
+            <p class="mdv-settings__section-title">Format</p>
+            <div class="mdv-settings__radio-group">
+              {#each (["16:9", "4:3", "1:1"] as MarpSize[]) as sz}
+                <label class="mdv-settings__radio">
+                  <input type="radio" name="marp-size"
+                    value={sz}
+                    checked={marpSettings.current.size === sz}
+                    onchange={() => { marpSettings.current = { ...marpSettings.current, size: sz }; }} />
+                  {sz}
+                </label>
+              {/each}
+            </div>
+          {/if}
+
           {#if activeModule === "preamble-mathjax"}
             <p class="mdv-settings__section-title">Packages</p>
             <div class="mdv-settings__pkg-grid">
@@ -387,6 +423,11 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; label: string }[] = [
       >
         {#if activeModule === "style-writing" || activeModule === "style-presentation"}
           <button type="button" class="mdv-settings__reset" onclick={() => proseSettings.reset()}>
+            Réinitialiser
+          </button>
+        {:else if activeModule === "marp-style"}
+          <button type="button" class="mdv-settings__reset"
+            onclick={() => { marpSettings.current = { theme: "default", size: "16:9" }; }}>
             Réinitialiser
           </button>
         {:else if activeModule === "preamble-mathjax"}

@@ -41,6 +41,7 @@
     onSetEditorMode,
     onToggleFullscreen,
     onOpenSettings,
+    isMarp = false,
   }: {
     sidebarOpen: boolean;
     onToggleSidebar: () => void;
@@ -57,6 +58,7 @@
     onWritingFontSizeChange: (value: WritingFontSize) => void;
     onWritingLineHeightChange: (value: WritingLineHeight) => void;
     onResetWritingDisplay: () => void;
+    isMarp?: boolean;
     editorMode?: "raw" | "prose" | "preview" | "presentation";
     onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
     onToggleFullscreen?: () => void;
@@ -149,6 +151,7 @@
             <Icon icon={Eye} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
+        {#if !isMarp}
         <div class="mdv-breadcrumb__mode-sep" aria-hidden="true"></div>
         <Button
           data-tooltip="Prose"
@@ -160,6 +163,7 @@
             <Icon icon={Pilcrow} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
+        {/if}
         <Button
           data-tooltip="Raw"
           aria-label="Mode raw"
