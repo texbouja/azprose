@@ -128,15 +128,15 @@ onMount(() => {
   // localStorage est synchrone : pas de risque de perte sur crash.
   const onBlur = () => saveAllDirtyDrafts();
   const onVisibility = () => { if (document.visibilityState === "hidden") saveAllDirtyDrafts(); };
+  const onBeforeUnload = () => { saveAllDirtyDrafts(); };
   window.addEventListener("blur", onBlur);
   document.addEventListener("visibilitychange", onVisibility);
-
-  // Sauvegarde avant fermeture de la fenêtre Tauri.
-  void getCurrentWindow().onCloseRequested(() => { saveAllDirtyDrafts(); });
+  window.addEventListener("beforeunload", onBeforeUnload);
 
   return () => {
     window.removeEventListener("blur", onBlur);
     document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("beforeunload", onBeforeUnload);
   };
 });
 
