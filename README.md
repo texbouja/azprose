@@ -13,18 +13,18 @@ Fonctions de base d'un éditeur LaTeX avec viualisation PDF intégrée et prise 
 > À la base c'est un fork de [marka.md](https://github.com/mattenarle10/markamd) — le conteneur Tauri/React a été migré vers Tauri/Svelte ; la couche d'édition Markdown a été remplacée par [ProseMark](https://github.com/prosemark). 
 
 - [x] Phase 1 — Réectriture de Marka.md  
-  - [x] migration de React vers Svelte; 
-  - [x] conversion du système Markdown de base en mode Preview sans Split;  
-  - [x] ajout d'un mode WYSIWYM avec ProseMark;
-  - [x] ajout d'un mode Presentation (du pauvre en attendant Marp);   
+  - [x] migration de React vers Svelte ; 
+  - [x] conversion du système Markdown de base en mode Preview sans Split ;  
+  - [x] ajout d'un mode WYSIWYM avec ProseMark ;
+  - [x] ajout d'un mode Presentation (du pauvre en attendant Marp) ;   
   - [x] ajout du support du texte mathématique avec Mathjax, compatible prosemark/latex; 
 
 - [x] Phase 2 — Lecteurs multimédia. 
-  - [x] visonneuse des formats d'images courants (webview); 
-  - [x] lecteur PDF (PDFjs).
-  - [ ] support de Marp 
+  - [x] visionneuse des formats d'images courants (webview); 
+  - [x] lecteur PDF (PDFjs) ;
+  - [ ] support de Marp ;
 
-- [ ] Phase 4 — support LaTeX étendu
+- [ ] Phase 4 — support LaTeX ;
 - [ ] Phase 5 — support Typst. 
 
 ## raccourcis clavier
