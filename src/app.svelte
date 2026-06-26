@@ -1,9 +1,13 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { confirm } from "@tauri-apps/plugin-dialog";
+import { FilePlus2, FolderPlus, Pencil, Copy, Trash2, FileText, FolderOpen } from "@/lib/icons";
 import { checkForUpdate, applyUpdate } from "@/lib/updater";
 import { language, getT } from "@/lib/i18n";
 import { overlays } from "@/stores/overlays.svelte";
@@ -21,15 +25,22 @@ import {
   getWhatsNewToastMessage,
   isSupportedTextPath,
   isImagePath,
+  isPdfPath,
   basename,
+  dirname,
+  createFile,
+  createFolder,
+  renameEntry,
+  removeEntry,
   buildCommands,
 } from "@/lib";
-import type { WritingDisplay, WritingFontSize, WritingLineHeight } from "@/lib";
+import type { FileEntry, WritingDisplay, WritingFontSize, WritingLineHeight } from "@/lib";
 import Toast, { type ToastAction } from "@/components/overlays/Toast.svelte";
 import DropOverlay from "@/components/overlays/DropOverlay.svelte";
 import CommandPalette from "@/components/overlays/CommandPalette.svelte";
 import HelpOverlay from "@/components/overlays/HelpOverlay.svelte";
 import AboutOverlay from "@/components/overlays/AboutOverlay.svelte";
+import SettingsOverlay from "@/components/overlays/SettingsOverlay.svelte";
 import WelcomeOverlay from "@/components/overlays/WelcomeOverlay.svelte";
 import TitleBar from "@/components/chrome/TitleBar.svelte";
 import Breadcrumb from "@/components/chrome/Breadcrumb.svelte";
@@ -40,6 +51,10 @@ import { TooltipRoot } from "@/components/primitives";
 import Editor from "@/components/editor/Editor.svelte";
 import TabsBar, { type Tab } from "@/components/editor/TabsBar.svelte";
 import LazyProseMark from "@/components/editor/LazyProseMark.svelte";
+import SlideDeck from "@/components/editor/SlideDeck.svelte";
+import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
+import ImageViewer from "@/components/image/ImageViewer.svelte";
+import LazyMarkdownPreview from "@/components/preview/LazyMarkdownPreview.svelte";
 import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import "./app.css";
@@ -74,14 +89,48 @@ let minutes = $state(1);
 let source = $state("");
 let savedContent = $state("");
 let activePath = $state<string | null>(null);
-let rootPath = $state<string | null>(null);
+let rootPath = $state<string | null>(folders.current[0] ?? null);
 
 let copyPulse = $state(false);
 let vimOn = $state(false);
 let readingMode = $state(false);
 let prosemarkOn = $state(true);
+let presentationOn = $state(false);
+let previewOn = $state(false);
+let presentationFs = $state(false);
+let proseWarmupDone = false;
 
 let saveStatus = $state<"idle" | "dirty" | "saving" | "saved">("idle");
+
+onMount(() => {
+  // Fade out the boot screen once the app shell is painted.
+  // requestAnimationFrame ensures at least one frame has been rendered.
+  requestAnimationFrame(() => {
+    const boot = document.getElementById("boot");
+    if (boot) {
+      boot.style.opacity = "0";
+      boot.addEventListener("transitionend", () => boot.remove(), { once: true });
+    }
+  });
+
+  // If this is a project window opened via "Open Project", receive the folder
+  // from the parent via Tauri events.  The sequence:
+  //   1. Register the folder listener FIRST
+  //   2. Then signal the parent that we're ready (so it emits the folder)
+  // This avoids the race where the parent emits before we're listening.
+  const myLabel = getCurrentWindow().label;
+  if (myLabel.startsWith("azprose-project-")) {
+    void (async () => {
+      const unlisten = await listen<string>(`azprose:open-folder:${myLabel}`, (e) => {
+        folders.update(() => [e.payload]);
+        rootPath = e.payload;
+        unlisten();
+      });
+      await emit("azprose:project-window-ready", myLabel);
+    })();
+  }
+
+});
 
 function findTabByPath(path: string): Tab | undefined {
   return tabs.find(t => t.path === path);
@@ -101,8 +150,23 @@ async function openFileInTab(path: string) {
   const title = basename(path);
   tabs = [...tabs, { id, title, path, source: "", savedContent: "" }];
   activeTabId = id;
-  const fileSource = await readMarkdown(path);
-  tabs = tabs.map(t => t.id === id ? { ...t, source: fileSource, savedContent: fileSource } : t);
+  if (!isPdfPath(path) && !isImagePath(path)) {
+    try {
+      const fileSource = await readMarkdown(path);
+      tabs = tabs.map(t => t.id === id ? { ...t, source: fileSource, savedContent: fileSource } : t);
+    } catch (err) {
+      tabs = tabs.filter(t => t.id !== id);
+      if (activeTabId === id) activeTabId = tabs[tabs.length - 1]?.id ?? null;
+      throw err;
+    }
+  }
+  // Pre-warm ProseMarkEditor + MathJax on the first markdown file opened.
+  // Runs silently in the background so the bundle is compiled by the time
+  // the user toggles prosemark mode. Never fires for PDF/image/LaTeX projects.
+  if (!proseWarmupDone && extFromPath(path) === "md") {
+    proseWarmupDone = true;
+    void import("@/components/editor/ProseMarkEditor.svelte");
+  }
 }
 
 function closeTab(id: string) {
@@ -181,6 +245,12 @@ let favorites = $state<string[]>([]);
 
 let contextMenuItems = $state<ContextMenuItem[]>([]);
 
+// Directory to use when creating new files from toolbar/keyboard shortcut.
+// Follows the active file, falls back to rootPath.
+let activeDir = $derived(
+  activePath ? dirname(activePath) : (rootPath ?? "")
+);
+
 let writingDisplay = $derived<WritingDisplay>({
   fontSize: normalizeWritingFontSize(writingFontSize.current),
   lineHeight: normalizeWritingLineHeight(writingLineHeight.current),
@@ -189,6 +259,17 @@ let writingDisplayStyle = $derived(getWritingDisplayVars(writingDisplay));
 
 $effect(() => {
   document.title = activePath ? basename(activePath) : "untitled";
+});
+
+$effect(() => {
+  if (activePath) window.localStorage.setItem(STORAGE_KEYS.lastFile, activePath);
+});
+
+$effect(() => {
+  if (!activePath || extFromPath(activePath) !== "md") {
+    presentationOn = false;
+    previewOn = false;
+  }
 });
 
 $effect(() => {
@@ -250,8 +331,13 @@ const handleToggleSidebar = () => sidebarOpen.update((v: boolean) => !v);
 const toggleFullscreen = async () => {
   const win = getCurrentWindow();
   try {
-    const isFs = await win.isFullscreen();
-    await win.setFullscreen(!isFs);
+    if (editorMode === "presentation") {
+      presentationFs = !presentationFs;
+      await win.setFullscreen(presentationFs);
+    } else {
+      const isFs = await win.isFullscreen();
+      await win.setFullscreen(!isFs);
+    }
   } catch (err) {
     console.error("azprose: fullscreen toggle failed", err);
   }
@@ -265,7 +351,7 @@ $effect(() => {
     const path = event.payload;
     if (cancelled) return;
     if (typeof path === "string" && path.length > 0) {
-      openFileInTab(path);
+      void openFileInTab(path).catch(() => {});
     }
   }).then((un) => {
     if (cancelled) { un(); return; }
@@ -274,9 +360,42 @@ $effect(() => {
       .then((paths) => {
         if (cancelled) return;
         const latest = paths[paths.length - 1];
-        if (latest) openFileInTab(latest);
+        if (latest) {
+          void openFileInTab(latest).catch(() => {});
+        } else {
+          const lastFile = window.localStorage.getItem(STORAGE_KEYS.lastFile);
+          if (lastFile) {
+            void openFileInTab(lastFile).catch(() => {
+              window.localStorage.removeItem(STORAGE_KEYS.lastFile);
+            });
+          }
+        }
       })
       .catch((err) => console.warn("azprose: pending open-file check failed", err));
+  });
+
+  return () => {
+    cancelled = true;
+    unlisten?.();
+  };
+});
+
+// When a project window finishes initializing it sends "azprose:project-window-ready".
+// We respond with the folder path it should open.
+$effect(() => {
+  let cancelled = false;
+  let unlisten: (() => void) | undefined;
+
+  listen<string>("azprose:project-window-ready", async (event) => {
+    if (cancelled) return;
+    const childLabel = event.payload;
+    const folder = pendingProjectFolders.get(childLabel);
+    if (!folder) return;
+    pendingProjectFolders.delete(childLabel);
+    await emit(`azprose:open-folder:${childLabel}`, folder);
+  }).then((un) => {
+    if (cancelled) { un(); return; }
+    unlisten = un;
   });
 
   return () => {
@@ -292,7 +411,7 @@ $effect(() => {
   let unlistenDrop: (() => void) | undefined;
   let unlistenLeave: (() => void) | undefined;
 
-  const isDroppable = (p: string) => isSupportedTextPath(p) || isImagePath(p);
+  const isDroppable = (p: string) => isSupportedTextPath(p) || isImagePath(p) || isPdfPath(p);
 
   listen<DragPayload>("tauri://drag-enter", (event) => {
     if (cancelled) return;
@@ -340,6 +459,26 @@ const handleAddFolder = async () => {
   }
 };
 
+// Folder handoff for project windows: label → folder path, consumed on "azprose:project-window-ready"
+const pendingProjectFolders = new Map<string, string>();
+
+const handleOpenProject = async () => {
+  const { pickFolder } = await import("@/lib/files");
+  const folder = await pickFolder();
+  if (!folder) return;
+  const label = `azprose-project-${Date.now()}`;
+  pendingProjectFolders.set(label, folder);
+  const win = new WebviewWindow(label, {
+    title: `AZprose — ${basename(folder)}`,
+    width: 1280,
+    height: 860,
+  });
+  win.once("tauri://error", (e) => {
+    console.error("[azprose] failed to create project window:", e);
+    pendingProjectFolders.delete(label);
+  });
+};
+
 const handleCloseFolder = (path: string) => {
   const next = folders.current.filter((f) => f !== path);
   folders.update(() => next);
@@ -350,8 +489,45 @@ const handleSelectFile = (path: string) => {
   openFileInTab(path);
 };
 
-const handleContextMenu = (e: MouseEvent, entry: any) => {
-  contextMenuItems = [];
+const handleContextMenu = (e: MouseEvent, entry: FileEntry) => {
+  const parentDir = entry.isDir ? entry.path : dirname(entry.path);
+
+  contextMenuItems = [
+    {
+      label: t("menu.newFile"),
+      icon: FilePlus2,
+      onSelect: () => { newEntry = { parent: parentDir, kind: "file" }; },
+    },
+    {
+      label: t("menu.newFolder"),
+      icon: FolderPlus,
+      onSelect: () => { newEntry = { parent: parentDir, kind: "folder" }; },
+    },
+    "divider",
+    ...(!entry.isDir ? [{
+      label: t("menu.openDefault"),
+      icon: FileText,
+      onSelect: () => openFileInTab(entry.path),
+    }] as ContextMenuItem[] : []),
+    {
+      label: t("menu.rename"),
+      icon: Pencil,
+      onSelect: () => { editingPath = entry.path; },
+    },
+    "divider",
+    {
+      label: t("menu.copyPath"),
+      icon: Copy,
+      onSelect: () => void navigator.clipboard.writeText(entry.path),
+    },
+    "divider",
+    {
+      label: entry.isDir ? t("menu.deleteFolder") : t("menu.delete"),
+      icon: Trash2,
+      destructive: true,
+      onSelect: () => void handleDelete(entry),
+    },
+  ];
   contextMenu.open(e, entry);
 };
 
@@ -361,12 +537,33 @@ const handleOpenFile = async () => {
   if (file) openFileInTab(file);
 };
 
-const handleNewFile = async () => {
-  newEntry = { parent: rootPath ?? "", kind: "file" };
+const handleNewFile = (dir?: string) => {
+  const parent = dir ?? activeDir;
+  if (!parent) return;
+  newEntry = { parent, kind: "file" };
 };
 
-const handleSubmitNew = (_parent: string, _kind: "file" | "folder", _name: string) => {
+const handleNewFolder = (dir?: string) => {
+  const parent = dir ?? activeDir;
+  if (!parent) return;
+  newEntry = { parent, kind: "folder" };
+};
+
+const handleSubmitNew = async (parent: string, kind: "file" | "folder", name: string) => {
   newEntry = null;
+  try {
+    if (kind === "folder") {
+      await createFolder(parent, name);
+    } else {
+      const path = await createFile(parent, name);
+      await openFileInTab(path);
+    }
+  } catch (err) {
+    notifications.setLoadError({
+      title: kind === "folder" ? t("menu.newFolder") : t("menu.newFile"),
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
   treeVersion++;
 };
 
@@ -374,13 +571,46 @@ const handleCancelNew = () => {
   newEntry = null;
 };
 
-const handleSubmitRename = (_src: string, _newName: string) => {
+const handleSubmitRename = async (src: string, newName: string) => {
   editingPath = null;
+  try {
+    const newPath = await renameEntry(src, newName);
+    const tab = tabs.find(t => t.path === src);
+    if (tab) {
+      tabs = tabs.map(t => t.path === src ? { ...t, path: newPath, title: basename(newPath) } : t);
+    }
+  } catch (err) {
+    notifications.setLoadError({
+      title: t("menu.rename"),
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
   treeVersion++;
 };
 
 const handleCancelEdit = () => {
   editingPath = null;
+};
+
+const handleDelete = async (entry: FileEntry) => {
+  const msg = entry.isDir
+    ? t("menu.confirmDeleteFolder", { name: entry.name })
+    : t("menu.confirmDelete", { name: entry.name });
+  const ok = await confirm(msg, { title: entry.isDir ? t("menu.deleteFolder") : t("menu.delete"), kind: "warning" });
+  if (!ok) return;
+  try {
+    await removeEntry(entry.path, entry.isDir);
+    if (!entry.isDir) {
+      const tab = tabs.find(t => t.path === entry.path);
+      if (tab) closeTab(tab.id);
+    }
+    treeVersion++;
+  } catch (err) {
+    notifications.setLoadError({
+      title: entry.isDir ? t("menu.deleteFolder") : t("menu.delete"),
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
 };
 
 const handleExportPdf = async () => {
@@ -414,8 +644,26 @@ const handleToggleTitlebar = () => {
   titlebarVisible.update((v: boolean) => !v);
 };
 
-const handleToggleProsemark = () => {
-  prosemarkOn = !prosemarkOn;
+type EditorMode = "raw" | "prose" | "preview" | "presentation";
+
+let editorMode = $derived<EditorMode>(
+  previewOn ? "preview"
+  : prosemarkOn && presentationOn ? "presentation"
+  : prosemarkOn ? "prose"
+  : "raw"
+);
+
+const handleSetEditorMode = (mode: EditorMode) => {
+  if (presentationFs && mode !== "presentation") {
+    presentationFs = false;
+    void getCurrentWindow().setFullscreen(false);
+  }
+  switch (mode) {
+    case "raw":          prosemarkOn = false; previewOn = false; presentationOn = false; break;
+    case "prose":        prosemarkOn = true;  previewOn = false; presentationOn = false; break;
+    case "preview":      previewOn = true;    presentationOn = false; break;
+    case "presentation": prosemarkOn = true;  presentationOn = true; previewOn = false; break;
+  }
 };
 
 const handleWritingFontSizeChange = (value: WritingFontSize) => {
@@ -484,24 +732,20 @@ let cmds = $derived(
     {rootPath}
     {activePath}
     {saveStatus}
-    onNewFile={handleNewFile}
-    onOpenFile={handleOpenFile}
-    onOpenFolder={handleAddFolder}
-    onCopyMarkdown={handleCopyMarkdown}
     onExportPdf={handleExportPdf}
-    {copyPulse}
+    onOpenProject={handleOpenProject}
     titlebarVisible={titlebarVisible.current}
     onToggleTitlebar={handleToggleTitlebar}
-    {readingMode}
-    onToggleReading={handleToggleReading}
     {vimOn}
     onToggleVim={handleToggleVim}
     {writingDisplay}
     onWritingFontSizeChange={handleWritingFontSizeChange}
     onWritingLineHeightChange={handleWritingLineHeightChange}
     onResetWritingDisplay={handleResetWritingDisplay}
-    {prosemarkOn}
-    onToggleProsemark={handleToggleProsemark}
+    {editorMode}
+    onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}
+    onToggleFullscreen={toggleFullscreen}
+    onOpenSettings={overlays.showSettings}
   />
 
   <main class="mdv-shell">
@@ -513,6 +757,8 @@ let cmds = $derived(
       width={sidebarWidth.current}
       onWidthChange={(next) => sidebarWidth.current = next}
       onAddFolder={handleAddFolder}
+      onNewFile={handleNewFile}
+      onNewFolder={handleNewFolder}
       onCloseFolder={handleCloseFolder}
       onSelectFile={handleSelectFile}
       onContextMenu={handleContextMenu}
@@ -532,7 +778,15 @@ let cmds = $derived(
       {/if}
       <div class="mdv-shell__editor-solo">
         {#if activePath}
-          {#if prosemarkOn && extFromPath(activePath) === "md"}
+          {#if isPdfPath(activePath)}
+            <LazyPdfViewer path={activePath} />
+          {:else if isImagePath(activePath)}
+            <ImageViewer path={activePath} />
+          {:else if previewOn && extFromPath(activePath) === "md"}
+            <LazyMarkdownPreview value={source} filePath={activePath} />
+          {:else if prosemarkOn && presentationOn && extFromPath(activePath) === "md"}
+            <SlideDeck value={source} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
+          {:else if prosemarkOn && extFromPath(activePath) === "md"}
             <LazyProseMark
               value={source}
               onChange={(next: string) => { source = next; }}
@@ -545,9 +799,7 @@ let cmds = $derived(
             />
           {/if}
         {:else}
-          <div
-            style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:0.5rem;color:var(--muted);font-size:0.9rem"
-          >
+          <div class="mdv-empty-state">
             <p>{t("sidebar.browseNotes")}</p>
             <button type="button" class="mdv-btn" onclick={handleAddFolder}>
               {t("sidebar.addFolder")}
@@ -638,6 +890,11 @@ let cmds = $derived(
     open={overlays.aboutOpen}
     onClose={() => overlays.setAboutOpen(false)}
     onCheckForUpdates={handleManualUpdateCheck}
+  />
+
+  <SettingsOverlay
+    open={overlays.settingsOpen}
+    onClose={() => overlays.setSettingsOpen(false)}
   />
 
   <WelcomeOverlay

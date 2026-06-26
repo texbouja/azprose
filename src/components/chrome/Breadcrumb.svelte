@@ -1,19 +1,19 @@
 <script lang="ts">
   import {
-    Check,
     ChevronRight,
     Code2,
-    Copy,
+    Eye,
     FileDown,
-    FilePlus2,
-    FileText,
     FolderOpen,
+    Maximize2,
+    Monitor,
     PanelLeftClose,
     PanelLeftOpen,
     PanelTopClose,
     PanelTopOpen,
     Pilcrow,
-  } from "lucide-svelte";
+    Settings,
+  } from "@/lib/icons";
   import { Button, Icon } from "@/components/primitives";
   import { language, getT } from "@/lib/i18n";
   import { shortcutLabel } from "@/lib";
@@ -27,48 +27,40 @@
     rootPath,
     activePath,
     saveStatus,
-    onNewFile,
-    onOpenFile,
-    onOpenFolder,
-    onCopyMarkdown,
     onExportPdf,
-    copyPulse = false,
+    onOpenProject,
     titlebarVisible,
     onToggleTitlebar,
-    readingMode,
-    onToggleReading,
     vimOn,
     onToggleVim,
     writingDisplay,
     onWritingFontSizeChange,
     onWritingLineHeightChange,
     onResetWritingDisplay,
-    prosemarkOn,
-    onToggleProsemark,
+    editorMode,
+    onSetEditorMode,
+    onToggleFullscreen,
+    onOpenSettings,
   }: {
     sidebarOpen: boolean;
     onToggleSidebar: () => void;
     rootPath: string | null;
     activePath: string | null;
     saveStatus: "idle" | "dirty" | "saving" | "saved";
-    onNewFile?: () => void;
-    onOpenFile?: () => void;
-    onOpenFolder?: () => void;
-    onCopyMarkdown?: () => void;
     onExportPdf?: () => void;
-    copyPulse?: boolean;
+    onOpenProject?: () => void;
     titlebarVisible: boolean;
     onToggleTitlebar: () => void;
-    readingMode?: boolean;
-    onToggleReading?: () => void;
     vimOn?: boolean;
     onToggleVim?: () => void;
     writingDisplay: WritingDisplay;
     onWritingFontSizeChange: (value: WritingFontSize) => void;
     onWritingLineHeightChange: (value: WritingLineHeight) => void;
     onResetWritingDisplay: () => void;
-    prosemarkOn?: boolean;
-    onToggleProsemark?: () => void;
+    editorMode?: "raw" | "prose" | "preview" | "presentation";
+    onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
+    onToggleFullscreen?: () => void;
+    onOpenSettings?: () => void;
   } = $props();
 
   let t = $derived(getT($language));
@@ -78,15 +70,15 @@
   function pathSegments(path: string): string[] {
     const parts = path.split(/[\\/]/).filter(Boolean);
     if (parts.length <= MAX_SEGMENTS) return parts;
-    return ["\u2026", ...parts.slice(-MAX_SEGMENTS)];
+    return ["…", ...parts.slice(-MAX_SEGMENTS)];
   }
 
   function statusLabel(status: "idle" | "dirty" | "saving" | "saved"): string {
     switch (status) {
       case "saving": return t("breadcrumb.saving");
-      case "dirty": return t("breadcrumb.unsaved");
-      case "saved": return t("breadcrumb.saved");
-      default: return "";
+      case "dirty":  return t("breadcrumb.unsaved");
+      case "saved":  return t("breadcrumb.saved");
+      default:       return "";
     }
   }
 
@@ -102,11 +94,7 @@
     onclick={onToggleSidebar}
   >
     {#snippet icon()}
-      <Icon
-        icon={sidebarOpen ? PanelLeftClose : PanelLeftOpen}
-        size={14}
-        strokeWidth={1.5}
-      />
+      <Icon icon={sidebarOpen ? PanelLeftClose : PanelLeftOpen} size={14} strokeWidth={1.5} />
     {/snippet}
   </Button>
 
@@ -128,15 +116,7 @@
   <div class="mdv-breadcrumb__status" data-status={saveStatus}>
     {#if saveStatus !== "idle"}
       {#if saveStatus === "saved"}
-        <img
-          src={exciteUrl}
-          alt=""
-          aria-hidden
-          width={16}
-          height={16}
-          draggable={false}
-          class="mdv-breadcrumb__excite"
-        />
+        <img src={exciteUrl} alt="" aria-hidden width={16} height={16} draggable={false} class="mdv-breadcrumb__excite" />
       {:else}
         <span class="mdv-breadcrumb__dot" aria-hidden />
       {/if}
@@ -145,63 +125,56 @@
   </div>
 
   <div class="mdv-breadcrumb__actions" data-tauri-drag-region>
-    <Button
-      data-tooltip={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
-      aria-label={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
-      aria-pressed={!titlebarVisible}
-      onclick={onToggleTitlebar}
-    >
-      {#snippet icon()}
-        <Icon
-          icon={titlebarVisible ? PanelTopClose : PanelTopOpen}
-          size={14}
-          strokeWidth={1.5}
-        />
-      {/snippet}
-    </Button>
-    <ThemeButton
-      {vimOn}
-      {onToggleVim}
-      {writingDisplay}
-      {onWritingFontSizeChange}
-      {onWritingLineHeightChange}
-      {onResetWritingDisplay}
-    />
-    {#if onToggleProsemark != null}
-      <Button
-        data-tooltip={prosemarkOn ? "raw code" : "prose"}
-        aria-label={prosemarkOn ? "switch to raw code" : "switch to prose mode"}
-        aria-pressed={prosemarkOn}
-        onclick={onToggleProsemark}
-      >
-        {#snippet icon()}
-          <Icon
-            icon={prosemarkOn ? Code2 : Pilcrow}
-            size={14}
-            strokeWidth={1.5}
-          />
-        {/snippet}
-      </Button>
+
+    <!-- Tools : boutons de mode (uniquement pour les fichiers .md) -->
+    {#if onSetEditorMode}
+      <div class="mdv-breadcrumb__mode-group">
+        <Button
+          data-tooltip="Présentation"
+          aria-label="Mode présentation"
+          aria-pressed={editorMode === "presentation"}
+          onclick={() => onSetEditorMode?.("presentation")}
+        >
+          {#snippet icon()}
+            <Icon icon={Monitor} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+        <Button
+          data-tooltip="Preview"
+          aria-label="Mode preview"
+          aria-pressed={editorMode === "preview"}
+          onclick={() => onSetEditorMode?.("preview")}
+        >
+          {#snippet icon()}
+            <Icon icon={Eye} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+        <div class="mdv-breadcrumb__mode-sep" aria-hidden="true"></div>
+        <Button
+          data-tooltip="Prose"
+          aria-label="Mode prose"
+          aria-pressed={editorMode === "prose"}
+          onclick={() => onSetEditorMode?.("prose")}
+        >
+          {#snippet icon()}
+            <Icon icon={Pilcrow} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+        <Button
+          data-tooltip="Raw"
+          aria-label="Mode raw"
+          aria-pressed={editorMode === "raw"}
+          onclick={() => onSetEditorMode?.("raw")}
+        >
+          {#snippet icon()}
+            <Icon icon={Code2} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+      </div>
     {/if}
 
+    <!-- Files : export PDF + ouvrir un projet -->
     <div class="mdv-breadcrumb__file-actions">
-      {#if onCopyMarkdown}
-        <button
-          type="button"
-          class="mdv-copybtn"
-          class:is-copied={copyPulse}
-          data-tooltip={copyPulse ? t("app.copied") : shortcutLabel(t("app.copyMarkdownShortcut"))}
-          aria-label={copyPulse ? t("app.copied") : t("app.copyMarkdown")}
-          onclick={onCopyMarkdown}
-        >
-          <span class="mdv-copybtn__icon mdv-copybtn__icon--copy" aria-hidden>
-            <Icon icon={Copy} size={12} strokeWidth={1.5} />
-          </span>
-          <span class="mdv-copybtn__icon mdv-copybtn__icon--check" aria-hidden>
-            <Icon icon={Check} size={13} strokeWidth={2} />
-          </span>
-        </button>
-      {/if}
       <Button
         data-tooltip={shortcutLabel(t("app.exportPdfShortcut"))}
         aria-label={t("app.exportPdf")}
@@ -212,32 +185,59 @@
         {/snippet}
       </Button>
       <Button
-        data-tooltip={shortcutLabel(t("app.newFileShortcut"))}
-        aria-label={t("app.newFile")}
-        onclick={onNewFile}
-      >
-        {#snippet icon()}
-          <Icon icon={FilePlus2} size={13} strokeWidth={1.5} />
-        {/snippet}
-      </Button>
-      <Button
-        data-tooltip={shortcutLabel(t("app.openFileShortcut"))}
-        aria-label={t("app.openFile")}
-        onclick={onOpenFile}
-      >
-        {#snippet icon()}
-          <Icon icon={FileText} size={13} strokeWidth={1.5} />
-        {/snippet}
-      </Button>
-      <Button
-        data-tooltip={shortcutLabel(t("app.openFolderShortcut"))}
-        aria-label={t("app.openFolder")}
-        onclick={onOpenFolder}
+        data-tooltip={t("app.openProjectShortcut")}
+        aria-label={t("app.openProject")}
+        onclick={onOpenProject}
       >
         {#snippet icon()}
           <Icon icon={FolderOpen} size={13} strokeWidth={1.5} />
         {/snippet}
       </Button>
     </div>
+
+    <!-- Config : toujours visibles -->
+    <div class="mdv-breadcrumb__config">
+      <Button
+        data-tooltip={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
+        aria-label={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
+        aria-pressed={!titlebarVisible}
+        onclick={onToggleTitlebar}
+      >
+        {#snippet icon()}
+          <Icon icon={titlebarVisible ? PanelTopClose : PanelTopOpen} size={14} strokeWidth={1.5} />
+        {/snippet}
+      </Button>
+      {#if onToggleFullscreen}
+        <Button
+          data-tooltip="Plein écran"
+          aria-label="Basculer le plein écran"
+          onclick={onToggleFullscreen}
+        >
+          {#snippet icon()}
+            <Icon icon={Maximize2} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+      {/if}
+      <ThemeButton
+        {vimOn}
+        {onToggleVim}
+        {writingDisplay}
+        {onWritingFontSizeChange}
+        {onWritingLineHeightChange}
+        {onResetWritingDisplay}
+      />
+      {#if onOpenSettings}
+        <Button
+          data-tooltip="Paramètres"
+          aria-label="Paramètres du rendu Markdown"
+          onclick={onOpenSettings}
+        >
+          {#snippet icon()}
+            <Icon icon={Settings} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+      {/if}
+    </div>
+
   </div>
 </div>
