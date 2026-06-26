@@ -57,6 +57,7 @@ import ImageViewer from "@/components/image/ImageViewer.svelte";
 import LazyMarkdownPreview from "@/components/preview/LazyMarkdownPreview.svelte";
 import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
+import { saveSession, loadSession, saveDraft, loadDraft, clearDraft } from "@/lib/session";
 import "./app.css";
 
 let t = $derived(getT($language));
@@ -103,8 +104,6 @@ let proseWarmupDone = false;
 let saveStatus = $state<"idle" | "dirty" | "saving" | "saved">("idle");
 
 onMount(() => {
-  // Fade out the boot screen once the app shell is painted.
-  // requestAnimationFrame ensures at least one frame has been rendered.
   requestAnimationFrame(() => {
     const boot = document.getElementById("boot");
     if (boot) {
@@ -113,11 +112,6 @@ onMount(() => {
     }
   });
 
-  // If this is a project window opened via "Open Project", receive the folder
-  // from the parent via Tauri events.  The sequence:
-  //   1. Register the folder listener FIRST
-  //   2. Then signal the parent that we're ready (so it emits the folder)
-  // This avoids the race where the parent emits before we're listening.
   const myLabel = getCurrentWindow().label;
   if (myLabel.startsWith("azprose-project-")) {
     void (async () => {
@@ -130,20 +124,44 @@ onMount(() => {
     })();
   }
 
+  // Sauvegarde des brouillons sur perte de focus (stratégie VSCode hot-exit).
+  // localStorage est synchrone : pas de risque de perte sur crash.
+  const onBlur = () => saveAllDirtyDrafts();
+  const onVisibility = () => { if (document.visibilityState === "hidden") saveAllDirtyDrafts(); };
+  window.addEventListener("blur", onBlur);
+  document.addEventListener("visibilitychange", onVisibility);
+
+  // Sauvegarde avant fermeture de la fenêtre Tauri.
+  void getCurrentWindow().onCloseRequested(() => { saveAllDirtyDrafts(); });
+
+  return () => {
+    window.removeEventListener("blur", onBlur);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
 });
 
 function findTabByPath(path: string): Tab | undefined {
   return tabs.find(t => t.path === path);
 }
 
-function findTabIndex(id: string): number {
-  return tabs.findIndex(t => t.id === id);
+function saveSessionNow() {
+  const activePath = tabs.find(t => t.id === activeTabId)?.path ?? null;
+  saveSession({ tabs: tabs.map(t => ({ path: t.path, title: t.title })), activePath });
 }
 
-async function openFileInTab(path: string) {
+function saveAllDirtyDrafts() {
+  for (const tab of tabs) {
+    if (!isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+      saveDraft(tab.path, tab.source);
+    }
+  }
+}
+
+async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean }) {
   const existing = findTabByPath(path);
   if (existing) {
     activeTabId = existing.id;
+    saveSessionNow();
     return;
   }
   const id = crypto.randomUUID();
@@ -153,16 +171,17 @@ async function openFileInTab(path: string) {
   if (!isPdfPath(path) && !isImagePath(path)) {
     try {
       const fileSource = await readMarkdown(path);
-      tabs = tabs.map(t => t.id === id ? { ...t, source: fileSource, savedContent: fileSource } : t);
+      const draft = opts?.preferDraft ? loadDraft(path) : null;
+      const source = (draft !== null && draft !== fileSource) ? draft : fileSource;
+      tabs = tabs.map(t => t.id === id ? { ...t, source, savedContent: fileSource } : t);
     } catch (err) {
       tabs = tabs.filter(t => t.id !== id);
       if (activeTabId === id) activeTabId = tabs[tabs.length - 1]?.id ?? null;
-      throw err;
+      if (!opts?.silent) throw err;
+      return;
     }
   }
-  // Pre-warm ProseMarkEditor + MathJax on the first markdown file opened.
-  // Runs silently in the background so the bundle is compiled by the time
-  // the user toggles prosemark mode. Never fires for PDF/image/LaTeX projects.
+  saveSessionNow();
   if (!proseWarmupDone && extFromPath(path) === "md") {
     proseWarmupDone = true;
     void import("@/components/editor/ProseMarkEditor.svelte");
@@ -172,15 +191,22 @@ async function openFileInTab(path: string) {
 function closeTab(id: string) {
   const idx = tabs.findIndex(t => t.id === id);
   if (idx === -1) return;
+  const tab = tabs[idx];
+  // Persist draft avant de fermer — récupérable si l'utilisateur rouvre le fichier
+  if (!isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+    saveDraft(tab.path, tab.source);
+  }
   tabs = tabs.filter(t => t.id !== id);
   if (activeTabId === id) {
     const next = tabs[Math.min(idx, tabs.length - 1)];
     activeTabId = next?.id ?? null;
   }
+  saveSessionNow();
 }
 
 function handleTabSelect(id: string) {
   activeTabId = id;
+  saveSessionNow();
 }
 
 function handleTabReorder(from: number, to: number) {
@@ -188,6 +214,7 @@ function handleTabReorder(from: number, to: number) {
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
   tabs = next;
+  saveSessionNow();
 }
 
 $effect(() => {
@@ -232,6 +259,7 @@ const handleSave = async () => {
     savedContent = source;
     saveStatus = "saved";
     tabs = tabs.map(t => t.id === activeTabId ? { ...t, savedContent: source } : t);
+    clearDraft(activePath);
   } catch (err) {
     console.error("azprose: save failed", err);
     saveStatus = "dirty";
@@ -357,17 +385,32 @@ $effect(() => {
     if (cancelled) { un(); return; }
     unlisten = un;
     void invoke<string[]>("take_pending_open_files")
-      .then((paths) => {
+      .then(async (paths) => {
         if (cancelled) return;
         const latest = paths[paths.length - 1];
         if (latest) {
+          // Fichier ouvert via CLI / drag-drop — prioritaire sur la session
           void openFileInTab(latest).catch(() => {});
         } else {
-          const lastFile = window.localStorage.getItem(STORAGE_KEYS.lastFile);
-          if (lastFile) {
-            void openFileInTab(lastFile).catch(() => {
-              window.localStorage.removeItem(STORAGE_KEYS.lastFile);
-            });
+          // Restauration de session : rouvrir tous les onglets avec leurs brouillons
+          const session = loadSession();
+          if (session.tabs.length > 0) {
+            for (const { path } of session.tabs) {
+              if (cancelled) break;
+              await openFileInTab(path, { preferDraft: true, silent: true });
+            }
+            if (!cancelled && session.activePath) {
+              const active = findTabByPath(session.activePath);
+              if (active) activeTabId = active.id;
+            }
+          } else {
+            // Pas de session — fallback sur le dernier fichier ouvert
+            const lastFile = window.localStorage.getItem(STORAGE_KEYS.lastFile);
+            if (lastFile) {
+              void openFileInTab(lastFile, { preferDraft: true }).catch(() => {
+                window.localStorage.removeItem(STORAGE_KEYS.lastFile);
+              });
+            }
           }
         }
       })
