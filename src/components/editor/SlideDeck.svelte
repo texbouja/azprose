@@ -1,13 +1,9 @@
 <script lang="ts">
-// MathJax: same load path as MarkdownPreview/ProseMarkEditor — a side-effect
-// import inside this LAZY-loaded chunk, so it runs AFTER main.ts sets the
-// window.MathJax config (never eagerly from app.svelte's static graph).
-import "mathjax/tex-svg.js";
 import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { renderMarkdown, resolveLocalImages, ensurePreviewReady } from "@/lib/markdown-render";
+import { renderMarkdown, resolveLocalImages, ensurePreviewReady, type MathEngine } from "@/lib/markdown-render";
 import { subscribeMode, type Theme } from "@/lib/theme";
 
 let t = $derived(getT($language));
@@ -20,11 +16,13 @@ let {
   filePath = null as string | null,
   fullscreen = false,
   onExitFullscreen,
+  mathEngine = "mathjax" as MathEngine,
 }: {
   value?: string;
   filePath?: string | null;
   fullscreen?: boolean;
   onExitFullscreen?: () => void;
+  mathEngine?: MathEngine;
 } = $props();
 
 let stageEl: HTMLElement;
@@ -32,7 +30,6 @@ let current = $state(0);
 let ready = $state(false);
 let slidesHtml = $state<string[]>([]);
 
-// App (shiki) theme for code-block highlighting inside slides.
 let appTheme = $state<Theme>(
   (document.documentElement.getAttribute("data-theme") as Theme) ?? "latte",
 );
@@ -42,14 +39,12 @@ $effect(() =>
   }),
 );
 
-// Warm up shiki once.
 $effect(() => {
   let cancelled = false;
   void ensurePreviewReady().then(() => { if (!cancelled) ready = true; });
   return () => { cancelled = true; };
 });
 
-// ── Split source into slide texts (strip front matter, split on ---) ───────
 function stripFrontmatter(source: string): string {
   if (!source.startsWith("---\n") && !source.startsWith("---\r\n")) return source;
   const end = source.indexOf("\n---", 4);
@@ -72,17 +67,17 @@ $effect(() => {
   }
 });
 
-// ── Render every slide to HTML, then typeset MathJax (mirror MarkdownPreview) ──
+// Render slides to HTML, passing mathEngine for tex2typst when typst mode.
 $effect(() => {
   if (!ready) return;
   const texts = slideTexts;
   const theme = appTheme;
+  const engine = mathEngine;
   let cancelled = false;
 
-  void Promise.all(texts.map((t) => renderMarkdown(t, theme))).then(async (html) => {
+  void Promise.all(texts.map((t) => renderMarkdown(t, theme, engine))).then(async (html) => {
     if (cancelled) return;
     slidesHtml = html;
-    // Wait for DOM update before resolving images + typesetting.
     await Promise.resolve();
     if (!cancelled && stageEl) await hydrate(stageEl);
   });
@@ -95,6 +90,8 @@ async function hydrate(stage: HTMLElement): Promise<void> {
   if (filePath) {
     await Promise.all(sections.map((s) => resolveLocalImages(s, filePath)));
   }
+  if (mathEngine === "typst") return;
+  await import("mathjax/tex-svg.js");
   const mj = window.MathJax as
     | { startup?: { promise?: Promise<void> }; tex2svgPromise?: (tex: string, opts: { display: boolean }) => Promise<unknown>; typesetPromise?: (els: HTMLElement[]) => Promise<void> }
     | undefined;
@@ -105,9 +102,6 @@ async function hydrate(stage: HTMLElement): Promise<void> {
   await mj.typesetPromise?.(sections);
 }
 
-// Inject pres* settings as CSS overrides on top of the active slide theme.
-// .azp-slide .azp-slide__content (specificity 0,2,0) beats .azp-slide__content (0,1,0)
-// and .azp-slide--{theme} h1 (0,1,1), so user settings always win.
 $effect(() => {
   const s = proseSettings.current;
   const head = (n: 1 | 2 | 3) => {

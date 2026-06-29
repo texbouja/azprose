@@ -15,6 +15,9 @@ use tauri::RunEvent;
 mod opencode;
 use opencode::OpenCodeWebview;
 
+#[cfg(feature = "typst")]
+mod typst_engine;
+
 struct PendingOpenFiles(Mutex<Vec<String>>);
 struct PendingProjectFolders(Mutex<HashMap<String, String>>);
 struct OpenProjectWindows(Mutex<HashMap<String, String>>);
@@ -380,6 +383,8 @@ pub fn run() {
             opencode::check_opencode_available,
             opencode::open_opencode_sidebar,
             opencode::close_opencode_sidebar,
+            #[cfg(feature = "typst")] typst_engine::typst_render,
+            #[cfg(feature = "typst")] typst_engine::typst_export_pdf,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

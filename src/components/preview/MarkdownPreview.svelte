@@ -1,5 +1,4 @@
 <script lang="ts">
-import "mathjax/tex-svg.js";
 import { onDestroy } from "svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { syncLine } from "@/stores/sync-line";
@@ -8,6 +7,7 @@ import {
   resolveLocalImages,
   decorateCodeBlocks,
   ensurePreviewReady,
+  type MathEngine,
 } from "@/lib/markdown-render";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
@@ -17,18 +17,17 @@ let {
   value = "",
   filePath = null as string | null,
   onJumpToLine,
+  mathEngine = "mathjax" as MathEngine,
 }: {
   value?: string;
   filePath?: string | null;
   onJumpToLine?: (line: number) => void;
+  mathEngine?: MathEngine;
 } = $props();
 
 let articleEl: HTMLElement;
 let ready = $state(false);
 
-// Map the shared prose settings (headings + ordered-list levels) onto the
-// markdown-it Preview article. preview.css only ships static defaults, so without
-// this the Settings Prose config has no effect on H1-H3 or ordered-list numbering.
 function buildPreviewProseCss(s: ProseStyle): string {
   const head = (n: 1 | 2 | 3) => {
     const size = s[`h${n}Size`] as number;
@@ -50,7 +49,6 @@ function buildPreviewProseCss(s: ProseStyle): string {
   ].join("\n");
 }
 
-// Inject a style element derived from prose settings; re-runs on any change.
 $effect(() => {
   const css = buildPreviewProseCss(proseSettings.current);
   const el = document.createElement("style");
@@ -60,7 +58,6 @@ $effect(() => {
   return () => el.remove();
 });
 
-// Track the resolved theme from <html data-theme="...">
 let currentTheme = $state<Theme>(
   (document.documentElement.getAttribute("data-theme") as Theme) ?? "latte",
 );
@@ -71,7 +68,6 @@ $effect(() => {
   });
 });
 
-// Warm up shiki on mount (lazy-loads the highlighter once).
 $effect(() => {
   let cancelled = false;
   void ensurePreviewReady().then(() => {
@@ -80,8 +76,6 @@ $effect(() => {
   return () => { cancelled = true; };
 });
 
-// Returns the last [data-sline] block that starts at or before targetLine.
-// This is the block containing that source line (blocks can span many lines).
 function findSlineBlock(root: HTMLElement, targetLine: number): HTMLElement | null {
   let result: HTMLElement | null = null;
   for (const el of root.querySelectorAll<HTMLElement>("[data-sline]")) {
@@ -91,7 +85,6 @@ function findSlineBlock(root: HTMLElement, targetLine: number): HTMLElement | nu
   return result ?? root.querySelector<HTMLElement>("[data-sline]");
 }
 
-// Capture the first visible block when switching away from preview.
 onDestroy(() => {
   if (!articleEl) return;
   const container = articleEl.parentElement;
@@ -105,8 +98,9 @@ onDestroy(() => {
   }
 });
 
-// Apply MathJax preamble + typeset the rendered article.
 async function typesetMath(el: HTMLElement): Promise<void> {
+  if (mathEngine !== "mathjax") return;
+  await import("mathjax/tex-svg.js");
   const mj = window.MathJax as
     | { startup?: { promise?: Promise<void> }; tex2svgPromise?: (tex: string, opts: { display: boolean }) => Promise<unknown>; typesetPromise?: (els: HTMLElement[]) => Promise<void> }
     | undefined;
@@ -117,19 +111,18 @@ async function typesetMath(el: HTMLElement): Promise<void> {
   await mj.typesetPromise?.([el]);
 }
 
-// Re-render whenever source, theme, or ready state changes.
 $effect(() => {
   if (!ready) return;
   const src = value;
   const theme = currentTheme;
+  const engine = mathEngine;
   let cancelled = false;
   let cleanupCode = () => {};
 
-  void renderMarkdown(src, theme).then(async (html) => {
+  void renderMarkdown(src, theme, engine).then(async (html) => {
     if (cancelled || !articleEl) return;
     articleEl.innerHTML = html;
 
-    // Restore scroll position from editor mode (editor → preview switch).
     if (syncLine.current != null) {
       const target = findSlineBlock(articleEl, syncLine.current);
       syncLine.current = null;
@@ -148,7 +141,6 @@ $effect(() => {
   };
 });
 
-// Handle link clicks: anchor scroll or external browser.
 $effect(() => {
   if (!articleEl) return;
   const onClick = (e: MouseEvent) => {

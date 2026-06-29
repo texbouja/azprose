@@ -59,7 +59,8 @@
     "mathjax": "^4.1.2",
     "pdfjs-dist": "4.10.38",
     "shiki": "^4.3.0",
-    "svelte": "^5.56.4"
+    "svelte": "^5.56.4",
+    "tex2typst": "^0.6.2"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

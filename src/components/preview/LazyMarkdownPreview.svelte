@@ -1,15 +1,18 @@
 <script lang="ts">
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
+import type { MathEngine } from "@/lib/markdown-render";
 
 let {
   value = "",
   filePath = null as string | null,
   onJumpToLine,
+  mathEngine = "mathjax" as MathEngine,
 }: {
   value?: string;
   filePath?: string | null;
   onJumpToLine?: (line: number) => void;
+  mathEngine?: MathEngine;
 } = $props();
 
 let t = $derived(getT($language));
@@ -36,5 +39,5 @@ $effect(() => {
 {#if loading}
   <div class="mdv-editor mdv-editor--loading">{t("lazy.loadingPreview")}</div>
 {:else if Cmp}
-  <Cmp {value} {filePath} {onJumpToLine} />
+  <Cmp {value} {filePath} {onJumpToLine} {mathEngine} />
 {/if}

@@ -3,6 +3,7 @@ import type { RenderRule } from "markdown-it/lib/renderer.mjs";
 import mark from "markdown-it-mark";
 import taskLists from "markdown-it-task-lists";
 import { createHighlighter, type Highlighter } from "shiki";
+import { tex2typst } from "tex2typst";
 import { readFile } from "@tauri-apps/plugin-fs";
 import type { Theme } from "./theme";
 
@@ -232,8 +233,20 @@ function renderFrontMatterHeader(meta: Record<string, string>): string {
   return html;
 }
 
-export async function renderMarkdown(src: string, theme: Theme): Promise<string> {
+export type MathEngine = "mathjax" | "typst";
+
+export async function renderMarkdown(
+  src: string,
+  theme: Theme,
+  mathEngine: MathEngine = "mathjax",
+): Promise<string> {
   const { meta, body } = parseFrontMatter(src);
+  let content = body;
+
+  if (mathEngine === "typst") {
+    content = tex2typst(content, { preferShorthands: true });
+  }
+
   const h = await getHighlighter();
   const shikiTheme = THEMES[theme] ?? ADDON_THEMES[theme] ?? theme;
   try {
@@ -243,8 +256,8 @@ export async function renderMarkdown(src: string, theme: Theme): Promise<string>
     await ensureThemeLoaded(h, "github-light");
     activeShikiTheme = "github-light";
   }
-  await ensureLangsLoaded(h, extractLangs(body));
-  return renderFrontMatterHeader(meta) + md.render(body);
+  await ensureLangsLoaded(h, extractLangs(content));
+  return renderFrontMatterHeader(meta) + md.render(content);
 }
 
 // ── Post-render DOM helpers ────────────────────────────────────────────────
