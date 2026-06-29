@@ -2,6 +2,10 @@
 import { readFile } from "@tauri-apps/plugin-fs";
 import { ZoomIn, ZoomOut, Maximize2, Image as ImageIcon } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
+import { getT } from "@/lib/i18n";
+import { language } from "@/lib/i18n";
+
+let t = $derived(getT($language));
 
 let { path }: { path: string } = $props();
 
@@ -83,7 +87,7 @@ function resetFit() {
 
 function zoomLabel(): string {
   if (!naturalW) return "—";
-  if (displayW === null) return "fit";
+  if (displayW === null) return t("image.fit");
   return `${Math.round((displayW / naturalW) * 100)}%`;
 }
 </script>
@@ -93,12 +97,12 @@ function zoomLabel(): string {
     {#if loading}
       <div class="img-overlay">
         <Icon icon={ImageIcon} size={28} strokeWidth={1.2} />
-        <span class="img-loading-text">loading…</span>
+        <span class="img-loading-text">{t("image.loading")}</span>
       </div>
     {:else if error}
       <div class="img-overlay img-error-overlay">
         <Icon icon={ImageIcon} size={28} strokeWidth={1.2} />
-        <p>cannot load image</p>
+        <p>{t("image.cannotLoad")}</p>
         <code>{error}</code>
       </div>
     {:else if blobUrl}
@@ -117,8 +121,8 @@ function zoomLabel(): string {
     <button
       type="button"
       class="img-tool-btn"
-      data-tooltip="zoom in"
-      aria-label="zoom in"
+      data-tooltip={t("image.zoomIn")}
+      aria-label={t("image.zoomIn")}
       onclick={zoomIn}
       disabled={!blobUrl}
     >
@@ -128,8 +132,8 @@ function zoomLabel(): string {
     <button
       type="button"
       class="img-tool-btn"
-      data-tooltip="zoom out"
-      aria-label="zoom out"
+      data-tooltip={t("image.zoomOut")}
+      aria-label={t("image.zoomOut")}
       onclick={zoomOut}
       disabled={!blobUrl}
     >
@@ -139,8 +143,8 @@ function zoomLabel(): string {
     <button
       type="button"
       class="img-tool-btn"
-      data-tooltip="fit to window"
-      aria-label="fit to window"
+      data-tooltip={t("image.fitToWindow")}
+      aria-label={t("image.fitToWindow")}
       onclick={resetFit}
       disabled={!blobUrl}
     >

@@ -3,12 +3,13 @@ import { Copy, FilePlus2, FolderInput, FolderPlus, Search, Trash2, X } from "@/l
 import { Button, Icon } from "@/components/primitives";
 import { language, getT } from "@/lib/i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { type FileEntry } from "@/lib";
+import { dirname, type FileEntry } from "@/lib";
 import emptyTowerUrl from "@/assets/mascot/empty-m.png";
 import type { NewEntry } from "./file-tree.svelte";
 import SearchResults from "./sidebar-search.svelte";
 import RootFolder from "./root-folder.svelte";
 import Favorites from "./favorites.svelte";
+import ProjectSelector from "./project-selector.svelte";
 
 let {
   open,
@@ -21,6 +22,8 @@ let {
   onNewFile,
   onNewFolder,
   onCloseFolder,
+  onOpenProject,
+  onProjectFromFolder,
   onSelectFile,
   onMove,
   onContextMenu,
@@ -50,6 +53,8 @@ let {
   onNewFile?: () => void;
   onNewFolder?: () => void;
   onCloseFolder: (path: string) => void;
+  onOpenProject: (path: string) => void;
+  onProjectFromFolder: () => void;
   onSelectFile: (path: string) => void;
   onMove?: (src: string, dstParent: string) => void;
   onContextMenu?: (e: MouseEvent, entry: FileEntry) => void;
@@ -71,6 +76,7 @@ let {
 } = $props();
 
 let t = $derived(getT($language));
+let activeDir = $derived(activePath ? dirname(activePath) : rootPath);
 
 let query = $state("");
 let searchOpen = $state(false);
@@ -142,7 +148,7 @@ function stopResize(e: PointerEvent) {
 function onHeaderMouseDown(e: MouseEvent) {
   if (e.button !== 0) return;
   const target = e.target as HTMLElement | null;
-  const INTERACTIVE_SELECTOR = "button, a, input, textarea, select, [role='button'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [contenteditable='true'], .mdv-titlebar__theme, .mdv-tooltip";
+  const INTERACTIVE_SELECTOR = "button, a, input, textarea, select, [role='button'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [contenteditable='true'], .mdv-titlebar__theme, .mdv-pres-btn-wrap, .mdv-tooltip";
   if (target?.closest(INTERACTIVE_SELECTOR)) return;
   void getCurrentWindow().startDragging().catch((err) => {
     console.warn("azprose: startDragging failed", err);
@@ -182,7 +188,7 @@ function onHeaderMouseDown(e: MouseEvent) {
           <Button
             data-tooltip={t("menu.newFile")}
             aria-label={t("menu.newFile")}
-            onclick={() => onNewFile?.(rootPath ?? undefined)}
+            onclick={() => onNewFile?.(activeDir ?? undefined)}
             icon={newFileIcon}
           />
           {#snippet newFolderIcon()}
@@ -191,7 +197,7 @@ function onHeaderMouseDown(e: MouseEvent) {
           <Button
             data-tooltip={t("menu.newFolder")}
             aria-label={t("menu.newFolder")}
-            onclick={() => onNewFolder?.(rootPath ?? undefined)}
+            onclick={() => onNewFolder?.(activeDir ?? undefined)}
             icon={newFolderIcon}
           />
         {/if}
@@ -288,15 +294,16 @@ function onHeaderMouseDown(e: MouseEvent) {
             onReorder={(from, to) => onReorderFavorites?.(from, to)}
             {onContextMenu}
           />
-          {#each folders as folder (folder)}
+          {#each folders as folder, i (folder)}
             <RootFolder
               path={folder}
+              isPrimary={i === 0}
               {activePath}
               onSelect={onSelectFile}
               {onMove}
               {onContextMenu}
               onClose={onCloseFolder}
-              closeLabel={t("sidebar.closeFolder")}
+              closeLabel={i === 0 ? t("sidebar.closeFolder") : t("sidebar.removeGuest")}
               {stagedPaths}
               {onToggleStage}
               favoritePaths={favorites}
@@ -340,6 +347,9 @@ function onHeaderMouseDown(e: MouseEvent) {
         {/if}
       {/if}
     </div>
+    <footer class="mdv-sidebar__project-footer">
+      <ProjectSelector {rootPath} {onOpenProject} {onProjectFromFolder} />
+    </footer>
     {#if rootPath && stagedPaths.length > 0}
       {#snippet copyContextIcon()}
         <Icon icon={Copy} size={12} strokeWidth={1.6} />

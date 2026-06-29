@@ -60,7 +60,6 @@ let groups = $derived<Group[]>([
   {
     title: t("help.share"),
     rows: [
-      { keys: "⌘+⇧+C", label: t("help.copyMarkdown") },
       { keys: "⌘+P", label: t("help.exportPdf") },
     ],
   },

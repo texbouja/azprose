@@ -5,6 +5,7 @@
 export type IconData = string;
 
 export const Check: IconData = `<path d="M20 6 9 17l-5-5"/>`;
+export const ChevronDown: IconData = `<path d="m6 9 6 6 6-6"/>`;
 export const ChevronLeft: IconData = `<path d="m15 18-6-6 6-6"/>`;
 export const ChevronRight: IconData = `<path d="m9 18 6-6-6-6"/>`;
 export const ChevronsLeft: IconData = `<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>`;

@@ -1,0 +1,196 @@
+/*
+ * Slide deck shell — global so it applies even when SlideDeck is lazy-loaded.
+ */
+.mdv-slidedeck {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.mdv-slidedeck.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+}
+.mdv-slidedeck__stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  place-items: center;
+  padding: 1.5rem;
+  overflow: hidden;
+}
+.mdv-slidedeck__empty { color: var(--muted); font-size: 0.9rem; }
+.mdv-slidedeck__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 36px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.is-fullscreen .mdv-slidedeck__nav { background: #111; border-top-color: #222; }
+.mdv-slidedeck__nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms, background 120ms;
+}
+.mdv-slidedeck__nav-btn:hover:not(:disabled) {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.mdv-slidedeck__nav-btn:disabled { opacity: 0.25; cursor: default; }
+.mdv-slidedeck__counter {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 50px;
+  text-align: center;
+}
+
+/*
+ * Slide themes — adapted from Marp's built-in default / gaia / uncover.
+ * Sizing uses container-query units (cqh/cqw) so type scales with the slide
+ * box, no JS measurement needed. Each .azp-slide is `container-type: size`.
+ */
+
+.azp-slide {
+  container-type: size;
+  position: relative;
+  /* inherits --slide-aspect from .mdv-slidedeck__stage; fallback 16/9 */
+  aspect-ratio: var(--slide-aspect, 16 / 9);
+  overflow: hidden;
+  box-sizing: border-box;
+  /* fit inside the stage grid cell: height fills the cell, width derived from
+     aspect-ratio; max-width caps for portrait-oriented stages */
+  height: 100%;
+  max-width: 100%;
+  /* visual chrome */
+  border-radius: 4px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* hidden attribute hides non-current slides */
+.azp-slide[hidden] { display: none !important; }
+
+/*
+ * Inner wrapper holds the rendered markdown. Base font lives here (not on
+ * .azp-slide) so cqh resolves against the slide container, not the stage.
+ * ~2.6% of slide height ≈ Marp's 20px on 720px.
+ */
+.azp-slide__content {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  font-size: 2.6cqh;
+  line-height: 1.4;
+}
+
+/* ── Shared content typography (relative ems → scale with base) ──────────── */
+.azp-slide__content > :first-child { margin-top: 0; }
+.azp-slide__content > :last-child  { margin-bottom: 0; }
+
+.azp-slide__content h1 { font-size: 1.8em;  margin: 0 0 0.5em; line-height: 1.15; }
+.azp-slide__content h2 { font-size: 1.45em; margin: 0.6em 0 0.4em; line-height: 1.2; }
+.azp-slide__content h3 { font-size: 1.2em;  margin: 0.6em 0 0.3em; }
+.azp-slide__content p,
+.azp-slide__content ul,
+.azp-slide__content ol { margin: 0.5em 0; }
+.azp-slide__content li { margin: 0.25em 0; }
+.azp-slide__content ul,
+.azp-slide__content ol { padding-left: 1.4em; }
+.azp-slide__content img { max-width: 100%; }
+.azp-slide__content pre {
+  font-size: 0.8em;
+  padding: 0.7em 0.9em;
+  border-radius: 0.3em;
+  overflow: auto;
+  max-height: 60cqh;
+}
+.azp-slide__content code { font-family: var(--font-mono, monospace); font-size: 0.85em; }
+.azp-slide__content table { border-collapse: collapse; font-size: 0.9em; }
+.azp-slide__content th,
+.azp-slide__content td { border: 1px solid currentColor; padding: 0.25em 0.6em; }
+/* MathJax SVG output should sit on the text baseline cleanly */
+.azp-slide__content mjx-container { font-size: inherit !important; }
+.azp-slide__content mjx-container[display="true"] { margin: 0.5em 0; }
+
+/* ── H1-only slide: vertical centering (horizontal from theme) ───────────── */
+.azp-slide__content:has(> h1:only-child) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* ── Theme: default ─────────────────────────────────────────────────────── */
+.azp-slide--default {
+  background: #ffffff;
+  color: #202228;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+.azp-slide--default .azp-slide__content {
+  padding: 7cqh 8cqw;
+}
+.azp-slide--default h1,
+.azp-slide--default h2 { color: #0b7285; }
+.azp-slide--default pre { background: #f6f8fa; }
+.azp-slide--default code { background: rgba(0,0,0,0.05); padding: 0.1em 0.3em; border-radius: 0.2em; }
+.azp-slide--default a { color: #0b7285; }
+
+/* ── Theme: gaia ────────────────────────────────────────────────────────── */
+.azp-slide--gaia {
+  background: #fffefb;
+  color: #4a4a4a;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+.azp-slide--gaia .azp-slide__content {
+  padding: 8cqh 9cqw;
+}
+.azp-slide--gaia h1 { color: #c0392b; }
+.azp-slide--gaia h2,
+.azp-slide--gaia h3 { color: #2c3e50; }
+.azp-slide--gaia pre { background: #f3efe6; }
+.azp-slide--gaia code { background: rgba(192,57,43,0.08); padding: 0.1em 0.3em; border-radius: 0.2em; }
+.azp-slide--gaia a { color: #c0392b; }
+.azp-slide--gaia blockquote {
+  border-left: 0.2em solid #c0392b;
+  margin: 0.6em 0;
+  padding-left: 0.8em;
+  color: #6a6a6a;
+}
+
+/* ── Theme: uncover (centered, minimal) ─────────────────────────────────── */
+.azp-slide--uncover {
+  background: #fdfcff;
+  color: #35414d;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+.azp-slide--uncover .azp-slide__content {
+  padding: 7cqh 9cqw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.azp-slide--uncover h1 { font-size: 2.1em; color: #1f6feb; }
+.azp-slide--uncover h2 { color: #1f6feb; }
+.azp-slide--uncover ul,
+.azp-slide--uncover ol { text-align: left; }
+.azp-slide--uncover pre { text-align: left; background: #eef1f6; }
+.azp-slide--uncover code { background: rgba(31,111,235,0.08); padding: 0.1em 0.3em; border-radius: 0.2em; }
+.azp-slide--uncover a { color: #1f6feb; }

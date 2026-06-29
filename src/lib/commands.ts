@@ -1,15 +1,13 @@
 import type { IconData } from "./icons";
 import {
-  Circle,
   CircleHelp,
-  Copy,
+
   FilePlus2,
   FileText,
   FolderOpen,
   FolderPlus,
   Download,
   Info,
-  Leaf,
   Undo2,
   Maximize2,
   Monitor,
@@ -18,6 +16,7 @@ import {
   PanelLeftOpen,
   Save,
   Sparkles,
+  Star,
   Sun,
 } from "./icons";
 import { basename, dirname } from "./files";
@@ -49,30 +48,31 @@ export type CommandActions = {
   loadDemo: () => void;
   undoFileOp: () => void | Promise<void>;
   checkForUpdates: () => void | Promise<void>;
-  copyMarkdown: () => void | Promise<void>;
+
   toggleFullscreen: () => void | Promise<void>;
   openRecent: (path: string) => void;
   recentFiles: readonly string[];
   hasActivePath: boolean;
   sidebarOpen: boolean;
+
+  toggleFavorite: () => void;
+  currentFilePath: string | null;
 };
 
-const THEME_ICONS: Record<ThemeMode, IconData> = {
+const THEME_ICONS: Record<string, IconData> = {
   system: Monitor,
   latte: Sun,
-  mono: Circle,
-  "mono-dark": Circle,
-  matcha: Leaf,
+  mono: Sun,
+  "mono-dark": Moon,
   frappe: Moon,
   macchiato: Moon,
   mocha: Moon,
-  kanagawa: Moon,
-  "rose-pine": Moon,
-  ayu: Moon,
-  claude: Sparkles,
-  codex: Moon,
-  gemini: Sparkles,
-  cursor: Circle,
+  "gruvbox-dark-hard":   Moon,
+  "gruvbox-dark-medium": Moon,
+  "gruvbox-dark-soft":   Moon,
+  "gruvbox-light-hard":  Sun,
+  "gruvbox-light-medium":Sun,
+  "gruvbox-light-soft":  Sun,
 };
 
 const THEME_COMMANDS: Array<{ mode: ThemeMode; label: string; hint: string; icon: IconData }> =
@@ -188,14 +188,13 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       action: actions.toggleFullscreen,
     },
     {
-      id: "copy-markdown",
-      label: t("command.copyMarkdown"),
-      hint: t("command.copyMarkdownHint"),
-      shortcut: "⌘⇧C",
-      icon: Copy,
-      category: "share",
-      keywords: ["copy", "markdown", "clipboard"],
-      action: actions.copyMarkdown,
+      id: "toggle-favorite",
+      label: t("command.toggleFavorite"),
+      hint: actions.currentFilePath ? t("command.toggleFavoriteHint") : t("command.toggleFavoriteHintEmpty"),
+      icon: Star,
+      category: "file",
+      keywords: ["favorite", "star", "bookmark", "pin"],
+      action: actions.toggleFavorite,
     },
     ...THEME_COMMANDS.map(
       (theme): Command => ({

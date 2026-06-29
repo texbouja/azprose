@@ -10,10 +10,10 @@ import "@fontsource/fira-sans/700.css";
 import "@fontsource/fira-code/400.css";
 import "@fontsource/fira-code/500.css";
 import { onMount, onDestroy } from "svelte";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
+import { Compartment, EditorState, RangeSetBuilder, type Extension } from "@codemirror/state";
+import { EditorView, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { bracketMatching, syntaxHighlighting, HighlightStyle, syntaxTree } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
@@ -66,28 +66,54 @@ const mathOpts: LatexMarkdownEditorOptions = {
   renderCacheSize: 128,
 };
 
-// Heading HighlightStyle — font-size and font-family for Markdown # H1/H2/H3.
-// Markdown headings are HighlightStyle tokens (decorated spans), not real <h1> elements.
-// Placed last in the extension array so this CSS wins over ProseMark's baseSyntaxHighlights.
+// ── Heading line decoration ──────────────────────────────────────────────────
+// ProseMark adds no class to heading LINES — only inline span tokens get tags.
+// This ViewPlugin decorates each ATXHeading line so EditorView.theme() can
+// target .cm-heading1-line / .cm-heading2-line / .cm-heading3-line for margins.
+const headingLinePlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) { this.decorations = buildLineDecorations(view); }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.viewportChanged) this.decorations = buildLineDecorations(u.view);
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
+
+function buildLineDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  syntaxTree(view.state).cursor().iterate((node) => {
+    const m = /^ATXHeading(\d)$/.exec(node.name);
+    if (!m) return;
+    const line = view.state.doc.lineAt(node.from);
+    builder.add(line.from, line.from, Decoration.line({ class: `cm-heading${m[1]}-line` }));
+  });
+  return builder.finish();
+}
+
+// ── Heading inline style (font-size, font-family) ────────────────────────────
+// Margins live on the host via CSS variables (updated reactively in $effect below).
+// Placed last so this HighlightStyle wins over ProseMark's baseSyntaxHighlights.
 function buildHeadingHighlight(style: ProseStyle): Extension {
   return syntaxHighlighting(HighlightStyle.define([
     {
       tag: tags.heading1,
       fontSize: `${style.h1Size}em`,
       fontWeight: "bold",
-      fontFamily: resolveHeadingFont(style.h1FontFamily, style.customFontName),
+      fontFamily: resolveHeadingFont(style.h1FontFamily, style.h1CustomFontName),
     },
     {
       tag: tags.heading2,
       fontSize: `${style.h2Size}em`,
       fontWeight: "bold",
-      fontFamily: resolveHeadingFont(style.h2FontFamily, style.customFontName),
+      fontFamily: resolveHeadingFont(style.h2FontFamily, style.h2CustomFontName),
     },
     {
       tag: tags.heading3,
       fontSize: `${style.h3Size}em`,
       fontWeight: "bold",
-      fontFamily: resolveHeadingFont(style.h3FontFamily, style.customFontName),
+      fontFamily: resolveHeadingFont(style.h3FontFamily, style.h3CustomFontName),
     },
   ]));
 }
@@ -145,7 +171,13 @@ onMount(() => {
           height: "auto",
           borderRadius: "6px",
         },
+        // Heading line margins via CSS vars set reactively on hostEl.
+        // padding-top/bottom avoids fighting CodeMirror's own line-height layout.
+        ".cm-heading1-line": { paddingTop: "var(--h1-mt,0)", paddingBottom: "var(--h1-mb,0)" },
+        ".cm-heading2-line": { paddingTop: "var(--h2-mt,0)", paddingBottom: "var(--h2-mb,0)" },
+        ".cm-heading3-line": { paddingTop: "var(--h3-mt,0)", paddingBottom: "var(--h3-mb,0)" },
       }),
+      headingLinePlugin,
       EditorView.editable.of(!readOnly),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
       EditorView.updateListener.of((update) => {
@@ -169,22 +201,29 @@ onDestroy(() => {
   document.getElementById("mdv-prose-custom-css")?.remove();
 });
 
-// CSS custom properties: font-family on the host element (inherited by .cm-content).
+// CSS custom properties on hostEl — inherited by .cm-content and .cm-line children.
 $effect(() => {
   if (!hostEl) return;
   const s = proseSettings.current;
   hostEl.style.setProperty("--font", resolveFontFamily(s.fontFamily, s.customFontName));
   hostEl.style.setProperty("--pm-code-font", resolveMonoFont(s.monoFont));
+  // Heading margins — consumed by EditorView.theme() .cm-heading*-line rules above.
+  hostEl.style.setProperty("--h1-mt", `${s.h1MarginTop}em`);
+  hostEl.style.setProperty("--h1-mb", `${s.h1MarginBottom}em`);
+  hostEl.style.setProperty("--h2-mt", `${s.h2MarginTop}em`);
+  hostEl.style.setProperty("--h2-mb", `${s.h2MarginBottom}em`);
+  hostEl.style.setProperty("--h3-mt", `${s.h3MarginTop}em`);
+  hostEl.style.setProperty("--h3-mb", `${s.h3MarginBottom}em`);
 });
 
 // Layout CSS via <style> tag — appended to <head> after CodeMirror's own styles,
 // so font-size wins over ProseMark's theme regardless of extension cascade order.
 $effect(() => {
   const s = proseSettings.current;
-  const lh = readOnly ? s.presLineHeight : s.lineHeight;
-  const fs = readOnly ? s.presFontSize : s.fontSize;
-  const mw = readOnly ? s.presMaxWidth : s.maxWidth;
-  const pad = readOnly ? "32px 48px 64px" : "28px 36px 96px";
+  const lh = s.lineHeight;
+  const fs = s.fontSize;
+  const mw = s.maxWidth;
+  const pad = "28px 36px 96px";
   let el = document.getElementById("mdv-prose-layout-css") as HTMLStyleElement | null;
   if (!el) {
     el = document.createElement("style");
@@ -208,7 +247,7 @@ $effect(() => {
 // Targets .cm-html-widget for HTML block content and arbitrary editor selectors.
 $effect(() => {
   const s = proseSettings.current;
-  const css = readOnly ? s.presCss : s.customCss;
+  const css = s.customCss;
   let el = document.getElementById("mdv-prose-custom-css") as HTMLStyleElement | null;
   if (!el) {
     el = document.createElement("style");

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { onMount, tick } from "svelte";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
@@ -7,7 +7,7 @@ import { listen, emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { FilePlus2, FolderPlus, Pencil, Copy, Trash2, FileText, FolderOpen } from "@/lib/icons";
+import { FilePlus2, FolderPlus, Pencil, Copy, Trash2, FileText, FolderOpen, Star } from "@/lib/icons";
 import { checkForUpdate, applyUpdate } from "@/lib/updater";
 import { language, getT } from "@/lib/i18n";
 import { overlays } from "@/stores/overlays.svelte";
@@ -32,7 +32,9 @@ import {
   createFolder,
   renameEntry,
   removeEntry,
+  moveEntry,
   buildCommands,
+  getMtime,
 } from "@/lib";
 import type { FileEntry, WritingDisplay, WritingFontSize, WritingLineHeight } from "@/lib";
 import Toast, { type ToastAction } from "@/components/overlays/Toast.svelte";
@@ -51,19 +53,29 @@ import { TooltipRoot } from "@/components/primitives";
 import Editor from "@/components/editor/Editor.svelte";
 import TabsBar, { type Tab } from "@/components/editor/TabsBar.svelte";
 import LazyProseMark from "@/components/editor/LazyProseMark.svelte";
-import SlideDeck from "@/components/editor/SlideDeck.svelte";
+import LazySlideDeck from "@/components/editor/LazySlideDeck.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
 import LazyMarkdownPreview from "@/components/preview/LazyMarkdownPreview.svelte";
+import OpencodeSidebar from "@/components/opencode/OpencodeSidebar.svelte";
 import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { saveSession, loadSession, saveDraft, loadDraft, clearDraft } from "@/lib/session";
+import { generalSettings } from "@/stores/general-settings.svelte";
+import { proseSettings, DEFAULT_PROSE_STYLE } from "@/stores/prose-settings.svelte";
+import { slideSettings } from "@/stores/slide-settings.svelte";
+import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
+import { loadProjectConfig, saveProjectConfig } from "@/lib/project-config";
+import { theme } from "@/stores/theme.svelte";
+import { ensureCustomThemesLoaded } from "@/lib/custom-themes";
+import type { ProjectConfig } from "@/lib/project-config";
 import "./app.css";
 
 let t = $derived(getT($language));
 
 let sidebarOpen = persistedState<boolean>(STORAGE_KEYS.sidebarOpen, false);
 let sidebarWidth = persistedState<number>(STORAGE_KEYS.sidebarWidth, 240);
+let opencodeOpen = $state(false);
 let titlebarVisible = persistedState<boolean>(STORAGE_KEYS.titlebarVisible, true);
 let folders = persistedState<string[]>(STORAGE_KEYS.folders, []);
 let writingFontSize = persistedState<WritingFontSize>(
@@ -92,18 +104,155 @@ let savedContent = $state("");
 let activePath = $state<string | null>(null);
 let rootPath = $state<string | null>(folders.current[0] ?? null);
 
-let copyPulse = $state(false);
 let vimOn = $state(false);
-let readingMode = $state(false);
-let prosemarkOn = $state(true);
+let prosemarkOn = $state(generalSettings.defaultEditorMode === "prose");
 let presentationOn = $state(false);
 let previewOn = $state(false);
+let splitOn = $state(false);
+let splitRatio = $state(0.5);
+let leftPaneEl = $state<HTMLDivElement | null>(null);
+let rightPaneEl = $state<HTMLDivElement | null>(null);
+let jumpToLine = $state<number | null>(null);
 let presentationFs = $state(false);
 let proseWarmupDone = false;
 
 let saveStatus = $state<"idle" | "dirty" | "saving" | "saved">("idle");
 
+let projectConfig = $state<ProjectConfig>({});
+let configRoot = $state<string | null>(null);
+let configLoaded = $state(false);
+let configWriteTimer: ReturnType<typeof setTimeout> | null = null;
+let _skipCloseConfirm = false;
+
+function scheduleConfigSync() {
+  if (!configRoot || !configLoaded) return;
+  if (configWriteTimer) clearTimeout(configWriteTimer);
+  configWriteTimer = setTimeout(async () => {
+    await doConfigSync();
+  }, 400);
+}
+
+function flushConfigSync() {
+  if (!configWriteTimer) return;
+  clearTimeout(configWriteTimer);
+  configWriteTimer = null;
+  void doConfigSync();
+}
+
+async function doConfigSync() {
+  if (!configRoot) return;
+  const ps = proseSettings.current;
+  const cfg: ProjectConfig = {};
+  if (ps !== DEFAULT_PROSE_STYLE) cfg.proseStyle = ps;
+  if (slideSettings.theme !== "default") cfg.slideTheme = slideSettings.theme;
+  if (slideSettings.mode !== "16:9") cfg.slideMode = slideSettings.mode;
+  if (generalSettings.defaultEditorMode !== "prose") cfg.defaultEditorMode = generalSettings.defaultEditorMode;
+  if (writingFontSize.current !== DEFAULT_WRITING_DISPLAY.fontSize) cfg.writingFontSize = writingFontSize.current;
+  if (writingLineHeight.current !== DEFAULT_WRITING_DISPLAY.lineHeight) cfg.writingLineHeight = writingLineHeight.current;
+  if (mathJaxPreamble.current) cfg.mathJaxPreamble = mathJaxPreamble.current;
+  if (mathJaxPackages.current.length) cfg.mathJaxPackages = mathJaxPackages.current;
+  if (vimOn) cfg.vim = true;
+  if (theme.mode !== "latte") cfg.themeMode = theme.mode;
+  projectConfig = cfg;
+  await saveProjectConfig(configRoot, cfg);
+}
+
+async function loadConfig(root: string) {
+  configRoot = root;
+  const { config: cfg, warnings } = await loadProjectConfig(root);
+  projectConfig = cfg;
+  if (cfg.proseStyle) proseSettings.patch(cfg.proseStyle);
+  if (cfg.slideTheme) slideSettings.theme = cfg.slideTheme;
+  if (cfg.slideMode) slideSettings.mode = cfg.slideMode;
+  if (cfg.defaultEditorMode != null) generalSettings.defaultEditorMode = cfg.defaultEditorMode;
+  if (cfg.writingFontSize != null) writingFontSize.current = cfg.writingFontSize;
+  if (cfg.writingLineHeight != null) writingLineHeight.current = cfg.writingLineHeight;
+  if (cfg.mathJaxPreamble != null) mathJaxPreamble.current = cfg.mathJaxPreamble;
+  if (cfg.mathJaxPackages != null) mathJaxPackages.current = cfg.mathJaxPackages;
+  if (cfg.vim != null) vimOn = cfg.vim;
+  if (cfg.themeMode != null) theme.setMode(cfg.themeMode);
+  configLoaded = true;
+  if (warnings.length) {
+    notifications.setInfo(t("config.warnings"));
+  }
+}
+
+$effect(() => {
+  const root = rootPath;
+  if (root) void loadConfig(root);
+});
+
+$effect(() => {
+  if (!configRoot) return;
+  proseSettings.current;
+  slideSettings.theme;
+  slideSettings.mode;
+  generalSettings.defaultEditorMode;
+  writingFontSize.current;
+  writingLineHeight.current;
+  mathJaxPreamble.current;
+  mathJaxPackages.current;
+  vimOn;
+  theme.mode;
+  scheduleConfigSync();
+});
+
+// mtime tracking for external change detection
+let mtimeMap = $state(new Map<string, number>());
+let fileConflict = $state<string | null>(null);
+let externalChangeAlerts = $state(true);
+
+// Agent mode: suppress external change alerts so an AI can modify files silently.
+// On réagit à l'événement Tauri "azprose:set-alerts" (payload: "on" | "off")
+// et aussi via la commande Rust set_external_change_alerts.
+$effect(() => {
+  let cancelled = false;
+  let unlisten: (() => void) | undefined;
+  listen<string>("azprose:set-alerts", (e) => {
+    if (cancelled) return;
+    externalChangeAlerts = e.payload === "on";
+  }).then((un) => { if (cancelled) un(); else unlisten = un; });
+  return () => { cancelled = true; unlisten?.(); };
+});
+
+async function trackMtime(path: string) {
+  const mtime = await getMtime(path);
+  if (mtime != null) mtimeMap.set(path, mtime);
+}
+
+async function reloadFile(path: string) {
+  const fresh = await readMarkdown(path);
+  tabs = tabs.map(t => t.path === path ? { ...t, source: fresh, savedContent: fresh } : t);
+  if (activePath === path) {
+    source = fresh;
+    savedContent = fresh;
+  }
+  await trackMtime(path);
+}
+
+async function checkExternalChanges() {
+  for (const tab of tabs) {
+    if (isPdfPath(tab.path) || isImagePath(tab.path)) continue;
+    const oldMtime = mtimeMap.get(tab.path);
+    if (oldMtime == null) { await trackMtime(tab.path); continue; }
+    const current = await getMtime(tab.path);
+    if (current == null) continue;
+    if (current > oldMtime) {
+      if (tab.source === tab.savedContent || !externalChangeAlerts) {
+        await reloadFile(tab.path);
+        if (externalChangeAlerts) {
+          notifications.setInfo({ title: "", message: t("app.fileReloaded") });
+        }
+      } else {
+        fileConflict = tab.path;
+      }
+    }
+  }
+}
+
 onMount(() => {
+  void ensureCustomThemesLoaded();
+
   requestAnimationFrame(() => {
     const boot = document.getElementById("boot");
     if (boot) {
@@ -119,9 +268,21 @@ onMount(() => {
         folders.update(() => [e.payload]);
         rootPath = e.payload;
         unlisten();
+        void invoke("register_project_window", { label: myLabel, path: e.payload });
       });
       await emit("azprose:project-window-ready", myLabel);
     })();
+    const win_ = getCurrentWindow();
+    win_.onCloseRequested(async (event) => {
+      if (!_skipCloseConfirm) {
+        const dirty = tabs.some(t => t.source !== t.savedContent);
+        if (dirty) {
+          const ok = await confirm(t("project.warnCloseUnsaved"), { title: "", kind: "warning" });
+          if (!ok) { event.preventDefault(); return; }
+        }
+      }
+      await invoke("unregister_project_window", { label: myLabel });
+    });
   }
 
   // Sauvegarde des brouillons sur perte de focus (stratégie VSCode hot-exit).
@@ -133,10 +294,24 @@ onMount(() => {
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("beforeunload", onBeforeUnload);
 
+  const onFocus = () => { void checkExternalChanges(); };
+  const onVisibilityVisible = () => { if (document.visibilityState === "visible") void checkExternalChanges(); };
+  window.addEventListener("focus", onFocus);
+  document.addEventListener("visibilitychange", onVisibilityVisible);
+
+  const onConfigFlush = () => flushConfigSync();
+  const onConfigVisibility = () => { if (document.visibilityState === "hidden") flushConfigSync(); };
+  window.addEventListener("beforeunload", onConfigFlush);
+  document.addEventListener("visibilitychange", onConfigVisibility);
+
   return () => {
     window.removeEventListener("blur", onBlur);
     document.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener("beforeunload", onBeforeUnload);
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("visibilitychange", onVisibilityVisible);
+    window.removeEventListener("beforeunload", onConfigFlush);
+    document.removeEventListener("visibilitychange", onConfigVisibility);
   };
 });
 
@@ -181,6 +356,7 @@ async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silen
       return;
     }
   }
+  void trackMtime(path);
   saveSessionNow();
   if (!proseWarmupDone && extFromPath(path) === "md") {
     proseWarmupDone = true;
@@ -260,6 +436,7 @@ const handleSave = async () => {
     saveStatus = "saved";
     tabs = tabs.map(t => t.id === activeTabId ? { ...t, savedContent: source } : t);
     clearDraft(activePath);
+    void trackMtime(activePath);
   } catch (err) {
     console.error("azprose: save failed", err);
     saveStatus = "dirty";
@@ -269,7 +446,7 @@ const handleSave = async () => {
 let editingPath = $state<string | null>(null);
 let newEntry = $state<{ parent: string; kind: "file" | "folder" } | null>(null);
 let treeVersion = $state(0);
-let favorites = $state<string[]>([]);
+let favorites = persistedState<string[]>(STORAGE_KEYS.favorites, []);
 
 let contextMenuItems = $state<ContextMenuItem[]>([]);
 
@@ -432,9 +609,8 @@ $effect(() => {
   listen<string>("azprose:project-window-ready", async (event) => {
     if (cancelled) return;
     const childLabel = event.payload;
-    const folder = pendingProjectFolders.get(childLabel);
+    const folder = await invoke<string | null>("take_project_folder", { label: childLabel });
     if (!folder) return;
-    pendingProjectFolders.delete(childLabel);
     await emit(`azprose:open-folder:${childLabel}`, folder);
   }).then((un) => {
     if (cancelled) { un(); return; }
@@ -503,37 +679,179 @@ const handleAddFolder = async () => {
 };
 
 // Folder handoff for project windows: label → folder path, consumed on "azprose:project-window-ready"
-const pendingProjectFolders = new Map<string, string>();
-
+// Stored in Rust Mutex<HashMap> so it survives a frontend crash.
 const handleOpenProject = async () => {
   const { pickFolder } = await import("@/lib/files");
   const folder = await pickFolder();
   if (!folder) return;
+
+  // If the folder is already open in another window, focus it.
+  const existing = await invoke<string | null>("find_project_window", { path: folder });
+  if (existing) {
+    const win = WebviewWindow.getByLabel(existing);
+    if (win) {
+      await win.show();
+      await win.unminimize();
+      await win.setFocus();
+      return;
+    }
+  }
+
+  // If this window has a project and the new folder is a child/parent, warn and close to avoid FS conflicts.
+  if (rootPath) {
+    const child = folder.startsWith(rootPath + "/");
+    const parent = rootPath.startsWith(folder + "/");
+    if (child || parent) {
+      const ok = await confirm(t("project.warnCloseFolder"), { title: "", kind: "warning" });
+      if (!ok) return;
+      const label = `azprose-project-${Date.now()}`;
+      await invoke("store_project_folder", { label, path: folder });
+      const win = new WebviewWindow(label, {
+        title: `AZprose — ${basename(folder)}`,
+        width: 1280,
+        height: 860,
+      });
+      win.once("tauri://error", async () => {
+        await invoke("take_project_folder", { label });
+      });
+      if (getCurrentWindow().label.startsWith("azprose-project-")) {
+        _skipCloseConfirm = true;
+        await getCurrentWindow().close();
+      }
+      return;
+    }
+  }
+
+  // Unrelated folder: allow multiple instances (VSCode-style).
   const label = `azprose-project-${Date.now()}`;
-  pendingProjectFolders.set(label, folder);
+  await invoke("store_project_folder", { label, path: folder });
   const win = new WebviewWindow(label, {
     title: `AZprose — ${basename(folder)}`,
     width: 1280,
     height: 860,
   });
-  win.once("tauri://error", (e) => {
-    console.error("[azprose] failed to create project window:", e);
-    pendingProjectFolders.delete(label);
+  win.once("tauri://error", async () => {
+    await invoke("take_project_folder", { label });
   });
 };
 
-const handleCloseFolder = (path: string) => {
+const handleOpenProjectByPath = async (folder: string) => {
+  const existing = await invoke<string | null>("find_project_window", { path: folder });
+  if (existing) {
+    const win = WebviewWindow.getByLabel(existing);
+    if (win) {
+      await win.show();
+      await win.unminimize();
+      await win.setFocus();
+      return;
+    }
+  }
+
+  if (rootPath) {
+    const child = folder.startsWith(rootPath + "/");
+    const parent = rootPath.startsWith(folder + "/");
+    if (child || parent) {
+      const ok = await confirm(t("project.warnCloseFolder"), { title: "", kind: "warning" });
+      if (!ok) return;
+      const label = `azprose-project-${Date.now()}`;
+      await invoke("store_project_folder", { label, path: folder });
+      const win = new WebviewWindow(label, {
+        title: `AZprose — ${basename(folder)}`,
+        width: 1280,
+        height: 860,
+      });
+      win.once("tauri://error", async () => {
+        await invoke("take_project_folder", { label });
+      });
+      if (getCurrentWindow().label.startsWith("azprose-project-")) {
+        _skipCloseConfirm = true;
+        await getCurrentWindow().close();
+      }
+      return;
+    }
+  }
+
+  const label = `azprose-project-${Date.now()}`;
+  await invoke("store_project_folder", { label, path: folder });
+  const win = new WebviewWindow(label, {
+    title: `AZprose — ${basename(folder)}`,
+    width: 1280,
+    height: 860,
+  });
+  win.once("tauri://error", async () => {
+    await invoke("take_project_folder", { label });
+  });
+};
+
+const handleInitProject = async () => {
+  const { pickFolder } = await import("@/lib/files");
+  const folder = await pickFolder();
+  if (!folder) return;
+  const name = basename(folder);
+  await invoke("add_project", { name, path: folder });
+  await handleOpenProjectByPath(folder);
+};
+
+const handleCloseFolder = async (path: string) => {
+  const folderTabs = tabs.filter(t => t.path.startsWith(path + "/"));
+  const dirtyTabs = folderTabs.filter(t => !isPdfPath(t.path) && !isImagePath(t.path) && t.source !== t.savedContent);
+  if (dirtyTabs.length > 0) {
+    const ok = await confirm(t("tabs.closeUnsavedFolder"), { title: "", kind: "warning" });
+    if (!ok) return;
+  }
+  for (const tab of folderTabs) {
+    if (!isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+      saveDraft(tab.path, tab.source);
+    }
+  }
+  const folderIds = new Set(folderTabs.map(t => t.id));
+  tabs = tabs.filter(t => !folderIds.has(t.id));
+  if (activeTabId && folderIds.has(activeTabId)) {
+    activeTabId = tabs[tabs.length - 1]?.id ?? null;
+  }
   const next = folders.current.filter((f) => f !== path);
   folders.update(() => next);
   if (rootPath === path) rootPath = next[0] ?? null;
+  saveSessionNow();
 };
 
 const handleSelectFile = (path: string) => {
   openFileInTab(path);
 };
 
+const handleToggleFavorite = (path: string) => {
+  const prev = favorites.current;
+  favorites.update(() =>
+    prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path],
+  );
+};
+
+const handleReorderFavorites = (from: number, to: number) => {
+  const prev = favorites.current;
+  if (from < 0 || from >= prev.length || to < 0 || to >= prev.length) return;
+  const next = [...prev];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  favorites.update(() => next);
+};
+
+const handleMove = async (src: string, dstParent: string) => {
+  try {
+    const newPath = await moveEntry(src, dstParent);
+    treeVersion++;
+    if (activePath === src) {
+      activePath = newPath;
+      const content = await readMarkdown(newPath).catch(() => null);
+      if (content !== null) source = content;
+    }
+  } catch (err) {
+    console.error("azprose: move failed", err);
+  }
+};
+
 const handleContextMenu = (e: MouseEvent, entry: FileEntry) => {
   const parentDir = entry.isDir ? entry.path : dirname(entry.path);
+  const isRoot = rootPath != null && entry.path === rootPath && entry.isDir;
 
   contextMenuItems = [
     {
@@ -551,17 +869,17 @@ const handleContextMenu = (e: MouseEvent, entry: FileEntry) => {
       label: t("menu.openDefault"),
       icon: FileText,
       onSelect: () => openFileInTab(entry.path),
-    }] as ContextMenuItem[] : []),
+    },
     {
+      label: favorites.current.includes(entry.path) ? t("sidebar.unfavorite") : t("sidebar.favorite"),
+      icon: Star,
+      onSelect: () => handleToggleFavorite(entry.path),
+    },
+    ] as ContextMenuItem[] : []),
+    ...(!isRoot ? [{
       label: t("menu.rename"),
       icon: Pencil,
       onSelect: () => { editingPath = entry.path; },
-    },
-    "divider",
-    {
-      label: t("menu.copyPath"),
-      icon: Copy,
-      onSelect: () => void navigator.clipboard.writeText(entry.path),
     },
     "divider",
     {
@@ -569,6 +887,13 @@ const handleContextMenu = (e: MouseEvent, entry: FileEntry) => {
       icon: Trash2,
       destructive: true,
       onSelect: () => void handleDelete(entry),
+    },
+    ] as ContextMenuItem[] : []),
+    ...(isRoot ? ["divider" as const] : []),
+    {
+      label: t("menu.copyPath"),
+      icon: Copy,
+      onSelect: () => void navigator.clipboard.writeText(entry.path),
     },
   ];
   contextMenu.open(e, entry);
@@ -615,6 +940,7 @@ const handleCancelNew = () => {
 };
 
 const handleSubmitRename = async (src: string, newName: string) => {
+  if (rootPath && src === rootPath) return;
   editingPath = null;
   try {
     const newPath = await renameEntry(src, newName);
@@ -636,6 +962,7 @@ const handleCancelEdit = () => {
 };
 
 const handleDelete = async (entry: FileEntry) => {
+  if (rootPath && entry.path === rootPath) return;
   const msg = entry.isDir
     ? t("menu.confirmDeleteFolder", { name: entry.name })
     : t("menu.confirmDelete", { name: entry.name });
@@ -657,15 +984,27 @@ const handleDelete = async (entry: FileEntry) => {
 };
 
 const handleExportPdf = async () => {
-  // Placeholder — Phase 2-3
-};
+  const isLinux = await invoke<boolean>("export_pdf");
+  if (!isLinux) return;
 
-const handleCopyMarkdown = async () => {
-  // Placeholder — Phase 2-3
-};
+  // Ensure the rendered preview is in the DOM regardless of current mode.
+  const prev = { previewOn, prosemarkOn, presentationOn };
+  if (!previewOn) {
+    previewOn = true;
+    presentationOn = false;
+    await tick();
+    // Give LazyMarkdownPreview time to resolve its dynamic import and render.
+    await new Promise<void>((r) => setTimeout(r, 250));
+    await tick();
+  }
 
-const handleToggleReading = () => {
-  readingMode = !readingMode;
+  document.body.classList.add("mdv-print");
+  window.print();
+  document.body.classList.remove("mdv-print");
+
+  previewOn = prev.previewOn;
+  prosemarkOn = prev.prosemarkOn;
+  presentationOn = prev.presentationOn;
 };
 
 $effect(() => {
@@ -696,15 +1035,111 @@ let editorMode = $derived<EditorMode>(
   : "raw"
 );
 
+let canSplit = $derived(editorMode === "raw" && extFromPath(activePath ?? "") === "md");
+
+const handleToggleSplit = (_tabId: string) => {
+  if (!canSplit) return;
+  splitOn = !splitOn;
+};
+
+let splitResizeState: { startX: number; startRatio: number } | null = null;
+
+const startSplitResize = (e: PointerEvent) => {
+  const container = (e.currentTarget as HTMLElement).parentElement;
+  if (!container) return;
+  splitResizeState = { startX: e.clientX, startRatio: splitRatio };
+  const rect = container.getBoundingClientRect();
+  const onMove = (ev: PointerEvent) => {
+    if (!splitResizeState) return;
+    const delta = ev.clientX - splitResizeState.startX;
+    splitRatio = Math.max(0.2, Math.min(0.8, splitResizeState.startRatio + delta / rect.width));
+  };
+  const onUp = () => {
+    splitResizeState = null;
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  };
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  e.preventDefault();
+};
+
+function syncScroll(left: HTMLElement, right: HTMLElement): () => void {
+  const pct = (el: HTMLElement) => {
+    const d = el.scrollHeight - el.clientHeight;
+    return d > 0 ? el.scrollTop / d : 0;
+  };
+
+  let lastL = pct(left);
+  let lastR = pct(right);
+
+  const onScroll = () => {
+    const curL = pct(left);
+    const curR = pct(right);
+    const movedL = curL !== lastL;
+    const movedR = curR !== lastR;
+
+    if (movedL && !movedR) {
+      right.scrollTop = curL * (right.scrollHeight - right.clientHeight);
+    } else if (movedR && !movedL) {
+      left.scrollTop = curR * (left.scrollHeight - left.clientHeight);
+    }
+
+    lastL = pct(left);
+    lastR = pct(right);
+  };
+
+  left.addEventListener("scroll", onScroll, { passive: true });
+  right.addEventListener("scroll", onScroll, { passive: true });
+  return () => {
+    left.removeEventListener("scroll", onScroll);
+    right.removeEventListener("scroll", onScroll);
+  };
+}
+
+$effect(() => {
+  if (!leftPaneEl || !rightPaneEl || !splitOn) return;
+  let cleanSync: (() => void) | undefined;
+  const attempt = () => {
+    const left = leftPaneEl.querySelector<HTMLElement>(".cm-scroller");
+    const right = rightPaneEl.querySelector<HTMLElement>(".mdv-preview");
+    if (!left || !right) return false;
+    cleanSync?.();
+    cleanSync = syncScroll(left, right);
+    return true;
+  };
+  const observer = new MutationObserver(() => { if (!cleanSync) attempt(); });
+  observer.observe(leftPaneEl, { childList: true, subtree: true });
+  observer.observe(rightPaneEl, { childList: true, subtree: true });
+  if (!attempt()) {
+    const timer = setInterval(() => { if (attempt()) clearInterval(timer); }, 200);
+    return () => { clearInterval(timer); observer.disconnect(); cleanSync?.(); };
+  }
+  return () => { observer.disconnect(); cleanSync?.(); };
+});
+
+const handleJumpToLine = (line: number) => {
+  jumpToLine = line;
+  if (!splitOn) handleSetEditorMode("raw");
+  else { prosemarkOn = false; previewOn = false; presentationOn = false; }
+};
+
 const handleSetEditorMode = (mode: EditorMode) => {
   if (presentationFs && mode !== "presentation") {
     presentationFs = false;
     void getCurrentWindow().setFullscreen(false);
   }
+  splitOn = false;
   switch (mode) {
     case "raw":          prosemarkOn = false; previewOn = false; presentationOn = false; break;
     case "prose":        prosemarkOn = true;  previewOn = false; presentationOn = false; break;
     case "preview":      previewOn = true;    presentationOn = false; break;
+    // Presentation starts windowed — the user picks a theme from the breadcrumb
+    // dropdown, then toggles fullscreen manually.
     case "presentation": prosemarkOn = true;  presentationOn = true; previewOn = false; break;
   }
 };
@@ -739,12 +1174,13 @@ let cmds = $derived(
     },
     undoFileOp: async () => {},
     checkForUpdates: handleManualUpdateCheck,
-    copyMarkdown: handleCopyMarkdown,
     toggleFullscreen,
     openRecent: (path: string) => { openFileInTab(path); },
     recentFiles: [],
     hasActivePath: activePath != null,
     sidebarOpen: sidebarOpen.current,
+    toggleFavorite: () => { if (activePath) handleToggleFavorite(activePath); },
+    currentFilePath: activePath,
   }, t),
 );
 </script>
@@ -754,24 +1190,14 @@ let cmds = $derived(
   style={writingDisplayStyle}
 >
   <TitleBar
-    fileName={activePath ? basename(activePath) : undefined}
-    filePath={activePath}
-    {readingMode}
-    onToggleReading={handleToggleReading}
-    onCopyMarkdown={handleCopyMarkdown}
-    {copyPulse}
-    onExportPdf={handleExportPdf}
-    {vimOn}
-    onToggleVim={handleToggleVim}
-    {writingDisplay}
-    onWritingFontSizeChange={handleWritingFontSizeChange}
-    onWritingLineHeightChange={handleWritingLineHeightChange}
-    onResetWritingDisplay={handleResetWritingDisplay}
+    rootName={rootPath ? basename(rootPath) : undefined}
   />
 
   <Breadcrumb
     sidebarOpen={sidebarOpen.current}
     onToggleSidebar={handleToggleSidebar}
+    {opencodeOpen}
+    onToggleOpencode={() => opencodeOpen = !opencodeOpen}
     {rootPath}
     {activePath}
     {saveStatus}
@@ -812,45 +1238,78 @@ let cmds = $derived(
       onSubmitNew={handleSubmitNew}
       onCancelNew={handleCancelNew}
       {treeVersion}
-      favorites={favorites}
+      favorites={favorites.current}
+      onToggleFavorite={handleToggleFavorite}
+      onReorderFavorites={handleReorderFavorites}
+      onMove={handleMove}
+      onOpenProject={handleOpenProjectByPath}
+      onProjectFromFolder={handleInitProject}
     />
 
     <div class="mdv-workspace">
       {#if tabs.length > 0}
-        <TabsBar {tabs} {activeTabId} onSelect={handleTabSelect} onClose={closeTab} onReorder={handleTabReorder} />
+        <TabsBar {tabs} {activeTabId} onSelect={handleTabSelect} onClose={closeTab} onReorder={handleTabReorder} {splitOn} {canSplit} onToggleSplit={handleToggleSplit} />
       {/if}
-      <div class="mdv-shell__editor-solo">
-        {#if activePath}
-          {#if isPdfPath(activePath)}
-            <LazyPdfViewer path={activePath} />
-          {:else if isImagePath(activePath)}
-            <ImageViewer path={activePath} />
-          {:else if previewOn && extFromPath(activePath) === "md"}
-            <LazyMarkdownPreview value={source} filePath={activePath} />
-          {:else if prosemarkOn && presentationOn && extFromPath(activePath) === "md"}
-            <SlideDeck value={source} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
-          {:else if prosemarkOn && extFromPath(activePath) === "md"}
-            <LazyProseMark
-              value={source}
-              onChange={(next: string) => { source = next; }}
-            />
-          {:else}
+      {#if splitOn && canSplit}
+        <div class="mdv-split">
+          <div bind:this={leftPaneEl} class="mdv-split__pane" style="flex: {splitRatio}">
             <Editor
               value={source}
               language={extFromPath(activePath)}
               onChange={(next) => { source = next; }}
+              {jumpToLine}
+              onJumpApplied={() => { jumpToLine = null; }}
             />
-          {/if}
-        {:else}
-          <div class="mdv-empty-state">
-            <p>{t("sidebar.browseNotes")}</p>
-            <button type="button" class="mdv-btn" onclick={handleAddFolder}>
-              {t("sidebar.addFolder")}
-            </button>
           </div>
-        {/if}
-      </div>
+          <div
+            class="mdv-split__resize"
+            onpointerdown={startSplitResize}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize split"
+          />
+          <div bind:this={rightPaneEl} class="mdv-split__pane" style="flex: {1 - splitRatio}">
+            <LazyMarkdownPreview value={source} filePath={activePath} onJumpToLine={handleJumpToLine} />
+          </div>
+        </div>
+      {:else}
+        <div class="mdv-shell__editor-solo">
+          {#if activePath}
+            {#if isPdfPath(activePath)}
+              <LazyPdfViewer path={activePath} />
+            {:else if isImagePath(activePath)}
+              <ImageViewer path={activePath} />
+            {:else if previewOn && extFromPath(activePath) === "md"}
+              <LazyMarkdownPreview value={source} filePath={activePath} onJumpToLine={handleJumpToLine} />
+            {:else if prosemarkOn && presentationOn && extFromPath(activePath) === "md"}
+              <LazySlideDeck value={source} filePath={activePath} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
+            {:else if prosemarkOn && extFromPath(activePath) === "md"}
+              <LazyProseMark
+                value={source}
+                onChange={(next: string) => { source = next; }}
+              />
+            {:else}
+              <Editor
+                value={source}
+                language={extFromPath(activePath)}
+                onChange={(next) => { source = next; }}
+                {jumpToLine}
+                onJumpApplied={() => { jumpToLine = null; }}
+              />
+            {/if}
+          {:else}
+            <div class="mdv-empty-state">
+              <p>{t("sidebar.browseNotes")}</p>
+              <button type="button" class="mdv-btn" onclick={handleAddFolder}>
+                {t("sidebar.addFolder")}
+              </button>
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
+
+    <OpencodeSidebar open={opencodeOpen} />
   </main>
 
   <StatusBar
@@ -876,13 +1335,6 @@ let cmds = $derived(
   />
 
   <Toast
-    open={notifications.copyToast != null && notifications.loadError == null}
-    message={notifications.copyToast ?? ""}
-    variant="info"
-    onDismiss={notifications.dismissCopyToast}
-  />
-
-  <Toast
     open={notifications.saveAsToast != null && notifications.loadError == null}
     message={notifications.saveAsToast ?? ""}
     variant="info"
@@ -898,6 +1350,15 @@ let cmds = $derived(
     durationMs={null}
     onDismiss={() => updateAvail = null}
     action={updateInstalling ? undefined : { label: t("app.install"), onClick: () => void handleApplyUpdate() }}
+  />
+
+  <Toast
+    open={fileConflict != null && notifications.loadError == null}
+    message={fileConflict ? t("app.fileConflict") : ""}
+    variant="error"
+    durationMs={null}
+    onDismiss={() => fileConflict = null}
+    action={{ label: t("app.reloadDiscard"), onClick: () => { const p = fileConflict; fileConflict = null; if (p) reloadFile(p); } }}
   />
 
   <Toast

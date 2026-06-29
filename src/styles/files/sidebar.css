@@ -550,6 +550,14 @@
   opacity: 0.9;
 }
 
+/* project selector footer */
+.mdv-sidebar__project-footer {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+}
+
 /* context tray */
 .mdv-context-tray {
   display: flex;
@@ -715,6 +723,19 @@
 .mdv-rootfolder__close:hover {
   color: var(--fg);
   background: var(--surface-hover);
+}
+
+.mdv-rootfolder__badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 14px;
+  margin-left: 4px;
 }
 
 .mdv-favorites__star {

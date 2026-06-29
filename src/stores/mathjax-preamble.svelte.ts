@@ -13,6 +13,7 @@ const _packages = persistedState<string[]>(STORAGE_KEYS.mathJaxPackages, []);
 
 export const mathJaxPackages = {
   get current(): string[] { return _packages.current; },
+  set current(v: string[]) { _packages.current = v; },
   toggle(id: string) {
     const list = _packages.current;
     _packages.current = list.includes(id)

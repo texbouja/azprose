@@ -6,23 +6,13 @@ import enJSON from "@/locales/en.json";
 import frJSON from "@/locales/fr.json";
 import deJSON from "@/locales/de.json";
 import esJSON from "@/locales/es.json";
-import itJSON from "@/locales/it.json";
-import jaJSON from "@/locales/ja.json";
-import koJSON from "@/locales/ko.json";
-import ptBRJSON from "@/locales/pt-BR.json";
-import zhJSON from "@/locales/zh.json";
 
-export type Language = "en" | "ja" | "zh" | "ko" | "es" | "pt-BR" | "it" | "fr" | "de";
+export type Language = "en" | "es" | "fr" | "de";
 export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
 export const LANGUAGE_CHOICES: Array<{ value: Language; label: string; nativeLabel: string }> = [
   { value: "en", label: "English", nativeLabel: "English" },
-  { value: "ja", label: "Japanese", nativeLabel: "日本語" },
-  { value: "zh", label: "Chinese", nativeLabel: "简体中文" },
-  { value: "ko", label: "Korean", nativeLabel: "한국어" },
   { value: "es", label: "Spanish", nativeLabel: "Español" },
-  { value: "pt-BR", label: "Portuguese", nativeLabel: "Português (Brasil)" },
-  { value: "it", label: "Italian", nativeLabel: "Italiano" },
   { value: "fr", label: "French", nativeLabel: "Français" },
   { value: "de", label: "German", nativeLabel: "Deutsch" },
 ];
@@ -38,11 +28,6 @@ void i18n.init({
     en: { translation: enJSON },
     es: { translation: esJSON },
     fr: { translation: frJSON },
-    it: { translation: itJSON },
-    ja: { translation: jaJSON },
-    ko: { translation: koJSON },
-    "pt-BR": { translation: ptBRJSON },
-    zh: { translation: zhJSON },
   },
   interpolation: {
     escapeValue: false,

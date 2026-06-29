@@ -159,6 +159,10 @@
   border-left: 1px solid var(--border);
 }
 
+.mdv-pres-btn-wrap {
+  position: relative;
+}
+
 .mdv-breadcrumb__config .mdv-btn {
   height: 22px;
   padding: 0 5px;

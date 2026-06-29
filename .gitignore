@@ -42,3 +42,4 @@ src-tauri/.cargo/config.toml
 *.sln
 *.sw?
 marketing.md
+.aider*

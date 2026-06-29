@@ -1,8 +1,13 @@
 .mdv-overlay--settings {
   width: min(860px, 94vw);
-  top: 4vh;
-  height: 88vh;
+  top: 6vh;
+  height: min(88vh, 780px);
   max-height: 92vh;
+  min-width: 480px;
+  min-height: 320px;
+  resize: both;
+  /* suppress the centered animation — conflicts with drag transform */
+  animation: none;
 }
 
 .mdv-settings {
@@ -19,6 +24,12 @@
   padding: 14px 16px 12px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+}
+
+.mdv-settings__header.is-dragging {
+  cursor: grabbing;
 }
 
 .mdv-settings__title {
@@ -46,6 +57,44 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* ── top-level nav item (e.g. Général — not foldable) ─ */
+.mdv-settings__nav-toplevel {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--easing),
+    color var(--dur-fast) var(--easing);
+}
+
+.mdv-settings__nav-toplevel:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+
+.mdv-settings__nav-toplevel.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.mdv-settings__nav-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 4px;
 }
 
 /* ── nav sections (foldable groups) ───────────────── */
@@ -247,6 +296,30 @@
   flex-shrink: 0;
 }
 
+/* ── radio group (slide theme) ──────────────────────── */
+.mdv-settings__radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.mdv-settings__radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.mdv-settings__radio input[type="radio"] {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
 /* ── sliders ────────────────────────────────────────── */
 .mdv-settings__sliders {
   display: flex;
@@ -389,12 +462,31 @@
   flex-shrink: 0;
 }
 
+/* avec alignement : tag | taille | alignement | esp↑ | esp↓ */
 .mdv-settings__heading-header,
 .mdv-settings__heading-row {
   display: grid;
-  grid-template-columns: 32px 70px 90px 1fr 60px 60px;
+  grid-template-columns: 32px 70px 90px 60px 60px;
   align-items: center;
   gap: 6px;
+}
+
+/* sans alignement (mode Prose) : tag | taille | esp↑ | esp↓ */
+.mdv-settings__heading-header.no-align,
+.mdv-settings__heading-row.no-align {
+  grid-template-columns: 32px 70px 60px 60px;
+}
+
+.mdv-settings__titres-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mdv-settings__heading-fonts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .mdv-settings__heading-header {
@@ -487,6 +579,12 @@
   padding-top: 4px;
   padding-bottom: 4px;
   font-size: 10px;
+}
+
+/* ── inline select — shrinks to fixed width when a custom input follows ── */
+.mdv-settings__select--inline {
+  flex: 0 0 auto;
+  min-width: 130px;
 }
 
 /* ── ordered list rows ─────────────────────────────── */

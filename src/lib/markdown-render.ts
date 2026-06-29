@@ -6,21 +6,26 @@ import { createHighlighter, type Highlighter } from "shiki";
 import { readFile } from "@tauri-apps/plugin-fs";
 import type { Theme } from "./theme";
 
-const THEMES: Record<Theme, string> = {
+const THEMES: Record<string, string> = {
   latte: "catppuccin-latte",
   mono: "github-light",
   "mono-dark": "github-dark",
   frappe: "catppuccin-frappe",
   macchiato: "catppuccin-macchiato",
   mocha: "catppuccin-mocha",
+  "gruvbox-dark-hard":   "gruvbox-dark-hard",
+  "gruvbox-dark-medium": "gruvbox-dark-medium",
+  "gruvbox-dark-soft":   "gruvbox-dark-soft",
+  "gruvbox-light-hard":  "gruvbox-light-hard",
+  "gruvbox-light-medium":"gruvbox-light-medium",
+  "gruvbox-light-soft":  "gruvbox-light-soft",
+};
+
+const ADDON_THEMES: Record<string, string> = {
   matcha: "vitesse-light",
   kanagawa: "kanagawa-wave",
   "rose-pine": "rose-pine",
   ayu: "ayu-dark",
-  claude: "vitesse-light",
-  codex: "github-dark",
-  gemini: "github-light",
-  cursor: "github-dark-dimmed",
 };
 
 // Python first — primary language for professors.
@@ -230,10 +235,15 @@ function renderFrontMatterHeader(meta: Record<string, string>): string {
 export async function renderMarkdown(src: string, theme: Theme): Promise<string> {
   const { meta, body } = parseFrontMatter(src);
   const h = await getHighlighter();
-  const shikiTheme = THEMES[theme];
-  await ensureThemeLoaded(h, shikiTheme);
+  const shikiTheme = THEMES[theme] ?? ADDON_THEMES[theme] ?? theme;
+  try {
+    await ensureThemeLoaded(h, shikiTheme);
+    activeShikiTheme = shikiTheme;
+  } catch {
+    await ensureThemeLoaded(h, "github-light");
+    activeShikiTheme = "github-light";
+  }
   await ensureLangsLoaded(h, extractLangs(body));
-  activeShikiTheme = shikiTheme;
   return renderFrontMatterHeader(meta) + md.render(body);
 }
 

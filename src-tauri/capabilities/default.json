@@ -27,6 +27,8 @@
       "allow": [
         { "path": "**/.agent" },
         { "path": "**/.agent/**" },
+        { "path": "**/.azprose" },
+        { "path": "**/.azprose/**" },
         { "path": "**/.claude" },
         { "path": "**/.claude/**" },
         { "path": "**/.codex" },

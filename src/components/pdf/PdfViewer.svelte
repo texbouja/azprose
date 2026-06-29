@@ -25,7 +25,11 @@
     FileText,
   } from "@/lib/icons";
   import { Icon } from "@/components/primitives";
+  import { getT } from "@/lib/i18n";
+  import { language } from "@/lib/i18n";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+  let t = $derived(getT($language));
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -169,7 +173,7 @@
     <div class="pdf-topbar__section pdf-topbar__left">
       <button
         class="pdf-btn"
-        title={panelOpen ? "hide panel" : "show panel"}
+        title={panelOpen ? t("pdf.hidePanel") : t("pdf.showPanel")}
         onclick={() => (panelOpen = !panelOpen)}
       >
         {#if panelOpen}
@@ -182,10 +186,10 @@
 
     <!-- Center: navigation -->
     <div class="pdf-topbar__section pdf-topbar__center">
-      <button class="pdf-btn" title="first page"    onclick={goFirst} disabled={!numPages || currentPage <= 1}>
+      <button class="pdf-btn" title={t("pdf.firstPage")}    onclick={goFirst} disabled={!numPages || currentPage <= 1}>
         <Icon icon={ChevronsLeft}  size={14} strokeWidth={1.6} />
       </button>
-      <button class="pdf-btn" title="previous page" onclick={goPrev}  disabled={!numPages || currentPage <= 1}>
+      <button class="pdf-btn" title={t("pdf.prevPage")} onclick={goPrev}  disabled={!numPages || currentPage <= 1}>
         <Icon icon={ChevronLeft}   size={14} strokeWidth={1.6} />
       </button>
       <input
@@ -200,28 +204,28 @@
         onclick={() => pageInputEl?.select()}
       />
       <span class="pdf-page-sep">/ {numPages || "—"}</span>
-      <button class="pdf-btn" title="next page" onclick={goNext} disabled={!numPages || currentPage >= numPages}>
+      <button class="pdf-btn" title={t("pdf.nextPage")} onclick={goNext} disabled={!numPages || currentPage >= numPages}>
         <Icon icon={ChevronRight}  size={14} strokeWidth={1.6} />
       </button>
-      <button class="pdf-btn" title="last page" onclick={goLast} disabled={!numPages || currentPage >= numPages}>
+      <button class="pdf-btn" title={t("pdf.lastPage")} onclick={goLast} disabled={!numPages || currentPage >= numPages}>
         <Icon icon={ChevronsRight} size={14} strokeWidth={1.6} />
       </button>
     </div>
 
     <!-- Right: zoom + fit -->
     <div class="pdf-topbar__section pdf-topbar__right">
-      <button class="pdf-btn" title="zoom out" onclick={zoomOut} disabled={!numPages}>
+      <button class="pdf-btn" title={t("pdf.zoomOut")} onclick={zoomOut} disabled={!numPages}>
         <Icon icon={ZoomOut} size={14} strokeWidth={1.6} />
       </button>
       <span class="pdf-scale-chip">{numPages ? scaleLabel : "—"}</span>
-      <button class="pdf-btn" title="zoom in" onclick={zoomIn} disabled={!numPages}>
+      <button class="pdf-btn" title={t("pdf.zoomIn")} onclick={zoomIn} disabled={!numPages}>
         <Icon icon={ZoomIn}  size={14} strokeWidth={1.6} />
       </button>
       <div class="pdf-vsep"></div>
-      <button class="pdf-btn" title="fit width" onclick={fitWidth} disabled={!numPages}>
+      <button class="pdf-btn" title={t("pdf.fitWidth")} onclick={fitWidth} disabled={!numPages}>
         <Icon icon={Maximize2} size={13} strokeWidth={1.6} />
       </button>
-      <button class="pdf-btn" title="fit page" onclick={fitPage} disabled={!numPages}>
+      <button class="pdf-btn" title={t("pdf.fitPage")} onclick={fitPage} disabled={!numPages}>
         <Icon icon={Shrink}    size={13} strokeWidth={1.6} />
       </button>
     </div>
@@ -237,7 +241,7 @@
           onclick={() => (panelTab = "toc")}
         >
           <Icon icon={List} size={12} strokeWidth={1.6} />
-          Contents
+          {t("pdf.contents")}
         </button>
         <button
           class="pdf-panel__tab"
@@ -245,14 +249,14 @@
           onclick={() => (panelTab = "attachments")}
         >
           <Icon icon={Paperclip} size={12} strokeWidth={1.6} />
-          Attachments
+          {t("pdf.attachments")}
         </button>
       </nav>
 
       <div class="pdf-panel__body">
         {#if panelTab === "toc"}
           {#if outline.length === 0}
-            <p class="pdf-panel__empty">No table of contents</p>
+            <p class="pdf-panel__empty">{t("pdf.noToc")}</p>
           {:else}
             {#snippet tocTree(nodes: OutlineNode[], depth: number)}
               {#each nodes as item}
@@ -273,7 +277,7 @@
 
         {:else if panelTab === "attachments"}
           {#if !attachments || Object.keys(attachments).length === 0}
-            <p class="pdf-panel__empty">No attachments</p>
+            <p class="pdf-panel__empty">{t("pdf.noAttachments")}</p>
           {:else}
             {#each Object.values(attachments) as att}
               <div class="pdf-att-item">{att.filename}</div>
@@ -295,13 +299,13 @@
   <!-- Loading / error overlays -->
   {#if loading}
     <div class="pdf-overlay">
-      <span class="pdf-loading-text">Loading…</span>
+      <span class="pdf-loading-text">{t("pdf.loading")}</span>
     </div>
   {/if}
   {#if errorMsg}
     <div class="pdf-overlay pdf-error-overlay">
       <Icon icon={FileText} size={32} strokeWidth={1.5} />
-      <p>Could not open PDF</p>
+      <p>{t("pdf.couldNotOpen")}</p>
       <code>{errorMsg}</code>
     </div>
   {/if}

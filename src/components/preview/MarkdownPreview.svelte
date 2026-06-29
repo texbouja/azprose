@@ -1,6 +1,8 @@
 <script lang="ts">
 import "mathjax/tex-svg.js";
+import { onDestroy } from "svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { syncLine } from "@/stores/sync-line";
 import {
   renderMarkdown,
   resolveLocalImages,
@@ -9,17 +11,54 @@ import {
 } from "@/lib/markdown-render";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { proseSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type ProseStyle } from "@/stores/prose-settings.svelte";
 
 let {
   value = "",
   filePath = null as string | null,
+  onJumpToLine,
 }: {
   value?: string;
   filePath?: string | null;
+  onJumpToLine?: (line: number) => void;
 } = $props();
 
 let articleEl: HTMLElement;
 let ready = $state(false);
+
+// Map the shared prose settings (headings + ordered-list levels) onto the
+// markdown-it Preview article. preview.css only ships static defaults, so without
+// this the Settings Prose config has no effect on H1-H3 or ordered-list numbering.
+function buildPreviewProseCss(s: ProseStyle): string {
+  const head = (n: 1 | 2 | 3) => {
+    const size = s[`h${n}Size`] as number;
+    const align = s[`h${n}Align`] as string;
+    const font = resolveHeadingFont(s[`h${n}FontFamily`] as ProseStyle["h1FontFamily"], s[`h${n}CustomFontName`] as string);
+    const mt = s[`h${n}MarginTop`] as number;
+    const mb = s[`h${n}MarginBottom`] as number;
+    return `.mdv-prose h${n}{font-size:${size}em;text-align:${align};font-family:${font};margin:${mt}em 0 ${mb}em;}`;
+  };
+  const fontFamily = resolveFontFamily(s.fontFamily, s.customFontName);
+  const monoFont  = resolveMonoFont(s.monoFont);
+  return [
+    `.mdv-prose{font-family:${fontFamily};font-size:${s.fontSize}px;line-height:${s.lineHeight};max-width:${s.maxWidth}px;}`,
+    `.mdv-prose code,.mdv-prose pre{font-family:${monoFont};}`,
+    head(1), head(2), head(3),
+    `.mdv-prose ol{list-style-type:${s.olLevel1};}`,
+    `.mdv-prose ol ol{list-style-type:${s.olLevel2};}`,
+    `.mdv-prose ol ol ol{list-style-type:${s.olLevel3};}`,
+  ].join("\n");
+}
+
+// Inject a style element derived from prose settings; re-runs on any change.
+$effect(() => {
+  const css = buildPreviewProseCss(proseSettings.current);
+  const el = document.createElement("style");
+  el.id = "mdv-preview-prose-css";
+  el.textContent = css;
+  document.head.appendChild(el);
+  return () => el.remove();
+});
 
 // Track the resolved theme from <html data-theme="...">
 let currentTheme = $state<Theme>(
@@ -39,6 +78,31 @@ $effect(() => {
     if (!cancelled) ready = true;
   });
   return () => { cancelled = true; };
+});
+
+// Returns the last [data-sline] block that starts at or before targetLine.
+// This is the block containing that source line (blocks can span many lines).
+function findSlineBlock(root: HTMLElement, targetLine: number): HTMLElement | null {
+  let result: HTMLElement | null = null;
+  for (const el of root.querySelectorAll<HTMLElement>("[data-sline]")) {
+    if (Number(el.dataset.sline) <= targetLine) result = el;
+    else break;
+  }
+  return result ?? root.querySelector<HTMLElement>("[data-sline]");
+}
+
+// Capture the first visible block when switching away from preview.
+onDestroy(() => {
+  if (!articleEl) return;
+  const container = articleEl.parentElement;
+  if (!container) return;
+  const top = container.getBoundingClientRect().top;
+  for (const el of articleEl.querySelectorAll<HTMLElement>("[data-sline]")) {
+    if (el.getBoundingClientRect().bottom > top + 4) {
+      syncLine.current = Number(el.dataset.sline);
+      return;
+    }
+  }
 });
 
 // Apply MathJax preamble + typeset the rendered article.
@@ -64,6 +128,14 @@ $effect(() => {
   void renderMarkdown(src, theme).then(async (html) => {
     if (cancelled || !articleEl) return;
     articleEl.innerHTML = html;
+
+    // Restore scroll position from editor mode (editor → preview switch).
+    if (syncLine.current != null) {
+      const target = findSlineBlock(articleEl, syncLine.current);
+      syncLine.current = null;
+      target?.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+
     cleanupCode();
     cleanupCode = decorateCodeBlocks(articleEl);
     if (filePath) await resolveLocalImages(articleEl, filePath);
@@ -107,7 +179,16 @@ $effect(() => {
   {:else if value.trim().length === 0}
     <div class="mdv-preview__empty">document vide</div>
   {:else}
-    <article bind:this={articleEl} class="mdv-prose"></article>
+    <article
+    bind:this={articleEl}
+    class="mdv-prose"
+    ondblclick={(e) => {
+      const block = (e.target as HTMLElement).closest<HTMLElement>("[data-sline]");
+      if (!block || !onJumpToLine) return;
+      const line = Number(block.dataset.sline);
+      if (Number.isFinite(line)) onJumpToLine(line);
+    }}
+  ></article>
   {/if}
 </div>
 

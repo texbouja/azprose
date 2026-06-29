@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Icon } from "@/components/primitives";
-import { X } from "@/lib/icons";
+import { X, Eye } from "@/lib/icons";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 
@@ -18,12 +18,18 @@ let {
   onSelect,
   onClose,
   onReorder,
+  splitOn = false,
+  canSplit = false,
+  onToggleSplit,
 }: {
   tabs?: Tab[];
   activeTabId?: string | null;
   onSelect?: (id: string) => void;
   onClose?: (id: string) => void;
   onReorder?: (from: number, to: number) => void;
+  splitOn?: boolean;
+  canSplit?: boolean;
+  onToggleSplit?: (id: string) => void;
 } = $props();
 
 let t = $derived(getT($language));
@@ -81,12 +87,12 @@ function onListPointerMove(e: PointerEvent) {
   dragOverIndex = indexAtX(e.clientX);
 }
 
-function endDrag() {
+function endDrag(e: PointerEvent) {
   const drag = dragPtr;
   if (!drag) return;
   if (drag.moved) {
     suppressClick = true;
-    const target = indexAtX(drag.startX);
+    const target = indexAtX(e.clientX);
     if (onReorder && target !== null && target !== drag.fromIndex) {
       onReorder(drag.fromIndex, target);
     }
@@ -134,6 +140,18 @@ function endDrag() {
         <span class="mdv-tab__dot" aria-hidden="true" />
         <span class="mdv-tab__label">{tab.title}</span>
       </button>
+      {#if canSplit && active}
+        <button
+          type="button"
+          class="mdv-tab__split"
+          class:is-active={splitOn}
+          aria-label="Toggle split preview"
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={() => onToggleSplit?.(tab.id)}
+        >
+          <Icon icon={Eye} size={13} strokeWidth={1.8} />
+        </button>
+      {/if}
       <button
         type="button"
         class="mdv-tab__close"

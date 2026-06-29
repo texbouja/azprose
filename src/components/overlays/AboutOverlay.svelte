@@ -3,7 +3,11 @@ import { Download, FileText, FolderOpen, Globe, Palette, Star, Workflow, X } fro
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button, Icon, Overlay } from "@/components/primitives";
+import { getT } from "@/lib/i18n";
+import { language } from "@/lib/i18n";
 import mascotUrl from "@/assets/mascot/excite.png";
+
+let t = $derived(getT($language));
 
 let {
   open,
@@ -19,11 +23,11 @@ const REPO_URL = "https://github.com/azprose/azprose";
 const SITE_URL = "https://azprose.app";
 
 const FEATURES = [
-  { icon: FileText, label: "markdown", detail: "WYSIWYM" },
-  { icon: Palette, label: "math", detail: "MathJax" },
-  { icon: FolderOpen, label: "projets", detail: "vaults" },
-  { icon: Workflow, label: "LaTeX", detail: "compilation" },
-  { icon: Download, label: "PDF", detail: "export + linking" },
+  { icon: FileText, label: "about.feature.markdown", detail: "about.feature.markdownDetail" },
+  { icon: Palette, label: "about.feature.math", detail: "about.feature.mathDetail" },
+  { icon: FolderOpen, label: "about.feature.projects", detail: "about.feature.projectsDetail" },
+  { icon: Workflow, label: "about.feature.latex", detail: "about.feature.latexDetail" },
+  { icon: Download, label: "about.feature.pdf", detail: "about.feature.pdfDetail" },
 ];
 
 let cachedVersion: string | null = null;
@@ -69,12 +73,12 @@ const handleOpen = async (url: string) => {
   <Icon icon={X} size={14} strokeWidth={1.5} />
 {/snippet}
 
-<Overlay {open} {onClose} ariaLabel="about AZprose" variant="modal">
+<Overlay {open} {onClose} ariaLabel={t("about.ariaLabel")} variant="modal">
   <header class="mdv-about__header">
-    <span class="mdv-about__eyebrow">about</span>
+    <span class="mdv-about__eyebrow">{t("about.eyebrow")}</span>
     <Button
-      title="close (esc)"
-      aria-label="close"
+      title={t("about.closeTitle")}
+      aria-label={t("about.closeLabel")}
       onclick={onClose}
       icon={aboutCloseIcon}
     />
@@ -95,7 +99,7 @@ const handleOpen = async (url: string) => {
     <div class="mdv-about__version">
       <span class="mdv-about__version-num">{version ? `v${version}` : "v\u2026"}</span>
       <span class="mdv-about__dot" aria-hidden="true"> · </span>
-      <span>MIT</span>
+      <span>{t("about.license")}</span>
     </div>
     {#if onCheckForUpdates}
       <button
@@ -105,19 +109,19 @@ const handleOpen = async (url: string) => {
         disabled={checking}
       >
         <Icon icon={Download} size={12} strokeWidth={1.5} />
-        {checking ? "checking\u2026" : "check for updates"}
+        {checking ? t("about.checking") : t("about.checkForUpdates")}
       </button>
     {/if}
     <p class="mdv-about__tagline">
-      éditeur de texte scientifique — Markdown, LaTeX, PDF.
+      {t("about.tagline")}
     </p>
 
-    <div class="mdv-about__features" aria-label="AZprose features">
+    <div class="mdv-about__features" aria-label={t("about.featuresAria")}>
       {#each FEATURES as feature}
         <div class="mdv-about__feature">
           <Icon icon={feature.icon} size={13} strokeWidth={1.6} />
-          <span class="mdv-about__feature-label">{feature.label}</span>
-          <span class="mdv-about__feature-detail">{feature.detail}</span>
+          <span class="mdv-about__feature-label">{t(feature.label)}</span>
+          <span class="mdv-about__feature-detail">{t(feature.detail)}</span>
         </div>
       {/each}
     </div>
@@ -129,7 +133,7 @@ const handleOpen = async (url: string) => {
         onclick={() => void handleOpen(REPO_URL)}
       >
         <Icon icon={Star} size={13} strokeWidth={1.5} />
-        star on github
+        {t("about.starOnGithub")}
       </button>
       <button
         type="button"
@@ -137,12 +141,12 @@ const handleOpen = async (url: string) => {
         onclick={() => void handleOpen(SITE_URL)}
       >
         <Icon icon={Globe} size={13} strokeWidth={1.5} />
-        azprose.app
+        {t("about.site")}
       </button>
     </div>
   </div>
 
   <footer class="mdv-about__footer">
-    <span>fork de marka.md · MIT</span>
+    <span>{t("about.footer")}</span>
   </footer>
 </Overlay>

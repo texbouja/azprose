@@ -1,14 +1,23 @@
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::State;
+use serde::{Deserialize, Serialize};
 
 use tauri::{Emitter, Manager};
 #[cfg(target_os = "macos")]
 use tauri::RunEvent;
 
+mod opencode;
+use opencode::OpenCodeWebview;
+
 struct PendingOpenFiles(Mutex<Vec<String>>);
+struct PendingProjectFolders(Mutex<HashMap<String, String>>);
+struct OpenProjectWindows(Mutex<HashMap<String, String>>);
 
 fn is_supported_ext(ext: &str) -> bool {
     matches!(
@@ -106,12 +115,204 @@ fn reveal_in_file_manager(path: String) {
 }
 
 #[tauri::command]
+fn export_pdf() -> bool {
+    cfg!(target_os = "linux")
+}
+
+#[tauri::command]
 fn take_pending_open_files(state: State<'_, PendingOpenFiles>) -> Vec<String> {
     let mut pending = state
         .0
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     std::mem::take(&mut *pending)
+}
+
+#[tauri::command]
+fn store_project_folder(state: State<'_, PendingProjectFolders>, label: String, path: String) {
+    let mut map = state
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    map.insert(label, path);
+}
+
+#[tauri::command]
+fn take_project_folder(state: State<'_, PendingProjectFolders>, label: String) -> Option<String> {
+    let mut map = state
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    map.remove(&label)
+}
+
+#[tauri::command]
+fn register_project_window(
+    state: State<'_, OpenProjectWindows>,
+    label: String,
+    path: String,
+) {
+    let mut map = state
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    map.insert(path, label);
+}
+
+#[tauri::command]
+fn unregister_project_window(state: State<'_, OpenProjectWindows>, label: String) {
+    let mut map = state
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    map.retain(|_, v| v != &label);
+}
+
+#[tauri::command]
+fn find_project_window(state: State<'_, OpenProjectWindows>, path: String) -> Option<String> {
+    let map = state
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    map.get(&path).cloned()
+}
+
+#[derive(Serialize, Deserialize)]
+struct ProjectEntry {
+    name: String,
+    path: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CustomThemeEntry {
+    name: String,
+    css: String,
+}
+
+fn custom_themes_dir(app: &tauri::AppHandle) -> PathBuf {
+    let mut dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    dir.push("themes");
+    dir
+}
+
+#[tauri::command]
+fn install_custom_theme(app: tauri::AppHandle, name: String, css: String) -> Result<(), String> {
+    let dir = custom_themes_dir(&app);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{name}.css"));
+    fs::write(&path, &css).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_custom_theme(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    let path = custom_themes_dir(&app).join(format!("{name}.css"));
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn list_custom_themes(app: tauri::AppHandle) -> Vec<CustomThemeEntry> {
+    let dir = custom_themes_dir(&app);
+    let _ = fs::create_dir_all(&dir);
+    let mut entries = Vec::new();
+    if let Ok(read_dir) = fs::read_dir(&dir) {
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("css") {
+                if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+                    if let Ok(css) = fs::read_to_string(&path) {
+                        entries.push(CustomThemeEntry {
+                            name: name.to_string(),
+                            css,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    entries
+}
+
+fn projects_list_path(app: &tauri::AppHandle) -> PathBuf {
+    let mut dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    dir.push("projects.json");
+    dir
+}
+
+fn load_projects_list(app: &tauri::AppHandle) -> Vec<ProjectEntry> {
+    let path = projects_list_path(app);
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_projects_list(app: &tauri::AppHandle, projects: &[ProjectEntry]) {
+    let path = projects_list_path(app);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(raw) = serde_json::to_string_pretty(projects) {
+        let _ = fs::write(&path, &raw);
+    }
+}
+
+#[tauri::command]
+fn get_projects_list(app: tauri::AppHandle) -> Vec<ProjectEntry> {
+    load_projects_list(&app)
+}
+
+#[tauri::command]
+fn add_project(app: tauri::AppHandle, name: String, path: String) {
+    let mut projects = load_projects_list(&app);
+    if !projects.iter().any(|p| p.path == path) {
+        projects.push(ProjectEntry { name, path });
+        save_projects_list(&app, &projects);
+    }
+}
+
+#[tauri::command]
+fn remove_project(app: tauri::AppHandle, path: String) {
+    let mut projects = load_projects_list(&app);
+    projects.retain(|p| p.path != path);
+    save_projects_list(&app, &projects);
+}
+
+#[tauri::command]
+fn set_external_change_alerts(app: tauri::AppHandle, on: bool) {
+    let payload = if on { "on" } else { "off" };
+    let _ = app.emit("azprose:set-alerts", payload);
+}
+
+#[tauri::command]
+fn read_project_config(root: String) -> Result<String, String> {
+    let path = Path::new(&root).join(".azprose/config.json");
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        fs::write(&path, "{}\n").map_err(|e| e.to_string())?;
+        return Ok("{}\n".to_string());
+    }
+    fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_project_config(root: String, content: String) -> Result<(), String> {
+    let path = Path::new(&root).join(".azprose/config.json");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&path, &content).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -123,6 +324,10 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
+        .manage(PendingProjectFolders(Mutex::new(HashMap::new())))
+        .manage(OpenProjectWindows(Mutex::new(HashMap::new())))
+        .manage(opencode::OpenCodeServer(Mutex::new(None)))
+        .manage(OpenCodeWebview(Mutex::new(None)))
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let paths: Vec<String> = args
                 .iter()
@@ -151,7 +356,31 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![take_pending_open_files, reveal_in_file_manager])
+        .invoke_handler(tauri::generate_handler![
+            take_pending_open_files,
+            store_project_folder,
+            take_project_folder,
+            register_project_window,
+            unregister_project_window,
+            find_project_window,
+            set_external_change_alerts,
+            reveal_in_file_manager,
+            export_pdf,
+            read_project_config,
+            write_project_config,
+            get_projects_list,
+            add_project,
+            remove_project,
+            list_custom_themes,
+            install_custom_theme,
+            remove_custom_theme,
+            opencode::start_opencode_server,
+            opencode::stop_opencode_server,
+            opencode::get_opencode_server_url,
+            opencode::check_opencode_available,
+            opencode::open_opencode_sidebar,
+            opencode::close_opencode_sidebar,
+        ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]
             {

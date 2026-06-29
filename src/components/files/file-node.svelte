@@ -28,6 +28,7 @@ let {
 
 function onDragStart(e: DragEvent) {
   e.dataTransfer?.setData(DRAG_MIME, entry.path);
+  e.dataTransfer?.setData("text/plain", entry.path);
   if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
 }
 

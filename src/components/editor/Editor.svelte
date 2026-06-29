@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
+import { syncLine } from "@/stores/sync-line";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -11,10 +12,14 @@ let {
   value = "",
   onChange,
   language = "md",
+  jumpToLine = null as number | null,
+  onJumpApplied,
 }: {
   value?: string;
   onChange?: (next: string) => void;
   language?: string;
+  jumpToLine?: number | null;
+  onJumpApplied?: () => void;
 } = $props();
 
 let hostEl: HTMLDivElement;
@@ -49,10 +54,33 @@ onMount(() => {
   });
 
   view = new EditorView({ state, parent: hostEl });
+
+  // Restore position from a previous mode (preview → editor switch).
+  const targetLine = jumpToLine ?? syncLine.current;
+  if (targetLine != null) {
+    const lineNum = Math.min(Math.max(targetLine + 1, 1), view.state.doc.lines);
+    const pos = view.state.doc.line(lineNum).from;
+    view.dispatch({
+      selection: { anchor: pos, head: pos },
+      effects: EditorView.scrollIntoView(pos, { y: "start" }),
+    });
+    if (jumpToLine != null) {
+      view.focus();
+      onJumpApplied?.();
+    }
+    syncLine.current = null;
+  }
 });
 
 onDestroy(() => {
-  view?.destroy();
+  if (view) {
+    // Capture the first visible source line so the next mode can restore position.
+    const firstPos = view.visibleRanges[0]?.from;
+    if (firstPos != null) {
+      syncLine.current = view.state.doc.lineAt(firstPos).number - 1; // 0-based
+    }
+    view.destroy();
+  }
 });
 
 $effect(() => {

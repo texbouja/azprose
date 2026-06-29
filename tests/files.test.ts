@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { isVisibleTreeEntryName, relativePath } from "../src/lib/files";
 
-test("shows common dot-prefixed tool folders", () => {
-  for (const name of [".agent", ".claude", ".codex", ".cursor", ".github", ".vscode"]) {
-    expect(isVisibleTreeEntryName(name)).toBe(true);
+test("hides all dot-prefixed entries (unix hidden files)", () => {
+  for (const name of [".agent", ".vscode", ".github", ".azprose", ".hidden"]) {
+    expect(isVisibleTreeEntryName(name)).toBe(false);
   }
 });
 

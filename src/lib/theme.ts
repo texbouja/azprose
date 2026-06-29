@@ -1,40 +1,43 @@
 import { STORAGE_KEYS } from "./storage";
 
-export type Theme =
+export type BuiltinTheme =
   | "latte"
   | "mono"
   | "mono-dark"
   | "frappe"
   | "macchiato"
   | "mocha"
-  | "matcha"
-  | "kanagawa"
-  | "rose-pine"
-  | "ayu"
-  | "claude"
-  | "codex"
-  | "gemini"
-  | "cursor";
+  | "gruvbox-dark-hard"
+  | "gruvbox-dark-medium"
+  | "gruvbox-dark-soft"
+  | "gruvbox-light-hard"
+  | "gruvbox-light-medium"
+  | "gruvbox-light-soft";
+export type Theme = BuiltinTheme | (string & Record<never, never>);
 export type ThemeMode = "system" | Theme;
 export type ThemeChoice = { value: ThemeMode; label: string };
 export type ThemeGroup = { label: string; choices: ThemeChoice[] };
 
-const VALID: ReadonlyArray<ThemeMode> = [
-  "system",
+export const BUILTIN_THEMES: readonly BuiltinTheme[] = [
   "latte",
   "mono",
   "mono-dark",
   "frappe",
   "macchiato",
   "mocha",
-  "matcha",
-  "kanagawa",
-  "rose-pine",
-  "ayu",
-  "claude",
-  "codex",
-  "gemini",
-  "cursor",
+  "gruvbox-dark-hard",
+  "gruvbox-dark-medium",
+  "gruvbox-dark-soft",
+  "gruvbox-light-hard",
+  "gruvbox-light-medium",
+  "gruvbox-light-soft",
+];
+
+export const PREINSTALLED_ADDONS: { name: string; label: string; type: "light" | "dark" }[] = [
+  { name: "matcha", label: "matcha", type: "light" },
+  { name: "kanagawa", label: "kanagawa", type: "dark" },
+  { name: "rose-pine", label: "rose pine", type: "dark" },
+  { name: "ayu", label: "ayu", type: "dark" },
 ];
 
 export const THEME_GROUPS: ThemeGroup[] = [
@@ -56,22 +59,19 @@ export const THEME_GROUPS: ThemeGroup[] = [
     ],
   },
   {
-    label: "ai",
+    label: "gruvbox",
     choices: [
-      { value: "claude", label: "claude" },
-      { value: "codex", label: "codex" },
-      { value: "gemini", label: "gemini" },
-      { value: "cursor", label: "cursor" },
+      { value: "gruvbox-dark-hard",   label: "dark hard" },
+      { value: "gruvbox-dark-medium", label: "dark" },
+      { value: "gruvbox-dark-soft",   label: "dark soft" },
+      { value: "gruvbox-light-hard",  label: "light hard" },
+      { value: "gruvbox-light-medium",label: "light" },
+      { value: "gruvbox-light-soft",  label: "light soft" },
     ],
   },
   {
     label: "crafted",
-    choices: [
-      { value: "matcha", label: "matcha" },
-      { value: "kanagawa", label: "kanagawa" },
-      { value: "rose-pine", label: "rose pine" },
-      { value: "ayu", label: "ayu" },
-    ],
+    choices: [],
   },
 ];
 
@@ -80,7 +80,7 @@ for (const group of THEME_GROUPS) {
   THEME_CHOICES.push(...group.choices);
 }
 
-export const THEME_HINTS: Record<ThemeMode, string> = {
+export const THEME_HINTS: Record<string, string> = {
   system: "follow macOS appearance",
   latte: "catppuccin light",
   mono: "plain black and white",
@@ -92,10 +92,12 @@ export const THEME_HINTS: Record<ThemeMode, string> = {
   kanagawa: "ink-wash dark",
   "rose-pine": "rose pine dark",
   ayu: "ayu mirage dark",
-  claude: "warm parchment + terracotta",
-  codex: "openai black + green",
-  gemini: "blue and violet glow",
-  cursor: "warm editor neutrals",
+  "gruvbox-dark-hard":   "gruvbox dark — contraste maximum",
+  "gruvbox-dark-medium": "gruvbox dark — classique",
+  "gruvbox-dark-soft":   "gruvbox dark — contraste réduit",
+  "gruvbox-light-hard":  "gruvbox light — contraste maximum",
+  "gruvbox-light-medium":"gruvbox light — classique",
+  "gruvbox-light-soft":  "gruvbox light — contraste réduit",
 };
 
 const STORAGE_KEY = STORAGE_KEYS.themeMode;
@@ -108,7 +110,7 @@ export function readMode(): ThemeMode {
   if (typeof window === "undefined") return "latte";
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
-    if (v && (VALID as readonly string[]).includes(v)) return v as ThemeMode;
+    if (v) return v as ThemeMode;
   } catch {
     // ignore
   }

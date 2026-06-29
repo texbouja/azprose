@@ -4,11 +4,13 @@
   "version": "0.1.0",
   "author": "Sadik Boujaida <alijouahri61@gmail.com>",
   "contributors": [
-    "Anthropic Claude <claude@anthropic.com>"
+    "Anthropic Claude <claude@anthropic.com>",
+    "OpenCode <hello@opencode.ai>"
   ],
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "postinstall": "rm -rf node_modules/.vite",
     "build": "tsc && vite build",
     "test": "bun test",
     "preview": "vite preview",

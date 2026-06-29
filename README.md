@@ -20,12 +20,16 @@ Fonctions de base d'un éditeur LaTeX avec viualisation PDF intégrée et prise 
   - [x] ajout du support du texte mathématique avec Mathjax, compatible prosemark/latex; 
 
 - [x] Phase 2 — Lecteurs multimédia. 
-  - [x] visonneuse des formats d'images courants (webview); 
+  - [x] visionneuse des formats d'images courants (webview); 
   - [x] lecteur PDF (PDFjs).
-  - [ ] support de Marp 
+  - [ ] ~~support de Marp~~
+  - [x] mode Présentation basique mais bien intégré dans l'ensemble. 
 
-- [ ] Phase 4 — support LaTeX étendu
+- [ ] Phase 4 — support LaTeX.
 - [ ] Phase 5 — support Typst. 
+- [ ] Phase 6 - moteur d'indexation pour une recherche rapide dans le contenu.
+- [ ] Phase 7 - ajout d'un correcteur d'orthographe ;
+- [ ] Phase 8 - intégration d'OpenCode "The open source AI coding agent".
 
 ## raccourcis clavier
 

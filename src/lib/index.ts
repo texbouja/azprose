@@ -2,6 +2,7 @@ export {
   getSystemTheme,
   previewTheme,
   THEME_GROUPS,
+  PREINSTALLED_ADDONS,
   type Theme,
   type ThemeMode,
 } from "./theme";
@@ -19,6 +20,8 @@ export {
   type WritingLineHeight,
 } from "./writing-display";
 export { CHANGELOG_URL, getWhatsNewToastMessage } from "./release-notes";
+export { loadProjectConfig, saveProjectConfig, configPath } from "./project-config";
+export type { ProjectConfig } from "./project-config";
 export { buildCommands } from "./commands";
 export { filterAndRankCommands } from "./command-search";
 export { isCsvPath } from "./csv";
@@ -39,6 +42,8 @@ export {
   createFolder,
   renameEntry,
   removeEntry,
+  getMtime,
+  moveEntry,
   type FileEntry,
   type FlatFileEntry,
 } from "./files";

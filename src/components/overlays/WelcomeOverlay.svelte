@@ -1,10 +1,14 @@
 <script lang="ts">
 import { ChevronLeft, ChevronRight, FolderOpen, Sparkles } from "@/lib/icons";
 import { Button, Icon, Kbd, Overlay, Shortcut } from "@/components/primitives";
+import { getT } from "@/lib/i18n";
+import { language } from "@/lib/i18n";
 import logoUrl from "@/assets/mascot/mdview-transpa-bg.png";
 import notebookUrl from "@/assets/mascot/notebook.png";
 import penUrl from "@/assets/mascot/pen.png";
 import exciteUrl from "@/assets/mascot/excite.png";
+
+let t = $derived(getT($language));
 
 let {
   open,
@@ -25,23 +29,23 @@ type Slide = {
 const SLIDES: Slide[] = [
   {
     mascot: logoUrl,
-    title: "bienvenue dans AZprose",
-    body: "éditeur de texte scientifique. Markdown, LaTeX, PDF. tout reste local.",
+    title: "welcome.slide1.title",
+    body: "welcome.slide1.body",
   },
   {
     mascot: notebookUrl,
-    title: "ouvrez votre espace de travail",
-    body: "pressez ⌘⇧O pour ouvrir un dossier. utilisez la barre latérale pour naviguer dans vos fichiers.",
+    title: "welcome.slide2.title",
+    body: "welcome.slide2.body",
   },
   {
     mascot: penUrl,
-    title: "écrivez en Markdown",
-    body: "l'éditeur WYSIWYM fusionne la rédaction et la prévisualisation. les maths LaTeX via MathJax sont rendues en direct.",
+    title: "welcome.slide3.title",
+    body: "welcome.slide3.body",
   },
   {
     mascot: exciteUrl,
-    title: "prêt quand vous l'êtes",
-    body: "utilisez ⌘K pour les commandes, les thèmes, la langue et l'aide.",
+    title: "welcome.slide4.title",
+    body: "welcome.slide4.body",
   },
 ];
 
@@ -95,7 +99,7 @@ $effect(() => {
   <Icon icon={ChevronRight} size={14} strokeWidth={1.75} />
 {/snippet}
 
-<Overlay {open} {onClose} ariaLabel="bienvenue dans AZprose" variant="modal">
+<Overlay {open} {onClose} ariaLabel={t("welcome.ariaLabel")} variant="modal">
   <div class="mdv-welcome">
     <div class="mdv-welcome__slide">
       <img
@@ -107,53 +111,53 @@ $effect(() => {
         draggable={false}
         class="mdv-welcome__art"
       />
-      <h1 class="mdv-welcome__title">{slide.title}</h1>
-      <p class="mdv-welcome__body">{slide.body}</p>
+      <h1 class="mdv-welcome__title">{t(slide.title)}</h1>
+      <p class="mdv-welcome__body">{t(slide.body)}</p>
     </div>
 
-    <div class="mdv-welcome__dots" aria-label="tutorial progress">
+    <div class="mdv-welcome__dots" aria-label={t("welcome.progress")}>
       {#each SLIDES as _, i}
         <button
           type="button"
           class="mdv-welcome__dot{i === step ? " is-active" : ""}"
           onclick={() => step = i}
           aria-current={i === step ? "step" : undefined}
-          aria-label="step {i + 1}"
+          aria-label={t("welcome.step", { n: i + 1 })}
         ></button>
       {/each}
     </div>
 
     <div class="mdv-welcome__actions">
       {#if !isFirst}
-        <Button onclick={prev} icon={chevronLeftIcon}>back</Button>
+        <Button onclick={prev} icon={chevronLeftIcon}>{t("welcome.back")}</Button>
       {:else}
-        <Button onclick={onClose}>skip</Button>
+        <Button onclick={onClose}>{t("welcome.skip")}</Button>
       {/if}
       {#if isLast}
-        <Button onclick={onClose} icon={sparklesIcon}>explore the demo</Button>
+        <Button onclick={onClose} icon={sparklesIcon}>{t("welcome.exploreDemo")}</Button>
         <Button
           variant="solid"
           onclick={() => { onClose(); void onOpenFolder(); }}
           icon={folderOpenIcon}
         >
-          open a folder
+          {t("welcome.openFolder")}
         </Button>
       {:else}
-        <Button variant="solid" onclick={next} iconRight={chevronRightIcon}>next</Button>
+        <Button variant="solid" onclick={next} iconRight={chevronRightIcon}>{t("welcome.next")}</Button>
       {/if}
     </div>
 
     <div class="mdv-welcome__hint">
       {#if isLast}
-        <Shortcut keys="⌘+⇧+O" /> <span>open a folder</span>
+        <Shortcut keys="⌘+⇧+O" /> <span>{t("welcome.hintOpenFolder")}</span>
         <span class="mdv-welcome__hint-sep">·</span>
-        <Kbd>↵</Kbd> <span>or click</span>
+        <Kbd>↵</Kbd> <span>{t("welcome.hintOrClick")}</span>
         <span class="mdv-welcome__hint-sep">·</span>
-        <Kbd>esc</Kbd> <span>close</span>
+        <Kbd>esc</Kbd> <span>{t("welcome.hintClose")}</span>
       {:else}
-        <Kbd>↵</Kbd> <span>or</span> <Kbd>→</Kbd> <span>next</span>
+        <Kbd>↵</Kbd> <span>{t("welcome.hintOr")}</span> <Kbd>→</Kbd> <span>{t("welcome.hintNext")}</span>
         <span class="mdv-welcome__hint-sep">·</span>
-        <Kbd>esc</Kbd> <span>close</span>
+        <Kbd>esc</Kbd> <span>{t("welcome.hintClose")}</span>
       {/if}
     </div>
   </div>

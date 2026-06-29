@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { HighlightStyle, LanguageSupport, StreamLanguage } from "@codemirror/language";
+import { HighlightStyle, LanguageSupport, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { markdown } from "@codemirror/lang-markdown";
 import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
@@ -13,13 +13,31 @@ import { rust } from "@codemirror/lang-rust";
 import { stex } from "@codemirror/legacy-modes/mode/stex";
 import { clojure } from "@codemirror/legacy-modes/mode/clojure";
 import { tags as t } from "@lezer/highlight";
+import {
+  mathMarkdownSyntaxExtension,
+  mathDelimiterTag,
+  mathFormulaTag,
+} from "@prosemark/core";
+
+const mathHighlight = syntaxHighlighting(HighlightStyle.define([
+  { tag: mathDelimiterTag, color: "var(--syntax-keyword)" },
+  { tag: mathFormulaTag, color: "var(--syntax-string)" },
+]));
 
 export function languageFromExt(ext: string): LanguageSupport {
   switch (ext) {
     case "md":
     case "markdown":
-    case "mdx":
-      return markdown();
+    case "mdx": {
+      const md = markdown({
+        codeLanguages: (info) =>
+          ["stex", "tex", "latex", "math"].includes(info)
+            ? StreamLanguage.define(stex)
+            : null,
+        extensions: [mathMarkdownSyntaxExtension],
+      });
+      return new LanguageSupport(md.language, [md.support, mathHighlight]);
+    }
     case "html":
     case "htm":
     case "xhtml":

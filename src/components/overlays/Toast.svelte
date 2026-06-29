@@ -1,8 +1,12 @@
 <script lang="ts">
 import { X } from "@/lib/icons";
 import { Button, Icon } from "@/components/primitives";
+import { getT } from "@/lib/i18n";
+import { language } from "@/lib/i18n";
 import sadUrl from "@/assets/mascot/sad.png";
 import exciteUrl from "@/assets/mascot/excite.png";
+
+let t = $derived(getT($language));
 
 export type ToastAction = {
   label: string;
@@ -100,8 +104,8 @@ let art = $derived(variant === "info" ? exciteUrl : sadUrl);
     {/if}
     <Button
       class="mdv-toast__dismiss"
-      title="dismiss"
-      aria-label="dismiss"
+      title={t("toast.dismiss")}
+      aria-label={t("toast.dismiss")}
       onclick={dismissWithExit}
       icon={dismissIcon}
     />

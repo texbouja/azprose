@@ -159,14 +159,7 @@ export type FlatFileEntry = {
 };
 
 /** Modern dev/AI tool folders that start with a dot but are not hidden files. */
-const DOT_PREFIX_ALLOWLIST = new Set([
-  ".agent",
-  ".claude",
-  ".codex",
-  ".cursor",
-  ".github",
-  ".vscode",
-]);
+const DOT_PREFIX_ALLOWLIST = new Set<string>();
 
 export function isVisibleTreeEntryName(name: string): boolean {
   return !name.startsWith(".") || DOT_PREFIX_ALLOWLIST.has(name);
@@ -338,4 +331,14 @@ export async function createFile(parent: string, name: string): Promise<string> 
 /** Permanently delete a file or folder (recursive for dirs). */
 export async function removeEntry(path: string, isDir: boolean): Promise<void> {
   await remove(path, isDir ? { recursive: true } : undefined);
+}
+
+/** Get the last modification timestamp (ms) of a file, or null if unavailable. */
+export async function getMtime(path: string): Promise<number | null> {
+  try {
+    const info = await stat(path);
+    return info.mtime ? info.mtime.getTime() : null;
+  } catch {
+    return null;
+  }
 }

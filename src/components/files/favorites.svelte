@@ -52,7 +52,7 @@ const DRAG_MIME = "application/x-azprose-path";
         ondragover={(e) => {
           if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
           e.preventDefault();
-          if (e.dataTransfer) e.dataTransfer.dropEffect = "link";
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
           dropOver = true;
         }}
         ondragleave={() => dropOver = false}
@@ -60,6 +60,7 @@ const DRAG_MIME = "application/x-azprose-path";
           const src = e.dataTransfer?.getData(DRAG_MIME);
           if (!src) { dropOver = false; return; }
           e.preventDefault();
+          e.stopPropagation();
           dropOver = false;
           onToggleFavorite(src);
         }}
@@ -100,6 +101,7 @@ const DRAG_MIME = "application/x-azprose-path";
               }}
               ondrop={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 if (dragIndex !== null && dragIndex !== i) onReorder(dragIndex, i);
                 dragIndex = null;
                 overIndex = null;

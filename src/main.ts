@@ -12,8 +12,31 @@ const _mjPkgs: string[] = JSON.parse(
     paths: { mathjax: "/mathjax" },
     ...(_mjPkgs.length > 0 && { load: _mjPkgs.map(p => `[tex]/${p}`) }),
   },
+  // ProseMark drives its own render cycle — MathJax must not scan the DOM on startup.
+  // (V4 default is typeset: true, which conflicts with widget-based rendering.)
+  startup: { typeset: false },
   ...(_mjPkgs.length > 0 && { tex: { packages: { "[+]": _mjPkgs } } }),
-  options: { enableSpeech: false },
+  // V4 activates a11y extensions by default (unlike V3). SRE crashes under WebKitGTK.
+  // Disable the full enrichment pipeline: speech, braille, explorer and complexity
+  // all depend on semantic-enrich, so disabling enrichment is the root switch.
+  // The menu's default `enrich: true` is also overridden here to prevent SRE loading
+  // via the contextual menu pathway.
+  options: {
+    enableEnrichment: false,
+    enableSpeech: false,
+    enableBraille: false,
+    enableExplorer: false,
+    enableComplexity: false,
+    menuOptions: {
+      settings: {
+        enrich: false,
+        speech: false,
+        braille: false,
+        assistiveMml: false,
+        voicing: false,
+      },
+    },
+  },
 };
 
 window.addEventListener("error", (e) => {

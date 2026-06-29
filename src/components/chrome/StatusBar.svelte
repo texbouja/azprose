@@ -2,6 +2,10 @@
   import { CircleHelp } from "@/lib/icons";
   import { Button, Icon } from "@/components/primitives";
   import { shortcutLabel } from "@/lib";
+  import { getT } from "@/lib/i18n";
+  import { language } from "@/lib/i18n";
+
+  let t = $derived(getT($language));
 
   let {
     fileName,
@@ -32,16 +36,16 @@
     {#if vimMode}
       <span class="mdv-vim-pill mdv-vim-pill--{vimMode}">{vimModeLabel(vimMode)}</span>
     {/if}
-    <span data-tauri-drag-region>{fileName ?? "untitled"}</span>
+    <span data-tauri-drag-region>{fileName ?? t("statusbar.untitled")}</span>
   </div>
   <div class="mdv-statusbar__group" data-tauri-drag-region>
-    <span>{words} {words === 1 ? "word" : "words"}</span>
+    <span>{t("statusbar.words", { count: words })}</span>
     <span>·</span>
-    <span>{minutes} min read</span>
+    <span>{t("statusbar.minRead", { minutes })}</span>
     <Button
       class="mdv-statusbar__help"
-      data-tooltip={shortcutLabel("how to use (⌘/)")}
-      aria-label="how to use"
+      data-tooltip={shortcutLabel(t("statusbar.howToUse") + " (⌘/)")}
+      aria-label={t("statusbar.howToUse")}
       onclick={onShowHelp}
     >
       {#snippet icon()}

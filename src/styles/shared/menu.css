@@ -74,6 +74,7 @@
 }
 
 .mdv-menu--theme {
+  position: relative;
   min-width: 300px;
   max-height: min(560px, calc(100vh - 112px));
   overflow-y: auto;
@@ -264,7 +265,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 6px 10px;
+  padding: 4px 10px;
   border-radius: var(--radius-sm);
   color: var(--fg);
   font-size: 13px;

@@ -19,6 +19,9 @@ export const STORAGE_KEYS = {
   proseStyle: "mdview.prose.style",
   mathJaxPreamble: "mdview.mathjax.preamble",
   mathJaxPackages: "mdview.mathjax.packages",
+  slideTheme: "mdview.slides.theme",
+  slideMode:  "mdview.slides.mode",
+  defaultEditorMode: "mdview.default.editor.mode",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

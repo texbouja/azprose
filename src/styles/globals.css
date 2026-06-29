@@ -6,6 +6,7 @@
 
 
 @import "./tokens.css";
+@import "./editor/slides.css";
 
 *,
 *::before,
@@ -226,4 +227,16 @@ body.mdv-print .mdv-prose a {
     color: #000000 !important;
     background: #ffffff !important;
   }
+
+  /* Page breaks */
+  .mdv-prose h1 { break-before: page; break-after: avoid; }
+  .mdv-prose h1:first-child { break-before: avoid; }
+  .mdv-prose h2,
+  .mdv-prose h3 { break-after: avoid; }
+  .mdv-prose pre,
+  .mdv-prose table,
+  .mdv-prose figure,
+  .mdv-prose img { break-inside: avoid; }
+  .mdv-prose p,
+  .mdv-prose li { orphans: 3; widows: 3; }
 }
