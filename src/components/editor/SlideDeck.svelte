@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { renderMarkdown, resolveLocalImages, ensurePreviewReady, type MathEngine } from "@/lib/markdown-render";
+import { renderMarkdown, resolveLocalImages, ensurePreviewReady } from "@/lib/markdown-render";
 import { subscribeMode, type Theme } from "@/lib/theme";
 
 let t = $derived(getT($language));
@@ -16,19 +16,18 @@ let {
   filePath = null as string | null,
   fullscreen = false,
   onExitFullscreen,
-  mathEngine = "mathjax" as MathEngine,
 }: {
   value?: string;
   filePath?: string | null;
   fullscreen?: boolean;
   onExitFullscreen?: () => void;
-  mathEngine?: MathEngine;
 } = $props();
 
 let stageEl: HTMLElement;
 let current = $state(0);
 let ready = $state(false);
 let slidesHtml = $state<string[]>([]);
+let pages = $state<string[]>([]);
 
 let appTheme = $state<Theme>(
   (document.documentElement.getAttribute("data-theme") as Theme) ?? "latte",
@@ -62,24 +61,28 @@ function splitSlides(source: string): string[] {
 let slideTexts = $derived(splitSlides(value));
 
 $effect(() => {
-  if (current >= slideTexts.length && slideTexts.length > 0) {
-    current = slideTexts.length - 1;
+  if (current >= pages.length && pages.length > 0) {
+    current = pages.length - 1;
   }
 });
 
-// Render slides to HTML, passing mathEngine for tex2typst when typst mode.
+$effect(() => {
+  pages = [...slideTexts];
+});
+
 $effect(() => {
   if (!ready) return;
-  const texts = slideTexts;
+  const currentPages = pages;
   const theme = appTheme;
-  const engine = mathEngine;
   let cancelled = false;
 
-  void Promise.all(texts.map((t) => renderMarkdown(t, theme, engine))).then(async (html) => {
+  void Promise.all(currentPages.map((t) => renderMarkdown(t, theme))).then(async (html) => {
     if (cancelled) return;
     slidesHtml = html;
     await Promise.resolve();
-    if (!cancelled && stageEl) await hydrate(stageEl);
+    if (!cancelled && stageEl) {
+      await hydrate(stageEl);
+    }
   });
 
   return () => { cancelled = true; };
@@ -90,7 +93,6 @@ async function hydrate(stage: HTMLElement): Promise<void> {
   if (filePath) {
     await Promise.all(sections.map((s) => resolveLocalImages(s, filePath)));
   }
-  if (mathEngine === "typst") return;
   await import("mathjax/tex-svg.js");
   const mj = window.MathJax as
     | { startup?: { promise?: Promise<void> }; tex2svgPromise?: (tex: string, opts: { display: boolean }) => Promise<unknown>; typesetPromise?: (els: HTMLElement[]) => Promise<void> }
@@ -127,11 +129,27 @@ $effect(() => {
 });
 
 function prev() { if (current > 0) current--; }
-function next() { if (current < slideTexts.length - 1) current++; }
+function next() { if (current < pages.length - 1) current++; }
+
+function goToPage(e: Event): void {
+  const input = e.target as HTMLInputElement;
+  const page = parseInt(input.value, 10);
+  if (page >= 1 && page <= pages.length) {
+    current = page - 1;
+  }
+}
 
 function onKeyDown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement)?.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if (tag === "INPUT" || tag === "TEXTAREA") {
+    if (e.key === "Enter" && tag === "INPUT") {
+      const input = e.target as HTMLInputElement;
+      if (input.classList.contains("mdv-slidedeck__goto")) {
+        goToPage(e);
+      }
+    }
+    return;
+  }
   if (e.key === "Escape" && fullscreen) {
     e.preventDefault();
     onExitFullscreen?.();
@@ -149,7 +167,7 @@ function onKeyDown(e: KeyboardEvent) {
   <div class="mdv-slidedeck__stage" bind:this={stageEl}
     style="--slide-aspect: {slideSession.mode === '16:9' ? '16/9' : '4/3'}"
   >
-    {#if slideTexts.length === 0}
+    {#if pages.length === 0}
       <div class="mdv-slidedeck__empty">
         {@html t("slideDeck.empty")}
       </div>
@@ -178,12 +196,21 @@ function onKeyDown(e: KeyboardEvent) {
       <Icon icon={ChevronLeft} size={16} strokeWidth={1.8} />
     </button>
     <span class="mdv-slidedeck__counter">
-      {slideTexts.length > 0 ? current + 1 : 0} / {slideTexts.length}
+      <input
+        class="mdv-slidedeck__goto"
+        type="number"
+        min={1}
+        max={pages.length}
+        value={current + 1}
+        onchange={goToPage}
+        aria-label={t("slideDeck.goToPage")}
+      />
+      / {pages.length}
     </span>
     <button
       type="button"
       class="mdv-slidedeck__nav-btn"
-      disabled={current >= slideTexts.length - 1}
+      disabled={current >= pages.length - 1}
       onclick={next}
       aria-label={t("slideDeck.next")}
     >

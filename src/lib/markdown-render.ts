@@ -3,7 +3,6 @@ import type { RenderRule } from "markdown-it/lib/renderer.mjs";
 import mark from "markdown-it-mark";
 import taskLists from "markdown-it-task-lists";
 import { createHighlighter, type Highlighter } from "shiki";
-import { tex2typst } from "tex2typst";
 import { readFile } from "@tauri-apps/plugin-fs";
 import type { Theme } from "./theme";
 
@@ -233,19 +232,12 @@ function renderFrontMatterHeader(meta: Record<string, string>): string {
   return html;
 }
 
-export type MathEngine = "mathjax" | "typst";
-
 export async function renderMarkdown(
   src: string,
   theme: Theme,
-  mathEngine: MathEngine = "mathjax",
 ): Promise<string> {
   const { meta, body } = parseFrontMatter(src);
-  let content = body;
-
-  if (mathEngine === "typst") {
-    content = tex2typst(content, { preferShorthands: true });
-  }
+  const content = body;
 
   const h = await getHighlighter();
   const shikiTheme = THEMES[theme] ?? ADDON_THEMES[theme] ?? theme;

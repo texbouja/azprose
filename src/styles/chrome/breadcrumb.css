@@ -142,6 +142,23 @@
   background: var(--surface-hover);
 }
 
+.mdv-breadcrumb__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding-left: 8px;
+  margin-left: 6px;
+  border-left: 1px solid var(--border);
+}
+.mdv-breadcrumb__tools .mdv-btn {
+  height: 22px;
+  padding: 0 5px;
+}
+.mdv-breadcrumb__tools .mdv-btn[aria-pressed="true"] {
+  color: var(--fg);
+  background: var(--surface-hover);
+}
+
 .mdv-breadcrumb__mode-sep {
   width: 1px;
   height: 12px;

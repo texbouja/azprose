@@ -7,7 +7,6 @@ import {
   resolveLocalImages,
   decorateCodeBlocks,
   ensurePreviewReady,
-  type MathEngine,
 } from "@/lib/markdown-render";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
@@ -17,12 +16,10 @@ let {
   value = "",
   filePath = null as string | null,
   onJumpToLine,
-  mathEngine = "mathjax" as MathEngine,
 }: {
   value?: string;
   filePath?: string | null;
   onJumpToLine?: (line: number) => void;
-  mathEngine?: MathEngine;
 } = $props();
 
 let articleEl: HTMLElement;
@@ -99,7 +96,6 @@ onDestroy(() => {
 });
 
 async function typesetMath(el: HTMLElement): Promise<void> {
-  if (mathEngine !== "mathjax") return;
   await import("mathjax/tex-svg.js");
   const mj = window.MathJax as
     | { startup?: { promise?: Promise<void> }; tex2svgPromise?: (tex: string, opts: { display: boolean }) => Promise<unknown>; typesetPromise?: (els: HTMLElement[]) => Promise<void> }
@@ -115,11 +111,10 @@ $effect(() => {
   if (!ready) return;
   const src = value;
   const theme = currentTheme;
-  const engine = mathEngine;
   let cancelled = false;
   let cleanupCode = () => {};
 
-  void renderMarkdown(src, theme, engine).then(async (html) => {
+  void renderMarkdown(src, theme).then(async (html) => {
     if (cancelled || !articleEl) return;
     articleEl.innerHTML = html;
 

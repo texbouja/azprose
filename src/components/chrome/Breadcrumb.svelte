@@ -6,6 +6,7 @@
     Code2,
     Eye,
     FileDown,
+    FileText,
     FolderOpen,
     Globe,
     Maximize2,
@@ -49,6 +50,11 @@
     onSetEditorMode,
     onToggleFullscreen,
     onOpenSettings,
+    typstPreviewOn,
+    onToggleTypstPreview,
+    compilingTypst,
+    onTypstExportPdf,
+    exportingTypst,
   }: {
     sidebarOpen: boolean;
     onToggleSidebar: () => void;
@@ -71,6 +77,11 @@
     onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
     onToggleFullscreen?: () => void;
     onOpenSettings?: () => void;
+    typstPreviewOn?: boolean;
+    onToggleTypstPreview?: () => void;
+    compilingTypst?: boolean;
+    onTypstExportPdf?: () => void;
+    exportingTypst?: boolean;
   } = $props();
 
   let t = $derived(getT($language));
@@ -245,6 +256,33 @@
         >
           {#snippet icon()}
             <Icon icon={Code2} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+      </div>
+    {/if}
+
+    <!-- Tools : Typst preview + export -->
+    {#if activePath?.endsWith(".typ")}
+      <div class="mdv-breadcrumb__tools">
+        <Button
+          data-tooltip={t("breadcrumb.typstPreview")}
+          aria-label={t("breadcrumb.typstPreview")}
+          aria-pressed={typstPreviewOn}
+          disabled={compilingTypst}
+          onclick={onToggleTypstPreview}
+        >
+          {#snippet icon()}
+            <Icon icon={Eye} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+        <Button
+          data-tooltip={t("breadcrumb.typstExport")}
+          aria-label={t("breadcrumb.typstExport")}
+          disabled={exportingTypst}
+          onclick={onTypstExportPdf}
+        >
+          {#snippet icon()}
+            <Icon icon={FileDown} size={13} strokeWidth={1.5} />
           {/snippet}
         </Button>
       </div>

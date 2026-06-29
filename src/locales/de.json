@@ -46,6 +46,8 @@
   "breadcrumb.settings": "Einstellungen",
   "breadcrumb.slideTheme": "Thema",
   "breadcrumb.slideMode": "Modus",
+  "breadcrumb.typstPreview": "typst-vorschau",
+  "breadcrumb.typstExport": "typst exportieren",
   "sidebar.noFolder": "kein Ordner",
   "sidebar.favorites": "Favoriten",
   "sidebar.noFavorites": "noch keine Favoriten — markiere eine Datei mit einem Stern, um sie hier anzuheften",
@@ -271,5 +273,7 @@
   "settings.headingFont.custom": "Benutzerdefiniert",
   "lazy.loadingPreview": "Vorschau wird geladen…",
   "lazy.loadingPresentation": "Präsentation wird geladen…",
-  "lazy.loadingProse": "Prose-Editor wird geladen…"
+  "lazy.loadingProse": "Prose-Editor wird geladen…",
+  "slideDeck.overflows": "diese Folie läuft über — füge einen --- trenner hinzu",
+  "slideDeck.goToPage": "gehe zu Seite"
 }

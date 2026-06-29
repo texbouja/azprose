@@ -18,11 +18,58 @@ import {
   mathDelimiterTag,
   mathFormulaTag,
 } from "@prosemark/core";
+import type { StreamParser } from "@codemirror/language";
 
 const mathHighlight = syntaxHighlighting(HighlightStyle.define([
   { tag: mathDelimiterTag, color: "var(--syntax-keyword)" },
   { tag: mathFormulaTag, color: "var(--syntax-string)" },
 ]));
+
+const typstKeywords = new Set([
+  "let", "set", "show", "if", "else", "for", "while", "return",
+  "import", "include", "as", "in", "not", "and", "or",
+  "none", "auto", "true", "false",
+]);
+
+interface TypstState { inBlockComment: boolean; }
+
+const typst: StreamParser<TypstState> = {
+  startState: () => ({ inBlockComment: false }),
+  token(stream, state) {
+    if (state.inBlockComment) {
+      if (stream.skipTo("*/")) { stream.next(); stream.next(); state.inBlockComment = false; }
+      else stream.skipToEnd();
+      return "comment";
+    }
+    if (stream.match(/\/\/.*/)) return "comment";
+    if (stream.match(/\/\*/)) { state.inBlockComment = true; return "comment"; }
+
+    if (stream.match(/#/)) {
+      stream.eatWhile(/[\w?]/);
+      return "keyword";
+    }
+
+    if (stream.match(/"/)) {
+      while (!stream.eol()) {
+        if (stream.next() === "\\") stream.next();
+        else if (stream.peek() === '"') { stream.next(); break; }
+      }
+      return "string";
+    }
+
+    if (stream.match(/[0-9]+(?:\.[0-9]+)?(?:[a-z]+)?/)) return "number";
+
+    if (stream.match(/\$\$[\s\S]*?\$\$/) || stream.match(/\$[^$]*\$/)) return "string";
+
+    stream.eatWhile(/[\w\u{00E0}-\u{00FF}]+/u);
+    const word = stream.current();
+    if (word && typstKeywords.has(word)) return "keyword";
+    if (word) return "variableName";
+
+    stream.next();
+    return null;
+  },
+};
 
 export function languageFromExt(ext: string): LanguageSupport {
   switch (ext) {
@@ -80,6 +127,8 @@ export function languageFromExt(ext: string): LanguageSupport {
     case "cljs":
     case "edn":
       return new LanguageSupport(StreamLanguage.define(clojure));
+    case "typ":
+      return new LanguageSupport(StreamLanguage.define(typst));
     default:
       return markdown();
   }

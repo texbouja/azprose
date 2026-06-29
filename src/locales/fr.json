@@ -46,6 +46,8 @@
   "breadcrumb.settings": "Paramètres",
   "breadcrumb.slideTheme": "Thème",
   "breadcrumb.slideMode": "Mode",
+  "breadcrumb.typstPreview": "aperçu typst",
+  "breadcrumb.typstExport": "exporter typst",
   "sidebar.noFolder": "aucun dossier",
   "sidebar.searchFolder": "rechercher dans le dossier",
   "sidebar.closeSearch": "fermer la recherche",
@@ -260,5 +262,7 @@
   "settings.headingFont.custom": "Personnalisée",
   "lazy.loadingPreview": "chargement de la prévisualisation…",
   "lazy.loadingPresentation": "chargement de la présentation…",
-  "lazy.loadingProse": "chargement de l'éditeur Prose…"
+  "lazy.loadingProse": "chargement de l'éditeur Prose…",
+  "slideDeck.overflows": "cette diapositive déborde — ajoutez un séparateur ---",
+  "slideDeck.goToPage": "aller à la page"
 }

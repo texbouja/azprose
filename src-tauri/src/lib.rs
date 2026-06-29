@@ -385,6 +385,7 @@ pub fn run() {
             opencode::close_opencode_sidebar,
             #[cfg(feature = "typst")] typst_engine::typst_render,
             #[cfg(feature = "typst")] typst_engine::typst_export_pdf,
+            #[cfg(feature = "typst")] typst_engine::typst_page_count,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

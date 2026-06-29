@@ -114,6 +114,8 @@ let leftPaneEl = $state<HTMLDivElement | null>(null);
 let rightPaneEl = $state<HTMLDivElement | null>(null);
 let jumpToLine = $state<number | null>(null);
 let presentationFs = $state(false);
+let typstPreviewOn = $state(false);
+let compiledPdfPath = $state<string | null>(null);
 let proseWarmupDone = false;
 
 let saveStatus = $state<"idle" | "dirty" | "saving" | "saved">("idle");
@@ -474,6 +476,10 @@ $effect(() => {
   if (!activePath || extFromPath(activePath) !== "md") {
     presentationOn = false;
     previewOn = false;
+  }
+  if (!activePath || extFromPath(activePath) !== "typ") {
+    typstPreviewOn = false;
+    compiledPdfPath = null;
   }
 });
 
@@ -1144,6 +1150,75 @@ const handleSetEditorMode = (mode: EditorMode) => {
   }
 };
 
+let compilingTypst = $state(false);
+let exportingTypst = $state(false);
+let typstDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function typstPdfName(path: string): string {
+  return basename(path).replace(/\.typ$/i, ".pdf");
+}
+
+const handleToggleTypstPreview = async () => {
+  if (typstPreviewOn) {
+    typstPreviewOn = false;
+    return;
+  }
+  if (!activePath || compilingTypst) return;
+  compilingTypst = true;
+  const { appDataDir } = await import("@tauri-apps/api/path");
+  const outPath = (await appDataDir()) + "/" + typstPdfName(activePath);
+  try {
+    await invoke("typst_export_pdf", { filePath: activePath, source, path: outPath });
+    compiledPdfPath = outPath;
+    typstPreviewOn = true;
+  } catch (err) {
+    compiledPdfPath = null;
+    notifications.setLoadError({ title: "Typst", message: `${err}` });
+  } finally {
+    compilingTypst = false;
+  }
+};
+
+const handleTypstExportPdf = async () => {
+  if (!activePath || exportingTypst) return;
+  exportingTypst = true;
+  const outPath = dirname(activePath) + "/" + typstPdfName(activePath);
+  try {
+    await invoke("typst_export_pdf", { filePath: activePath, source, path: outPath });
+    compiledPdfPath = outPath;
+    typstPreviewOn = true;
+    notifications.setInfo(t("app.savedTo", { name: typstPdfName(activePath) }));
+  } catch (err) {
+    notifications.setLoadError({ title: "Typst", message: `${err}` });
+  } finally {
+    exportingTypst = false;
+  }
+};
+
+// Live recompilation when preview is on and source changes
+$effect(() => {
+  const text = source;
+  if (!typstPreviewOn || !activePath || extFromPath(activePath) !== "typ") return;
+  if (!compiledPdfPath) return;
+
+  if (typstDebounceTimer) clearTimeout(typstDebounceTimer);
+  typstDebounceTimer = setTimeout(async () => {
+    if (!activePath || !typstPreviewOn || compilingTypst) return;
+    compilingTypst = true;
+    const { appDataDir } = await import("@tauri-apps/api/path");
+    const outPath = (await appDataDir()) + "/" + typstPdfName(activePath);
+    try {
+      await invoke("typst_export_pdf", { filePath: activePath, source: text, path: outPath });
+      compiledPdfPath = outPath;
+    } catch (err) {
+      notifications.setLoadError({ title: "Typst", message: `${err}` });
+    } finally {
+      compilingTypst = false;
+    }
+  }, 800);
+  return () => { if (typstDebounceTimer) clearTimeout(typstDebounceTimer); };
+});
+
 const handleWritingFontSizeChange = (value: WritingFontSize) => {
   writingFontSize.current = value;
 };
@@ -1215,6 +1290,11 @@ let cmds = $derived(
     onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}
     onToggleFullscreen={toggleFullscreen}
     onOpenSettings={overlays.showSettings}
+    {typstPreviewOn}
+    {compilingTypst}
+    {exportingTypst}
+    onToggleTypstPreview={activePath && extFromPath(activePath) === "typ" ? handleToggleTypstPreview : undefined}
+    onTypstExportPdf={activePath && extFromPath(activePath) === "typ" ? handleTypstExportPdf : undefined}
   />
 
   <main class="mdv-shell">
@@ -1288,6 +1368,8 @@ let cmds = $derived(
                 value={source}
                 onChange={(next: string) => { source = next; }}
               />
+            {:else if typstPreviewOn && compiledPdfPath && extFromPath(activePath) === "typ"}
+              <LazyPdfViewer path={compiledPdfPath} />
             {:else}
               <Editor
                 value={source}

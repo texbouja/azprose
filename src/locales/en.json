@@ -46,6 +46,8 @@
   "breadcrumb.settings": "Settings",
   "breadcrumb.slideTheme": "Theme",
   "breadcrumb.slideMode": "Mode",
+  "breadcrumb.typstPreview": "preview typst",
+  "breadcrumb.typstExport": "export typst",
   "sidebar.noFolder": "no folder",
   "sidebar.explorer": "explorer",
   "sidebar.favorites": "favorites",
@@ -291,5 +293,7 @@
   "settings.headingFont.custom": "Custom",
   "lazy.loadingPreview": "loading preview…",
   "lazy.loadingPresentation": "loading presentation…",
-  "lazy.loadingProse": "loading prose editor…"
+  "lazy.loadingProse": "loading prose editor…",
+  "slideDeck.overflows": "this slide overflows — add a --- separator",
+  "slideDeck.goToPage": "go to page"
 }

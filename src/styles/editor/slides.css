@@ -60,6 +60,25 @@
   min-width: 50px;
   text-align: center;
 }
+.mdv-slidedeck__goto {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  outline: none;
+  width: 3ch;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.mdv-slidedeck__goto::-webkit-inner-spin-button,
+.mdv-slidedeck__goto::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.mdv-slidedeck__goto:focus {
+  border-bottom-color: var(--accent, #1f6feb);
+}
 
 /*
  * Slide themes — adapted from Marp's built-in default / gaia / uncover.
@@ -95,10 +114,12 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: auto;
+  scrollbar-width: none;
   font-size: 2.6cqh;
   line-height: 1.4;
 }
+.azp-slide__content::-webkit-scrollbar { display: none; }
 
 /* ── Shared content typography (relative ems → scale with base) ──────────── */
 .azp-slide__content > :first-child { margin-top: 0; }
@@ -194,3 +215,5 @@
 .azp-slide--uncover pre { text-align: left; background: #eef1f6; }
 .azp-slide--uncover code { background: rgba(31,111,235,0.08); padding: 0.1em 0.3em; border-radius: 0.2em; }
 .azp-slide--uncover a { color: #1f6feb; }
+
+
