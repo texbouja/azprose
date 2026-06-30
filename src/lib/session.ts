@@ -1,10 +1,29 @@
 // Session persistence — modèle VSCode hot-exit :
 // • session (liste des onglets) : localStorage, écrite sur chaque action utilisateur
 // • brouillons (contenu dirty) : localStorage, écrits sur blur/visibilitychange/fermeture
-// Tout est synchrone → zéro overhead pendant la frappe.
+// Tout est synchrone → zéro overhead pendant la frappe, et survit à un crash.
+//
+// Isolation par projet (Étape 2a) : les clés sont scopées par dossier de projet
+// (setSessionScope au boot) → deux fenêtres/projets ne se télescopent plus. La copie
+// canonique dans .azprose/session.json (portabilité, Étape 2b) reste à faire ; on garde
+// localStorage comme stockage synchrone primaire pour ne pas régresser l'anti-perte.
 
 const SESSION_KEY = "azp:session";
 const DRAFT_PREFIX = "azp:draft:";
+const LASTFILE_KEY = "azp:lastfile";
+const GUESTS_KEY = "azp:guests";
+
+// Per-project scope appended to every key. Empty = no project (global fallback).
+let scope = "";
+
+/** Set the project scope for all session keys. Call once at boot, before load*(). */
+export function setSessionScope(root: string | null): void {
+  scope = root ? "::" + root : "";
+}
+
+function draftKey(path: string): string {
+  return DRAFT_PREFIX + scope + "::" + path;
+}
 
 export interface SessionTab {
   path: string;
@@ -18,13 +37,13 @@ export interface SessionData {
 
 export function saveSession(data: SessionData): void {
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+    localStorage.setItem(SESSION_KEY + scope, JSON.stringify(data));
   } catch { /* storage full — acceptable */ }
 }
 
 export function loadSession(): SessionData {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(SESSION_KEY + scope);
     if (!raw) return { tabs: [], activePath: null };
     return JSON.parse(raw) as SessionData;
   } catch {
@@ -32,16 +51,44 @@ export function loadSession(): SessionData {
   }
 }
 
+export function saveLastFile(path: string | null): void {
+  try {
+    if (path) localStorage.setItem(LASTFILE_KEY + scope, path);
+    else localStorage.removeItem(LASTFILE_KEY + scope);
+  } catch { /* acceptable */ }
+}
+
+export function loadLastFile(): string | null {
+  return localStorage.getItem(LASTFILE_KEY + scope);
+}
+
+// Guest folders (browsed alongside the project, not part of it) — scoped per project
+// so they persist across reloads and never telescope into another project's window.
+export function saveGuests(paths: string[]): void {
+  try {
+    localStorage.setItem(GUESTS_KEY + scope, JSON.stringify(paths));
+  } catch { /* acceptable */ }
+}
+
+export function loadGuests(): string[] {
+  try {
+    const raw = localStorage.getItem(GUESTS_KEY + scope);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function saveDraft(path: string, content: string): void {
   try {
-    localStorage.setItem(DRAFT_PREFIX + path, content);
+    localStorage.setItem(draftKey(path), content);
   } catch { /* storage plein — on perd ce brouillon, acceptable */ }
 }
 
 export function loadDraft(path: string): string | null {
-  return localStorage.getItem(DRAFT_PREFIX + path);
+  return localStorage.getItem(draftKey(path));
 }
 
 export function clearDraft(path: string): void {
-  localStorage.removeItem(DRAFT_PREFIX + path);
+  localStorage.removeItem(draftKey(path));
 }

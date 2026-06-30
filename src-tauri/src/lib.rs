@@ -15,6 +15,9 @@ use tauri::RunEvent;
 mod opencode;
 use opencode::OpenCodeWebview;
 
+mod terminal;
+use terminal::TerminalState;
+
 #[cfg(feature = "typst")]
 mod typst_engine;
 
@@ -296,12 +299,32 @@ fn set_external_change_alerts(app: tauri::AppHandle, on: bool) {
     let _ = app.emit("azprose:set-alerts", payload);
 }
 
+// Mark a path hidden. On Windows the dot-prefix is not enough — set the HIDDEN
+// attribute so `.azprose` doesn't show in Explorer (users must not delete it).
+// On Unix the dot-prefix already hides it, so this is a no-op.
+#[cfg(windows)]
+fn set_hidden(path: &Path) {
+    use std::os::windows::ffi::OsStrExt;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x0000_0002;
+    extern "system" {
+        fn SetFileAttributesW(lp_file_name: *const u16, dw_file_attributes: u32) -> i32;
+    }
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    unsafe {
+        SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN);
+    }
+}
+
+#[cfg(not(windows))]
+fn set_hidden(_path: &Path) {}
+
 #[tauri::command]
 fn read_project_config(root: String) -> Result<String, String> {
     let path = Path::new(&root).join(".azprose/config.json");
     if !path.exists() {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            set_hidden(parent);
         }
         fs::write(&path, "{}\n").map_err(|e| e.to_string())?;
         return Ok("{}\n".to_string());
@@ -314,6 +337,7 @@ fn write_project_config(root: String, content: String) -> Result<(), String> {
     let path = Path::new(&root).join(".azprose/config.json");
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        set_hidden(parent);
     }
     fs::write(&path, &content).map_err(|e| e.to_string())
 }
@@ -331,6 +355,7 @@ pub fn run() {
         .manage(OpenProjectWindows(Mutex::new(HashMap::new())))
         .manage(opencode::OpenCodeServer(Mutex::new(None)))
         .manage(OpenCodeWebview(Mutex::new(None)))
+        .manage(TerminalState::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let paths: Vec<String> = args
                 .iter()
@@ -383,6 +408,11 @@ pub fn run() {
             opencode::check_opencode_available,
             opencode::open_opencode_sidebar,
             opencode::close_opencode_sidebar,
+            terminal::terminal_spawn,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_kill,
+            #[cfg(feature = "typst")] typst_engine::typst_preview,
             #[cfg(feature = "typst")] typst_engine::typst_render,
             #[cfg(feature = "typst")] typst_engine::typst_export_pdf,
             #[cfg(feature = "typst")] typst_engine::typst_page_count,

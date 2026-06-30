@@ -13,12 +13,14 @@ let {
   onChange,
   language = "md",
   jumpToLine = null as number | null,
+  jumpToCol = null as number | null,
   onJumpApplied,
 }: {
   value?: string;
   onChange?: (next: string) => void;
   language?: string;
   jumpToLine?: number | null;
+  jumpToCol?: number | null;
   onJumpApplied?: () => void;
 } = $props();
 
@@ -55,21 +57,35 @@ onMount(() => {
 
   view = new EditorView({ state, parent: hostEl });
 
-  // Restore position from a previous mode (preview → editor switch).
-  const targetLine = jumpToLine ?? syncLine.current;
-  if (targetLine != null) {
-    const lineNum = Math.min(Math.max(targetLine + 1, 1), view.state.doc.lines);
+  // Restore scroll position from a previous mode (preview → editor switch).
+  // An explicit jumpToLine is handled by the reactive $effect below instead.
+  const restore = syncLine.current;
+  if (jumpToLine == null && restore != null) {
+    const lineNum = Math.min(Math.max(restore + 1, 1), view.state.doc.lines);
     const pos = view.state.doc.line(lineNum).from;
     view.dispatch({
       selection: { anchor: pos, head: pos },
       effects: EditorView.scrollIntoView(pos, { y: "start" }),
     });
-    if (jumpToLine != null) {
-      view.focus();
-      onJumpApplied?.();
-    }
-    syncLine.current = null;
   }
+  syncLine.current = null;
+});
+
+// Reactive jump: fires for an already-mounted editor (console / preview click),
+// not just at mount. Line/col are 0-based; null col jumps to line start.
+$effect(() => {
+  const line = jumpToLine;
+  const col = jumpToCol;
+  if (!view || line == null) return;
+  const lineNum = Math.min(Math.max(line + 1, 1), view.state.doc.lines);
+  const lineObj = view.state.doc.line(lineNum);
+  const pos = col != null ? Math.min(lineObj.from + col, lineObj.to) : lineObj.from;
+  view.dispatch({
+    selection: { anchor: pos, head: pos },
+    effects: EditorView.scrollIntoView(pos, { y: "center" }),
+  });
+  view.focus();
+  onJumpApplied?.();
 });
 
 onDestroy(() => {

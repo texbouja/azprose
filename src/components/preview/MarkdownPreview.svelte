@@ -10,6 +10,7 @@ import {
 } from "@/lib/markdown-render";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { proseSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type ProseStyle } from "@/stores/prose-settings.svelte";
 
 let {
@@ -126,8 +127,9 @@ $effect(() => {
 
     cleanupCode();
     cleanupCode = decorateCodeBlocks(articleEl);
-    if (filePath) await resolveLocalImages(articleEl, filePath);
+    const broken = filePath ? await resolveLocalImages(articleEl, filePath) : [];
     await typesetMath(articleEl);
+    if (!cancelled) collectRenderDiagnostics(articleEl, broken);
   });
 
   return () => {
@@ -135,6 +137,8 @@ $effect(() => {
     cleanupCode();
   };
 });
+
+onDestroy(() => clearRenderDiagnostics());
 
 $effect(() => {
   if (!articleEl) return;

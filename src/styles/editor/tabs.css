@@ -69,6 +69,11 @@
   max-width: 160px;
 }
 
+/* VS Code-style preview (ephemeral) tab — italic title */
+.mdv-tab__label.is-preview {
+  font-style: italic;
+}
+
 .mdv-tab__close,
 .mdv-tab__split {
   display: flex;

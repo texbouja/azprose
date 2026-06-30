@@ -7,10 +7,10 @@
     Eye,
     FileDown,
     FileText,
-    FolderOpen,
     Globe,
     Maximize2,
     Monitor,
+    PanelBottom,
     PanelLeftClose,
     PanelLeftOpen,
     PanelTopClose,
@@ -37,7 +37,6 @@
     activePath,
     saveStatus,
     onExportPdf,
-    onOpenProject,
     titlebarVisible,
     onToggleTitlebar,
     vimOn,
@@ -50,11 +49,14 @@
     onSetEditorMode,
     onToggleFullscreen,
     onOpenSettings,
-    typstPreviewOn,
-    onToggleTypstPreview,
+    typstViewerOn,
+    onTypstCodeView,
+    onToggleTypstViewer,
     compilingTypst,
-    onTypstExportPdf,
+    onTypstBuild,
     exportingTypst,
+    consoleOpen,
+    onToggleConsole,
   }: {
     sidebarOpen: boolean;
     onToggleSidebar: () => void;
@@ -64,7 +66,6 @@
     activePath: string | null;
     saveStatus: "idle" | "dirty" | "saving" | "saved";
     onExportPdf?: () => void;
-    onOpenProject?: () => void;
     titlebarVisible: boolean;
     onToggleTitlebar: () => void;
     vimOn?: boolean;
@@ -77,11 +78,14 @@
     onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
     onToggleFullscreen?: () => void;
     onOpenSettings?: () => void;
-    typstPreviewOn?: boolean;
-    onToggleTypstPreview?: () => void;
+    typstViewerOn?: boolean;
+    onTypstCodeView?: () => void;
+    onToggleTypstViewer?: () => void;
     compilingTypst?: boolean;
-    onTypstExportPdf?: () => void;
+    onTypstBuild?: () => void;
     exportingTypst?: boolean;
+    consoleOpen?: boolean;
+    onToggleConsole?: () => void;
   } = $props();
 
   let t = $derived(getT($language));
@@ -258,28 +262,50 @@
             <Icon icon={Code2} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
+        {#if onExportPdf}
+          <div class="mdv-breadcrumb__mode-sep" aria-hidden="true"></div>
+          <Button
+            data-tooltip={shortcutLabel(t("app.exportPdfShortcut"))}
+            aria-label={t("app.exportPdf")}
+            onclick={onExportPdf}
+          >
+            {#snippet icon()}
+              <Icon icon={FileDown} size={13} strokeWidth={1.5} />
+            {/snippet}
+          </Button>
+        {/if}
       </div>
     {/if}
 
-    <!-- Tools : Typst preview + export -->
+    <!-- Tools : Typst CodeView / PDFView / Build -->
     {#if activePath?.endsWith(".typ")}
       <div class="mdv-breadcrumb__tools">
         <Button
-          data-tooltip={t("breadcrumb.typstPreview")}
-          aria-label={t("breadcrumb.typstPreview")}
-          aria-pressed={typstPreviewOn}
-          disabled={compilingTypst}
-          onclick={onToggleTypstPreview}
+          data-tooltip={t("breadcrumb.typstCodeView")}
+          aria-label={t("breadcrumb.typstCodeView")}
+          aria-pressed={!typstViewerOn}
+          onclick={onTypstCodeView}
         >
           {#snippet icon()}
-            <Icon icon={Eye} size={14} strokeWidth={1.5} />
+            <Icon icon={Code2} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
         <Button
-          data-tooltip={t("breadcrumb.typstExport")}
-          aria-label={t("breadcrumb.typstExport")}
+          data-tooltip={t("breadcrumb.typstViewer")}
+          aria-label={t("breadcrumb.typstViewer")}
+          aria-pressed={typstViewerOn}
+          disabled={compilingTypst}
+          onclick={onToggleTypstViewer}
+        >
+          {#snippet icon()}
+            <Icon icon={FileText} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+        <Button
+          data-tooltip={t("breadcrumb.typstBuild")}
+          aria-label={t("breadcrumb.typstBuild")}
           disabled={exportingTypst}
-          onclick={onTypstExportPdf}
+          onclick={onTypstBuild}
         >
           {#snippet icon()}
             <Icon icon={FileDown} size={13} strokeWidth={1.5} />
@@ -288,30 +314,8 @@
       </div>
     {/if}
 
-    <!-- Files : export PDF + ouvrir un projet -->
-    <div class="mdv-breadcrumb__file-actions">
-      <Button
-        data-tooltip={shortcutLabel(t("app.exportPdfShortcut"))}
-        aria-label={t("app.exportPdf")}
-        onclick={onExportPdf}
-      >
-        {#snippet icon()}
-          <Icon icon={FileDown} size={13} strokeWidth={1.5} />
-        {/snippet}
-      </Button>
-      <Button
-        data-tooltip={t("app.openProjectShortcut")}
-        aria-label={t("app.openProject")}
-        onclick={onOpenProject}
-      >
-        {#snippet icon()}
-          <Icon icon={FolderOpen} size={13} strokeWidth={1.5} />
-        {/snippet}
-      </Button>
-    </div>
-
-    <!-- Config : toujours visibles -->
-    <div class="mdv-breadcrumb__config">
+    <!-- AFFICHAGE : barre d'outils, console, opencode, plein écran -->
+    <div class="mdv-breadcrumb__display">
       <Button
         data-tooltip={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
         aria-label={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
@@ -322,25 +326,18 @@
           <Icon icon={titlebarVisible ? PanelTopClose : PanelTopOpen} size={14} strokeWidth={1.5} />
         {/snippet}
       </Button>
-      {#if onToggleFullscreen}
+      {#if onToggleConsole}
         <Button
-          data-tooltip={t("breadcrumb.fullscreen")}
-          aria-label={t("breadcrumb.fullscreen")}
-          onclick={onToggleFullscreen}
+          data-tooltip={t("breadcrumb.typstConsole")}
+          aria-label={t("breadcrumb.typstConsole")}
+          aria-pressed={consoleOpen}
+          onclick={onToggleConsole}
         >
           {#snippet icon()}
-            <Icon icon={Maximize2} size={14} strokeWidth={1.5} />
+            <Icon icon={PanelBottom} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
       {/if}
-      <ThemeButton
-        {vimOn}
-        {onToggleVim}
-        {writingDisplay}
-        {onWritingFontSizeChange}
-        {onWritingLineHeightChange}
-        {onResetWritingDisplay}
-      />
       {#if onToggleOpencode}
         <Button
           data-tooltip={t("breadcrumb.opencode")}
@@ -353,17 +350,29 @@
           {/snippet}
         </Button>
       {/if}
-      {#if onOpenSettings}
+      {#if onToggleFullscreen}
         <Button
-          data-tooltip={t("breadcrumb.settings")}
-          aria-label={t("breadcrumb.settings")}
-          onclick={onOpenSettings}
+          data-tooltip={t("breadcrumb.fullscreen")}
+          aria-label={t("breadcrumb.fullscreen")}
+          onclick={onToggleFullscreen}
         >
           {#snippet icon()}
-            <Icon icon={Settings} size={14} strokeWidth={1.5} />
+            <Icon icon={Maximize2} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
       {/if}
+    </div>
+
+    <!-- SETTINGS : thème, langue, réglages -->
+    <div class="mdv-breadcrumb__settings">
+      <ThemeButton
+        {vimOn}
+        {onToggleVim}
+        {writingDisplay}
+        {onWritingFontSizeChange}
+        {onWritingLineHeightChange}
+        {onResetWritingDisplay}
+      />
       <div class="mdv-lang-wrap" bind:this={langAnchorEl}>
         <button
           type="button"
@@ -407,6 +416,17 @@
           </div>
         </Popover>
       </div>
+      {#if onOpenSettings}
+        <Button
+          data-tooltip={t("breadcrumb.settings")}
+          aria-label={t("breadcrumb.settings")}
+          onclick={onOpenSettings}
+        >
+          {#snippet icon()}
+            <Icon icon={Settings} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+      {/if}
     </div>
 
   </div>

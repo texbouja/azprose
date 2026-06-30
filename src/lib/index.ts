@@ -36,6 +36,7 @@ export {
   isSupportedTextPath,
   isImagePath,
   isPdfPath,
+  isOpenablePath,
   basename,
   dirname,
   createFile,

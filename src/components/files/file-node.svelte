@@ -17,7 +17,7 @@ let {
 }: {
   entry: FileEntry;
   active?: boolean;
-  onSelect: (path: string) => void;
+  onSelect: (path: string, permanent?: boolean) => void;
   onContextMenu?: (e: MouseEvent, entry: FileEntry) => void;
   staged?: boolean;
   onToggleStage?: (path: string) => void;
@@ -45,7 +45,11 @@ function handleClick(e: MouseEvent) {
     onToggleStage(entry.path);
     return;
   }
-  onSelect(entry.path);
+  onSelect(entry.path, false); // single-click → preview (ephemeral) tab
+}
+
+function handleDblClick() {
+  onSelect(entry.path, true); // double-click → permanent tab
 }
 </script>
 
@@ -56,6 +60,7 @@ function handleClick(e: MouseEvent) {
     class="mdv-tree__row mdv-tree__row--file{active ? ' is-active' : ''}{staged ? ' is-staged' : ''}{onToggleFavorite ? ' has-fav' : ''}"
     style="padding-left:{8 + depth * 12 + 4}px"
     onclick={handleClick}
+    ondblclick={handleDblClick}
     oncontextmenu={onCtx}
     ondragstart={onDragStart}
     title={entry.path}

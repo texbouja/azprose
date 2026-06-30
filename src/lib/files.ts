@@ -113,6 +113,25 @@ export function isSupportedTextPath(path: string): boolean {
   return isMarkdownPath(path) || isCsvPath(path) || isTextPath(path);
 }
 
+/** Extension (lowercased), or null for no-extension files (Unix convention → text). */
+export function fileExtension(path: string): string | null {
+  const base = basename(path);
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return null; // no extension, or leading-dot only
+  return base.slice(dot + 1).toLowerCase();
+}
+
+/**
+ * Whether AZprose opens this path. Rule: refuse by default; open only plain-text
+ * formats, webview-supported images, and PDFs. A file with no extension is treated
+ * as plain text (Unix convention). Everything else is refused.
+ */
+export function isOpenablePath(path: string): boolean {
+  const ext = fileExtension(path);
+  if (ext === null) return true; // no extension → plain text
+  return TEXT_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(ext) || ext === "pdf";
+}
+
 export function basename(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return i >= 0 ? path.slice(i + 1) : path;
@@ -139,7 +158,8 @@ export function relativePath(path: string, rootPath: string | null): string {
 export async function listFolder(path: string): Promise<FileEntry[]> {
   const entries = await readDir(path);
   return (entries || [])
-    .filter((e) => e?.name)
+    // Hidden files (Unix dotfiles, incl. .azprose) are never shown in the FS view.
+    .filter((e) => e?.name && isVisibleTreeEntryName(e.name))
     .map((e) => ({
       name: e.name,
       path: joinPath(path, e.name),

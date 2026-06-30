@@ -274,10 +274,13 @@ function uint8ToBase64(bytes: Uint8Array): string {
 }
 
 // Resolve relative image paths to data URIs so Tauri's WebView can display them.
-export async function resolveLocalImages(article: HTMLElement, filePath: string): Promise<void> {
+/** Inline local images as data URLs. Returns the relative srcs that couldn't be
+ *  resolved (missing files) so callers can surface them as diagnostics. */
+export async function resolveLocalImages(article: HTMLElement, filePath: string): Promise<string[]> {
   const lastSep = Math.max(filePath.lastIndexOf("\\"), filePath.lastIndexOf("/"));
   const dir = filePath.slice(0, lastSep);
   const sep = filePath.includes("\\") ? "\\" : "/";
+  const broken: string[] = [];
   await Promise.all(
     Array.from(article.querySelectorAll("img")).map(async (img) => {
       const src = img.getAttribute("src");
@@ -290,10 +293,11 @@ export async function resolveLocalImages(article: HTMLElement, filePath: string)
         const bytes = await readFile(absPath);
         img.src = `data:${imgMime(ext)};base64,${uint8ToBase64(bytes)}`;
       } catch {
-        // leave src as-is
+        broken.push(src); // missing file — leave src as-is, report it
       }
     }),
   );
+  return broken;
 }
 
 const COPY_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;

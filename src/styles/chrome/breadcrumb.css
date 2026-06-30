@@ -167,13 +167,27 @@
   flex-shrink: 0;
 }
 
-.mdv-breadcrumb__config {
+.mdv-breadcrumb__config,
+.mdv-breadcrumb__display,
+.mdv-breadcrumb__settings {
   display: inline-flex;
   align-items: center;
   gap: 1px;
   padding-left: 8px;
   margin-left: 6px;
   border-left: 1px solid var(--border);
+}
+
+.mdv-breadcrumb__display .mdv-btn,
+.mdv-breadcrumb__settings .mdv-btn {
+  height: 22px;
+  padding: 0 5px;
+}
+
+.mdv-breadcrumb__display .mdv-btn[aria-pressed="true"],
+.mdv-breadcrumb__settings .mdv-btn[aria-pressed="true"] {
+  color: var(--fg);
+  background: var(--surface-hover);
 }
 
 .mdv-pres-btn-wrap {

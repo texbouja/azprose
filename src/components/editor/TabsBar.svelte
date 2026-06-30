@@ -10,6 +10,8 @@ export type Tab = {
   path: string;
   source: string;
   savedContent: string;
+  /** VS Code-style preview tab: ephemeral, reused on single-click, italic title. */
+  preview?: boolean;
 };
 
 let {
@@ -21,6 +23,8 @@ let {
   splitOn = false,
   canSplit = false,
   onToggleSplit,
+  typstPreviewOn = false,
+  onToggleTypstPreview,
 }: {
   tabs?: Tab[];
   activeTabId?: string | null;
@@ -30,6 +34,8 @@ let {
   splitOn?: boolean;
   canSplit?: boolean;
   onToggleSplit?: (id: string) => void;
+  typstPreviewOn?: boolean;
+  onToggleTypstPreview?: () => void;
 } = $props();
 
 let t = $derived(getT($language));
@@ -138,7 +144,7 @@ function endDrag(e: PointerEvent) {
         }}
       >
         <span class="mdv-tab__dot" aria-hidden="true" />
-        <span class="mdv-tab__label">{tab.title}</span>
+        <span class="mdv-tab__label" class:is-preview={tab.preview}>{tab.title}</span>
       </button>
       {#if canSplit && active}
         <button
@@ -148,6 +154,17 @@ function endDrag(e: PointerEvent) {
           aria-label="Toggle split preview"
           onpointerdown={(e) => e.stopPropagation()}
           onclick={() => onToggleSplit?.(tab.id)}
+        >
+          <Icon icon={Eye} size={13} strokeWidth={1.8} />
+        </button>
+      {:else if onToggleTypstPreview && tab.path.endsWith(".typ") && active}
+        <button
+          type="button"
+          class="mdv-tab__split"
+          class:is-active={typstPreviewOn}
+          aria-label="Toggle live preview"
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={onToggleTypstPreview}
         >
           <Icon icon={Eye} size={13} strokeWidth={1.8} />
         </button>

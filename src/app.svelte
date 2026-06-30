@@ -3,7 +3,7 @@ import { onMount, tick } from "svelte";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
-import { listen, emit } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { confirm } from "@tauri-apps/plugin-dialog";
@@ -26,6 +26,7 @@ import {
   isSupportedTextPath,
   isImagePath,
   isPdfPath,
+  isOpenablePath,
   basename,
   dirname,
   createFile,
@@ -57,10 +58,15 @@ import LazySlideDeck from "@/components/editor/LazySlideDeck.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
 import LazyMarkdownPreview from "@/components/preview/LazyMarkdownPreview.svelte";
+import TypstPreview from "@/components/typst/TypstPreview.svelte";
+import ConsolePanel from "@/components/typst/ConsolePanel.svelte";
+import type { Diagnostic } from "@/lib/diagnostics";
+import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import OpencodeSidebar from "@/components/opencode/OpencodeSidebar.svelte";
 import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
-import { saveSession, loadSession, saveDraft, loadDraft, clearDraft } from "@/lib/session";
+import { folderRelation } from "@/lib/paths";
+import { saveSession, loadSession, saveDraft, loadDraft, clearDraft, setSessionScope, saveLastFile, loadLastFile, saveGuests, loadGuests } from "@/lib/session";
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { proseSettings, DEFAULT_PROSE_STYLE } from "@/stores/prose-settings.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
@@ -73,11 +79,30 @@ import "./app.css";
 
 let t = $derived(getT($language));
 
+// A project window receives its folder synchronously through its URL (?root=<path>,
+// set by the opener) — no shared-localStorage read, no async handshake. This is the
+// fix for "the new window's sidebar shows the previous project": folders/rootPath are
+// already correct before the first render.
+const urlRoot = (() => {
+  try {
+    const r = new URLSearchParams(location.search).get("root");
+    return r ? decodeURIComponent(r) : null;
+  } catch {
+    return null;
+  }
+})();
+
 let sidebarOpen = persistedState<boolean>(STORAGE_KEYS.sidebarOpen, false);
 let sidebarWidth = persistedState<number>(STORAGE_KEYS.sidebarWidth, 240);
 let opencodeOpen = $state(false);
 let titlebarVisible = persistedState<boolean>(STORAGE_KEYS.titlebarVisible, true);
 let folders = persistedState<string[]>(STORAGE_KEYS.folders, []);
+// Project root = ?root= (project windows) or the last project (main window). Scope the
+// session storage to it, then rebuild folders as [projectRoot, ...scoped guests] so the
+// project comes from the URL and guests persist per project (no telescoping).
+const projectRoot = urlRoot ?? folders.current[0] ?? null;
+setSessionScope(projectRoot);
+if (projectRoot) folders.update(() => [projectRoot, ...loadGuests().filter((g) => g !== projectRoot)]);
 let writingFontSize = persistedState<WritingFontSize>(
   STORAGE_KEYS.writingFontSize,
   DEFAULT_WRITING_DISPLAY.fontSize,
@@ -102,7 +127,7 @@ let minutes = $state(1);
 let source = $state("");
 let savedContent = $state("");
 let activePath = $state<string | null>(null);
-let rootPath = $state<string | null>(folders.current[0] ?? null);
+let rootPath = $state<string | null>(projectRoot);
 
 let vimOn = $state(false);
 let prosemarkOn = $state(generalSettings.defaultEditorMode === "prose");
@@ -113,9 +138,21 @@ let splitRatio = $state(0.5);
 let leftPaneEl = $state<HTMLDivElement | null>(null);
 let rightPaneEl = $state<HTMLDivElement | null>(null);
 let jumpToLine = $state<number | null>(null);
+let jumpToCol = $state<number | null>(null);
 let presentationFs = $state(false);
 let typstPreviewOn = $state(false);
-let compiledPdfPath = $state<string | null>(null);
+let typstViewerOn = $state(false);
+let viewerPdfPath = $state<string | null>(null);
+// Non-reactive: keyed by filePath, stores last SVG + compiled source for instant re-display.
+const typstSvgCache: Record<string, { svg: string; compiledSource: string; diagnostics: Diagnostic[] }> = {};
+let consoleOpen = $state(false);
+let consoleHeight = $state(160);
+const consoleDiags = $derived(diagnosticsStore.all);
+let consoleTab = $state<"diagnostics" | "terminal">("diagnostics");
+// Once the console has been opened, keep ConsolePanel mounted (hidden when closed)
+// so the Terminal/shell session survives a close — VS Code behavior.
+let consoleMounted = $state(false);
+$effect(() => { if (consoleOpen) consoleMounted = true; });
 let proseWarmupDone = false;
 
 let saveStatus = $state<"idle" | "dirty" | "saving" | "saved">("idle");
@@ -264,26 +301,41 @@ onMount(() => {
   });
 
   const myLabel = getCurrentWindow().label;
-  if (myLabel.startsWith("azprose-project-")) {
-    void (async () => {
-      const unlisten = await listen<string>(`azprose:open-folder:${myLabel}`, (e) => {
-        folders.update(() => [e.payload]);
-        rootPath = e.payload;
-        unlisten();
-        void invoke("register_project_window", { label: myLabel, path: e.payload });
-      });
-      await emit("azprose:project-window-ready", myLabel);
-    })();
+  const isProjectWindow = myLabel.startsWith("azprose-project-");
+  // Folder already known from ?root= (see urlRoot) — just register this window so
+  // find_project_window can detect it. No event handshake.
+  if (isProjectWindow && urlRoot) {
+    void invoke("register_project_window", { label: myLabel, path: urlRoot });
+  }
+
+  // Close handling for EVERY window. We always take over the close decision
+  // (preventDefault + explicit destroy) so it is deterministic — this is what makes
+  // windows reliably closable. `destroy()` does not re-fire close-requested.
+  {
     const win_ = getCurrentWindow();
-    win_.onCloseRequested(async (event) => {
-      if (!_skipCloseConfirm) {
-        const dirty = tabs.some(t => t.source !== t.savedContent);
-        if (dirty) {
-          const ok = await confirm(t("project.warnCloseUnsaved"), { title: "", kind: "warning" });
-          if (!ok) { event.preventDefault(); return; }
+    let closing = false;
+    void win_.onCloseRequested(async (event) => {
+      if (closing) return;
+      event.preventDefault();
+      try {
+        if (!_skipCloseConfirm) {
+          const dirty = tabs.some(
+            (tb) => !isPdfPath(tb.path) && !isImagePath(tb.path) && tb.source !== tb.savedContent,
+          );
+          if (dirty) {
+            const ok = await confirm(t("project.warnCloseUnsaved"), { title: "", kind: "warning" });
+            if (!ok) return; // explicit cancel — keep the window open
+          }
         }
+        saveAllDirtyDrafts();
+        if (isProjectWindow) {
+          await invoke("unregister_project_window", { label: myLabel });
+        }
+      } catch {
+        // Never trap the window on an unexpected error during the close decision.
       }
-      await invoke("unregister_project_window", { label: myLabel });
+      closing = true;
+      await win_.destroy();
     });
   }
 
@@ -334,17 +386,63 @@ function saveAllDirtyDrafts() {
   }
 }
 
-async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean }) {
+// Crash plumbing. A render/effect error caught by the per-view <svelte:boundary>
+// (or an async error relayed from main.ts via azprose:crash) flushes drafts and
+// surfaces the error in the Diagnostics console instead of killing the UI.
+function reportCrash(message: string, err?: unknown) {
+  saveAllDirtyDrafts();
+  diagnosticsStore.push({ severity: "error", message, source: "app" });
+  consoleTab = "diagnostics";
+  consoleOpen = true;
+  if (err !== undefined) console.error("azprose: crash", err);
+}
+
+function handleViewCrash(error: unknown) {
+  reportCrash(error instanceof Error ? error.message : String(error), error);
+}
+
+$effect(() => {
+  const onCrash = (e: Event) => {
+    const d = (e as CustomEvent<{ kind?: string; message?: string }>).detail;
+    reportCrash(`${d?.kind ?? "Crash"} — ${d?.message ?? ""}`.trim());
+  };
+  window.addEventListener("azprose:crash", onCrash);
+  return () => window.removeEventListener("azprose:crash", onCrash);
+});
+
+async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean }) {
+  // Refuse anything that isn't a supported text/image/pdf (no-extension → text).
+  if (!isOpenablePath(path)) {
+    if (!opts?.silent) {
+      notifications.setLoadError({ title: "Format", message: t("app.unsupportedFormat", { name: basename(path) }) });
+    }
+    return;
+  }
+  const wantPreview = opts?.preview === true;
+
   const existing = findTabByPath(path);
   if (existing) {
     activeTabId = existing.id;
+    // A permanent open (double-click) of an already-open preview tab pins it.
+    if (!wantPreview && existing.preview) {
+      tabs = tabs.map(t => t.id === existing.id ? { ...t, preview: false } : t);
+    }
     saveSessionNow();
     return;
   }
-  const id = crypto.randomUUID();
+
+  // For a preview open, reuse the existing preview slot (replace its content)
+  // instead of piling up tabs — VS Code behavior.
+  const reuse = wantPreview ? tabs.find(t => t.preview) : undefined;
   const title = basename(path);
-  tabs = [...tabs, { id, title, path, source: "", savedContent: "" }];
+  const id = reuse?.id ?? crypto.randomUUID();
+  if (reuse) {
+    tabs = tabs.map(t => t.id === id ? { ...t, path, title, source: "", savedContent: "", preview: true } : t);
+  } else {
+    tabs = [...tabs, { id, title, path, source: "", savedContent: "", preview: wantPreview }];
+  }
   activeTabId = id;
+
   if (!isPdfPath(path) && !isImagePath(path)) {
     try {
       const fileSource = await readMarkdown(path);
@@ -425,7 +523,11 @@ $effect(() => {
 $effect(() => {
   const tab = tabs.find(t => t.id === activeTabId);
   if (tab && (tab.source !== source || tab.savedContent !== savedContent)) {
-    tabs = tabs.map(t => t.id === activeTabId ? { ...t, source, savedContent } : t);
+    // Editing a preview tab promotes it to a permanent tab (VS Code behavior).
+    const promote = tab.preview === true && source !== savedContent;
+    tabs = tabs.map(t => t.id === activeTabId
+      ? { ...t, source, savedContent, ...(promote ? { preview: false } : null) }
+      : t);
   }
 });
 
@@ -469,7 +571,7 @@ $effect(() => {
 });
 
 $effect(() => {
-  if (activePath) window.localStorage.setItem(STORAGE_KEYS.lastFile, activePath);
+  if (activePath) saveLastFile(activePath);
 });
 
 $effect(() => {
@@ -479,8 +581,36 @@ $effect(() => {
   }
   if (!activePath || extFromPath(activePath) !== "typ") {
     typstPreviewOn = false;
-    compiledPdfPath = null;
+    typstViewerOn = false;
+    viewerPdfPath = null;
+    // Drop stale Typst diagnostics when leaving a .typ. The console itself is a
+    // workspace-level panel (Terminal + Diagnostics) — never auto-closed here, so
+    // switching tabs/files or clicking Diagnostics doesn't dismiss it.
+    diagnosticsStore.clear("typst");
+  } else {
+    diagnosticsStore.set("typst", typstSvgCache[activePath]?.diagnostics ?? []);
   }
+});
+
+// Live diagnostics for the open console outside live-preview mode (code view /
+// viewer). In live-preview mode TypstPreview already feeds consoleDiags via
+// onCompileResult, so we skip to avoid a double compile.
+$effect(() => {
+  const path = activePath;
+  const text = source;
+  if (!consoleOpen || !path || extFromPath(path) !== "typ" || typstPreviewOn) return;
+  const timer = setTimeout(async () => {
+    try {
+      const res = await invoke<{ svg: string | null; diagnostics: Diagnostic[]; pages: number }>(
+        "typst_preview",
+        { filePath: path, source: text },
+      );
+      diagnosticsStore.set("typst", res.diagnostics ?? []);
+    } catch (err) {
+      diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+    }
+  }, 300);
+  return () => clearTimeout(timer);
 });
 
 $effect(() => {
@@ -588,39 +718,16 @@ $effect(() => {
             }
           } else {
             // Pas de session — fallback sur le dernier fichier ouvert
-            const lastFile = window.localStorage.getItem(STORAGE_KEYS.lastFile);
+            const lastFile = loadLastFile();
             if (lastFile) {
               void openFileInTab(lastFile, { preferDraft: true }).catch(() => {
-                window.localStorage.removeItem(STORAGE_KEYS.lastFile);
+                saveLastFile(null);
               });
             }
           }
         }
       })
       .catch((err) => console.warn("azprose: pending open-file check failed", err));
-  });
-
-  return () => {
-    cancelled = true;
-    unlisten?.();
-  };
-});
-
-// When a project window finishes initializing it sends "azprose:project-window-ready".
-// We respond with the folder path it should open.
-$effect(() => {
-  let cancelled = false;
-  let unlisten: (() => void) | undefined;
-
-  listen<string>("azprose:project-window-ready", async (event) => {
-    if (cancelled) return;
-    const childLabel = event.payload;
-    const folder = await invoke<string | null>("take_project_folder", { label: childLabel });
-    if (!folder) return;
-    await emit(`azprose:open-folder:${childLabel}`, folder);
-  }).then((un) => {
-    if (cancelled) { un(); return; }
-    unlisten = un;
   });
 
   return () => {
@@ -679,67 +786,23 @@ const handleAddFolder = async () => {
     if (!next.includes(folder)) {
       next.push(folder);
       folders.update(() => next);
-      if (!rootPath) rootPath = folder;
+      if (!rootPath) { rootPath = folder; setSessionScope(folder); }
+      saveGuests(folders.current.slice(1)); // everything past [0] is a guest
     }
   }
 };
 
-// Folder handoff for project windows: label → folder path, consumed on "azprose:project-window-ready"
-// Stored in Rust Mutex<HashMap> so it survives a frontend crash.
-const handleOpenProject = async () => {
-  const { pickFolder } = await import("@/lib/files");
-  const folder = await pickFolder();
-  if (!folder) return;
-
-  // If the folder is already open in another window, focus it.
-  const existing = await invoke<string | null>("find_project_window", { path: folder });
-  if (existing) {
-    const win = WebviewWindow.getByLabel(existing);
-    if (win) {
-      await win.show();
-      await win.unminimize();
-      await win.setFocus();
-      return;
-    }
-  }
-
-  // If this window has a project and the new folder is a child/parent, warn and close to avoid FS conflicts.
-  if (rootPath) {
-    const child = folder.startsWith(rootPath + "/");
-    const parent = rootPath.startsWith(folder + "/");
-    if (child || parent) {
-      const ok = await confirm(t("project.warnCloseFolder"), { title: "", kind: "warning" });
-      if (!ok) return;
-      const label = `azprose-project-${Date.now()}`;
-      await invoke("store_project_folder", { label, path: folder });
-      const win = new WebviewWindow(label, {
-        title: `AZprose — ${basename(folder)}`,
-        width: 1280,
-        height: 860,
-      });
-      win.once("tauri://error", async () => {
-        await invoke("take_project_folder", { label });
-      });
-      if (getCurrentWindow().label.startsWith("azprose-project-")) {
-        _skipCloseConfirm = true;
-        await getCurrentWindow().close();
-      }
-      return;
-    }
-  }
-
-  // Unrelated folder: allow multiple instances (VSCode-style).
+// Open a project in a NEW window. The folder is passed via the URL (?root=) so the
+// child window knows its project synchronously at boot — no Rust handoff, no handshake.
+function spawnProjectWindow(folder: string) {
   const label = `azprose-project-${Date.now()}`;
-  await invoke("store_project_folder", { label, path: folder });
-  const win = new WebviewWindow(label, {
+  return new WebviewWindow(label, {
+    url: `index.html?root=${encodeURIComponent(folder)}`,
     title: `AZprose — ${basename(folder)}`,
     width: 1280,
     height: 860,
   });
-  win.once("tauri://error", async () => {
-    await invoke("take_project_folder", { label });
-  });
-};
+}
 
 const handleOpenProjectByPath = async (folder: string) => {
   const existing = await invoke<string | null>("find_project_window", { path: folder });
@@ -754,21 +817,14 @@ const handleOpenProjectByPath = async (folder: string) => {
   }
 
   if (rootPath) {
-    const child = folder.startsWith(rootPath + "/");
-    const parent = rootPath.startsWith(folder + "/");
-    if (child || parent) {
+    const rel = folderRelation(folder, rootPath);
+    if (rel === "same") return; // already this project — nothing to do
+    if (rel === "nested") {
+      // Parent/child overlap → close this project and open the requested one in
+      // its place, to avoid two windows fighting over overlapping FS/index.
       const ok = await confirm(t("project.warnCloseFolder"), { title: "", kind: "warning" });
       if (!ok) return;
-      const label = `azprose-project-${Date.now()}`;
-      await invoke("store_project_folder", { label, path: folder });
-      const win = new WebviewWindow(label, {
-        title: `AZprose — ${basename(folder)}`,
-        width: 1280,
-        height: 860,
-      });
-      win.once("tauri://error", async () => {
-        await invoke("take_project_folder", { label });
-      });
+      spawnProjectWindow(folder);
       if (getCurrentWindow().label.startsWith("azprose-project-")) {
         _skipCloseConfirm = true;
         await getCurrentWindow().close();
@@ -777,16 +833,8 @@ const handleOpenProjectByPath = async (folder: string) => {
     }
   }
 
-  const label = `azprose-project-${Date.now()}`;
-  await invoke("store_project_folder", { label, path: folder });
-  const win = new WebviewWindow(label, {
-    title: `AZprose — ${basename(folder)}`,
-    width: 1280,
-    height: 860,
-  });
-  win.once("tauri://error", async () => {
-    await invoke("take_project_folder", { label });
-  });
+  // Disjoint → open alongside in a new window.
+  spawnProjectWindow(folder);
 };
 
 const handleInitProject = async () => {
@@ -818,11 +866,13 @@ const handleCloseFolder = async (path: string) => {
   const next = folders.current.filter((f) => f !== path);
   folders.update(() => next);
   if (rootPath === path) rootPath = next[0] ?? null;
+  saveGuests(folders.current.slice(1)); // persist remaining guests for this project
   saveSessionNow();
 };
 
-const handleSelectFile = (path: string) => {
-  openFileInTab(path);
+const handleSelectFile = (path: string, permanent?: boolean) => {
+  // Single-click → preview (ephemeral) tab ; double-click → permanent tab.
+  openFileInTab(path, { preview: !permanent });
 };
 
 const handleToggleFavorite = (path: string) => {
@@ -1134,6 +1184,14 @@ const handleJumpToLine = (line: number) => {
   else { prosemarkOn = false; previewOn = false; presentationOn = false; }
 };
 
+// Console diagnostic click → editor. Diagnostics are 1-based; the editor is
+// 0-based. Ensure an editor is visible (leave viewer mode) to receive the jump.
+const handleConsoleJump = (line: number, col?: number | null) => {
+  if (typstViewerOn) { typstViewerOn = false; viewerPdfPath = null; }
+  jumpToLine = line - 1;
+  jumpToCol = col != null ? col - 1 : null;
+};
+
 const handleSetEditorMode = (mode: EditorMode) => {
   if (presentationFs && mode !== "presentation") {
     presentationFs = false;
@@ -1152,72 +1210,97 @@ const handleSetEditorMode = (mode: EditorMode) => {
 
 let compilingTypst = $state(false);
 let exportingTypst = $state(false);
-let typstDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function typstPdfName(path: string): string {
   return basename(path).replace(/\.typ$/i, ".pdf");
 }
 
-const handleToggleTypstPreview = async () => {
-  if (typstPreviewOn) {
-    typstPreviewOn = false;
-    return;
-  }
-  if (!activePath || compilingTypst) return;
-  compilingTypst = true;
-  const { appDataDir } = await import("@tauri-apps/api/path");
-  const outPath = (await appDataDir()) + "/" + typstPdfName(activePath);
-  try {
-    await invoke("typst_export_pdf", { filePath: activePath, source, path: outPath });
-    compiledPdfPath = outPath;
-    typstPreviewOn = true;
-  } catch (err) {
-    compiledPdfPath = null;
-    notifications.setLoadError({ title: "Typst", message: `${err}` });
-  } finally {
-    compilingTypst = false;
-  }
+const handleToggleTypstPreview = () => {
+  typstPreviewOn = !typstPreviewOn;
 };
 
-const handleTypstExportPdf = async () => {
+const handleTypstCodeView = () => {
+  typstViewerOn = false;
+  viewerPdfPath = null;
+};
+
+// Compile the current .typ for diagnostics only (no file output) and surface
+// them in the console. Returns true if there is no fatal error (safe to export).
+async function refreshTypstDiagnostics(): Promise<boolean> {
+  if (!activePath) return false;
+  try {
+    const res = await invoke<{ svg: string | null; diagnostics: Diagnostic[]; pages: number }>(
+      "typst_preview",
+      { filePath: activePath, source },
+    );
+    const diags = res.diagnostics ?? [];
+    diagnosticsStore.set("typst", diags);
+    if (diags.some((d) => d.severity === "error")) consoleOpen = true;
+    return res.svg !== null;
+  } catch (err) {
+    diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+    consoleOpen = true;
+    return false;
+  }
+}
+
+const handleTypstBuild = async () => {
   if (!activePath || exportingTypst) return;
   exportingTypst = true;
-  const outPath = dirname(activePath) + "/" + typstPdfName(activePath);
   try {
+    const ok = await refreshTypstDiagnostics();
+    if (!ok) return; // fatal errors already shown in the console
+    const outPath = dirname(activePath) + "/" + typstPdfName(activePath);
     await invoke("typst_export_pdf", { filePath: activePath, source, path: outPath });
-    compiledPdfPath = outPath;
-    typstPreviewOn = true;
     notifications.setInfo(t("app.savedTo", { name: typstPdfName(activePath) }));
   } catch (err) {
-    notifications.setLoadError({ title: "Typst", message: `${err}` });
+    diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+    consoleOpen = true;
   } finally {
     exportingTypst = false;
   }
 };
 
-// Live recompilation when preview is on and source changes
-$effect(() => {
-  const text = source;
-  if (!typstPreviewOn || !activePath || extFromPath(activePath) !== "typ") return;
-  if (!compiledPdfPath) return;
+const handleToggleConsole = () => {
+  if (consoleOpen) {
+    consoleOpen = false;
+    return;
+  }
+  // Diagnostics only make sense on a .typ; otherwise open straight to the terminal.
+  if (!activePath || extFromPath(activePath) !== "typ") consoleTab = "terminal";
+  consoleOpen = true;
+};
 
-  if (typstDebounceTimer) clearTimeout(typstDebounceTimer);
-  typstDebounceTimer = setTimeout(async () => {
-    if (!activePath || !typstPreviewOn || compilingTypst) return;
+const handleToggleTypstViewer = async () => {
+  if (typstViewerOn) {
+    typstViewerOn = false;
+    viewerPdfPath = null;
+    return;
+  }
+  if (!activePath || compilingTypst) return;
+  await handleSave();
+  const pdfPath = dirname(activePath) + "/" + typstPdfName(activePath);
+  const [srcMtime, pdfMtime] = await Promise.all([getMtime(activePath), getMtime(pdfPath)]);
+  const needsCompile = pdfMtime === null || (srcMtime !== null && srcMtime > pdfMtime);
+  if (needsCompile) {
     compilingTypst = true;
-    const { appDataDir } = await import("@tauri-apps/api/path");
-    const outPath = (await appDataDir()) + "/" + typstPdfName(activePath);
+    const ok = await refreshTypstDiagnostics();
+    if (!ok) { compilingTypst = false; return; } // fatal errors shown in console
     try {
-      await invoke("typst_export_pdf", { filePath: activePath, source: text, path: outPath });
-      compiledPdfPath = outPath;
+      await invoke("typst_export_pdf", { filePath: activePath, source, path: pdfPath });
     } catch (err) {
-      notifications.setLoadError({ title: "Typst", message: `${err}` });
-    } finally {
+      diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+      consoleOpen = true;
       compilingTypst = false;
+      return;
     }
-  }, 800);
-  return () => { if (typstDebounceTimer) clearTimeout(typstDebounceTimer); };
-});
+    compilingTypst = false;
+  }
+  typstPreviewOn = false;
+  viewerPdfPath = pdfPath;
+  typstViewerOn = true;
+};
+
 
 const handleWritingFontSizeChange = (value: WritingFontSize) => {
   writingFontSize.current = value;
@@ -1277,7 +1360,6 @@ let cmds = $derived(
     {activePath}
     {saveStatus}
     onExportPdf={handleExportPdf}
-    onOpenProject={handleOpenProject}
     titlebarVisible={titlebarVisible.current}
     onToggleTitlebar={handleToggleTitlebar}
     {vimOn}
@@ -1290,11 +1372,14 @@ let cmds = $derived(
     onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}
     onToggleFullscreen={toggleFullscreen}
     onOpenSettings={overlays.showSettings}
-    {typstPreviewOn}
+    {typstViewerOn}
     {compilingTypst}
     {exportingTypst}
-    onToggleTypstPreview={activePath && extFromPath(activePath) === "typ" ? handleToggleTypstPreview : undefined}
-    onTypstExportPdf={activePath && extFromPath(activePath) === "typ" ? handleTypstExportPdf : undefined}
+    onTypstCodeView={activePath && extFromPath(activePath) === "typ" ? handleTypstCodeView : undefined}
+    onToggleTypstViewer={activePath && extFromPath(activePath) === "typ" ? handleToggleTypstViewer : undefined}
+    onTypstBuild={activePath && extFromPath(activePath) === "typ" ? handleTypstBuild : undefined}
+    {consoleOpen}
+    onToggleConsole={handleToggleConsole}
   />
 
   <main class="mdv-shell">
@@ -1328,66 +1413,137 @@ let cmds = $derived(
 
     <div class="mdv-workspace">
       {#if tabs.length > 0}
-        <TabsBar {tabs} {activeTabId} onSelect={handleTabSelect} onClose={closeTab} onReorder={handleTabReorder} {splitOn} {canSplit} onToggleSplit={handleToggleSplit} />
+        <TabsBar {tabs} {activeTabId} onSelect={handleTabSelect} onClose={closeTab} onReorder={handleTabReorder} {splitOn} {canSplit} onToggleSplit={handleToggleSplit} {typstPreviewOn} onToggleTypstPreview={!typstViewerOn && activePath && extFromPath(activePath) === "typ" ? handleToggleTypstPreview : undefined} />
       {/if}
-      {#if splitOn && canSplit}
-        <div class="mdv-split">
-          <div bind:this={leftPaneEl} class="mdv-split__pane" style="flex: {splitRatio}">
-            <Editor
-              value={source}
-              language={extFromPath(activePath)}
-              onChange={(next) => { source = next; }}
-              {jumpToLine}
-              onJumpApplied={() => { jumpToLine = null; }}
-            />
-          </div>
-          <div
-            class="mdv-split__resize"
-            onpointerdown={startSplitResize}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize split"
-          />
-          <div bind:this={rightPaneEl} class="mdv-split__pane" style="flex: {1 - splitRatio}">
-            <LazyMarkdownPreview value={source} filePath={activePath} onJumpToLine={handleJumpToLine} />
-          </div>
-        </div>
-      {:else}
-        <div class="mdv-shell__editor-solo">
-          {#if activePath}
-            {#if isPdfPath(activePath)}
-              <LazyPdfViewer path={activePath} />
-            {:else if isImagePath(activePath)}
-              <ImageViewer path={activePath} />
-            {:else if previewOn && extFromPath(activePath) === "md"}
-              <LazyMarkdownPreview value={source} filePath={activePath} onJumpToLine={handleJumpToLine} />
-            {:else if prosemarkOn && presentationOn && extFromPath(activePath) === "md"}
-              <LazySlideDeck value={source} filePath={activePath} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
-            {:else if prosemarkOn && extFromPath(activePath) === "md"}
-              <LazyProseMark
-                value={source}
-                onChange={(next: string) => { source = next; }}
-              />
-            {:else if typstPreviewOn && compiledPdfPath && extFromPath(activePath) === "typ"}
-              <LazyPdfViewer path={compiledPdfPath} />
-            {:else}
+      <div class="mdv-workspace__content">
+        <svelte:boundary onerror={(error) => handleViewCrash(error)}>
+        {#if splitOn && canSplit}
+          <div class="mdv-split">
+            <div bind:this={leftPaneEl} class="mdv-split__pane" style="flex: {splitRatio}">
               <Editor
                 value={source}
                 language={extFromPath(activePath)}
                 onChange={(next) => { source = next; }}
                 {jumpToLine}
-                onJumpApplied={() => { jumpToLine = null; }}
+                {jumpToCol}
+                onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
               />
-            {/if}
-          {:else}
-            <div class="mdv-empty-state">
-              <p>{t("sidebar.browseNotes")}</p>
-              <button type="button" class="mdv-btn" onclick={handleAddFolder}>
-                {t("sidebar.addFolder")}
-              </button>
             </div>
-          {/if}
-        </div>
+            <div
+              class="mdv-split__resize"
+              onpointerdown={startSplitResize}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize split"
+            />
+            <div bind:this={rightPaneEl} class="mdv-split__pane" style="flex: {1 - splitRatio}">
+              <LazyMarkdownPreview value={source} filePath={activePath} onJumpToLine={handleJumpToLine} />
+            </div>
+          </div>
+        {:else if typstPreviewOn && activePath && extFromPath(activePath) === "typ"}
+          <div class="mdv-split">
+            <div bind:this={leftPaneEl} class="mdv-split__pane" style="flex: {splitRatio}">
+              <Editor
+                value={source}
+                language={extFromPath(activePath)}
+                onChange={(next) => { source = next; }}
+                {jumpToLine}
+                {jumpToCol}
+                onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
+              />
+            </div>
+            <div
+              class="mdv-split__resize"
+              onpointerdown={startSplitResize}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize split"
+            />
+            <div bind:this={rightPaneEl} class="mdv-split__pane" style="flex: {1 - splitRatio}">
+              <TypstPreview
+                value={source}
+                filePath={activePath}
+                initialSvg={activePath ? (typstSvgCache[activePath]?.svg ?? null) : null}
+                initialCompiledSource={activePath ? (typstSvgCache[activePath]?.compiledSource ?? null) : null}
+                initialDiags={activePath ? (typstSvgCache[activePath]?.diagnostics ?? []) : []}
+                onCompileResult={(svg, diags, compiledSource) => {
+                  const safeDiags = diags ?? [];
+                  if (activePath) {
+                    const prev = typstSvgCache[activePath];
+                    typstSvgCache[activePath] = {
+                      svg: svg ?? prev?.svg ?? "",
+                      compiledSource,
+                      diagnostics: safeDiags,
+                    };
+                  }
+                  diagnosticsStore.set("typst", safeDiags);
+                  if (safeDiags.some((d) => d.severity === "error")) consoleOpen = true;
+                }}
+              />
+            </div>
+          </div>
+        {:else if typstViewerOn && viewerPdfPath}
+          <div class="mdv-shell__editor-solo">
+            <LazyPdfViewer path={viewerPdfPath} />
+          </div>
+        {:else}
+          <div class="mdv-shell__editor-solo">
+            {#if activePath}
+              {#if isPdfPath(activePath)}
+                <LazyPdfViewer path={activePath} />
+              {:else if isImagePath(activePath)}
+                <ImageViewer path={activePath} />
+              {:else if previewOn && extFromPath(activePath) === "md"}
+                <LazyMarkdownPreview value={source} filePath={activePath} onJumpToLine={handleJumpToLine} />
+              {:else if prosemarkOn && presentationOn && extFromPath(activePath) === "md"}
+                <LazySlideDeck value={source} filePath={activePath} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
+              {:else if prosemarkOn && extFromPath(activePath) === "md"}
+                <LazyProseMark
+                  value={source}
+                  onChange={(next: string) => { source = next; }}
+                />
+              {:else}
+                <Editor
+                  value={source}
+                  language={extFromPath(activePath)}
+                  onChange={(next) => { source = next; }}
+                  {jumpToLine}
+                  {jumpToCol}
+                  onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
+                />
+              {/if}
+            {:else}
+              <div class="mdv-empty-state">
+                <p>{t("sidebar.browseNotes")}</p>
+                <button type="button" class="mdv-btn" onclick={handleAddFolder}>
+                  {t("sidebar.addFolder")}
+                </button>
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+        {#snippet failed(error, reset)}
+          <div class="mdv-view-crash">
+            <p class="mdv-view-crash__title">Cette vue a planté.</p>
+            <pre class="mdv-view-crash__msg">{error instanceof Error ? error.message : String(error)}</pre>
+            <button type="button" class="mdv-btn" onclick={reset}>Recharger la vue</button>
+          </div>
+        {/snippet}
+        </svelte:boundary>
+      </div>
+      {#if consoleMounted}
+        <ConsolePanel
+          diagnostics={consoleDiags}
+          height={consoleHeight}
+          activeTab={consoleTab}
+          terminalCwd={rootPath ?? (activePath ? dirname(activePath) : null)}
+          hidden={!consoleOpen}
+          onTabChange={(tab) => { consoleTab = tab; }}
+          onHeightChange={(h) => { consoleHeight = h; }}
+          onClose={() => { consoleOpen = false; }}
+          onJumpToLine={handleConsoleJump}
+        />
       {/if}
     </div>
 

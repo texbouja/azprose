@@ -1,13 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use typst::diag::{FileError, FileResult, Warned};
+use typst::diag::{FileError, FileResult, Severity, SourceDiagnostic, Warned};
 use typst::foundations::{Bytes, Datetime, Duration};
 use typst::layout::Abs;
 use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
-use typst::{Library, LibraryExt};
+use typst::{Library, LibraryExt, WorldExt};
 use typst::World;
 
 use typst_layout::PagedDocument;
@@ -144,6 +144,62 @@ fn compile(file_path: &str, source: String) -> Result<(PagedDocument, Warned<()>
     Ok((doc, Warned { output: (), warnings }))
 }
 
+#[derive(serde::Serialize)]
+pub struct TypstDiagnostic {
+    pub severity: String,
+    pub message: String,
+    pub line: Option<u32>,
+    pub col: Option<u32>,
+    pub hints: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct TypstPreview {
+    pub svg: Option<String>,
+    pub diagnostics: Vec<TypstDiagnostic>,
+    pub pages: usize,
+}
+
+fn diag_loc(world: &RenderWorld, d: &SourceDiagnostic) -> (Option<u32>, Option<u32>) {
+    let Some(range) = world.range(d.span) else { return (None, None); };
+    let Some(id) = d.span.id() else { return (None, None); };
+    let Ok(src) = world.source(id) else { return (None, None); };
+    let Some((line, col)) = src.lines().byte_to_line_column(range.start) else {
+        return (None, None);
+    };
+    (Some(line as u32 + 1), Some(col as u32 + 1))
+}
+
+fn to_diag(world: &RenderWorld, d: &SourceDiagnostic) -> TypstDiagnostic {
+    let (line, col) = diag_loc(world, d);
+    TypstDiagnostic {
+        severity: match d.severity { Severity::Error => "error", Severity::Warning => "warning" }.to_string(),
+        message: d.message.to_string(),
+        line,
+        col,
+        hints: d.hints.iter().map(|h| h.v.to_string()).collect(),
+    }
+}
+
+#[tauri::command]
+pub fn typst_preview(file_path: String, source: String) -> Result<TypstPreview, String> {
+    let world = RenderWorld::new(&file_path, source)?;
+    let Warned { output, warnings } = typst::compile::<PagedDocument>(&world);
+    let warn_diags: Vec<TypstDiagnostic> = warnings.iter().map(|w| to_diag(&world, w)).collect();
+    match output {
+        Ok(doc) => {
+            let pages = doc.pages().len();
+            let svg = svg_merged(&doc, &SvgOptions::default(), Abs::zero());
+            Ok(TypstPreview { svg: Some(svg), diagnostics: warn_diags, pages })
+        }
+        Err(errors) => {
+            let mut diags = warn_diags;
+            diags.extend(errors.iter().map(|e| to_diag(&world, e)));
+            Ok(TypstPreview { svg: None, diagnostics: diags, pages: 0 })
+        }
+    }
+}
+
 #[tauri::command]
 pub fn typst_render(file_path: String, source: String) -> Result<String, String> {
     let (doc, _) = compile(&file_path, source)?;
@@ -173,4 +229,34 @@ pub fn typst_export_pdf(
 pub fn typst_page_count(file_path: String, source: String) -> Result<usize, String> {
     let (doc, _) = compile(&file_path, source)?;
     Ok(doc.pages().len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preview_ok_returns_svg() {
+        let path = std::env::temp_dir().join("az_typst_ok.typ");
+        let res = typst_preview(path.to_string_lossy().into_owned(), "Hello world\n".into())
+            .expect("command should not hard-error");
+        assert!(res.svg.is_some(), "valid source must yield an SVG");
+        assert!(res.pages >= 1, "valid source must have at least one page");
+        eprintln!("[test] OK svg_len={} pages={}", res.svg.unwrap().len(), res.pages);
+    }
+
+    #[test]
+    fn preview_error_is_structured_with_location() {
+        let path = std::env::temp_dir().join("az_typst_err.typ");
+        // Line 2 references an undefined variable → compile error with a span.
+        let res = typst_preview(path.to_string_lossy().into_owned(), "ok line\n#undefined_var\n".into())
+            .expect("command should not hard-error");
+        assert!(res.svg.is_none(), "compile failure must yield no SVG");
+        assert!(!res.diagnostics.is_empty(), "must report at least one diagnostic");
+        let d = &res.diagnostics[0];
+        assert_eq!(d.severity, "error");
+        assert_eq!(d.line, Some(2), "error is on line 2 (1-indexed)");
+        assert!(d.col.is_some(), "must report a column");
+        eprintln!("[test] ERR {} at {:?}:{:?} — {}", d.severity, d.line, d.col, d.message);
+    }
 }

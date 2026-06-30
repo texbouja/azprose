@@ -123,8 +123,8 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
   bottom: 100%;
   left: 0;
   margin-bottom: 4px;
-  background: var(--mdv-bg);
-  border: 1px solid var(--mdv-border);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   min-width: 220px;
   max-width: 280px;
@@ -133,14 +133,14 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
 }
 .mdv-project-selector__header {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--mdv-border);
+  border-bottom: 1px solid var(--border);
 }
 .mdv-project-selector__title {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--mdv-fg-muted);
+  color: var(--muted);
 }
 .mdv-project-selector__list {
   max-height: 240px;
@@ -156,15 +156,15 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
   font-size: 12px;
   background: none;
   border: none;
-  color: var(--mdv-fg);
+  color: var(--fg);
   cursor: pointer;
   text-align: left;
 }
 .mdv-project-selector__item:hover {
-  background: var(--mdv-bg-hover);
+  background: var(--surface-hover);
 }
 .mdv-project-selector__item.is-current {
-  color: var(--mdv-accent);
+  color: var(--accent);
 }
 .mdv-project-selector__name {
   overflow: hidden;
@@ -178,7 +178,7 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
   justify-content: center;
   background: none;
   border: none;
-  color: var(--mdv-fg-muted);
+  color: var(--muted);
   cursor: pointer;
   padding: 2px;
   border-radius: 3px;
@@ -189,17 +189,17 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
   opacity: 1;
 }
 .mdv-project-selector__remove:hover {
-  color: var(--mdv-fg);
-  background: var(--mdv-bg-hover);
+  color: var(--fg);
+  background: var(--surface-hover);
 }
 .mdv-project-selector__empty {
   padding: 12px 10px;
   font-size: 11px;
-  color: var(--mdv-fg-muted);
+  color: var(--muted);
   text-align: center;
 }
 .mdv-project-selector__footer {
-  border-top: 1px solid var(--mdv-border);
+  border-top: 1px solid var(--border);
   padding: 4px;
 }
 .mdv-project-selector__add {
@@ -211,13 +211,13 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
   font-size: 12px;
   background: none;
   border: none;
-  color: var(--mdv-fg);
+  color: var(--fg);
   cursor: pointer;
   text-align: left;
   border-radius: 4px;
 }
 .mdv-project-selector__add:hover {
-  background: var(--mdv-bg-hover);
+  background: var(--surface-hover);
 }
 .mdv-project-selector__plus {
   font-size: 16px;

@@ -1,9 +1,11 @@
 <script lang="ts">
+import { onDestroy } from "svelte";
 import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import { renderMarkdown, resolveLocalImages, ensurePreviewReady } from "@/lib/markdown-render";
+import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { subscribeMode, type Theme } from "@/lib/theme";
 
 let t = $derived(getT($language));
@@ -90,19 +92,24 @@ $effect(() => {
 
 async function hydrate(stage: HTMLElement): Promise<void> {
   const sections = Array.from(stage.querySelectorAll<HTMLElement>(".azp-slide__content"));
+  let broken: string[] = [];
   if (filePath) {
-    await Promise.all(sections.map((s) => resolveLocalImages(s, filePath)));
+    broken = (await Promise.all(sections.map((s) => resolveLocalImages(s, filePath)))).flat();
   }
   await import("mathjax/tex-svg.js");
   const mj = window.MathJax as
     | { startup?: { promise?: Promise<void> }; tex2svgPromise?: (tex: string, opts: { display: boolean }) => Promise<unknown>; typesetPromise?: (els: HTMLElement[]) => Promise<void> }
     | undefined;
-  if (!mj?.startup?.promise) return;
-  await mj.startup.promise;
-  const preamble = mathJaxPreamble.current.trim();
-  if (preamble) await mj.tex2svgPromise?.(preamble, { display: true });
-  await mj.typesetPromise?.(sections);
+  if (mj?.startup?.promise) {
+    await mj.startup.promise;
+    const preamble = mathJaxPreamble.current.trim();
+    if (preamble) await mj.tex2svgPromise?.(preamble, { display: true });
+    await mj.typesetPromise?.(sections);
+  }
+  collectRenderDiagnostics(stage, broken);
 }
+
+onDestroy(() => clearRenderDiagnostics());
 
 $effect(() => {
   const s = proseSettings.current;
