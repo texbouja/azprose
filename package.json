@@ -14,7 +14,8 @@
     "build": "tsc && vite build",
     "test": "bun test",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "themes": "node scripts/build-themes.mjs"
   },
   "engines": {
     "node": ">=24.0.0"

@@ -144,22 +144,36 @@ export async function generateThemeCSS(id: string): Promise<string> {
   const fgRgb = hexToRgb(fg);
   const bgRgb = hexToRgb(bg);
 
+  // Pull real surface/border/hover/muted from the theme's full VS Code `colors` map
+  // (Shiki themes ARE VS Code themes) — far more coherent than blending fg↔bg. Only
+  // opaque values are used for solid surfaces; blending stays as the fallback.
+  const colors = theme.colors ?? {};
+  const opaque = (c?: string | null) => (c && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c) ? c : null);
+  const pick = (...keys: string[]) => {
+    for (const k of keys) { const c = opaque(colors[k]); if (c) return c; }
+    return null;
+  };
+  const surfaceSrc = pick("editorWidget.background", "sideBar.background", "editorGroupHeader.tabsBackground", "panel.background", "activityBar.background");
+  const borderSrc = pick("editorGroup.border", "panel.border", "editorWidget.border", "input.border", "sideBar.border", "tab.border");
+  const hoverSrc = pick("list.hoverBackground", "toolbar.hoverBackground", "list.inactiveSelectionBackground", "editor.lineHighlightBackground");
+  const mutedSrc = pick("descriptionForeground", "editorLineNumber.foreground", "disabledForeground", "tab.inactiveForeground", "editorCodeLens.foreground");
+
   let muted: string, border: string, surface: string, surfaceHover: string;
   let shadowSoft: string, backdrop: string, shadowColor: string;
 
   if (isLight) {
-    muted = blendHex(fg, bg, 0.52);
-    border = blendHex(fg, bg, 0.20);
-    surface = blendHex(bg, "#ffffff", 0.10);
-    surfaceHover = blendHex(fg, bg, 0.30);
+    muted = mutedSrc ?? blendHex(fg, bg, 0.52);
+    border = borderSrc ?? blendHex(fg, bg, 0.20);
+    surface = surfaceSrc ?? blendHex(bg, "#ffffff", 0.10);
+    surfaceHover = hoverSrc ?? blendHex(fg, bg, 0.30);
     shadowSoft = `0 1px 2px rgba(${fgRgb}, 0.06), 0 2px 8px rgba(${fgRgb}, 0.05)`;
     backdrop = "rgba(0, 0, 0, 0.22)";
     shadowColor = fgRgb;
   } else {
-    muted = blendHex(fg, bg, 0.42);
-    border = blendHex(fg, bg, 0.10);
-    surface = blendHex("#000000", bg, 0.12);
-    surfaceHover = blendHex(fg, bg, 0.22);
+    muted = mutedSrc ?? blendHex(fg, bg, 0.42);
+    border = borderSrc ?? blendHex(fg, bg, 0.10);
+    surface = surfaceSrc ?? blendHex("#000000", bg, 0.12);
+    surfaceHover = hoverSrc ?? blendHex(fg, bg, 0.22);
     shadowSoft = "0 1px 2px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.25)";
     backdrop = "rgba(0, 0, 0, 0.52)";
     shadowColor = "0, 0, 0";
