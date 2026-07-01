@@ -19,7 +19,9 @@
 </script>
 
 {#if Cmp}
-  <Cmp {path} {rev} />
+  {#key rev}
+    <Cmp {path} rev={rev} />
+  {/key}
 {:else}
   <div class="pdf-shell">
     <div class="pdf-overlay">

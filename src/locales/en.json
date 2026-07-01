@@ -312,5 +312,21 @@
   "lazy.loadingPresentation": "loading presentation…",
   "lazy.loadingProse": "loading prose editor…",
   "slideDeck.overflows": "this slide overflows — add a --- separator",
-  "slideDeck.goToPage": "go to page"
+  "slideDeck.goToPage": "go to page",
+  "pdf.loading": "Loading PDF…",
+  "pdf.couldNotOpen": "Could not open PDF",
+  "pdf.firstPage": "First page",
+  "pdf.prevPage": "Previous page",
+  "pdf.nextPage": "Next page",
+  "pdf.lastPage": "Last page",
+  "pdf.zoomOut": "Zoom out",
+  "pdf.zoomIn": "Zoom in",
+  "pdf.fitWidth": "Fit width",
+  "pdf.fitPage": "Fit page",
+  "pdf.hidePanel": "Hide panel",
+  "pdf.showPanel": "Show panel",
+  "pdf.contents": "Contents",
+  "pdf.attachments": "Attachments",
+  "pdf.noToc": "No table of contents",
+  "pdf.noAttachments": "No attachments"
 }

@@ -123,6 +123,11 @@ fn reveal_in_file_manager(path: String) {
 }
 
 #[tauri::command]
+fn log_perf(data: String) {
+    eprintln!("[az:perf]\n{data}");
+}
+
+#[tauri::command]
 fn export_pdf() -> bool {
     cfg!(target_os = "linux")
 }
@@ -455,6 +460,7 @@ pub fn run() {
             find_project_window,
             set_external_change_alerts,
             reveal_in_file_manager,
+            log_perf,
             export_pdf,
             read_project_config,
             write_project_config,

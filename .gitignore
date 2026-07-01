@@ -43,3 +43,7 @@ src-tauri/.cargo/config.toml
 *.sw?
 marketing.md
 .aider*
+
+# dev session files
+tmp/
+ai/

@@ -68,6 +68,7 @@ import ConsolePanel from "@/components/typst/ConsolePanel.svelte";
 import {
   createLatexState,
   handleLatexBuild, handleLatexViewer, handleLatexSplit, handleLatexCodeView,
+  autoBuildIfDepChanged, clearLatexDeps,
 } from "@/components/tex/latex-build";
 import type { Diagnostic } from "@/lib/diagnostics";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
@@ -149,6 +150,16 @@ let typstViewerOn = $state(false);
 let ls = $state(createLatexState());
 // Non-reactive: keyed by filePath, stores last SVG + compiled source for instant re-display.
 const typstSvgCache: Record<string, { svg: string; compiledSource: string; diagnostics: Diagnostic[] }> = {};
+type TabViewState = {
+  splitOn?: boolean;
+  splitRatio?: number;
+  latexSplitOn?: boolean;
+  latexViewerOn?: boolean;
+  typstViewerOn?: boolean;
+  viewerPdfPath?: string | null;
+};
+// Non-reactive map: tabId → view state (split ratios, modes per tab)
+const tabViewState = new Map<string, TabViewState>();
 let consoleOpen = $state(false);
 let consoleHeight = $state(160);
 const consoleDiags = $derived(diagnosticsStore.all);
@@ -510,7 +521,9 @@ async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silen
 
   const existing = findTabByPath(path);
   if (existing) {
+    saveCurrentTabViewState();
     activeTabId = existing.id;
+    restoreTabViewState(existing.id);
     // A permanent open (double-click) of an already-open preview tab pins it.
     if (!wantPreview && existing.preview) {
       tabs = tabs.map(t => t.id === existing.id ? { ...t, preview: false } : t);
@@ -529,6 +542,7 @@ async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silen
   } else {
     tabs = [...tabs, { id, title, path, source: "", savedContent: "", preview: wantPreview }];
   }
+  saveCurrentTabViewState();
   activeTabId = id;
 
   if (!isPdfPath(path) && !isImagePath(path)) {
@@ -560,16 +574,46 @@ function closeTab(id: string) {
   if (!isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
     saveDraft(tab.path, tab.source);
   }
+  // Save view state before closing
+  if (activeTabId === id) saveCurrentTabViewState();
+  if (activeTabId === id) tabViewState.delete(id);
   tabs = tabs.filter(t => t.id !== id);
   if (activeTabId === id) {
     const next = tabs[Math.min(idx, tabs.length - 1)];
     activeTabId = next?.id ?? null;
+    if (next) restoreTabViewState(next.id);
+  } else {
+    tabViewState.delete(id);
   }
   saveSessionNow();
 }
 
+function saveCurrentTabViewState() {
+  if (!activeTabId) return;
+  tabViewState.set(activeTabId, {
+    splitOn, splitRatio,
+    latexSplitOn: ls.latexSplitOn,
+    latexViewerOn: ls.latexViewerOn,
+    typstViewerOn,
+    viewerPdfPath: ls.viewerPdfPath,
+  });
+}
+
+function restoreTabViewState(id: string) {
+  const saved = tabViewState.get(id);
+  if (!saved) return;
+  splitOn = saved.splitOn ?? false;
+  if (saved.splitRatio != null) splitRatio = saved.splitRatio;
+  ls.latexSplitOn = saved.latexSplitOn ?? false;
+  ls.latexViewerOn = saved.latexViewerOn ?? false;
+  typstViewerOn = saved.typstViewerOn ?? false;
+  if (saved.viewerPdfPath !== undefined) ls.viewerPdfPath = saved.viewerPdfPath;
+}
+
 function handleTabSelect(id: string) {
+  saveCurrentTabViewState();
   activeTabId = id;
+  restoreTabViewState(id);
   saveSessionNow();
 }
 
@@ -629,9 +673,26 @@ const handleSave = async () => {
     tabs = tabs.map(t => t.id === activeTabId ? { ...t, savedContent: source } : t);
     clearDraft(activePath);
     void trackMtime(activePath);
+    // Auto-rebuild LaTeX project if a dependency changed (always builds root)
+    autoBuildIfDepChanged(ls, activePath, onLatexBuild);
   } catch (err) {
     console.error("azprose: save failed", err);
     saveStatus = "dirty";
+  }
+};
+
+/** Save all dirty tabs that match a list of file paths (used to flush LaTeX deps before build). */
+const handleSaveAll = async (deps: string[]) => {
+  const norm = (p: string) => p.replace(/\\/g, "/");
+  const depSet = new Set(deps.map(norm));
+  for (const tab of tabs) {
+    if (tab.source !== tab.savedContent && depSet.has(norm(tab.path))) {
+      try {
+        await writeMarkdown(tab.path, tab.source);
+        tabs = tabs.map(t => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
+        if (tab.path !== activePath) clearDraft(tab.path);
+      } catch { /* best-effort */ }
+    }
   }
 };
 
@@ -689,6 +750,7 @@ $effect(() => {
     ls.latexSplitOn = false;
     ls.latexBuilding = false;
     diagnosticsStore.clear("latex");
+    clearLatexDeps(ls);
   }
 });
 
@@ -1415,9 +1477,9 @@ const handleToggleTypstViewer = async () => {
 };
 
 
-const onLatexBuild = () => handleLatexBuild(ls, activePath, handleSave, () => consoleOpen = true, () => consoleTab = "log");
-const onLatexViewer = () => handleLatexViewer(ls, activePath, handleSave, () => consoleOpen = true);
-const onLatexSplit = () => handleLatexSplit(ls, activePath, handleSave, () => consoleOpen = true);
+const onLatexBuild = () => handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
+const onLatexViewer = () => handleLatexViewer(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
+const onLatexSplit = () => handleLatexSplit(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
 const onLatexCodeView = () => handleLatexCodeView(ls);
 
 const handleTypographyChange = (patch: Partial<TypographySettings>) => {

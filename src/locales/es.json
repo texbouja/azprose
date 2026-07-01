@@ -298,5 +298,21 @@
   "lazy.loadingPresentation": "cargando presentación…",
   "lazy.loadingProse": "cargando editor Prose…",
   "slideDeck.overflows": "esta diapositiva desborda — añade un separador ---",
-  "slideDeck.goToPage": "ir a la página"
+  "slideDeck.goToPage": "ir a la página",
+  "pdf.loading": "Cargando PDF…",
+  "pdf.couldNotOpen": "No se pudo abrir el PDF",
+  "pdf.firstPage": "Primera página",
+  "pdf.prevPage": "Página anterior",
+  "pdf.nextPage": "Página siguiente",
+  "pdf.lastPage": "Última página",
+  "pdf.zoomOut": "Alejar",
+  "pdf.zoomIn": "Acercar",
+  "pdf.fitWidth": "Ajustar al ancho",
+  "pdf.fitPage": "Ajustar a la página",
+  "pdf.hidePanel": "Ocultar panel",
+  "pdf.showPanel": "Mostrar panel",
+  "pdf.contents": "Contenido",
+  "pdf.attachments": "Archivos adjuntos",
+  "pdf.noToc": "Sin tabla de contenidos",
+  "pdf.noAttachments": "Sin archivos adjuntos"
 }

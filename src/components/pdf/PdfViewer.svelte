@@ -28,6 +28,7 @@
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+  import { getPdfCache, setPdfCache, updatePdfPage } from "@/lib/pdf-cache";
 
   let t = $derived(getT($language));
 
@@ -61,6 +62,9 @@
   let loading     = $state(false);
   let errorMsg    = $state<string | null>(null);
 
+  // Generation counter to discard stale async loadPdf calls
+  let loadGen = 0;
+
   // Panel state
   let panelOpen = $state(false);
   let panelTab  = $state<"toc" | "attachments">("toc");
@@ -75,6 +79,8 @@
   $effect(() => { pageInput = String(currentPage); });
 
   async function loadPdf(filePath: string) {
+    const gen = ++loadGen;
+
     loading   = true;
     errorMsg  = null;
     numPages  = 0;
@@ -85,15 +91,43 @@
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
     if (pdfDoc)  { pdfDoc.destroy(); pdfDoc = null; }
 
+    // Use cached bytes if rev matches (avoids re-read on tab switch-back)
+    const cached = getPdfCache(filePath);
+    let bytes: Uint8Array;
+    if (cached && cached.rev === rev) {
+      bytes = cached.data;
+    } else {
+      bytes = await readFile(filePath);
+      if (gen !== loadGen) return;
+      setPdfCache(filePath, { data: bytes, page: 1, scale: 1.0, rev });
+    }
+
     try {
-      const bytes = await readFile(filePath);
       const blob  = new Blob([bytes], { type: "application/pdf" });
       blobUrl = URL.createObjectURL(blob);
 
-      pdfDoc    = await pdfjsLib.getDocument(blobUrl).promise;
-      numPages  = pdfDoc.numPages;
+      pdfDoc = await pdfjsLib.getDocument(blobUrl).promise;
+      if (gen !== loadGen) { pdfDoc.destroy(); pdfDoc = null; return; }
+
+      numPages = pdfDoc.numPages;
+
       linkService!.setDocument(pdfDoc, null);
+
       pdfViewer!.setDocument(pdfDoc);
+
+      // Wait for pages to be created (async after setDocument)
+      await pdfViewer!.pagesPromise;
+      if (gen !== loadGen) return;
+
+      // Restore page & scale from cache
+      const entry = getPdfCache(filePath);
+      if (entry && entry.rev === rev) {
+        if (entry.page >= 1 && entry.page <= numPages) {
+          pdfViewer!.currentPageNumber = entry.page;
+          currentPage = entry.page;
+        }
+        if (entry.scale > 0) pdfViewer!.currentScale = entry.scale;
+      }
 
       const [rawOutline, rawAtt] = await Promise.all([
         pdfDoc.getOutline(),
@@ -102,13 +136,12 @@
       outline     = (rawOutline ?? []) as OutlineNode[];
       attachments = rawAtt as typeof attachments;
     } catch (e) {
-      errorMsg = e instanceof Error ? e.message : String(e);
+      const errMsg = e instanceof Error ? e.message : String(e);
+      errorMsg = errMsg;
     } finally {
       loading = false;
     }
   }
-
-  $effect(() => { if (path && pdfViewer) void loadPdf(path); rev; });
 
   // — Navigation —
   function goFirst() { if (pdfViewer && numPages) pdfViewer.currentPageNumber = 1; }
@@ -153,11 +186,12 @@
 
     linkService.setViewer(pdfViewer);
 
-    eventBus.on("pagechanging",  (e: { pageNumber: number }) => { currentPage = e.pageNumber; });
+    eventBus.on("pagechanging",  (e: { pageNumber: number }) => { currentPage = e.pageNumber; updatePdfPage(path, e.pageNumber); });
     eventBus.on("scalechanging", (e: { scale: number })      => { scale = e.scale; });
-
-    if (path) void loadPdf(path);
   });
+
+  // Load on mount & reload when path changes; rev changes trigger full re-create
+  $effect(() => { if (path && pdfViewer) void loadPdf(path); });
 
   onDestroy(() => {
     pdfDoc?.destroy();

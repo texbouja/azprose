@@ -298,5 +298,21 @@
   "lazy.loadingPresentation": "Präsentation wird geladen…",
   "lazy.loadingProse": "Prose-Editor wird geladen…",
   "slideDeck.overflows": "diese Folie läuft über — füge einen --- trenner hinzu",
-  "slideDeck.goToPage": "gehe zu Seite"
+  "slideDeck.goToPage": "gehe zu Seite",
+  "pdf.loading": "PDF wird geladen…",
+  "pdf.couldNotOpen": "PDF konnte nicht geöffnet werden",
+  "pdf.firstPage": "Erste Seite",
+  "pdf.prevPage": "Vorherige Seite",
+  "pdf.nextPage": "Nächste Seite",
+  "pdf.lastPage": "Letzte Seite",
+  "pdf.zoomOut": "Verkleinern",
+  "pdf.zoomIn": "Vergrößern",
+  "pdf.fitWidth": "An Breite anpassen",
+  "pdf.fitPage": "An Seite anpassen",
+  "pdf.hidePanel": "Panel ausblenden",
+  "pdf.showPanel": "Panel einblenden",
+  "pdf.contents": "Inhalt",
+  "pdf.attachments": "Anhänge",
+  "pdf.noToc": "Kein Inhaltsverzeichnis",
+  "pdf.noAttachments": "Keine Anhänge"
 }

@@ -53,7 +53,7 @@ function handleDblClick() {
 }
 </script>
 
-<li class="mdv-tree__item" role="treeitem" aria-selected={active}>
+<li class="mdv-tree__item" role="treeitem" aria-selected={active} data-path={entry.path} data-active={active ? "" : undefined}>
   <button
     type="button"
     draggable="true"

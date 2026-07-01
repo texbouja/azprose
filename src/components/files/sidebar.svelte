@@ -82,6 +82,14 @@ let query = $state("");
 let searchOpen = $state(false);
 let rootDrop = $state(false);
 let searchInputRef: HTMLInputElement;
+let sidebarBodyEl: HTMLDivElement;
+
+// Auto-scroll to active file when activePath changes
+$effect(() => {
+  if (!activePath || !sidebarBodyEl) return;
+  const el = sidebarBodyEl.querySelector(`[data-active]`) as HTMLElement | null;
+  if (el) el.scrollIntoView({ block: "nearest", behavior: "instant" });
+});
 
 let dragging = false;
 let startX = 0;
@@ -243,6 +251,7 @@ function onHeaderMouseDown(e: MouseEvent) {
       </div>
     {/if}
     <div
+      bind:this={sidebarBodyEl}
       class="mdv-sidebar__body{rootDrop ? ' is-root-drop' : ''}"
       ondragover={(e) => {
         if (!onMove || !rootPath) return;

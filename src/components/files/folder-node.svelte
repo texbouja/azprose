@@ -61,6 +61,11 @@ $effect(() => {
   if (newEntry && newEntry.parent === entry.path && !open) open = true;
 });
 
+// Auto-expand when active file is inside this folder
+$effect(() => {
+  if (activePath && isDescendantPath(activePath, entry.path) && !open) open = true;
+});
+
 function toggle() { open = !open; }
 
 function onDragStart(e: DragEvent) {
