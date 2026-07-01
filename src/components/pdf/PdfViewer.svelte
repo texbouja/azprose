@@ -74,11 +74,12 @@
     if (!pageEl) return;
     const page = Number(pageEl.dataset.pageNumber);
     if (!page) return;
-    const canvas = pageEl.querySelector("canvas");
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (rect.height - (e.clientY - rect.top)) * (canvas.height / rect.height);
+    const pageRect = pageEl.getBoundingClientRect();
+    const cssX = e.clientX - pageRect.left;
+    const cssY = e.clientY - pageRect.top;
+    const pageView = (pdfViewer as any)?._pages?.[page - 1];
+    if (!pageView) return;
+    const [x, y] = pageView.getPagePoint(cssX, cssY);
     invoke<{ file: string; line: number }>("synctex_inverse", { pdfPath: path, page, x, y })
       .then((r) => onInverseSync!(r.file, r.line))
       .catch((err) => console.error("synctex inverse failed", err));
