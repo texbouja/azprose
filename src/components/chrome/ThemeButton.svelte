@@ -10,19 +10,27 @@
     Sun,
     Terminal,
     Trash2,
+    X,
   } from "@/lib/icons";
   import type { IconData } from "@/lib/icons";
   import { Button, Icon, Popover } from "@/components/primitives";
   import { language, getT } from "@/lib/i18n";
   import {
     THEME_GROUPS,
-    PREINSTALLED_ADDONS,
     getSystemTheme,
     previewTheme,
-    WRITING_FONT_SIZE_OPTIONS,
-    WRITING_LINE_HEIGHT_OPTIONS,
   } from "@/lib";
-  import type { Theme, ThemeMode, WritingDisplay, WritingFontSize, WritingLineHeight } from "@/lib";
+  import type { Theme, ThemeMode } from "@/lib";
+  import {
+    FONT_SIZE_OPTIONS,
+    LINE_HEIGHT_OPTIONS,
+    PROSE_FONT_PRESETS,
+    CODE_FONT_PRESETS,
+    type TypographySettings,
+    type FontSize,
+    type LineHeight,
+    type TextAlign,
+  } from "@/lib/typography";
   import {
     listCustomThemes,
     installCustomTheme,
@@ -31,24 +39,21 @@
     removeThemeCSS,
     type CustomThemeEntry,
   } from "@/lib/custom-themes";
-  import { getAvailableThemes, generateThemeCSS, type ShikiThemeInfo } from "@/lib/theme-generator";
-  import { onMount } from "svelte";
+  import { tokensToCSS, type CatalogTheme } from "@/lib/theme-css";
   import { theme } from "@/stores/theme.svelte";
 
   let {
     vimOn = false,
     onToggleVim,
-    writingDisplay,
-    onWritingFontSizeChange,
-    onWritingLineHeightChange,
-    onResetWritingDisplay,
+    typography,
+    onTypographyChange,
+    onResetTypography,
   }: {
     vimOn?: boolean;
     onToggleVim?: () => void;
-    writingDisplay: WritingDisplay;
-    onWritingFontSizeChange: (value: WritingFontSize) => void;
-    onWritingLineHeightChange: (value: WritingLineHeight) => void;
-    onResetWritingDisplay: () => void;
+    typography: TypographySettings;
+    onTypographyChange: (patch: Partial<TypographySettings>) => void;
+    onResetTypography: () => void;
   } = $props();
 
   let t = $derived(getT($language));
@@ -61,26 +66,28 @@
     frappe: Moon,
     macchiato: Moon,
     mocha: Moon,
-    "gruvbox-dark-hard":   Moon,
-    "gruvbox-dark-medium": Moon,
-    "gruvbox-dark-soft":   Moon,
-    "gruvbox-light-hard":  Sun,
-    "gruvbox-light-medium":Sun,
-    "gruvbox-light-soft":  Sun,
+    "skarline-fleet-dark":   Moon,
+    "skarline-fleet-purple": Moon,
+    "skarline-fleet-light":  Sun,
+    "skarline-xcode-dark":   Moon,
+    "skarline-xcode-light":  Sun,
   };
 
   let menuOpen = $state(false);
   let displayControlsOpen = $state(false);
   let openThemeGroups = $state(new Set<string>());
-  let anchorEl: HTMLDivElement | null = null;
-  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  let anchorEl = $state<HTMLDivElement | null>(null);
+  let hoverTimer: number | null = null;
   let customThemes = $state<CustomThemeEntry[]>([]);
   let addThemeOpen = $state(false);
-  let availableThemes = $state<ShikiThemeInfo[]>([]);
+  let availableThemes = $state<CatalogTheme[]>([]);
   let themeSearch = $state("");
 
-  onMount(() => {
-    listCustomThemes().then((t) => { customThemes = t; });
+  // Crafted themes live in the current project's .azprose/themes/. Re-list whenever the
+  // project root changes (e.g. main window opens its first folder).
+  $effect(() => {
+    const root = theme.projectRoot;
+    listCustomThemes(root).then((t) => { customThemes = t; });
   });
 
   let filteredThemes = $derived(
@@ -92,47 +99,37 @@
       : availableThemes,
   );
 
-  let allCraftedThemes = $derived.by(() => {
-    const names = new Set<string>();
-    const items: { name: string; label: string; isPreinstalled: boolean }[] = [];
-    for (const a of PREINSTALLED_ADDONS) {
-      names.add(a.name);
-      items.push({ name: a.name, label: a.label, isPreinstalled: true });
-    }
-    for (const ct of customThemes) {
-      if (!names.has(ct.name)) {
-        items.push({ name: ct.name, label: ct.name, isPreinstalled: false });
-      }
-    }
-    return items;
-  });
+  // Crafted = only user-added themes. None are persistent; all are removable.
+  let allCraftedThemes = $derived(customThemes.map((ct) => ({ name: ct.name, label: ct.name })));
 
   function themeIcon(value: string): IconData {
     if (value === "system") return Monitor;
     const icon = THEME_ICONS[value];
     if (icon) return icon;
-    if (PREINSTALLED_ADDONS.some((a) => a.name === value)) {
-      const info = PREINSTALLED_ADDONS.find((a) => a.name === value)!;
-      return info.type === "light" ? Sun : Moon;
-    }
     const info = availableThemes.find((t) => t.id === value);
     if (info) return info.type === "light" ? Sun : Moon;
     return Moon;
   }
 
-  function openAddTheme() {
-    availableThemes = getAvailableThemes();
+  async function openAddTheme() {
+    // Lazy-load the static curated catalog (no Shiki at runtime).
+    if (availableThemes.length === 0) {
+      const mod = await import("@/lib/crafted-catalog.json");
+      availableThemes = (mod.default ?? mod) as unknown as CatalogTheme[];
+    }
     themeSearch = "";
     addThemeOpen = true;
   }
 
-  async function handleAddTheme(id: string) {
+  async function handleAddTheme(item: CatalogTheme) {
+    const root = theme.projectRoot;
+    if (!root) return; // crafted themes require an open project (vault model)
     try {
-      const css = await generateThemeCSS(id);
-      await installCustomTheme(id, css);
-      injectThemeCSS(id, css);
-      customThemes = await listCustomThemes();
-      theme.setMode(id);
+      const css = tokensToCSS(item.id, item.type, item.tokens);
+      await installCustomTheme(root, item.id, css);
+      injectThemeCSS(item.id, css);
+      customThemes = await listCustomThemes(root);
+      theme.setMode(item.id);
     } catch (err) {
       console.error("azprose: failed to install theme", err);
     }
@@ -140,19 +137,14 @@
   }
 
   async function handleRemoveTheme(name: string) {
+    const root = theme.projectRoot;
     removeThemeCSS(name);
-    await deleteCustomTheme(name);
-    customThemes = await listCustomThemes();
+    if (root) await deleteCustomTheme(root, name);
+    customThemes = await listCustomThemes(root);
     if (theme.mode === name) {
       theme.setMode("latte");
     }
   }
-
-  let activeThemeGroup = $derived(
-    THEME_GROUPS.find((group) =>
-      group.choices.some((choice) => choice.value === theme.mode),
-    )?.label,
-  );
 
   function resolveThemeForPreview(value: ThemeMode): Theme {
     return value === "system" ? getSystemTheme() : value;
@@ -181,6 +173,7 @@
   function closeMenu() {
     cancelPreview();
     menuOpen = false;
+    addThemeOpen = false;
   }
 
   function toggleThemeGroup(label: string) {
@@ -190,6 +183,45 @@
     openThemeGroups = next;
   }
 </script>
+
+{#snippet choiceSlider(label: string, options: readonly string[], current: string, valueLabel: (v: string) => string, onPick: (v: string) => void)}
+  <div class="mdv-menu__choice-slider">
+    <span class="mdv-menu__choice-label">{label}</span>
+    <span class="mdv-menu__choice-value" aria-hidden="true">{valueLabel(current)}</span>
+    <input
+      type="range"
+      class="mdv-menu__choice-input"
+      min={0}
+      max={options.length - 1}
+      step={1}
+      value={options.indexOf(current)}
+      oninput={(e) => onPick(options[Number((e.currentTarget as HTMLInputElement).value)] ?? current)}
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={options.length - 1}
+      aria-valuenow={options.indexOf(current)}
+      aria-valuetext={valueLabel(current)}
+    />
+  </div>
+{/snippet}
+
+{#snippet fontField(id: string, label: string, presets: { id: string; label: string; value: string }[], current: string, onPick: (v: string) => void)}
+  <label class="mdv-menu__field">
+    <span class="mdv-menu__choice-label">{label}</span>
+    <input
+      class="mdv-menu__text"
+      list={"fonts-" + id}
+      value={current}
+      placeholder={presets[0]?.label ?? "default"}
+      oninput={(e) => onPick((e.currentTarget as HTMLInputElement).value)}
+    />
+    <datalist id={"fonts-" + id}>
+      {#each presets as p}
+        {#if p.value}<option value={p.value} label={p.label}></option>{/if}
+      {/each}
+    </datalist>
+  </label>
+{/snippet}
 
 <div class="mdv-titlebar__theme" bind:this={anchorEl}>
   <Button
@@ -208,7 +240,7 @@
     onClose={closeMenu}
     anchorRef={{ current: anchorEl }}
   >
-    <div class="mdv-menu mdv-menu--theme" onmouseleave={cancelPreview}>
+    <div class="mdv-menu mdv-menu--theme" role="menu" tabindex="-1" onmouseleave={cancelPreview}>
       {#each THEME_GROUPS as group}
         {@const expanded = openThemeGroups.has(group.label)}
         <section
@@ -258,10 +290,14 @@
               {#if group.label === "crafted"}
                 {#each allCraftedThemes as item}
                   {@const active = theme.mode === item.name}
-                  <button
-                    type="button"
+                  <!-- A crafted row holds an inner trash <button>, so the row itself is a
+                       div (a button can't contain a button) with keyboard activation. -->
+                  <div
                     class="mdv-menu__item"
                     class:is-active={active}
+                    role="menuitemradio"
+                    aria-checked={active}
+                    tabindex="0"
                     onmouseenter={() => previewOnHover(item.name)}
                     onmouseleave={cancelHoverTimer}
                     onfocus={() => previewOnHover(item.name)}
@@ -271,8 +307,14 @@
                       theme.setMode(item.name);
                       menuOpen = false;
                     }}
-                    role="menuitemradio"
-                    aria-checked={active}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        cancelPreview();
+                        theme.setMode(item.name);
+                        menuOpen = false;
+                      }
+                    }}
                   >
                     <span class="mdv-menu__item-icon">
                       <Icon icon={themeIcon(item.name)} size={14} strokeWidth={1.5} />
@@ -283,17 +325,15 @@
                         <Icon icon={Check} size={13} strokeWidth={2} />
                       </span>
                     {/if}
-                    {#if !item.isPreinstalled}
-                      <button
-                        type="button"
-                        class="mdv-menu__item-action"
-                        onclick={(e) => { e.stopPropagation(); handleRemoveTheme(item.name); }}
-                        aria-label={t("theme.removeTheme")}
-                      >
-                        <Icon icon={Trash2} size={12} strokeWidth={1.5} />
-                      </button>
-                    {/if}
-                  </button>
+                    <button
+                      type="button"
+                      class="mdv-menu__item-action"
+                      onclick={(e) => { e.stopPropagation(); handleRemoveTheme(item.name); }}
+                      aria-label={t("theme.removeTheme")}
+                    >
+                      <Icon icon={Trash2} size={12} strokeWidth={1.5} />
+                    </button>
+                  </div>
                 {/each}
               {/if}
             </div>
@@ -313,6 +353,15 @@
       {#if addThemeOpen}
         <div class="mdv-theme-picker">
           <div class="mdv-theme-picker__header">
+            <button
+              type="button"
+              class="mdv-theme-picker__back"
+              aria-label={t("app.close")}
+              onclick={() => (addThemeOpen = false)}
+            >
+              <Icon icon={X} size={14} strokeWidth={1.8} />
+            </button>
+            <!-- svelte-ignore a11y_autofocus -->
             <input
               type="text"
               class="mdv-theme-picker__search"
@@ -320,23 +369,36 @@
               bind:value={themeSearch}
               spellcheck={false}
               autofocus
+              onkeydown={(e) => { if (e.key === "Escape") { e.stopPropagation(); addThemeOpen = false; } }}
             />
           </div>
-          <div class="mdv-theme-picker__list">
-            {#each filteredThemes as t}
+          <div class="mdv-theme-picker__grid">
+            {#each filteredThemes as t (t.id)}
               <button
                 type="button"
-                class="mdv-theme-picker__item"
-                onclick={() => handleAddTheme(t.id)}
+                class="mdv-theme-card"
+                onclick={() => handleAddTheme(t)}
+                title={t.displayName}
+                style="--c-bg:{t.tokens.bg}; --c-fg:{t.tokens.fg}; --c-surface:{t.tokens.surface}; --c-border:{t.tokens.border}; --c-accent:{t.tokens.accent}; --c-muted:{t.tokens.muted};"
               >
-                <span class="mdv-theme-picker__name">{t.displayName}</span>
-                <span class="mdv-theme-picker__type">{t.type}</span>
+                <span class="mdv-theme-card__preview">
+                  <span class="mdv-theme-card__bar"></span>
+                  <span class="mdv-theme-card__line"></span>
+                  <span class="mdv-theme-card__line mdv-theme-card__line--short"></span>
+                  <span class="mdv-theme-card__chips">
+                    <span style="background:{t.tokens.syntax['--syntax-keyword'] ?? t.tokens.accent}"></span>
+                    <span style="background:{t.tokens.syntax['--syntax-string'] ?? t.tokens.fg}"></span>
+                    <span style="background:{t.tokens.syntax['--syntax-function'] ?? t.tokens.accent}"></span>
+                    <span class="mdv-theme-card__accent"></span>
+                  </span>
+                </span>
+                <span class="mdv-theme-card__name">{t.displayName}</span>
               </button>
             {/each}
           </div>
         </div>
       {/if}
-      <div class="mdv-menu__divider" aria-hidden />
+      <div class="mdv-menu__divider" aria-hidden="true"></div>
       <section
         class="mdv-menu__group"
         class:is-open={displayControlsOpen}
@@ -351,8 +413,7 @@
             <span>{t("title.display")}</span>
             <span class="mdv-menu__settings-summary">
               {theme.opacity >= 100 ? t("title.off") : `${100 - theme.opacity}%`} /{" "}
-              {t(`writing.font.${writingDisplay.fontSize}`)} /{" "}
-              {t(`writing.spacing.${writingDisplay.lineHeight}`)}
+              {t(`writing.font.${typography.markdownFontSize}`)}
             </span>
             <Icon icon={ChevronRight} size={13} strokeWidth={1.7} />
           </button>
@@ -363,11 +424,11 @@
               class="mdv-menu__slider"
               class:is-active={theme.transparent}
             >
-              <span class="mdv-menu__slider-icon" aria-hidden>
+              <span class="mdv-menu__slider-icon" aria-hidden="true">
                 <Icon icon={Sparkles} size={14} strokeWidth={1.5} />
               </span>
               <span class="mdv-menu__slider-label">{t("title.transparency")}</span>
-              <span class="mdv-menu__slider-value" aria-hidden>
+              <span class="mdv-menu__slider-value" aria-hidden="true">
                 {theme.opacity >= 100 ? t("title.off") : `${100 - theme.opacity}%`}
               </span>
               <input
@@ -386,61 +447,55 @@
               />
             </div>
 
-            <div class="mdv-menu__choice-slider">
-              <span class="mdv-menu__choice-label">{t("title.writingFont")}</span>
-              <span class="mdv-menu__choice-value" aria-hidden>
-                {t(`writing.font.${writingDisplay.fontSize}`)}
-              </span>
-              <input
-                type="range"
-                class="mdv-menu__choice-input"
-                min={0}
-                max={WRITING_FONT_SIZE_OPTIONS.length - 1}
-                step={1}
-                value={WRITING_FONT_SIZE_OPTIONS.indexOf(writingDisplay.fontSize)}
-                oninput={(e) => onWritingFontSizeChange(WRITING_FONT_SIZE_OPTIONS[Number((e.target as HTMLInputElement).value)] ?? writingDisplay.fontSize)}
-                aria-label={t("title.writingFont")}
-                aria-valuemin={0}
-                aria-valuemax={WRITING_FONT_SIZE_OPTIONS.length - 1}
-                aria-valuenow={WRITING_FONT_SIZE_OPTIONS.indexOf(writingDisplay.fontSize)}
-                aria-valuetext={t(`writing.font.${writingDisplay.fontSize}`)}
-              />
+            <!-- Markdown group: rendered prose (ProseMark) + Preview -->
+            <div class="mdv-menu__subhead">{t("typo.markdown")}</div>
+            {@render fontField("prose", t("typo.font"), PROSE_FONT_PRESETS, typography.markdownFont, (v) => onTypographyChange({ markdownFont: v }))}
+            {@render choiceSlider(t("typo.size"), FONT_SIZE_OPTIONS, typography.markdownFontSize, (v) => t(`writing.font.${v}`), (v) => onTypographyChange({ markdownFontSize: v as FontSize }))}
+            {@render choiceSlider(t("typo.lineHeight"), LINE_HEIGHT_OPTIONS, typography.markdownLineHeight, (v) => t(`writing.spacing.${v}`), (v) => onTypographyChange({ markdownLineHeight: v as LineHeight }))}
+            <div class="mdv-menu__seg">
+              <span class="mdv-menu__choice-label">{t("typo.align")}</span>
+              <div class="mdv-menu__seg-buttons">
+                {#each [["left", t("typo.alignLeft")], ["justify", t("typo.alignJustify")]] as [val, lbl]}
+                  <button
+                    type="button"
+                    class="mdv-menu__seg-btn"
+                    class:is-on={typography.markdownAlign === val}
+                    onclick={() => onTypographyChange({ markdownAlign: val as TextAlign })}
+                  >{lbl}</button>
+                {/each}
+              </div>
             </div>
 
-            <div class="mdv-menu__choice-slider">
-              <span class="mdv-menu__choice-label">{t("title.writingSpacing")}</span>
-              <span class="mdv-menu__choice-value" aria-hidden>
-                {t(`writing.spacing.${writingDisplay.lineHeight}`)}
-              </span>
-              <input
-                type="range"
-                class="mdv-menu__choice-input"
-                min={0}
-                max={WRITING_LINE_HEIGHT_OPTIONS.length - 1}
-                step={1}
-                value={WRITING_LINE_HEIGHT_OPTIONS.indexOf(writingDisplay.lineHeight)}
-                oninput={(e) => onWritingLineHeightChange(WRITING_LINE_HEIGHT_OPTIONS[Number((e.target as HTMLInputElement).value)] ?? writingDisplay.lineHeight)}
-                aria-label={t("title.writingSpacing")}
-                aria-valuemin={0}
-                aria-valuemax={WRITING_LINE_HEIGHT_OPTIONS.length - 1}
-                aria-valuenow={WRITING_LINE_HEIGHT_OPTIONS.indexOf(writingDisplay.lineHeight)}
-                aria-valuetext={t(`writing.spacing.${writingDisplay.lineHeight}`)}
-              />
-            </div>
+            <!-- Code / plain-text group: source editor (all raw text formats) -->
+            <div class="mdv-menu__subhead">{t("typo.code")}</div>
+            {@render fontField("code", t("typo.font"), CODE_FONT_PRESETS, typography.codeFont, (v) => onTypographyChange({ codeFont: v }))}
+            {@render choiceSlider(t("typo.size"), FONT_SIZE_OPTIONS, typography.codeFontSize, (v) => t(`writing.font.${v}`), (v) => onTypographyChange({ codeFontSize: v as FontSize }))}
+            {@render choiceSlider(t("typo.lineHeight"), LINE_HEIGHT_OPTIONS, typography.codeLineHeight, (v) => t(`writing.spacing.${v}`), (v) => onTypographyChange({ codeLineHeight: v as LineHeight }))}
+            <button
+              type="button"
+              class="mdv-menu__item mdv-menu__toggle-row"
+              class:is-active={typography.codeLineNumbers}
+              role="menuitemcheckbox"
+              aria-checked={typography.codeLineNumbers}
+              onclick={() => onTypographyChange({ codeLineNumbers: !typography.codeLineNumbers })}
+            >
+              <span class="mdv-menu__item-label">{t("typo.lineNumbers")}</span>
+              <span class="mdv-menu__switch" class:is-on={typography.codeLineNumbers} aria-hidden="true"></span>
+            </button>
 
             <button
               type="button"
               class="mdv-menu__reset-row"
-              onclick={onResetWritingDisplay}
+              onclick={onResetTypography}
             >
               <Icon icon={RotateCcw} size={13} strokeWidth={1.6} />
-              <span>{t("title.resetWriting")}</span>
+              <span>{t("typo.reset")}</span>
             </button>
           </div>
         </div>
       </section>
       {#if onToggleVim}
-        <div class="mdv-menu__divider" aria-hidden />
+        <div class="mdv-menu__divider" aria-hidden="true"></div>
         <div class="mdv-menu__label">{t("title.editor")}</div>
         <button
           type="button"
@@ -454,7 +509,7 @@
             <Icon icon={Terminal} size={14} strokeWidth={1.5} />
           </span>
           <span class="mdv-menu__item-label">{t("title.vimMode")}</span>
-          <span class="mdv-menu__switch" class:is-on={vimOn} aria-hidden />
+          <span class="mdv-menu__switch" class:is-on={vimOn} aria-hidden="true"></span>
         </button>
       {/if}
     </div>
@@ -465,54 +520,128 @@
 .mdv-theme-picker {
   position: absolute;
   inset: 0;
-  background: var(--mdv-bg, var(--bg));
+  background: var(--bg, var(--bg));
   display: flex;
   flex-direction: column;
   z-index: 10;
 }
 .mdv-theme-picker__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px;
-  border-bottom: 1px solid var(--mdv-border, var(--border));
+  border-bottom: 1px solid var(--border, var(--border));
+}
+.mdv-theme-picker__back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.mdv-theme-picker__back:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
 }
 .mdv-theme-picker__search {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 6px 8px;
   font-size: 12px;
-  background: var(--mdv-bg-hover, var(--surface-hover));
-  border: 1px solid var(--mdv-border, var(--border));
+  background: var(--bg-hover, var(--surface-hover));
+  border: 1px solid var(--border, var(--border));
   border-radius: 4px;
-  color: var(--mdv-fg, var(--fg));
+  color: var(--fg, var(--fg));
   outline: none;
 }
 .mdv-theme-picker__search:focus {
-  border-color: var(--mdv-accent, var(--accent));
+  border-color: var(--accent, var(--accent));
 }
-.mdv-theme-picker__list {
+.mdv-theme-picker__grid {
   flex: 1;
   overflow-y: auto;
-  padding: 4px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  align-content: start;
 }
-.mdv-theme-picker__item {
+.mdv-theme-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 6px 8px;
-  font-size: 12px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
   background: none;
   border: none;
-  color: var(--mdv-fg, var(--fg));
   cursor: pointer;
-  border-radius: 4px;
   text-align: left;
 }
-.mdv-theme-picker__item:hover {
-  background: var(--mdv-bg-hover, var(--surface-hover));
+/* HTML render preview built from the theme's own derived tokens */
+.mdv-theme-card__preview {
+  display: block;
+  height: 54px;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  overflow: hidden;
+  transition: transform var(--dur-fast, 0.1s), box-shadow var(--dur-fast, 0.1s);
 }
-.mdv-theme-picker__type {
+.mdv-theme-card:hover .mdv-theme-card__preview {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.mdv-theme-card__bar {
+  display: block;
+  height: 8px;
+  margin: -6px -6px 6px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+}
+.mdv-theme-card__line {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--c-fg);
+  opacity: 0.85;
+  margin-bottom: 4px;
+}
+.mdv-theme-card__line--short {
+  width: 60%;
+  background: var(--c-muted);
+  opacity: 0.75;
+}
+.mdv-theme-card__chips {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+}
+.mdv-theme-card__chips > span {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.mdv-theme-card__chips > .mdv-theme-card__accent {
+  background: var(--c-accent);
+  border-radius: 50%;
+  margin-left: auto;
+}
+.mdv-theme-card__name {
   font-size: 10px;
-  opacity: 0.6;
-  text-transform: uppercase;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+.mdv-theme-card:hover .mdv-theme-card__name {
+  color: var(--fg);
 }
 .mdv-menu__item-action {
   display: flex;

@@ -16,6 +16,7 @@ export const STORAGE_KEYS = {
   favorites: "mdview.favorites",
   writingFontSize: "mdview.writing.fontSize",
   writingLineHeight: "mdview.writing.lineHeight",
+  typography: "mdview.typography",
   proseStyle: "mdview.prose.style",
   mathJaxPreamble: "mdview.mathjax.preamble",
   mathJaxPackages: "mdview.mathjax.packages",

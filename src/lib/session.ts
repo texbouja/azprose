@@ -5,8 +5,9 @@
 //
 // Isolation par projet (Étape 2a) : les clés sont scopées par dossier de projet
 // (setSessionScope au boot) → deux fenêtres/projets ne se télescopent plus. La copie
-// canonique dans .azprose/session.json (portabilité, Étape 2b) reste à faire ; on garde
-// localStorage comme stockage synchrone primaire pour ne pas régresser l'anti-perte.
+// canonique portable vit dans .azprose/session.json (Étape 2b, voir project-session.ts) ;
+// localStorage reste le stockage synchrone primaire (anti-perte), .azprose/ ne sert qu'au
+// boot quand le localStorage scopé est vide (projet déplacé/copié).
 
 const SESSION_KEY = "azp:session";
 const DRAFT_PREFIX = "azp:draft:";

@@ -204,30 +204,16 @@ fn custom_themes_dir(app: &tauri::AppHandle) -> PathBuf {
     dir
 }
 
-#[tauri::command]
-fn install_custom_theme(app: tauri::AppHandle, name: String, css: String) -> Result<(), String> {
-    let dir = custom_themes_dir(&app);
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(format!("{name}.css"));
-    fs::write(&path, &css).map_err(|e| e.to_string())
+// Crafted themes are per-project (vault model): <project>/.azprose/themes/<name>.css,
+// hand-editable. The legacy global app-data dir (custom_themes_dir) is only read once,
+// for the one-time migration into a project the first time its themes dir is created.
+fn project_themes_dir(root: &str) -> PathBuf {
+    Path::new(root).join(".azprose/themes")
 }
 
-#[tauri::command]
-fn remove_custom_theme(app: tauri::AppHandle, name: String) -> Result<(), String> {
-    let path = custom_themes_dir(&app).join(format!("{name}.css"));
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| e.to_string())
-    } else {
-        Ok(())
-    }
-}
-
-#[tauri::command]
-fn list_custom_themes(app: tauri::AppHandle) -> Vec<CustomThemeEntry> {
-    let dir = custom_themes_dir(&app);
-    let _ = fs::create_dir_all(&dir);
+fn read_themes_dir(dir: &Path) -> Vec<CustomThemeEntry> {
     let mut entries = Vec::new();
-    if let Ok(read_dir) = fs::read_dir(&dir) {
+    if let Ok(read_dir) = fs::read_dir(dir) {
         for entry in read_dir.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("css") {
@@ -243,6 +229,48 @@ fn list_custom_themes(app: tauri::AppHandle) -> Vec<CustomThemeEntry> {
         }
     }
     entries
+}
+
+#[tauri::command]
+fn install_project_theme(root: String, name: String, css: String) -> Result<(), String> {
+    let path = project_themes_dir(&root).join(format!("{name}.css"));
+    atomic_write(&path, &css)
+}
+
+#[tauri::command]
+fn remove_project_theme(root: String, name: String) -> Result<(), String> {
+    let path = project_themes_dir(&root).join(format!("{name}.css"));
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn list_project_themes(app: tauri::AppHandle, root: String) -> Vec<CustomThemeEntry> {
+    let dir = project_themes_dir(&root);
+    // First access for this project: create the dir and migrate legacy global themes
+    // into it (one-time, non-destructive copy). Gated on the dir not existing yet, so
+    // trashing a theme later never resurrects the legacy ones.
+    if !dir.exists() {
+        let _ = fs::create_dir_all(&dir);
+        if let Some(parent) = dir.parent() {
+            set_hidden(parent);
+        }
+        let global = custom_themes_dir(&app);
+        if let Ok(read_dir) = fs::read_dir(&global) {
+            for entry in read_dir.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("css") {
+                    if let Some(file_name) = path.file_name() {
+                        let _ = fs::copy(&path, dir.join(file_name));
+                    }
+                }
+            }
+        }
+    }
+    read_themes_dir(&dir)
 }
 
 fn projects_list_path(app: &tauri::AppHandle) -> PathBuf {
@@ -318,6 +346,24 @@ fn set_hidden(path: &Path) {
 #[cfg(not(windows))]
 fn set_hidden(_path: &Path) {}
 
+// Atomic write: write a sibling .tmp then rename over the target. A crash mid-write
+// leaves the previous file intact instead of a truncated/corrupt one — the basis of
+// the `.azprose/` hot-exit durability (config + session).
+fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        set_hidden(parent);
+    }
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "invalid path".to_string())?
+        .to_string_lossy()
+        .to_string();
+    let tmp = path.with_file_name(format!("{file_name}.tmp"));
+    fs::write(&tmp, content).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn read_project_config(root: String) -> Result<String, String> {
     let path = Path::new(&root).join(".azprose/config.json");
@@ -335,11 +381,25 @@ fn read_project_config(root: String) -> Result<String, String> {
 #[tauri::command]
 fn write_project_config(root: String, content: String) -> Result<(), String> {
     let path = Path::new(&root).join(".azprose/config.json");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        set_hidden(parent);
+    atomic_write(&path, &content)
+}
+
+// Portable per-project session (open tabs, active tab, last file). Mirrors the scoped
+// localStorage so a moved/copied project restores its tabs on another path/machine.
+// localStorage stays the synchronous primary; this is the best-effort portable copy.
+#[tauri::command]
+fn read_project_session(root: String) -> Result<Option<String>, String> {
+    let path = Path::new(&root).join(".azprose/session.json");
+    if !path.exists() {
+        return Ok(None);
     }
-    fs::write(&path, &content).map_err(|e| e.to_string())
+    fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_project_session(root: String, content: String) -> Result<(), String> {
+    let path = Path::new(&root).join(".azprose/session.json");
+    atomic_write(&path, &content)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -396,12 +456,14 @@ pub fn run() {
             export_pdf,
             read_project_config,
             write_project_config,
+            read_project_session,
+            write_project_session,
             get_projects_list,
             add_project,
             remove_project,
-            list_custom_themes,
-            install_custom_theme,
-            remove_custom_theme,
+            list_project_themes,
+            install_project_theme,
+            remove_project_theme,
             opencode::start_opencode_server,
             opencode::stop_opencode_server,
             opencode::get_opencode_server_url,

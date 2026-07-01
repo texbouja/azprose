@@ -15,6 +15,9 @@ function resolve(mode: ThemeMode): Theme {
 
 let _mode = $state(readMode());
 let _opacity = $state(readTransparencyOpacity());
+// Project root that owns the crafted themes (.azprose/themes/). Set by app.svelte at
+// boot and on root change; read by the theme menu for install/list/remove.
+let _projectRoot = $state<string | null>(null);
 
 subscribeMode(() => {
   _mode = readMode();
@@ -38,6 +41,8 @@ export const theme = {
   get resolved() { return resolve(_mode); },
   get opacity() { return _opacity; },
   get transparent() { return _opacity < 100; },
+  get projectRoot() { return _projectRoot; },
+  setProjectRoot(r: string | null) { _projectRoot = r; },
   setMode(m: ThemeMode) { libSetThemeMode(m); },
   setTransparency(v: number) { libSetTransparency(v); },
 };

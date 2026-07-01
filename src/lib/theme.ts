@@ -7,12 +7,11 @@ export type BuiltinTheme =
   | "frappe"
   | "macchiato"
   | "mocha"
-  | "gruvbox-dark-hard"
-  | "gruvbox-dark-medium"
-  | "gruvbox-dark-soft"
-  | "gruvbox-light-hard"
-  | "gruvbox-light-medium"
-  | "gruvbox-light-soft";
+  | "skarline-fleet-dark"
+  | "skarline-fleet-purple"
+  | "skarline-fleet-light"
+  | "skarline-xcode-dark"
+  | "skarline-xcode-light";
 export type Theme = BuiltinTheme | (string & Record<never, never>);
 export type ThemeMode = "system" | Theme;
 export type ThemeChoice = { value: ThemeMode; label: string };
@@ -25,19 +24,11 @@ export const BUILTIN_THEMES: readonly BuiltinTheme[] = [
   "frappe",
   "macchiato",
   "mocha",
-  "gruvbox-dark-hard",
-  "gruvbox-dark-medium",
-  "gruvbox-dark-soft",
-  "gruvbox-light-hard",
-  "gruvbox-light-medium",
-  "gruvbox-light-soft",
-];
-
-export const PREINSTALLED_ADDONS: { name: string; label: string; type: "light" | "dark" }[] = [
-  { name: "matcha", label: "matcha", type: "light" },
-  { name: "kanagawa", label: "kanagawa", type: "dark" },
-  { name: "rose-pine", label: "rose pine", type: "dark" },
-  { name: "ayu", label: "ayu", type: "dark" },
+  "skarline-fleet-dark",
+  "skarline-fleet-purple",
+  "skarline-fleet-light",
+  "skarline-xcode-dark",
+  "skarline-xcode-light",
 ];
 
 export const THEME_GROUPS: ThemeGroup[] = [
@@ -50,23 +41,22 @@ export const THEME_GROUPS: ThemeGroup[] = [
     ],
   },
   {
+    label: "skarline",
+    choices: [
+      { value: "skarline-fleet-dark",   label: "fleet dark" },
+      { value: "skarline-fleet-purple", label: "fleet purple" },
+      { value: "skarline-fleet-light",  label: "fleet light" },
+      { value: "skarline-xcode-dark",   label: "xcode dark" },
+      { value: "skarline-xcode-light",  label: "xcode light" },
+    ],
+  },
+  {
     label: "catppuccin",
     choices: [
       { value: "latte", label: "latte" },
       { value: "frappe", label: "frappé" },
       { value: "macchiato", label: "macchiato" },
       { value: "mocha", label: "mocha" },
-    ],
-  },
-  {
-    label: "gruvbox",
-    choices: [
-      { value: "gruvbox-dark-hard",   label: "dark hard" },
-      { value: "gruvbox-dark-medium", label: "dark" },
-      { value: "gruvbox-dark-soft",   label: "dark soft" },
-      { value: "gruvbox-light-hard",  label: "light hard" },
-      { value: "gruvbox-light-medium",label: "light" },
-      { value: "gruvbox-light-soft",  label: "light soft" },
     ],
   },
   {
@@ -85,19 +75,14 @@ export const THEME_HINTS: Record<string, string> = {
   latte: "catppuccin light",
   mono: "plain black and white",
   "mono-dark": "reverse black and white",
-  matcha: "washi paper + kelly green",
   frappe: "catppuccin mid-dark",
   macchiato: "catppuccin deeper dark",
   mocha: "catppuccin deepest dark",
-  kanagawa: "ink-wash dark",
-  "rose-pine": "rose pine dark",
-  ayu: "ayu mirage dark",
-  "gruvbox-dark-hard":   "gruvbox dark — contraste maximum",
-  "gruvbox-dark-medium": "gruvbox dark — classique",
-  "gruvbox-dark-soft":   "gruvbox dark — contraste réduit",
-  "gruvbox-light-hard":  "gruvbox light — contraste maximum",
-  "gruvbox-light-medium":"gruvbox light — classique",
-  "gruvbox-light-soft":  "gruvbox light — contraste réduit",
+  "skarline-fleet-dark":   "fleet — dark",
+  "skarline-fleet-purple": "fleet — dark purple",
+  "skarline-fleet-light":  "fleet — light",
+  "skarline-xcode-dark":   "xcode — default dark",
+  "skarline-xcode-light":  "xcode — default light",
 };
 
 const STORAGE_KEY = STORAGE_KEYS.themeMode;

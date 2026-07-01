@@ -6,8 +6,9 @@
   max-width: 800px;
   margin: 0 auto;
   font-family: var(--font-prose, var(--font-ui));
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: var(--prose-font-size, 15px);
+  line-height: var(--prose-line-height, 1.65);
+  text-align: var(--prose-align, left);
   color: var(--fg);
 }
 

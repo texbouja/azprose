@@ -2,7 +2,7 @@
 import { onMount, onDestroy } from "svelte";
 import { syncLine } from "@/stores/sync-line";
 import { Compartment, EditorState } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
+import { EditorView, keymap, lineNumbers as lineNumbersExt, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
@@ -12,6 +12,7 @@ let {
   value = "",
   onChange,
   language = "md",
+  lineNumbers = true,
   jumpToLine = null as number | null,
   jumpToCol = null as number | null,
   onJumpApplied,
@@ -19,6 +20,7 @@ let {
   value?: string;
   onChange?: (next: string) => void;
   language?: string;
+  lineNumbers?: boolean;
   jumpToLine?: number | null;
   jumpToCol?: number | null;
   onJumpApplied?: () => void;
@@ -27,16 +29,18 @@ let {
 let hostEl: HTMLDivElement;
 let view: EditorView;
 let langCompartment: Compartment;
+let lineNumbersCompartment: Compartment;
 let onChangeRef = onChange;
 $effect(() => { onChangeRef = onChange; });
 
 onMount(() => {
   langCompartment = new Compartment();
+  lineNumbersCompartment = new Compartment();
 
   const state = EditorState.create({
     doc: value,
     extensions: [
-      lineNumbers(),
+      lineNumbersCompartment.of(lineNumbers ? lineNumbersExt() : []),
       history(),
       drawSelection(),
       highlightActiveLine(),
@@ -104,6 +108,15 @@ $effect(() => {
   if (view && langCompartment) {
     view.dispatch({
       effects: langCompartment.reconfigure(languageFromExt(lang)),
+    });
+  }
+});
+
+$effect(() => {
+  const on = lineNumbers;
+  if (view && lineNumbersCompartment) {
+    view.dispatch({
+      effects: lineNumbersCompartment.reconfigure(on ? lineNumbersExt() : []),
     });
   }
 });

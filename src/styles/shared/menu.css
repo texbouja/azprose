@@ -593,3 +593,76 @@
   outline-offset: 4px;
   border-radius: 8px;
 }
+
+/* ── Typography sub-groups (Étape 2) ─────────────────────────────────────── */
+.mdv-menu__subhead {
+  padding: 8px 10px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.mdv-menu__field {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+}
+.mdv-menu__field:hover {
+  background: color-mix(in srgb, var(--surface-hover) 46%, transparent);
+}
+
+.mdv-menu__text {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.mdv-menu__text:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+}
+
+.mdv-menu__seg {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+}
+.mdv-menu__seg-buttons {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--surface-hover) 40%, transparent);
+  border-radius: var(--radius-sm);
+}
+.mdv-menu__seg-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+  text-transform: lowercase;
+}
+.mdv-menu__seg-btn:hover {
+  color: var(--fg);
+}
+.mdv-menu__seg-btn.is-on {
+  color: var(--fg);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.mdv-menu__toggle-row {
+  justify-content: space-between;
+}

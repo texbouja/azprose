@@ -17,10 +17,6 @@ import { persistedState } from "@/stores/persisted.svelte";
 import type { ContextMenuItem } from "@/components/files/context-menu.svelte";
 import {
   STORAGE_KEYS,
-  DEFAULT_WRITING_DISPLAY,
-  getWritingDisplayVars,
-  normalizeWritingFontSize,
-  normalizeWritingLineHeight,
   CHANGELOG_URL,
   getWhatsNewToastMessage,
   isSupportedTextPath,
@@ -37,7 +33,16 @@ import {
   buildCommands,
   getMtime,
 } from "@/lib";
-import type { FileEntry, WritingDisplay, WritingFontSize, WritingLineHeight } from "@/lib";
+import type { FileEntry } from "@/lib";
+import {
+  DEFAULT_TYPOGRAPHY,
+  getTypographyVars,
+  normalizeFontSize,
+  normalizeLineHeight,
+  normalizeTextAlign,
+  normalizeFontFamily,
+  type TypographySettings,
+} from "@/lib/typography";
 import Toast, { type ToastAction } from "@/components/overlays/Toast.svelte";
 import DropOverlay from "@/components/overlays/DropOverlay.svelte";
 import CommandPalette from "@/components/overlays/CommandPalette.svelte";
@@ -67,13 +72,15 @@ import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { folderRelation } from "@/lib/paths";
 import { saveSession, loadSession, saveDraft, loadDraft, clearDraft, setSessionScope, saveLastFile, loadLastFile, saveGuests, loadGuests } from "@/lib/session";
+import { loadProjectSession, saveProjectSession, type PortableSession } from "@/lib/project-session";
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { proseSettings, DEFAULT_PROSE_STYLE } from "@/stores/prose-settings.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { loadProjectConfig, saveProjectConfig } from "@/lib/project-config";
 import { theme } from "@/stores/theme.svelte";
-import { ensureCustomThemesLoaded } from "@/lib/custom-themes";
+import { listCustomThemes, injectThemeCSS } from "@/lib/custom-themes";
+import { BUILTIN_THEMES } from "@/lib/theme";
 import type { ProjectConfig } from "@/lib/project-config";
 import "./app.css";
 
@@ -103,14 +110,7 @@ let folders = persistedState<string[]>(STORAGE_KEYS.folders, []);
 const projectRoot = urlRoot ?? folders.current[0] ?? null;
 setSessionScope(projectRoot);
 if (projectRoot) folders.update(() => [projectRoot, ...loadGuests().filter((g) => g !== projectRoot)]);
-let writingFontSize = persistedState<WritingFontSize>(
-  STORAGE_KEYS.writingFontSize,
-  DEFAULT_WRITING_DISPLAY.fontSize,
-);
-let writingLineHeight = persistedState<WritingLineHeight>(
-  STORAGE_KEYS.writingLineHeight,
-  DEFAULT_WRITING_DISPLAY.lineHeight,
-);
+let typography = persistedState<TypographySettings>(STORAGE_KEYS.typography, DEFAULT_TYPOGRAPHY);
 
 let dragActive = $state(false);
 let whatsNewVersion = $state<string | null>(null);
@@ -160,6 +160,9 @@ let saveStatus = $state<"idle" | "dirty" | "saving" | "saved">("idle");
 let projectConfig = $state<ProjectConfig>({});
 let configRoot = $state<string | null>(null);
 let configLoaded = $state(false);
+// Gate the boot splash removal on the theme being applied (crafted CSS injected +
+// themeMode set) so there is no flash and crafted themes render correctly at boot.
+let themeBootDone = $state(false);
 let configWriteTimer: ReturnType<typeof setTimeout> | null = null;
 let _skipCloseConfirm = false;
 
@@ -186,8 +189,7 @@ async function doConfigSync() {
   if (slideSettings.theme !== "default") cfg.slideTheme = slideSettings.theme;
   if (slideSettings.mode !== "16:9") cfg.slideMode = slideSettings.mode;
   if (generalSettings.defaultEditorMode !== "prose") cfg.defaultEditorMode = generalSettings.defaultEditorMode;
-  if (writingFontSize.current !== DEFAULT_WRITING_DISPLAY.fontSize) cfg.writingFontSize = writingFontSize.current;
-  if (writingLineHeight.current !== DEFAULT_WRITING_DISPLAY.lineHeight) cfg.writingLineHeight = writingLineHeight.current;
+  if (JSON.stringify(typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) cfg.typography = typo;
   if (mathJaxPreamble.current) cfg.mathJaxPreamble = mathJaxPreamble.current;
   if (mathJaxPackages.current.length) cfg.mathJaxPackages = mathJaxPackages.current;
   if (vimOn) cfg.vim = true;
@@ -198,19 +200,37 @@ async function doConfigSync() {
 
 async function loadConfig(root: string) {
   configRoot = root;
+  // Crafted-first (Étape 4): inject this project's crafted CSS before applying its
+  // themeMode, so a crafted theme renders correctly (parity with builtins) — no flash,
+  // no fallback to :root defaults. Best-effort; builtins don't need it.
+  let crafted: { name: string; css: string }[] = [];
+  try {
+    crafted = await listCustomThemes(root);
+    for (const c of crafted) injectThemeCSS(c.name, c.css);
+  } catch { /* crafted CSS is best-effort */ }
   const { config: cfg, warnings } = await loadProjectConfig(root);
   projectConfig = cfg;
   if (cfg.proseStyle) proseSettings.patch(cfg.proseStyle);
   if (cfg.slideTheme) slideSettings.theme = cfg.slideTheme;
   if (cfg.slideMode) slideSettings.mode = cfg.slideMode;
   if (cfg.defaultEditorMode != null) generalSettings.defaultEditorMode = cfg.defaultEditorMode;
-  if (cfg.writingFontSize != null) writingFontSize.current = cfg.writingFontSize;
-  if (cfg.writingLineHeight != null) writingLineHeight.current = cfg.writingLineHeight;
+  if (cfg.typography != null) typography.current = { ...DEFAULT_TYPOGRAPHY, ...cfg.typography };
   if (cfg.mathJaxPreamble != null) mathJaxPreamble.current = cfg.mathJaxPreamble;
   if (cfg.mathJaxPackages != null) mathJaxPackages.current = cfg.mathJaxPackages;
   if (cfg.vim != null) vimOn = cfg.vim;
-  if (cfg.themeMode != null) theme.setMode(cfg.themeMode);
+  if (cfg.themeMode != null) {
+    theme.setMode(cfg.themeMode);
+  } else {
+    // No per-project theme: keep the global default, unless it points at a crafted
+    // theme this project doesn't have → fall back to a builtin to avoid a broken :root.
+    const m = theme.mode;
+    const ok = m === "system"
+      || (BUILTIN_THEMES as readonly string[]).includes(m)
+      || crafted.some((c) => c.name === m);
+    if (!ok) theme.setMode("latte");
+  }
   configLoaded = true;
+  themeBootDone = true;
   if (warnings.length) {
     notifications.setInfo(t("config.warnings"));
   }
@@ -218,7 +238,24 @@ async function loadConfig(root: string) {
 
 $effect(() => {
   const root = rootPath;
+  theme.setProjectRoot(root);
   if (root) void loadConfig(root);
+  else themeBootDone = true;
+});
+
+// Fade out the boot splash once the theme is ready (crafted CSS injected + themeMode
+// applied) → no flash, crafted themes correct at first paint.
+let splashRemoved = false;
+$effect(() => {
+  if (!themeBootDone || splashRemoved) return;
+  splashRemoved = true;
+  requestAnimationFrame(() => {
+    const boot = document.getElementById("boot");
+    if (boot) {
+      boot.style.opacity = "0";
+      boot.addEventListener("transitionend", () => boot.remove(), { once: true });
+    }
+  });
 });
 
 $effect(() => {
@@ -227,8 +264,7 @@ $effect(() => {
   slideSettings.theme;
   slideSettings.mode;
   generalSettings.defaultEditorMode;
-  writingFontSize.current;
-  writingLineHeight.current;
+  typography.current;
   mathJaxPreamble.current;
   mathJaxPackages.current;
   vimOn;
@@ -290,15 +326,8 @@ async function checkExternalChanges() {
 }
 
 onMount(() => {
-  void ensureCustomThemesLoaded();
-
-  requestAnimationFrame(() => {
-    const boot = document.getElementById("boot");
-    if (boot) {
-      boot.style.opacity = "0";
-      boot.addEventListener("transitionend", () => boot.remove(), { once: true });
-    }
-  });
+  // Safety net: never trap the splash if config/theme load hangs.
+  const splashSafety = setTimeout(() => { themeBootDone = true; }, 2000);
 
   const myLabel = getCurrentWindow().label;
   const isProjectWindow = myLabel.startsWith("azprose-project-");
@@ -328,6 +357,7 @@ onMount(() => {
           }
         }
         saveAllDirtyDrafts();
+        await doSessionMirror();
         if (isProjectWindow) {
           await invoke("unregister_project_window", { label: myLabel });
         }
@@ -342,8 +372,8 @@ onMount(() => {
   // Sauvegarde des brouillons sur perte de focus (stratégie VSCode hot-exit).
   // localStorage est synchrone : pas de risque de perte sur crash.
   const onBlur = () => saveAllDirtyDrafts();
-  const onVisibility = () => { if (document.visibilityState === "hidden") saveAllDirtyDrafts(); };
-  const onBeforeUnload = () => { saveAllDirtyDrafts(); };
+  const onVisibility = () => { if (document.visibilityState === "hidden") { saveAllDirtyDrafts(); flushSessionMirror(); } };
+  const onBeforeUnload = () => { saveAllDirtyDrafts(); flushSessionMirror(); };
   window.addEventListener("blur", onBlur);
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("beforeunload", onBeforeUnload);
@@ -359,6 +389,7 @@ onMount(() => {
   document.addEventListener("visibilitychange", onConfigVisibility);
 
   return () => {
+    clearTimeout(splashSafety);
     window.removeEventListener("blur", onBlur);
     document.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener("beforeunload", onBeforeUnload);
@@ -376,6 +407,44 @@ function findTabByPath(path: string): Tab | undefined {
 function saveSessionNow() {
   const activePath = tabs.find(t => t.id === activeTabId)?.path ?? null;
   saveSession({ tabs: tabs.map(t => ({ path: t.path, title: t.title })), activePath });
+  scheduleSessionMirror();
+}
+
+// Portable session mirror (Étape 2b): debounce a write of the session to
+// <project>/.azprose/session.json alongside the scoped localStorage. The mirror is a
+// best-effort portable copy; localStorage stays the synchronous primary (anti-loss).
+let sessionMirrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+function buildPortableSession(): PortableSession {
+  const activePath = tabs.find(t => t.id === activeTabId)?.path ?? null;
+  return {
+    tabs: tabs.map(t => ({ path: t.path, title: t.title })),
+    activePath,
+    lastFile: activePath ?? loadLastFile(),
+  };
+}
+
+async function doSessionMirror() {
+  if (!projectRoot) return;
+  try {
+    await saveProjectSession(projectRoot, buildPortableSession());
+  } catch {
+    // Portable copy is best-effort; the scoped localStorage already holds the session.
+  }
+}
+
+function scheduleSessionMirror() {
+  if (!projectRoot) return;
+  if (sessionMirrorTimer) clearTimeout(sessionMirrorTimer);
+  sessionMirrorTimer = setTimeout(() => { void doSessionMirror(); }, 400);
+}
+
+function flushSessionMirror() {
+  if (sessionMirrorTimer) {
+    clearTimeout(sessionMirrorTimer);
+    sessionMirrorTimer = null;
+  }
+  void doSessionMirror();
 }
 
 function saveAllDirtyDrafts() {
@@ -391,6 +460,7 @@ function saveAllDirtyDrafts() {
 // surfaces the error in the Diagnostics console instead of killing the UI.
 function reportCrash(message: string, err?: unknown) {
   saveAllDirtyDrafts();
+  flushSessionMirror();
   diagnosticsStore.push({ severity: "error", message, source: "app" });
   consoleTab = "diagnostics";
   consoleOpen = true;
@@ -560,11 +630,17 @@ let activeDir = $derived(
   activePath ? dirname(activePath) : (rootPath ?? "")
 );
 
-let writingDisplay = $derived<WritingDisplay>({
-  fontSize: normalizeWritingFontSize(writingFontSize.current),
-  lineHeight: normalizeWritingLineHeight(writingLineHeight.current),
+let typo = $derived<TypographySettings>({
+  markdownFont: normalizeFontFamily(typography.current.markdownFont),
+  markdownFontSize: normalizeFontSize(typography.current.markdownFontSize),
+  markdownLineHeight: normalizeLineHeight(typography.current.markdownLineHeight),
+  markdownAlign: normalizeTextAlign(typography.current.markdownAlign),
+  codeFont: normalizeFontFamily(typography.current.codeFont),
+  codeFontSize: normalizeFontSize(typography.current.codeFontSize),
+  codeLineHeight: normalizeLineHeight(typography.current.codeLineHeight),
+  codeLineNumbers: typography.current.codeLineNumbers !== false,
 });
-let writingDisplayStyle = $derived(getWritingDisplayVars(writingDisplay));
+let typographyStyle = $derived(getTypographyVars(typo));
 
 $effect(() => {
   document.title = activePath ? basename(activePath) : "untitled";
@@ -706,7 +782,18 @@ $effect(() => {
           void openFileInTab(latest).catch(() => {});
         } else {
           // Restauration de session : rouvrir tous les onglets avec leurs brouillons
-          const session = loadSession();
+          let session = loadSession();
+          if (session.tabs.length === 0 && projectRoot) {
+            // localStorage vide pour ce projet → récupérer la copie portable
+            // .azprose/session.json (projet déplacé/copié, ou nouvelle machine) et
+            // réamorcer le localStorage scopé. localStorage reste le primaire ensuite.
+            const portable = await loadProjectSession(projectRoot);
+            if (portable && portable.tabs.length > 0) {
+              session = { tabs: portable.tabs, activePath: portable.activePath };
+              saveSession(session);
+              if (portable.lastFile) saveLastFile(portable.lastFile);
+            }
+          }
           if (session.tabs.length > 0) {
             for (const { path } of session.tabs) {
               if (cancelled) break;
@@ -807,7 +894,9 @@ function spawnProjectWindow(folder: string) {
 const handleOpenProjectByPath = async (folder: string) => {
   const existing = await invoke<string | null>("find_project_window", { path: folder });
   if (existing) {
-    const win = WebviewWindow.getByLabel(existing);
+    // getByLabel is async in Tauri v2 — awaiting it is what makes focusing the
+    // already-open project window work instead of throwing an unhandled rejection.
+    const win = await WebviewWindow.getByLabel(existing);
     if (win) {
       await win.show();
       await win.unminimize();
@@ -1302,17 +1391,12 @@ const handleToggleTypstViewer = async () => {
 };
 
 
-const handleWritingFontSizeChange = (value: WritingFontSize) => {
-  writingFontSize.current = value;
+const handleTypographyChange = (patch: Partial<TypographySettings>) => {
+  typography.current = { ...typo, ...patch };
 };
 
-const handleWritingLineHeightChange = (value: WritingLineHeight) => {
-  writingLineHeight.current = value;
-};
-
-const handleResetWritingDisplay = () => {
-  writingFontSize.current = DEFAULT_WRITING_DISPLAY.fontSize;
-  writingLineHeight.current = DEFAULT_WRITING_DISPLAY.lineHeight;
+const handleResetTypography = () => {
+  typography.current = { ...DEFAULT_TYPOGRAPHY };
 };
 
 let cmds = $derived(
@@ -1345,7 +1429,7 @@ let cmds = $derived(
 
 <div
   class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}{!titlebarVisible.current ? " has-hidden-titlebar" : ""}"
-  style={writingDisplayStyle}
+  style={typographyStyle}
 >
   <TitleBar
     rootName={rootPath ? basename(rootPath) : undefined}
@@ -1364,10 +1448,9 @@ let cmds = $derived(
     onToggleTitlebar={handleToggleTitlebar}
     {vimOn}
     onToggleVim={handleToggleVim}
-    {writingDisplay}
-    onWritingFontSizeChange={handleWritingFontSizeChange}
-    onWritingLineHeightChange={handleWritingLineHeightChange}
-    onResetWritingDisplay={handleResetWritingDisplay}
+    typography={typo}
+    onTypographyChange={handleTypographyChange}
+    onResetTypography={handleResetTypography}
     {editorMode}
     onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}
     onToggleFullscreen={toggleFullscreen}
@@ -1423,6 +1506,7 @@ let cmds = $derived(
               <Editor
                 value={source}
                 language={extFromPath(activePath)}
+                lineNumbers={typo.codeLineNumbers}
                 onChange={(next) => { source = next; }}
                 {jumpToLine}
                 {jumpToCol}
@@ -1446,6 +1530,7 @@ let cmds = $derived(
               <Editor
                 value={source}
                 language={extFromPath(activePath)}
+                lineNumbers={typo.codeLineNumbers}
                 onChange={(next) => { source = next; }}
                 {jumpToLine}
                 {jumpToCol}
@@ -1506,6 +1591,7 @@ let cmds = $derived(
                 <Editor
                   value={source}
                   language={extFromPath(activePath)}
+                  lineNumbers={typo.codeLineNumbers}
                   onChange={(next) => { source = next; }}
                   {jumpToLine}
                   {jumpToCol}

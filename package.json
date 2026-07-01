@@ -15,7 +15,8 @@
     "test": "bun test",
     "preview": "vite preview",
     "tauri": "tauri",
-    "themes": "node scripts/build-themes.mjs"
+    "themes": "node scripts/build-themes.mjs",
+    "catalog": "bun run scripts/gen-catalog.mjs"
   },
   "engines": {
     "node": ">=24.0.0"

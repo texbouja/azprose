@@ -13,20 +13,13 @@ const THEMES: Record<string, string> = {
   frappe: "catppuccin-frappe",
   macchiato: "catppuccin-macchiato",
   mocha: "catppuccin-mocha",
-  "gruvbox-dark-hard":   "gruvbox-dark-hard",
-  "gruvbox-dark-medium": "gruvbox-dark-medium",
-  "gruvbox-dark-soft":   "gruvbox-dark-soft",
-  "gruvbox-light-hard":  "gruvbox-light-hard",
-  "gruvbox-light-medium":"gruvbox-light-medium",
-  "gruvbox-light-soft":  "gruvbox-light-soft",
+  "skarline-fleet-dark":   "github-dark",
+  "skarline-fleet-purple": "github-dark",
+  "skarline-fleet-light":  "github-light",
+  "skarline-xcode-dark":   "github-dark",
+  "skarline-xcode-light":  "github-light",
 };
 
-const ADDON_THEMES: Record<string, string> = {
-  matcha: "vitesse-light",
-  kanagawa: "kanagawa-wave",
-  "rose-pine": "rose-pine",
-  ayu: "ayu-dark",
-};
 
 // Python first — primary language for professors.
 const LANGS = [
@@ -240,7 +233,7 @@ export async function renderMarkdown(
   const content = body;
 
   const h = await getHighlighter();
-  const shikiTheme = THEMES[theme] ?? ADDON_THEMES[theme] ?? theme;
+  const shikiTheme = THEMES[theme] ?? theme;
   try {
     await ensureThemeLoaded(h, shikiTheme);
     activeShikiTheme = shikiTheme;

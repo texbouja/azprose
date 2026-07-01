@@ -54,9 +54,9 @@ export function normalizeWritingLineHeight(value: unknown): WritingLineHeight {
 
 export function getWritingDisplayVars(display: WritingDisplay): Record<string, string> {
   return {
-    "--mdv-writing-font-size": EDITOR_FONT_VALUES[display.fontSize],
-    "--mdv-writing-line-height": EDITOR_LINE_HEIGHT_VALUES[display.lineHeight],
-    "--mdv-prose-font-size": PROSE_FONT_VALUES[display.fontSize],
-    "--mdv-prose-line-height": PROSE_LINE_HEIGHT_VALUES[display.lineHeight],
+    "--writing-font-size": EDITOR_FONT_VALUES[display.fontSize],
+    "--writing-line-height": EDITOR_LINE_HEIGHT_VALUES[display.lineHeight],
+    "--prose-font-size": PROSE_FONT_VALUES[display.fontSize],
+    "--prose-line-height": PROSE_LINE_HEIGHT_VALUES[display.lineHeight],
   };
 }

@@ -194,9 +194,10 @@ terminal, finir une migration CSS, et séparer proprement couleurs / polices / e
   réglage propre. ✅
 
 ### Étape 6 — Boot complet + nettoyage CSS
-- [ ] `index.html` : couvrir la couleur de fond de tous les thèmes (builtins + addons).
-- [ ] Terminer la migration `--mdv-*` → `--*` (3 fichiers) ; auditer les couleurs en dur.
-- **Critère** : zéro flash au boot quel que soit le thème ; plus aucune `var(--mdv-…)`.
+- [x] `index.html` : couvrir la couleur de fond de tous les thèmes (builtins + crafts, soit 79 entrées BG + 26 light).
+- [x] Migration `--mdv-*` → `--*` achevée dans `src/` (6 fichiers : `app.css`, `preview.css`,
+  `writing-display.ts`, `typography.ts`, `editor-languages.ts`, `ThemeButton.svelte`).
+- **Critère** : zéro flash au boot quel que soit le thème ; plus aucune `var(--mdv-…)` dans `src/`. ✅
 
 ## Hors périmètre (noté dans la charte, chantier distinct)
 

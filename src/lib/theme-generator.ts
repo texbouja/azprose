@@ -1,5 +1,6 @@
 import { bundledThemesInfo } from "shiki/themes";
 import type { BundledThemeInfo } from "@shikijs/core";
+import { tokensToCSS, type DerivedTheme } from "./theme-css";
 
 export interface ShikiThemeInfo {
   id: string;
@@ -107,7 +108,8 @@ export function getAvailableThemes(): ShikiThemeInfo[] {
     }));
 }
 
-export async function generateThemeCSS(id: string): Promise<string> {
+/** Load a Shiki theme and derive the full UI token set (+ completeness). */
+export async function deriveThemeTokens(id: string): Promise<DerivedTheme> {
   const info = bundledThemesInfo.find((t: BundledThemeInfo) => t.id === id);
   if (!info) throw new Error(`Unknown Shiki theme: ${id}`);
 
@@ -122,17 +124,17 @@ export async function generateThemeCSS(id: string): Promise<string> {
 
   const bg = theme.bg || theme.colors?.["editor.background"] || "#ffffff";
   const fg = theme.fg || theme.colors?.["editor.foreground"] || "#000000";
-  const type = theme.type || info.type || "dark";
+  const type: "light" | "dark" = (theme.type || info.type || "dark") === "light" ? "light" : "dark";
   const isLight = type === "light";
 
-  const syntax = extractSyntaxColor(theme.tokenColors ?? []);
+  const syntaxColors = extractSyntaxColor(theme.tokenColors ?? []);
 
   const accent =
     theme.colors?.["activityBar.foreground"] ||
     theme.colors?.["button.background"] ||
     theme.colors?.["textLink.foreground"] ||
-    syntax["--syntax-keyword"] ||
-    syntax["--syntax-function"] ||
+    syntaxColors["--syntax-keyword"] ||
+    syntaxColors["--syntax-function"] ||
     (isLight ? "#2563eb" : "#60a5fa");
 
   const errorColor =
@@ -153,10 +155,35 @@ export async function generateThemeCSS(id: string): Promise<string> {
     for (const k of keys) { const c = opaque(colors[k]); if (c) return c; }
     return null;
   };
-  const surfaceSrc = pick("editorWidget.background", "sideBar.background", "editorGroupHeader.tabsBackground", "panel.background", "activityBar.background");
-  const borderSrc = pick("editorGroup.border", "panel.border", "editorWidget.border", "input.border", "sideBar.border", "tab.border");
+  // WCAG-ish relative luminance + contrast, used for both the coherence gate
+  // (fg vs bg must be readable) and surface/border distinctness vs bg.
+  const lum = (hex: string) => {
+    const [r, g, b] = parseHex(hex).map((n) => {
+      const s = n / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a: string, b: string) => {
+    const la = lum(a), lb = lum(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+  // Presence of the key (for completeness) vs a value distinct enough from bg (for
+  // visible panels) — many themes reuse the editor bg for the sidebar.
+  const distinct = (min: number, ...keys: string[]) => {
+    const c = pick(...keys);
+    return c && contrast(c, bg) >= min ? c : null;
+  };
+
+  const surfaceKey = pick("editorWidget.background", "sideBar.background", "editorGroupHeader.tabsBackground", "panel.background", "activityBar.background");
+  const borderKey = pick("editorGroup.border", "panel.border", "editorWidget.border", "input.border", "sideBar.border", "tab.border");
+  const surfaceSrc = distinct(1.04, "editorWidget.background", "sideBar.background", "editorGroupHeader.tabsBackground", "panel.background", "activityBar.background");
+  const borderSrc = distinct(1.03, "editorGroup.border", "panel.border", "editorWidget.border", "input.border", "sideBar.border", "tab.border");
   const hoverSrc = pick("list.hoverBackground", "toolbar.hoverBackground", "list.inactiveSelectionBackground", "editor.lineHighlightBackground");
   const mutedSrc = pick("descriptionForeground", "editorLineNumber.foreground", "disabledForeground", "tab.inactiveForeground", "editorCodeLens.foreground");
+
+  // Offered only if it has surface+border resources AND readable text on its background.
+  const complete = surfaceKey !== null && borderKey !== null && contrast(fg, bg) >= 4.0;
 
   let muted: string, border: string, surface: string, surfaceHover: string;
   let shadowSoft: string, backdrop: string, shadowColor: string;
@@ -179,28 +206,20 @@ export async function generateThemeCSS(id: string): Promise<string> {
     shadowColor = "0, 0, 0";
   }
 
-  let css = `:root[data-theme="${id}"] {
-  --bg: ${bg};
-  --bg-rgb: ${bgRgb};
-  --fg: ${fg};
-  --muted: ${muted};
-  --border: ${border};
-  --accent: ${accent};
-  --surface: ${surface};
-  --surface-hover: ${surfaceHover};
-  --shadow-soft: ${shadowSoft};
-  --color-error: ${errorColor};
-  --backdrop: ${backdrop};
-  --shadow-color: ${shadowColor};
-`;
-
+  const syntax: Record<string, string> = {};
   for (const key of SYNTAX_KEYS) {
-    const val = syntax[key];
-    if (val) css += `  ${key}: ${val};\n`;
+    if (syntaxColors[key]) syntax[key] = syntaxColors[key];
   }
 
-  css += `  color-scheme: ${type};
+  return {
+    id,
+    type,
+    complete,
+    tokens: { bg, bgRgb, fg, muted, border, accent, surface, surfaceHover, shadowSoft, error: errorColor, backdrop, shadowColor, syntax },
+  };
 }
-`;
-  return css;
+
+export async function generateThemeCSS(id: string): Promise<string> {
+  const d = await deriveThemeTokens(id);
+  return tokensToCSS(d.id, d.type, d.tokens);
 }

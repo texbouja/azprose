@@ -1,8 +1,8 @@
 <script lang="ts">
-import { FolderOpen } from "@/lib/icons";
+import { FolderOpen, Layers3 } from "@/lib/icons";
 import { Button, Icon } from "@/components/primitives";
 import { language, getT } from "@/lib/i18n";
-import { getProjectsList, addProject, removeProject, type ProjectEntry } from "@/lib/projects-list";
+import { getProjectsList, removeProject, type ProjectEntry } from "@/lib/projects-list";
 import { onMount } from "svelte";
 
 let {
@@ -50,15 +50,18 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
 </script>
 
 <div class="mdv-project-selector">
-  {#snippet folderIcon()}
-    <Icon icon={FolderOpen} size={13} strokeWidth={1.5} />
+  {#snippet projectsIcon()}
+    <Icon icon={Layers3} size={13} strokeWidth={1.5} />
   {/snippet}
   <Button
     data-tooltip={t("sidebar.openProject")}
     aria-label={t("sidebar.openProject")}
     onclick={handleToggle}
-    icon={folderIcon}
-  />
+    icon={projectsIcon}
+    class="mdv-project-selector__trigger"
+  >
+    {t("sidebar.openProject")}
+  </Button>
 
   {#if showDropdown}
     <div class="mdv-project-selector__popover">
@@ -117,6 +120,10 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
 <style>
 .mdv-project-selector {
   position: relative;
+}
+.mdv-project-selector :global(.mdv-project-selector__trigger) {
+  width: 100%;
+  justify-content: flex-start;
 }
 .mdv-project-selector__popover {
   position: absolute;

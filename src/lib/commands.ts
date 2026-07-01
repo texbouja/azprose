@@ -67,12 +67,11 @@ const THEME_ICONS: Record<string, IconData> = {
   frappe: Moon,
   macchiato: Moon,
   mocha: Moon,
-  "gruvbox-dark-hard":   Moon,
-  "gruvbox-dark-medium": Moon,
-  "gruvbox-dark-soft":   Moon,
-  "gruvbox-light-hard":  Sun,
-  "gruvbox-light-medium":Sun,
-  "gruvbox-light-soft":  Sun,
+  "skarline-fleet-dark":   Moon,
+  "skarline-fleet-purple": Moon,
+  "skarline-fleet-light":  Sun,
+  "skarline-xcode-dark":   Moon,
+  "skarline-xcode-light":  Sun,
 };
 
 const THEME_COMMANDS: Array<{ mode: ThemeMode; label: string; hint: string; icon: IconData }> =

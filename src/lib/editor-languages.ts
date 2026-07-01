@@ -216,11 +216,11 @@ export function buildTheme() {
         backgroundColor: "transparent",
         color: "var(--fg)",
         fontFamily: "var(--font-mono)",
-        fontSize: "var(--mdv-writing-font-size)",
+        fontSize: "var(--writing-font-size)",
       },
       ".cm-scroller": {
         fontFamily: "var(--font-mono)",
-        lineHeight: "var(--mdv-writing-line-height)",
+        lineHeight: "var(--writing-line-height)",
         padding: "20px 28px 80px",
       },
       ".cm-content": {

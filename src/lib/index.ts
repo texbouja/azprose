@@ -2,7 +2,6 @@ export {
   getSystemTheme,
   previewTheme,
   THEME_GROUPS,
-  PREINSTALLED_ADDONS,
   type Theme,
   type ThemeMode,
 } from "./theme";

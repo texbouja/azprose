@@ -22,7 +22,7 @@
   import { Button, Icon, Popover } from "@/components/primitives";
   import { language, getT, setLanguage, LANGUAGE_CHOICES } from "@/lib/i18n";
   import { shortcutLabel } from "@/lib";
-  import type { WritingDisplay, WritingFontSize, WritingLineHeight } from "@/lib";
+  import type { TypographySettings } from "@/lib/typography";
   import ThemeButton from "./ThemeButton.svelte";
   import { SLIDE_THEMES, SLIDE_MODES } from "@/stores/slide-settings.svelte";
   import { slideSession } from "@/stores/slide-session.svelte";
@@ -41,10 +41,9 @@
     onToggleTitlebar,
     vimOn,
     onToggleVim,
-    writingDisplay,
-    onWritingFontSizeChange,
-    onWritingLineHeightChange,
-    onResetWritingDisplay,
+    typography,
+    onTypographyChange,
+    onResetTypography,
     editorMode,
     onSetEditorMode,
     onToggleFullscreen,
@@ -70,10 +69,9 @@
     onToggleTitlebar: () => void;
     vimOn?: boolean;
     onToggleVim?: () => void;
-    writingDisplay: WritingDisplay;
-    onWritingFontSizeChange: (value: WritingFontSize) => void;
-    onWritingLineHeightChange: (value: WritingLineHeight) => void;
-    onResetWritingDisplay: () => void;
+    typography: TypographySettings;
+    onTypographyChange: (patch: Partial<TypographySettings>) => void;
+    onResetTypography: () => void;
     editorMode?: "raw" | "prose" | "preview" | "presentation";
     onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
     onToggleFullscreen?: () => void;
@@ -368,10 +366,9 @@
       <ThemeButton
         {vimOn}
         {onToggleVim}
-        {writingDisplay}
-        {onWritingFontSizeChange}
-        {onWritingLineHeightChange}
-        {onResetWritingDisplay}
+        {typography}
+        {onTypographyChange}
+        {onResetTypography}
       />
       <div class="mdv-lang-wrap" bind:this={langAnchorEl}>
         <button

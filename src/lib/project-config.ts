@@ -4,6 +4,7 @@ import type { ProseStyle } from "@/stores/prose-settings.svelte";
 import type { SlideTheme, SlideMode } from "@/stores/slide-settings.svelte";
 import type { DefaultEditorMode } from "@/stores/general-settings.svelte";
 import type { WritingFontSize, WritingLineHeight } from "./writing-display";
+import type { TypographySettings } from "./typography";
 import type { ThemeMode } from "./theme";
 
 export interface ProjectConfig {
@@ -11,8 +12,10 @@ export interface ProjectConfig {
   slideTheme?: SlideTheme | null;
   slideMode?: SlideMode | null;
   defaultEditorMode?: DefaultEditorMode | null;
+  // Deprecated (superseded by `typography`) — kept so old configs don't warn.
   writingFontSize?: WritingFontSize | null;
   writingLineHeight?: WritingLineHeight | null;
+  typography?: TypographySettings | null;
   mathJaxPreamble?: string | null;
   mathJaxPackages?: string[] | null;
   vim?: boolean | null;
@@ -24,8 +27,9 @@ const CONFIG_SCHEMA: Record<string, string> = {
   slideTheme: "string",
   slideMode: "string",
   defaultEditorMode: "string",
-  writingFontSize: "number",
-  writingLineHeight: "number",
+  writingFontSize: "string",
+  writingLineHeight: "string",
+  typography: "object",
   mathJaxPreamble: "string",
   mathJaxPackages: "object",
   vim: "boolean",
