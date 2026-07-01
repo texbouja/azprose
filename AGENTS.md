@@ -31,3 +31,12 @@
 - `src/lib` owns files, commands, updater, themes, i18n, writing-display, and platform helpers.
 - `src/styles` is split by UI domain and imported from `src/app.css`.
 - `src-tauri` contains Rust commands, capabilities, and bundle config.
+
+## synctex
+
+- Activation : `-synctex=1` ajouté à latexmk dans `src-tauri/src/latex_engine/mod.rs:375`.
+- Rust : `synctex_forward` et `synctex_inverse` dans `src-tauri/src/latex_engine/synctex.rs` — appelle le binaire `synctex` (TeX Live), parse le format `SyncTeX result begin/end`.
+- Forward (gutter → PDF) : `Editor.svelte` prop `onGutterClick` → `app.svelte:handleGutterClick` → `invoke("synctex_forward")` → `forwardTargetPage` → `PdfViewer.svelte` $effect sur `forwardToPage` → `pdfViewer.currentPageNumber = page`.
+- Inverse (Ctrl+clic PDF → éditeur) : `PdfViewer.svelte:onPdfMouseDown` → `invoke("synctex_inverse")` → `app.svelte:handleInverseSync` → `jumpToLine` (1-based→0-based).
+- `LazyPdfViewer.svelte` propage `forwardToPage` + `onInverseSync` vers `PdfViewer`.
+- Le `.synctex.gz` est lu par le binaire `synctex` (pas de Rust parser direct).

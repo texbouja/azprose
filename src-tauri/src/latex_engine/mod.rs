@@ -7,6 +7,9 @@ use std::thread;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+mod synctex;
+pub use synctex::*;
+
 #[derive(Serialize)]
 pub struct LatexBuildResult {
     pub pdf_path: Option<String>,
@@ -372,7 +375,7 @@ pub async fn latex_build(
     .ok();
 
     let mut child = Command::new("latexmk")
-        .args([flag, "-interaction=nonstopmode", "-halt-on-error", file_stem])
+        .args([flag, "-synctex=1", "-interaction=nonstopmode", "-halt-on-error", file_stem])
         .current_dir(dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -9,6 +9,7 @@
     PDFFindController,
   } from "pdfjs-dist/web/pdf_viewer.mjs";
   import { readFile } from "@tauri-apps/plugin-fs";
+  import { invoke } from "@tauri-apps/api/core";
   import {
     PanelLeftClose,
     PanelLeftOpen,
@@ -40,7 +41,9 @@
     items: OutlineNode[];
   };
 
-  let { path, rev = 0 }: { path: string; rev?: number } = $props();
+  let { path, rev = 0, forwardToPage = null, onInverseSync }:
+    { path: string; rev?: number; forwardToPage?: number | null; onInverseSync?: (file: string, line: number) => void }
+    = $props();
 
   // DOM refs
   let viewportEl: HTMLDivElement;
@@ -64,6 +67,22 @@
 
   // Generation counter to discard stale async loadPdf calls
   let loadGen = 0;
+
+  function onPdfMouseDown(e: MouseEvent) {
+    if (!(e.ctrlKey || e.metaKey) || !onInverseSync) return;
+    const pageEl = (e.target as HTMLElement).closest("[data-page-number]") as HTMLElement | null;
+    if (!pageEl) return;
+    const page = Number(pageEl.dataset.pageNumber);
+    if (!page) return;
+    const canvas = pageEl.querySelector("canvas");
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (rect.height - (e.clientY - rect.top)) * (canvas.height / rect.height);
+    invoke<{ file: string; line: number }>("synctex_inverse", { pdfPath: path, page, x, y })
+      .then((r) => onInverseSync!(r.file, r.line))
+      .catch((err) => console.error("synctex inverse failed", err));
+  }
 
   // Panel state
   let panelOpen = $state(false);
@@ -188,6 +207,19 @@
 
     eventBus.on("pagechanging",  (e: { pageNumber: number }) => { currentPage = e.pageNumber; updatePdfPage(path, e.pageNumber); });
     eventBus.on("scalechanging", (e: { scale: number })      => { scale = e.scale; });
+
+    // Inverse synctex: Ctrl+click on PDF pages → jump to source line
+    viewportEl.addEventListener("mousedown", onPdfMouseDown);
+  });
+
+  // Forward synctex: scroll to page when parent requests it
+  $effect(() => {
+    if (forwardToPage != null && pdfViewer) {
+      const p = forwardToPage;
+      if (p >= 1 && pdfViewer.pagesCount && p <= pdfViewer.pagesCount) {
+        pdfViewer.currentPageNumber = p;
+      }
+    }
   });
 
   // Load on mount & reload when path changes; rev changes trigger full re-create
@@ -196,6 +228,7 @@
   onDestroy(() => {
     pdfDoc?.destroy();
     if (blobUrl) URL.revokeObjectURL(blobUrl);
+    if (viewportEl) viewportEl.removeEventListener("mousedown", onPdfMouseDown);
   });
 </script>
 

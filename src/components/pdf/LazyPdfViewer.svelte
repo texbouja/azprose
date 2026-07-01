@@ -1,5 +1,7 @@
 <script lang="ts">
-  let { path, rev = 0 }: { path: string; rev?: number } = $props();
+  let { path, rev = 0, forwardToPage = null, onInverseSync }:
+    { path: string; rev?: number; forwardToPage?: number | null; onInverseSync?: (file: string, line: number) => void }
+    = $props();
 
   let Cmp = $state<typeof import("./PdfViewer.svelte").default | null>(null);
 
@@ -20,7 +22,7 @@
 
 {#if Cmp}
   {#key rev}
-    <Cmp {path} rev={rev} />
+    <Cmp {path} rev={rev} {forwardToPage} {onInverseSync} />
   {/key}
 {:else}
   <div class="pdf-shell">

@@ -16,6 +16,7 @@ let {
   jumpToLine = null as number | null,
   jumpToCol = null as number | null,
   onJumpApplied,
+  onGutterClick,
 }: {
   value?: string;
   onChange?: (next: string) => void;
@@ -24,6 +25,7 @@ let {
   jumpToLine?: number | null;
   jumpToCol?: number | null;
   onJumpApplied?: () => void;
+  onGutterClick?: (line: number) => void;
 } = $props();
 
 let hostEl: HTMLDivElement;
@@ -55,6 +57,17 @@ onMount(() => {
         if (update.docChanged) {
           onChangeRef?.(update.state.doc.toString());
         }
+      }),
+      onGutterClick && EditorView.domEventHandlers({
+        mousedown: (event, view) => {
+          const target = event.target as HTMLElement;
+          if (!target.classList.contains("cm-lineNumber")) return false;
+          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+          if (pos == null) return false;
+          const line = view.state.doc.lineAt(pos).number;
+          onGutterClick(line);
+          return false;
+        },
       }),
     ],
   });

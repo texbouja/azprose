@@ -488,6 +488,8 @@ pub fn run() {
             #[cfg(feature = "typst")] typst_engine::typst_page_count,
             latex_engine::latex_build,
             latex_engine::check_latexmk,
+            latex_engine::synctex_forward,
+            latex_engine::synctex_inverse,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

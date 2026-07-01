@@ -144,6 +144,7 @@ let leftPaneEl = $state<HTMLDivElement | null>(null);
 let rightPaneEl = $state<HTMLDivElement | null>(null);
 let jumpToLine = $state<number | null>(null);
 let jumpToCol = $state<number | null>(null);
+let forwardTargetPage = $state<number | null>(null);
 let presentationFs = $state(false);
 let typstPreviewOn = $state(false);
 let typstViewerOn = $state(false);
@@ -1359,6 +1360,24 @@ const handleJumpToLine = (line: number) => {
   else { prosemarkOn = false; previewOn = false; presentationOn = false; }
 };
 
+// Forward synctex: user clicks a line number in the .tex editor gutter
+const handleGutterClick = (line: number) => {
+  if (!activePath || !ls.viewerPdfPath || !ls.rootFilePath) return;
+  invoke("synctex_forward", { texPath: activePath, pdfPath: ls.viewerPdfPath, line, col: 0 })
+    .then((res: any) => {
+      forwardTargetPage = res.page;
+      setTimeout(() => { forwardTargetPage = null; }, 0);
+    })
+    .catch((err: unknown) => console.error("synctex forward failed", err));
+};
+
+// Inverse synctex: user Ctrl+clicks PDF page → jump editor to source line
+const handleInverseSync = (file: string, line: number) => {
+  jumpToLine = line - 1; // 1-based → 0-based
+  if (!splitOn) handleSetEditorMode("raw");
+  else { prosemarkOn = false; previewOn = false; presentationOn = false; }
+};
+
 // Console diagnostic click → editor. Diagnostics are 1-based; the editor is
 // 0-based. Ensure an editor is visible (leave viewer mode) to receive the jump.
 const handleConsoleJump = (line: number, col?: number | null) => {
@@ -1667,7 +1686,7 @@ let cmds = $derived(
           </div>
         {:else if typstViewerOn && ls.viewerPdfPath}
           <div class="mdv-shell__editor-solo">
-            <LazyPdfViewer path={ls.viewerPdfPath} />
+            <LazyPdfViewer path={ls.viewerPdfPath} forwardToPage={forwardTargetPage} onInverseSync={handleInverseSync} />
           </div>
         {:else if ls.latexSplitOn && ls.viewerPdfPath}
           <div class="mdv-split">
@@ -1680,6 +1699,7 @@ let cmds = $derived(
                 {jumpToLine}
                 {jumpToCol}
                 onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
+                onGutterClick={extFromPath(activePath ?? "") === "tex" ? handleGutterClick : undefined}
               />
             </div>
             <div
@@ -1690,18 +1710,18 @@ let cmds = $derived(
               aria-label="Resize split"
             />
             <div class="mdv-split__pane" style="flex: {1 - splitRatio}">
-              <LazyPdfViewer path={ls.viewerPdfPath} rev={ls.buildRev} />
+              <LazyPdfViewer path={ls.viewerPdfPath} rev={ls.buildRev} forwardToPage={forwardTargetPage} onInverseSync={handleInverseSync} />
             </div>
           </div>
         {:else if ls.latexViewerOn && ls.viewerPdfPath}
           <div class="mdv-shell__editor-solo">
-            <LazyPdfViewer path={ls.viewerPdfPath} rev={ls.buildRev} />
+            <LazyPdfViewer path={ls.viewerPdfPath} rev={ls.buildRev} forwardToPage={forwardTargetPage} onInverseSync={handleInverseSync} />
           </div>
         {:else}
           <div class="mdv-shell__editor-solo">
             {#if activePath}
               {#if isPdfPath(activePath)}
-                <LazyPdfViewer path={activePath} />
+                <LazyPdfViewer path={activePath} forwardToPage={forwardTargetPage} onInverseSync={handleInverseSync} />
               {:else if isImagePath(activePath)}
                 <ImageViewer path={activePath} />
               {:else if previewOn && extFromPath(activePath) === "md"}
@@ -1722,6 +1742,7 @@ let cmds = $derived(
                   {jumpToLine}
                   {jumpToCol}
                   onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
+                  onGutterClick={extFromPath(activePath) === "tex" ? handleGutterClick : undefined}
                 />
               {/if}
             {:else}
