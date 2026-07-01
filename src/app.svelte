@@ -1362,7 +1362,7 @@ const handleJumpToLine = (line: number) => {
 
 // Forward synctex: user clicks a line number in the .tex editor gutter
 const handleGutterClick = (line: number) => {
-  if (!activePath || !ls.viewerPdfPath || !ls.rootFilePath) return;
+  if (!activePath || !ls.viewerPdfPath) return;
   invoke("synctex_forward", { texPath: activePath, pdfPath: ls.viewerPdfPath, line, col: 0 })
     .then((res: any) => {
       forwardTargetPage = res.page;
