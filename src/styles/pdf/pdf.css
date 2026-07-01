@@ -236,24 +236,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 16px;
-  gap: 10px;
+  padding: 0;
+  gap: 0;
   min-height: 100%;
 }
 
-.pdf-viewport .pdfViewer .page {
+.pdf-viewport .pdfViewer.removePageBorders .page {
   box-shadow: 0 2px 10px rgba(var(--shadow-color), 0.25);
   border-radius: 1px;
-  margin: 0 !important;
 }
 
 /* Text layer — transparent hit-test surface only */
-.pdf-viewport .textLayer :is(span, br) {
-  color: transparent !important;
-}
-
 .pdf-viewport .textLayer ::selection {
-  background: color-mix(in srgb, AccentColor, transparent 60%);
+  background: color-mix(in srgb, AccentColor, transparent 75%);
 }
 
 /* ── Loading / error overlays ────────────────────────── */

@@ -1,0 +1,23 @@
+:root[data-theme="skarline-xcode-civic"] {
+  --bg: #292b36;
+  --bg-rgb: 41, 43, 54;
+  --fg: #e7e8eb;
+  --muted: #9b9ca3;
+  --border: #545661;
+  --accent: #009aff;
+  --surface: #393b46;
+  --surface-hover: #444651;
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.42), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --color-error: #ff5e4a;
+  --backdrop: rgba(0, 0, 0, 0.52);
+  --shadow-color: 0, 0, 0;
+  --syntax-keyword: #e12da0;
+  --syntax-string: #de3a3c;
+  --syntax-number: #00aaa3;
+  --syntax-type: #29a09f;
+  --syntax-function: #18b5b1;
+  --syntax-operator: #e7e8eb;
+  --syntax-comment: #51c34f;
+  --syntax-constant: #18b5b1;
+  color-scheme: dark;
+}

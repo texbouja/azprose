@@ -39,7 +39,7 @@
     items: OutlineNode[];
   };
 
-  let { path }: { path: string } = $props();
+  let { path, rev = 0 }: { path: string; rev?: number } = $props();
 
   // DOM refs
   let viewportEl: HTMLDivElement;
@@ -108,7 +108,7 @@
     }
   }
 
-  $effect(() => { if (path && pdfViewer) void loadPdf(path); });
+  $effect(() => { if (path && pdfViewer) void loadPdf(path); rev; });
 
   // — Navigation —
   function goFirst() { if (pdfViewer && numPages) pdfViewer.currentPageNumber = 1; }
@@ -148,7 +148,7 @@
       eventBus,
       linkService,
       findController,
-      removePageBorders: false,
+      removePageBorders: true,
     });
 
     linkService.setViewer(pdfViewer);

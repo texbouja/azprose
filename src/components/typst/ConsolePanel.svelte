@@ -9,6 +9,7 @@
     height = 160,
     activeTab = "diagnostics",
     terminalCwd = null,
+    logLines = [] as string[],
     hidden = false,
     onClose,
     onHeightChange,
@@ -17,14 +18,14 @@
   }: {
     diagnostics?: Diagnostic[];
     height?: number;
-    activeTab?: "diagnostics" | "terminal";
+    activeTab?: "diagnostics" | "terminal" | "log";
     terminalCwd?: string | null;
-    /** Kept mounted but visually hidden (closed) so the terminal session survives. */
+    logLines?: string[];
     hidden?: boolean;
     onClose?: () => void;
     onHeightChange?: (h: number) => void;
     onJumpToLine?: (line: number, col?: number | null) => void;
-    onTabChange?: (tab: "diagnostics" | "terminal") => void;
+    onTabChange?: (tab: "diagnostics" | "terminal" | "log") => void;
   } = $props();
 
   // Mount the terminal lazily (first time its tab is shown) and keep it alive
@@ -62,6 +63,24 @@
 
   let errorCount = $derived(diagnostics.filter((d) => d.severity === "error").length);
   let warnCount = $derived(diagnostics.filter((d) => d.severity === "warning").length);
+
+  // — Log tab —
+  let logEl: HTMLDivElement;
+  let logEndEl: HTMLDivElement;
+
+  function logSeverity(line: string): string {
+    if (line.startsWith("error:") || line.startsWith("! ")) return "error";
+    if (line.startsWith("warning:")) return "warning";
+    if (line.startsWith("info:")) return "info";
+    return "default";
+  }
+
+  // Auto-scroll to bottom when new log lines arrive
+  $effect(() => {
+    const n = logLines.length;
+    n; // track length
+    if (logEndEl) logEndEl.scrollIntoView({ behavior: "smooth" });
+  });
 </script>
 
 <div class="diag-console" class:is-hidden={hidden} style="height: {height}px">
@@ -96,6 +115,14 @@
         onclick={() => onTabChange?.("terminal")}
       >
         Terminal
+      </button>
+      <button
+        type="button"
+        class="diag-console__tab"
+        class:is-active={activeTab === "log"}
+        onclick={() => onTabChange?.("log")}
+      >
+        Log
       </button>
     </div>
     {#if activeTab === "terminal" && terminalStarted}
@@ -158,6 +185,20 @@
         <Terminal id="main" cwd={terminalCwd} active={activeTab === "terminal"} />
       </div>
     {/if}
+    <div class="diag-console__pane" class:is-hidden={activeTab !== "log"}>
+      {#if logLines.length === 0}
+        <div class="diag-console__empty">No log</div>
+      {:else}
+        <div class="diag-console__log" bind:this={logEl}>
+          {#each logLines as line}
+            <div class="diag-console__log-line" data-log-severity={logSeverity(line)}>
+              <pre class="diag-console__log-pre">{line}</pre>
+            </div>
+          {/each}
+          <div bind:this={logEndEl} />
+        </div>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -420,5 +461,41 @@
     word-break: break-word;
     color: var(--muted);
     line-height: 1.4;
+  }
+
+  /* — Log tab — */
+  .diag-console__log {
+    padding: 4px 8px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .diag-console__log-line {
+    margin: 0;
+  }
+
+  .diag-console__log-pre {
+    margin: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--fg);
+  }
+
+  .diag-console__log-line[data-log-severity="error"] .diag-console__log-pre {
+    color: var(--color-error, #b91c1c);
+  }
+
+  .diag-console__log-line[data-log-severity="warning"] .diag-console__log-pre {
+    color: var(--color-warning, #92400e);
+  }
+
+  .diag-console__log-line[data-log-severity="info"] .diag-console__log-pre {
+    color: var(--accent, #2563eb);
   }
 </style>

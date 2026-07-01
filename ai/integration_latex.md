@@ -16,4 +16,7 @@ pas de live view (contrairement à Typst), mais un mode split
 - au split volet droit occupé par PDFviewer qui surveille l'état du PDF et se met à jour si changement en restant sur la même vue
 
 ## Synctex 
-Explorer les options d'implémentations, chercher des projets de support Synctex avec pdfjs (extension Latex Workshop pour VScode par exemple). Disponible dans preview et dans split view. Si preview basculer vers éditeur sans split. Si dans split, utiliser volet éditeur.   
+Explorer les options d'implémentations, chercher des projets de support Synctex avec pdfjs (extension Latex Workshop pour VScode par exemple). Disponible dans preview et dans split view. Si preview basculer vers éditeur sans split. Si dans split, utiliser volet éditeur. 
+
+## Erreurs 
+Canalisation des erreurs vers l'onglet Diagnostics de la console. Cliquer sur une erreur ramène vers la ligne fautive dans l'éditeur (en respectant le mode actif editeur seul ou split.)

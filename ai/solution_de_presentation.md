@@ -1,4 +1,4 @@
-# Solution de présentation
+# Solution de présentation (obsolète)
 
 ## Mode léger — SlideDeck (ProseMark, déjà intégré)
 

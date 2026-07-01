@@ -1,4 +1,4 @@
-# Cahier de charge pour la charte graphique 
+# Cahier de charge de l'utilisateur pour la charte graphique (voir rapport themes_audit_plan)
 
 ## Consignes générales
 L'application en son état actuelle n'est pas bien organisée et beaucoup de redondances y résident encore. S'il le faut repartir from scrash. Établir un plan d'action par étapes et procéder étape par étape pour ne pas surcharger la fenêtre de contexte. Créer un rapport avec une analyse technique des besoins et un plan d'action (une liste ToDo dont l'état sera mis à jours au fur et à mesure de l'avancement). 

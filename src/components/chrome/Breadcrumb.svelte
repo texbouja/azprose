@@ -54,6 +54,13 @@
     compilingTypst,
     onTypstBuild,
     exportingTypst,
+    latexViewerOn,
+    latexBuilding,
+    latexEngine,
+    onLatexCodeView,
+    onToggleLatexViewer,
+    onLatexBuild,
+    onLatexEngineChange,
     consoleOpen,
     onToggleConsole,
   }: {
@@ -82,6 +89,13 @@
     compilingTypst?: boolean;
     onTypstBuild?: () => void;
     exportingTypst?: boolean;
+    latexViewerOn?: boolean;
+    latexBuilding?: boolean;
+    latexEngine?: string;
+    onLatexCodeView?: () => void;
+    onToggleLatexViewer?: () => void;
+    onLatexBuild?: () => void;
+    onLatexEngineChange?: (engine: string) => void;
     consoleOpen?: boolean;
     onToggleConsole?: () => void;
   } = $props();
@@ -94,6 +108,10 @@
   let langAnchorEl: HTMLDivElement | null = null;
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let longPressActive = false;
+  let buildLongPressTimer: ReturnType<typeof setTimeout> | null = null;
+  let buildLongPressActive = false;
+  let engineMenuOpen = $state(false);
+  let engineBtnEl: HTMLDivElement | null = null;
 
   function onPresDown(e: PointerEvent) {
     if (e.button !== 0) return;
@@ -115,6 +133,34 @@
   function onPresClick() {
     if (longPressActive) { longPressActive = false; return; }
     onSetEditorMode?.("presentation");
+  }
+
+  const ENGINE_OPTIONS = [
+    { value: "pdflatex", label: "pdfLaTeX" },
+    { value: "xelatex", label: "XeLaTeX" },
+    { value: "lualatex", label: "LuaLaTeX" },
+  ];
+
+  function onBuildDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    buildLongPressActive = false;
+    buildLongPressTimer = setTimeout(() => {
+      buildLongPressTimer = null;
+      buildLongPressActive = true;
+      engineMenuOpen = true;
+    }, 500);
+  }
+
+  function onBuildRelease() {
+    if (buildLongPressTimer !== null) {
+      clearTimeout(buildLongPressTimer);
+      buildLongPressTimer = null;
+    }
+  }
+
+  function onBuildClick() {
+    if (buildLongPressActive) { buildLongPressActive = false; return; }
+    onLatexBuild?.();
   }
 
   const MAX_SEGMENTS = 4;
@@ -309,6 +355,66 @@
             <Icon icon={FileDown} size={13} strokeWidth={1.5} />
           {/snippet}
         </Button>
+      </div>
+    {/if}
+
+    <!-- Tools : LaTeX Editor / Preview / Build -->
+    {#if activePath?.endsWith(".tex")}
+      <div class="mdv-breadcrumb__tools">
+        <Button
+          data-tooltip={t("breadcrumb.latexCodeView")}
+          aria-label={t("breadcrumb.latexCodeView")}
+          aria-pressed={!latexViewerOn && !latexBuilding}
+          onclick={onLatexCodeView}
+        >
+          {#snippet icon()}
+            <Icon icon={Code2} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+        <Button
+          data-tooltip={t("breadcrumb.latexViewer")}
+          aria-label={t("breadcrumb.latexViewer")}
+          aria-pressed={latexViewerOn}
+          disabled={latexBuilding}
+          onclick={onToggleLatexViewer}
+        >
+          {#snippet icon()}
+            <Icon icon={FileText} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+        <div class="mdv-build-btn-wrap" bind:this={engineBtnEl}>
+          <Button
+            data-tooltip={t("breadcrumb.latexBuild")}
+            aria-label={t("breadcrumb.latexBuild")}
+            disabled={latexBuilding}
+            onpointerdown={onBuildDown}
+            onpointerup={onBuildRelease}
+            onpointerleave={onBuildRelease}
+            onpointercancel={onBuildRelease}
+            onclick={onBuildClick}
+          >
+            {#snippet icon()}
+              <Icon icon={FileDown} size={13} strokeWidth={1.5} />
+            {/snippet}
+          </Button>
+          <Popover open={engineMenuOpen} onClose={() => (engineMenuOpen = false)} anchorRef={{ current: engineBtnEl }}>
+            <div class="mdv-menu">
+              <p class="mdv-pres-menu__label">{t("breadcrumb.engine")}</p>
+              {#each ENGINE_OPTIONS as opt}
+                <button
+                  type="button"
+                  class="mdv-menu__item"
+                  class:is-active={latexEngine === opt.value}
+                  onclick={() => { onLatexEngineChange?.(opt.value); engineMenuOpen = false; }}
+                  role="menuitemradio"
+                  aria-checked={latexEngine === opt.value}
+                >
+                  <span class="mdv-menu__item-label">{opt.label}</span>
+                </button>
+              {/each}
+            </div>
+          </Popover>
+        </div>
       </div>
     {/if}
 

@@ -1,4 +1,4 @@
-# Profiling du démarrage — AZprose (Tauri 2 + Svelte 5 + WebKitGTK)
+# Profiling du démarrage — AZprose (Info sur procédure de déboggage-Instrumentalisation)
 
 ## Contrainte clé : `console.log` n'est pas lisible depuis le terminal
 

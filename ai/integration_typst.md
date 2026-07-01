@@ -1,4 +1,4 @@
-# Intégration Typst dans AZprose
+# Intégration Typst dans AZprose (Obsolète)
 
 > ⛔ **OBSOLÈTE / ABANDONNÉ.** Cette feuille de route décrit l'idée d'utiliser Typst
 > comme moteur de rendu des maths Markdown (preview/présentation). Approche **abandonnée**.

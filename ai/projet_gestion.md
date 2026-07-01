@@ -1,4 +1,4 @@
-# Architecture projet AZprose — cible & feuille de route
+# Architecture projet AZprose — cible & feuille de route (complété sauf étape 7)
 
 > Juin 2026. Décrit l'architecture **cible** de la gestion de projets/fenêtres/sessions
 > et la feuille de route pour y arriver. Diagnostic des défauts actuels :
@@ -139,12 +139,19 @@ posé après `rootPath`, `lastFile` passé par `saveLastFile`/`loadLastFile`.
 - **Critère** : deux projets ouverts gardent chacun leurs onglets ; fermer/rouvrir restaure
   par projet. ✅
 
-**2b — Copie canonique dans `.azprose/` (portabilité) — à faire.** Miroir
-`.azprose/session.json` (écriture atomique, async, débouncée + à la fermeture) en plus du
-localStorage scopé ; au boot, préférer `.azprose/` s'il existe (projet déplacé/copié), sinon
-le localStorage scopé. Brancher le **flush-au-crash** (`reportCrash`) dessus. localStorage
-reste le primaire synchrone (anti-perte) ; `.azprose/` devient la copie portable. Nécessite
-2 commandes Rust (read/write `.azprose/session.json` atomiques).
+**2b — Copie canonique dans `.azprose/` (portabilité) — ✅ FAIT.** Miroir
+`.azprose/session.json` (onglets, onglet actif, dernier fichier) écrit **atomiquement**
+(tmp + `rename`, helper Rust `atomic_write`), **débouncé** (400 ms via
+`scheduleSessionMirror`/`doSessionMirror`, `src/app.svelte`) en plus du localStorage scopé,
+et **flush** au masquage/déchargement, **à la fermeture** (`onCloseRequested` attend
+`doSessionMirror` avant `destroy`) et **au crash** (`reportCrash`). Au boot, on récupère
+`.azprose/session.json` **uniquement si le localStorage scopé est vide** (projet
+déplacé/copié ou nouvelle machine) puis on réamorce le localStorage — sinon le localStorage
+scopé reste le **primaire synchrone** (anti-perte). Module wrapper
+`src/lib/project-session.ts` ; commandes Rust `read_project_session`/`write_project_session`
+(atomiques) ; `write_project_config` passe aussi en écriture atomique.
+- **Critère** : un projet copié vers un autre chemin/machine rouvre ses onglets depuis
+  `.azprose/session.json` ; aucune régression d'anti-perte sur le même poste. ✅
 
 ### Étape 3 — Contrôle de fenêtre — ✅ FAIT
 - `onCloseRequested` pour **toutes** les fenêtres (`src/app.svelte`, onMount) ; on prend

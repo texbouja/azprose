@@ -1,5 +1,5 @@
 <script lang="ts">
-  let { path }: { path: string } = $props();
+  let { path, rev = 0 }: { path: string; rev?: number } = $props();
 
   let Cmp = $state<typeof import("./PdfViewer.svelte").default | null>(null);
 
@@ -19,7 +19,7 @@
 </script>
 
 {#if Cmp}
-  <Cmp {path} />
+  <Cmp {path} {rev} />
 {:else}
   <div class="pdf-shell">
     <div class="pdf-overlay">

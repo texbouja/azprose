@@ -1,4 +1,4 @@
-# Intégration MathJax dans AZprose
+# Intégration MathJax dans AZprose (Complété)
 
 **Version :** MathJax 4.x (`mathjax` npm)  
 **Mode :** static-import — tout est bundlé par Vite, servi depuis `public/mathjax/`. Aucune requête réseau.

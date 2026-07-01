@@ -65,6 +65,10 @@ import ImageViewer from "@/components/image/ImageViewer.svelte";
 import LazyMarkdownPreview from "@/components/preview/LazyMarkdownPreview.svelte";
 import TypstPreview from "@/components/typst/TypstPreview.svelte";
 import ConsolePanel from "@/components/typst/ConsolePanel.svelte";
+import {
+  createLatexState,
+  handleLatexBuild, handleLatexViewer, handleLatexSplit, handleLatexCodeView,
+} from "@/components/tex/latex-build";
 import type { Diagnostic } from "@/lib/diagnostics";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import OpencodeSidebar from "@/components/opencode/OpencodeSidebar.svelte";
@@ -142,13 +146,13 @@ let jumpToCol = $state<number | null>(null);
 let presentationFs = $state(false);
 let typstPreviewOn = $state(false);
 let typstViewerOn = $state(false);
-let viewerPdfPath = $state<string | null>(null);
+let ls = $state(createLatexState());
 // Non-reactive: keyed by filePath, stores last SVG + compiled source for instant re-display.
 const typstSvgCache: Record<string, { svg: string; compiledSource: string; diagnostics: Diagnostic[] }> = {};
 let consoleOpen = $state(false);
 let consoleHeight = $state(160);
 const consoleDiags = $derived(diagnosticsStore.all);
-let consoleTab = $state<"diagnostics" | "terminal">("diagnostics");
+let consoleTab = $state<"diagnostics" | "terminal" | "log">("diagnostics");
 // Once the console has been opened, keep ConsolePanel mounted (hidden when closed)
 // so the Terminal/shell session survives a close — VS Code behavior.
 let consoleMounted = $state(false);
@@ -388,6 +392,18 @@ onMount(() => {
   window.addEventListener("beforeunload", onConfigFlush);
   document.addEventListener("visibilitychange", onConfigVisibility);
 
+  // — LaTeX build log streaming —
+  let unlistenLatexLog: (() => void) | null = null;
+  let unlistenLatexComplete: (() => void) | null = null;
+  (async () => {
+    unlistenLatexLog = await listen<{ line: string }>("latex://log", (e) => {
+      ls.buildLog.push(e.payload.line);
+    });
+    unlistenLatexComplete = await listen("latex://build-complete", () => {
+      ls.buildLog = ls.buildLog;
+    });
+  })();
+
   return () => {
     clearTimeout(splashSafety);
     window.removeEventListener("blur", onBlur);
@@ -397,6 +413,8 @@ onMount(() => {
     document.removeEventListener("visibilitychange", onVisibilityVisible);
     window.removeEventListener("beforeunload", onConfigFlush);
     document.removeEventListener("visibilitychange", onConfigVisibility);
+    unlistenLatexLog?.();
+    unlistenLatexComplete?.();
   };
 });
 
@@ -658,13 +676,19 @@ $effect(() => {
   if (!activePath || extFromPath(activePath) !== "typ") {
     typstPreviewOn = false;
     typstViewerOn = false;
-    viewerPdfPath = null;
+    ls.viewerPdfPath = null;
     // Drop stale Typst diagnostics when leaving a .typ. The console itself is a
     // workspace-level panel (Terminal + Diagnostics) — never auto-closed here, so
     // switching tabs/files or clicking Diagnostics doesn't dismiss it.
     diagnosticsStore.clear("typst");
   } else {
     diagnosticsStore.set("typst", typstSvgCache[activePath]?.diagnostics ?? []);
+  }
+  if (!activePath || extFromPath(activePath) !== "tex") {
+    ls.latexViewerOn = false;
+    ls.latexSplitOn = false;
+    ls.latexBuilding = false;
+    diagnosticsStore.clear("latex");
   }
 });
 
@@ -1276,7 +1300,7 @@ const handleJumpToLine = (line: number) => {
 // Console diagnostic click → editor. Diagnostics are 1-based; the editor is
 // 0-based. Ensure an editor is visible (leave viewer mode) to receive the jump.
 const handleConsoleJump = (line: number, col?: number | null) => {
-  if (typstViewerOn) { typstViewerOn = false; viewerPdfPath = null; }
+  if (typstViewerOn) { typstViewerOn = false; ls.viewerPdfPath = null; }
   jumpToLine = line - 1;
   jumpToCol = col != null ? col - 1 : null;
 };
@@ -1310,7 +1334,7 @@ const handleToggleTypstPreview = () => {
 
 const handleTypstCodeView = () => {
   typstViewerOn = false;
-  viewerPdfPath = null;
+  ls.viewerPdfPath = null;
 };
 
 // Compile the current .typ for diagnostics only (no file output) and surface
@@ -1355,15 +1379,15 @@ const handleToggleConsole = () => {
     consoleOpen = false;
     return;
   }
-  // Diagnostics only make sense on a .typ; otherwise open straight to the terminal.
-  if (!activePath || extFromPath(activePath) !== "typ") consoleTab = "terminal";
+  // Diagnostics only make sense on a .typ or .tex; otherwise open straight to the terminal.
+  if (!activePath || (extFromPath(activePath) !== "typ" && extFromPath(activePath) !== "tex")) consoleTab = "terminal";
   consoleOpen = true;
 };
 
 const handleToggleTypstViewer = async () => {
   if (typstViewerOn) {
     typstViewerOn = false;
-    viewerPdfPath = null;
+    ls.viewerPdfPath = null;
     return;
   }
   if (!activePath || compilingTypst) return;
@@ -1386,10 +1410,15 @@ const handleToggleTypstViewer = async () => {
     compilingTypst = false;
   }
   typstPreviewOn = false;
-  viewerPdfPath = pdfPath;
+  ls.viewerPdfPath = pdfPath;
   typstViewerOn = true;
 };
 
+
+const onLatexBuild = () => handleLatexBuild(ls, activePath, handleSave, () => consoleOpen = true, () => consoleTab = "log");
+const onLatexViewer = () => handleLatexViewer(ls, activePath, handleSave, () => consoleOpen = true);
+const onLatexSplit = () => handleLatexSplit(ls, activePath, handleSave, () => consoleOpen = true);
+const onLatexCodeView = () => handleLatexCodeView(ls);
 
 const handleTypographyChange = (patch: Partial<TypographySettings>) => {
   typography.current = { ...typo, ...patch };
@@ -1461,6 +1490,13 @@ let cmds = $derived(
     onTypstCodeView={activePath && extFromPath(activePath) === "typ" ? handleTypstCodeView : undefined}
     onToggleTypstViewer={activePath && extFromPath(activePath) === "typ" ? handleToggleTypstViewer : undefined}
     onTypstBuild={activePath && extFromPath(activePath) === "typ" ? handleTypstBuild : undefined}
+    latexViewerOn={ls.latexViewerOn}
+    latexBuilding={ls.latexBuilding}
+    latexEngine={ls.latexEngine}
+    onLatexCodeView={activePath && extFromPath(activePath) === "tex" ? onLatexCodeView : undefined}
+    onToggleLatexViewer={activePath && extFromPath(activePath) === "tex" ? onLatexViewer : undefined}
+    onLatexBuild={activePath && extFromPath(activePath) === "tex" ? onLatexBuild : undefined}
+    onLatexEngineChange={(engine: string) => ls.latexEngine = engine}
     {consoleOpen}
     onToggleConsole={handleToggleConsole}
   />
@@ -1496,7 +1532,7 @@ let cmds = $derived(
 
     <div class="mdv-workspace">
       {#if tabs.length > 0}
-        <TabsBar {tabs} {activeTabId} onSelect={handleTabSelect} onClose={closeTab} onReorder={handleTabReorder} {splitOn} {canSplit} onToggleSplit={handleToggleSplit} {typstPreviewOn} onToggleTypstPreview={!typstViewerOn && activePath && extFromPath(activePath) === "typ" ? handleToggleTypstPreview : undefined} />
+        <TabsBar {tabs} {activeTabId} onSelect={handleTabSelect} onClose={closeTab} onReorder={handleTabReorder} {splitOn} {canSplit} onToggleSplit={handleToggleSplit} {typstPreviewOn} onToggleTypstPreview={!typstViewerOn && activePath && extFromPath(activePath) === "typ" ? handleToggleTypstPreview : undefined} latexSplitOn={ls.latexSplitOn} latexBuilding={ls.latexBuilding} onToggleLatexSplit={activePath && extFromPath(activePath) === "tex" ? onLatexSplit : undefined} onLatexBuild={activePath && extFromPath(activePath) === "tex" ? onLatexBuild : undefined} />
       {/if}
       <div class="mdv-workspace__content">
         <svelte:boundary onerror={(error) => handleViewCrash(error)}>
@@ -1567,9 +1603,37 @@ let cmds = $derived(
               />
             </div>
           </div>
-        {:else if typstViewerOn && viewerPdfPath}
+        {:else if typstViewerOn && ls.viewerPdfPath}
           <div class="mdv-shell__editor-solo">
-            <LazyPdfViewer path={viewerPdfPath} />
+            <LazyPdfViewer path={ls.viewerPdfPath} />
+          </div>
+        {:else if ls.latexSplitOn && ls.viewerPdfPath}
+          <div class="mdv-split">
+            <div class="mdv-split__pane" style="flex: {splitRatio}">
+              <Editor
+                value={source}
+                language={extFromPath(activePath ?? "")}
+                lineNumbers={typo.codeLineNumbers}
+                onChange={(next) => { source = next; }}
+                {jumpToLine}
+                {jumpToCol}
+                onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
+              />
+            </div>
+            <div
+              class="mdv-split__resize"
+              onpointerdown={startSplitResize}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize split"
+            />
+            <div class="mdv-split__pane" style="flex: {1 - splitRatio}">
+              <LazyPdfViewer path={ls.viewerPdfPath} rev={ls.buildRev} />
+            </div>
+          </div>
+        {:else if ls.latexViewerOn && ls.viewerPdfPath}
+          <div class="mdv-shell__editor-solo">
+            <LazyPdfViewer path={ls.viewerPdfPath} rev={ls.buildRev} />
           </div>
         {:else}
           <div class="mdv-shell__editor-solo">
@@ -1624,6 +1688,7 @@ let cmds = $derived(
           height={consoleHeight}
           activeTab={consoleTab}
           terminalCwd={rootPath ?? (activePath ? dirname(activePath) : null)}
+          logLines={ls.buildLog}
           hidden={!consoleOpen}
           onTabChange={(tab) => { consoleTab = tab; }}
           onHeightChange={(h) => { consoleHeight = h; }}

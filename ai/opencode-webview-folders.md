@@ -1,4 +1,4 @@
-# OpenCode IA — Panneau latéral webview + distinction dossier projet/invité
+# OpenCode IA — Panneau latéral webview + distinction dossier projet/invité (encore en cours)
 
 **Date : 2025-06-28**
 

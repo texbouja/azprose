@@ -1,4 +1,4 @@
-# Charte de stylage — AZprose
+# Charte de stylage — AZprose (Obsolète)
 
 ## Architecture technique
 

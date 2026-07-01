@@ -21,6 +21,8 @@ use terminal::TerminalState;
 #[cfg(feature = "typst")]
 mod typst_engine;
 
+mod latex_engine;
+
 struct PendingOpenFiles(Mutex<Vec<String>>);
 struct PendingProjectFolders(Mutex<HashMap<String, String>>);
 struct OpenProjectWindows(Mutex<HashMap<String, String>>);
@@ -478,6 +480,8 @@ pub fn run() {
             #[cfg(feature = "typst")] typst_engine::typst_render,
             #[cfg(feature = "typst")] typst_engine::typst_export_pdf,
             #[cfg(feature = "typst")] typst_engine::typst_page_count,
+            latex_engine::latex_build,
+            latex_engine::check_latexmk,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

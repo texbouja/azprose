@@ -1,4 +1,4 @@
-# Architecture globale — AZprose
+# Architecture globale — AZprose (Obsolète)
 
 ## Stack technique
 

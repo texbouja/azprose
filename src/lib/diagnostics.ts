@@ -3,7 +3,7 @@
 // and editor click-to-jump work for any source, without each engine inventing
 // its own shape.
 
-export type DiagnosticSeverity = "error" | "warning";
+export type DiagnosticSeverity = "error" | "warning" | "info";
 
 export interface Diagnostic {
   severity: DiagnosticSeverity;

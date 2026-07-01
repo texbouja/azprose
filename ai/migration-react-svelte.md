@@ -1,4 +1,4 @@
-# Migration React → Svelte 5 — AZprose
+# Migration React → Svelte 5 — AZprose (Complété)
 
 > Rapport d'analyse établi sur la base du code source actuel (juin 2026).  
 > Objectif : évaluer la faisabilité, quantifier l'effort et proposer un plan de migration  

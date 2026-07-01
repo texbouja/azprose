@@ -32,6 +32,7 @@ Ne pas utiliser : `architecture_global.md`, `charte_stylage.md`, `integration_ty
 - `bun run build` runs TypeScript and Vite build.
 - `cargo check --manifest-path src-tauri/Cargo.toml` checks the Rust shell.
 - `bun run tauri dev` starts the desktop app during UI testing.
+- `bun run install` builds a release binary and installs it to `/usr/local/bin/azprose` (Arch/CachyOS avec `sudo`).
 
 ## release/update notes
 

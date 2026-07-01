@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Icon } from "@/components/primitives";
-import { X, Eye } from "@/lib/icons";
+import { X, Eye, FileDown } from "@/lib/icons";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 
@@ -25,6 +25,10 @@ let {
   onToggleSplit,
   typstPreviewOn = false,
   onToggleTypstPreview,
+  latexSplitOn = false,
+  latexBuilding = false,
+  onToggleLatexSplit,
+  onLatexBuild,
 }: {
   tabs?: Tab[];
   activeTabId?: string | null;
@@ -36,6 +40,10 @@ let {
   onToggleSplit?: (id: string) => void;
   typstPreviewOn?: boolean;
   onToggleTypstPreview?: () => void;
+  latexSplitOn?: boolean;
+  latexBuilding?: boolean;
+  onToggleLatexSplit?: () => void;
+  onLatexBuild?: () => void;
 } = $props();
 
 let t = $derived(getT($language));
@@ -168,6 +176,27 @@ function endDrag(e: PointerEvent) {
         >
           <Icon icon={Eye} size={13} strokeWidth={1.8} />
         </button>
+      {:else if onToggleLatexSplit && tab.path.endsWith(".tex") && active}
+        <button
+          type="button"
+          class="mdv-tab__split"
+          class:is-active={latexSplitOn}
+          aria-label="Toggle PDF preview"
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={onToggleLatexSplit}
+        >
+          <Icon icon={Eye} size={13} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          class="mdv-tab__build"
+          disabled={latexBuilding}
+          aria-label="Build LaTeX"
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={onLatexBuild}
+        >
+          <Icon icon={FileDown} size={12} strokeWidth={1.8} />
+        </button>
       {/if}
       <button
         type="button"
@@ -181,3 +210,33 @@ function endDrag(e: PointerEvent) {
     </div>
   {/each}
 </div>
+
+<style>
+.mdv-tab__build {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--dur-fast) var(--easing), color var(--dur-fast) var(--easing);
+}
+.mdv-tab__build:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+.mdv-tab__build:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.mdv-tab__build:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+</style>
