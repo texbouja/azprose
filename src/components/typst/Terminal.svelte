@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import "@xterm/xterm/css/xterm.css";
+  import { readXtermTheme } from "@/lib/terminal-theme";
 
   let {
     id = "main",
@@ -20,14 +21,10 @@
   let term: Terminal | null = null;
   let fit: FitAddon | null = null;
   let resizeObserver: ResizeObserver | null = null;
+  let themeObserver: MutationObserver | null = null;
   let unlistenOutput: UnlistenFn | null = null;
   let unlistenExit: UnlistenFn | null = null;
   let exited = $state(false);
-
-  function cssVar(name: string, fallback: string): string {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return v || fallback;
-  }
 
   function doFit() {
     if (!fit || !term) return;
@@ -39,26 +36,35 @@
     }
   }
 
+  function applyTheme() {
+    if (!term) return;
+    term.options.theme = readXtermTheme();
+  }
+
   // Refit when the tab becomes visible again (container had 0 size while hidden).
   $effect(() => {
     if (active && term) requestAnimationFrame(doFit);
   });
 
   onMount(() => {
+    const mono = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() || "monospace";
     term = new Terminal({
-      fontFamily: cssVar("--font-mono", "monospace"),
+      fontFamily: mono,
       fontSize: 13,
       cursorBlink: true,
-      theme: {
-        background: cssVar("--surface", "#1e1e1e"),
-        foreground: cssVar("--fg", "#d4d4d4"),
-        cursor: cssVar("--accent", "#6366f1"),
-      },
+      theme: readXtermTheme(),
     });
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(hostEl);
     doFit();
+
+    // Follow theme changes (hover preview + click commit).
+    themeObserver = new MutationObserver(() => applyTheme());
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
 
     term.onData((data) => {
       if (!exited) void invoke("terminal_write", { id, data });
@@ -90,14 +96,15 @@
 
     resizeObserver = new ResizeObserver(() => doFit());
     resizeObserver.observe(hostEl);
+  });
 
-    return () => {
-      resizeObserver?.disconnect();
-      unlistenOutput?.();
-      unlistenExit?.();
-      void invoke("terminal_kill", { id });
-      term?.dispose();
-    };
+  onDestroy(() => {
+    resizeObserver?.disconnect();
+    themeObserver?.disconnect();
+    unlistenOutput?.();
+    unlistenExit?.();
+    void invoke("terminal_kill", { id });
+    term?.dispose();
   });
 </script>
 
