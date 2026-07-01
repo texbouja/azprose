@@ -1,4 +1,4 @@
-# Audit & plan d'action — Gestion des thèmes AZprose
+# Audit & plan d'action — Gestion des thèmes AZprose (en cours d'implementation)
 
 > Juin 2026. Réponse au cahier de charge [`charte_graphique.md`](charte_graphique.md) :
 > renforcer la gestion des thèmes (UI thémable, architecture CSS robuste, sans
@@ -6,7 +6,7 @@
 
 ## Constat clé
 
-Le socle est **déjà solide** — contrairement à l'impression de « tout refaire ». Un
+Le socle est **déjà solideLis** — contrairement à l'impression de « tout refaire ». Un
 générateur dérive déjà les variables UI depuis les thèmes **Shiki**, le hover/clic façon
 VS Code existe, CodeMirror consomme les mêmes tokens, les icônes sont inline, la section
 « crafted » et les icônes sun/moon/check/trash sont en place. **C'est un refactor de
@@ -122,37 +122,76 @@ terminal, finir une migration CSS, et séparer proprement couleurs / polices / e
   ressources `colors` suffisantes) généré en statique ; le dériveur renforcé est prêt pour ça.
   NB : les crafted **déjà installés** gardent leur ancien CSS jusqu'à réinstallation.
 
-### Étape 2 — Polices/espacements séparés des couleurs
-- [ ] Modèle de config typographie par composant (CodeMirror/Preview/ProseMark) : famille,
-  taille, interligne, alignement. Polices UI verrouillées.
-- [ ] UI de config (modal) + persistance (projet `.azprose/config.json`).
+### Étape 2 — Polices/espacements séparés des couleurs — ✅ FAIT
+- [x] **Modèle 2 groupes** (`src/lib/typography.ts`) : **Markdown** (prose rendu ProseMark +
+  Preview) = famille/taille/interligne/**alignement** ; **Texte brut/Code** (éditeur source
+  CodeMirror, tous formats bruts), **section séparée** = famille/taille/interligne + **toggle
+  numéros de lignes**, pas d'alignement. Presets de polices open-source/système + **champ libre
+  CSS** (datalist). Polices UI verrouillées.
+- [x] **Câblage CSS** : `getTypographyVars` pose `--font-prose`/`--font-mono` (si police
+  choisie), `--mdv-prose-*`/`--mdv-writing-*` (tailles/interlignes indépendants par groupe) et
+  `--mdv-prose-align`. `preview.css` (`.mdv-prose`) et `.cm-html-widget` câblés sur ces vars +
+  `text-align`. `Editor.svelte` : `lineNumbers` via Compartment reconfigurable à chaud.
+- [x] **UI** : section « display » du menu thème restructurée en 2 sous-groupes (snippets
+  `choiceSlider`/`fontField`) ; transparence conservée au-dessus.
+- [x] **Persistance projet** : objet `typography` unique dans `.azprose/config.json`
+  (`ProjectConfig.typography`), défaut global en `localStorage` (`STORAGE_KEYS.typography`),
+  patch réactif `onTypographyChange`. i18n `typo.*` ×4 locales.
 - **Critère** : changer la police d'un composant n'affecte ni l'UI ni les autres ; les thèmes
-  ne touchent qu'aux couleurs.
+  ne touchent qu'aux couleurs. ✅ (build Vite OK, svelte-check sans régression)
 
-### Étape 3 — Liste d'ajout curatée + aperçu HTML
-- [ ] Remplacer « tous les thèmes Shiki » par une **liste fixe** d'addons proposables.
-- [ ] Modal « Add Theme » avec **carte d'aperçu HTML** par thème (hors BUILTIN).
-- **Critère** : on ne peut ajouter que des thèmes de la liste préparée ; chaque option montre
-  un aperçu fidèle.
+### Étape 3 — Liste d'ajout curatée + aperçu HTML — ✅ FAIT
+- [x] **Générateur refactoré** : `deriveThemeTokens` (tokens + flag `complete` = la map
+  `colors` fournit surface ET border) et `tokensToCSS`/types sortis dans `src/lib/theme-css.ts`
+  (léger, sans Shiki). `generateThemeCSS` s'appuie dessus.
+- [x] **Catalogue statique curaté** : `scripts/gen-catalog.mjs` (`npm run catalog`, bun)
+  scanne les thèmes Shiki, **écarte les incohérents** (10 rejetés : map `colors` incomplète OU
+  **contraste fg/bg < 4.0** — garde de cohérence) + les sources BUILTIN/addons, et bake les
+  tokens dans `src/lib/crafted-catalog.json` (**43 thèmes**). Le dériveur force aussi des
+  surface/border **distinctes du fond** (blend si la source = bg) → panneaux visibles.
+  `npm run catalog` logge les rejetés.
+- [x] **Picker à aperçu HTML** (`ThemeButton.svelte`) : charge le catalogue **en lazy** (aucun
+  Shiki au runtime → plus léger), grille de **cartes d'aperçu** rendues depuis les tokens du
+  thème ; ajout = `tokensToCSS` → install + inject. Liste **fixe non-extensible**.
+- **Critère** : on n'ajoute que des thèmes curés (complets) ; chaque carte montre un aperçu
+  fidèle ; runtime ne charge plus Shiki. ✅
+- **Reste** (→ Étape 4) : les addons préinstallés (matcha/kanagawa/rose-pine/ayu) restent en
+  dur dans `themes.json` ; à consolider avec le stockage par projet ; les crafted déjà
+  installés gardent leur ancien CSS jusqu'à réinstallation.
 
-### Étape 4 — Thème par projet + crafted dans `.azprose/` (+ parité & sync boot)
-- [ ] Commandes Rust (ou adaptation) : lire/écrire/supprimer dans `<projet>/.azprose/themes/` ;
-  liste des crafted + `themeMode` dans `.azprose/config.json`.
-- [ ] **Chargement synchrone au boot du projet** (même chaîne que `?root=`) : injecter le CSS
-  crafted **avant** d'appliquer `data-theme` → corrige le bug de parité crafted (aperçu/clic/
-  persistance) et supprime le flash.
-- [ ] Migrer les crafted existants (app data global) vers `.azprose/themes/`.
+### Étape 4 — Thème par projet + crafted dans `.azprose/` (+ parité & sync boot) — ✅ FAIT
+- [x] **Commandes Rust scopées projet** (`src-tauri/src/lib.rs`) :
+  `install_project_theme`/`remove_project_theme`/`list_project_theme**s**` opèrent dans
+  `<projet>/.azprose/themes/<nom>.css` (écriture **atomique** via `atomic_write`). `themeMode`
+  reste dans `.azprose/config.json` (déjà géré par `loadConfig`/`doConfigSync`).
+- [x] **Migration non destructive** : au **premier accès** d'un projet (dossier
+  `.azprose/themes/` absent), `list_project_themes` crée le dossier et **copie** les crafted
+  legacy de l'app-data global dedans. Gardé sur l'inexistence du dossier → trasher un thème ne
+  ressuscite jamais les legacy.
+- [x] **Chargement crafted-first au boot du projet** (`src/app.svelte`, `loadConfig`) : on
+  **injecte le CSS crafted du projet AVANT** d'appliquer `themeMode` → parité builtin ↔ crafted
+  (plus de fallback `:root`). Garde-fou : si le projet n'a pas de `themeMode` et que le défaut
+  global pointe un crafted **absent** du projet, repli sur un builtin (`latte`).
+- [x] **Splash gaté sur le thème** : le voile de boot (`#boot`) ne s'efface que lorsque
+  `themeBootDone` est posé (CSS crafted injecté + `themeMode` appliqué), avec garde-fou 2 s →
+  **zéro flash**, crafted correct au premier rendu.
+- [x] **Câblage** : `theme.projectRoot` (store `src/stores/theme.svelte.ts`) posé par
+  `app.svelte` au boot/changement de racine ; `ThemeButton` liste/installe/supprime via ce root
+  (re-list réactif). Trash = `removeThemeCSS` + `remove_project_theme` (menu **et** fichier).
 - **Critère** : chaque projet rouvre **son** thème (builtin ou crafted) sans flash ; un crafted
   vit dans `.azprose/themes/` (éditable à la main) ; hover/clic identiques builtin ↔ crafted ;
-  trash = retrait menu **et** fichier.
+  trash = retrait menu **et** fichier. ✅
 
-### Étape 5 — Terminal dans la chaîne thème (Shiki)
-- [ ] Brancher la (ré)application du thème xterm sur la couche thème : au boot **après** le
-  thème, et à chaque changement/aperçu (`previewTheme`/`setThemeMode`).
-- [ ] Objet thème xterm dérivé des tokens (`--bg`/`--fg`/`--accent`/sélection) + 16 couleurs
-  **ANSI** issues du thème Shiki.
+### Étape 5 — Terminal dans la chaîne thème (Shiki) — ✅ FAIT
+- [x] **Module de dérivation** (`src/lib/terminal-theme.ts`) : `readXtermTheme()` lit les CSS
+  vars courantes (`--bg`/`--fg`/`--accent`/`--muted`/`--syntax-*`), mappe les tokens Shiki
+  sur les 16 couleurs ANSI (keyword→red, string→green, type→yellow, function→blue,
+  constant→magenta, operator→cyan) + variantes bright par éclaircissement.
+- [x] **Réactivité** (`Terminal.svelte`) : `MutationObserver` sur `data-theme` du `<html>`
+  remplace l'ancien `cssVar()` statique ; `term.options.theme` ré-appliqué à chaque
+  changement (hover preview + click commit).
 - **Critère** : le terminal suit le thème UI en live (y compris à l'aperçu au survol), sans
-  réglage propre.
+  réglage propre. ✅
 
 ### Étape 6 — Boot complet + nettoyage CSS
 - [ ] `index.html` : couvrir la couleur de fond de tous les thèmes (builtins + addons).
