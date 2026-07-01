@@ -119,7 +119,7 @@ $effect(() => {
     const font = resolveHeadingFont(s[`presH${n}FontFamily`] as ProseStyle["h1FontFamily"], s[`presH${n}CustomFontName`] as string);
     const mt = s[`presH${n}MarginTop`] as number;
     const mb = s[`presH${n}MarginBottom`] as number;
-    return `.azp-slide .azp-slide__content h${n}{font-size:${size}em;text-align:${align};font-family:${font};margin:${mt}em 0 ${mb}em;}`;
+    return `.azp-slide .azp-slide__content h${n}{font-size:${size}em !important;text-align:${align} !important;font-family:${font} !important;margin:${mt}em 0 ${mb}em !important;}`;
   };
   const fontFamily = resolveFontFamily(s.presFontFamily, s.presCustomFontName);
   const monoFont  = resolveMonoFont(s.presMonoFont);

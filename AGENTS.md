@@ -1,10 +1,30 @@
 # AGENTS
 
-- This repo is the AZprose desktop app: React + TypeScript + Vite frontend, Tauri v2 Rust shell.
-- Keep edits scoped. Avoid broad refactors unless the task explicitly asks for structure cleanup.
-- Match the existing UI style: dense, local-first, calm, keyboard-friendly, and lowercase copy where the app already uses it.
-- Prefer existing primitives from `src/components/primitives` and icons from `lucide-react` through the local `Icon` wrapper.
-- User-facing strings should go through `src/locales/*.json` unless the surrounding file already uses fixed product/legal copy.
+- AZprose : éditeur WYSIWYM LaTeX/Markdown, public cible CPGE francophone. Stack : **Svelte 5 + Tauri 2 + Vite + TypeScript + Bun** (migration React → Svelte 5 complétée). Fork de azedit (React/markamd).
+- Public : professeurs de maths CPGE, expert LaTeX (cpgekit), power-user non-dev, Linux/macOS.
+- Style : dense, local-first, calme, keyboard-friendly, lowercase copy.
+- Préférer les primitives de `src/components/primitives` et les icônes SVG inline de `src/lib/icons.ts` (lucide-svelte supprimé, −74 % au démarrage).
+- Chaînes UI : ajouter dans **les 4 locales** (en/fr/de/es) via `src/locales/*.json`. Ne pas proposer de supprimer l'i18n.
+- **Multi-fenêtres** : 1 projet = 1 dossier (+ `.azprose/`), 1 fenêtre `WebviewWindow`. Le dossier est passé par l'URL (`index.html?root=<path>`), lu synchroniquement au boot. Session/onglets/brouillons scopés par projet (`setSessionScope`, `src/lib/session.ts`). Fermeture déterministe via `window.destroy()`.
+- Modèle dossiers : `folders[0]` = projet (porteur de `.azprose/`), `folders[1..]` = invités (badge, pas de config).
+
+## ai/ — documents de référence
+
+- `audit_projet.md` — audit gestion multi-fenêtres (juin 2026)
+- `editeur_typst.md` — feuille de route éditeur .typ (SVG live preview), remplace `integration_typst.md` (obsolète)
+- `projet_gestion.md` — architecture cible projet/fenêtre/session, 6/7 étapes complétées
+- `themes_audit_plan.md` — consolidation thèmes (en cours, 4/6 steps)
+- `opencode-webview-folders.md` — intégration OpenCode en webview enfant (en cours)
+- `loading-mathjax-packages.md` — intégration MathJax 4 (complété)
+- `migration-react-svelte.md` — analyse migration React → Svelte 5 (complété)
+- `profiling-startup.md` — procédure profiling démarrage
+- `userprofile.md` — profil utilisateur (prof maths CPGE)
+- `charte_graphique.md` — cahier des charge charte graphique
+- `audit_2026-06.md` — audit technique juin 2026
+- `fonctions_opencode.md` — proposition MCP server OpenCode
+- `gestion-projets.md` — architecture projet
+
+Ne pas utiliser : `architecture_global.md`, `charte_stylage.md`, `integration_typst.md`, `solution_de_presentation.md` (obsolètes).
 
 ## commands
 

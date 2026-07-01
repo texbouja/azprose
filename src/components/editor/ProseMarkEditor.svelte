@@ -84,7 +84,7 @@ const headingLinePlugin = ViewPlugin.fromClass(
 function buildLineDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   syntaxTree(view.state).cursor().iterate((node) => {
-    const m = /^ATXHeading(\d)$/.exec(node.name);
+    const m = /^(?:ATX|Setext)Heading(\d)$/.exec(node.name);
     if (!m) return;
     const line = view.state.doc.lineAt(node.from);
     builder.add(line.from, line.from, Decoration.line({ class: `cm-heading${m[1]}-line` }));
@@ -92,26 +92,26 @@ function buildLineDecorations(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
-// ── Heading inline style (font-size, font-family) ────────────────────────────
+// ── Heading inline style (font-size, font-weight, font-family) ────────────────
+// font-size uses !important to guarantee it wins over baseSyntaxHighlights.
 // Margins live on the host via CSS variables (updated reactively in $effect below).
-// Placed last so this HighlightStyle wins over ProseMark's baseSyntaxHighlights.
 function buildHeadingHighlight(style: ProseStyle): Extension {
   return syntaxHighlighting(HighlightStyle.define([
     {
       tag: tags.heading1,
-      fontSize: `${style.h1Size}em`,
+      fontSize: `${style.h1Size}em !important`,
       fontWeight: "bold",
       fontFamily: resolveHeadingFont(style.h1FontFamily, style.h1CustomFontName),
     },
     {
       tag: tags.heading2,
-      fontSize: `${style.h2Size}em`,
+      fontSize: `${style.h2Size}em !important`,
       fontWeight: "bold",
       fontFamily: resolveHeadingFont(style.h2FontFamily, style.h2CustomFontName),
     },
     {
       tag: tags.heading3,
-      fontSize: `${style.h3Size}em`,
+      fontSize: `${style.h3Size}em !important`,
       fontWeight: "bold",
       fontFamily: resolveHeadingFont(style.h3FontFamily, style.h3CustomFontName),
     },
@@ -217,7 +217,8 @@ $effect(() => {
 });
 
 // Layout CSS via <style> tag — appended to <head> after CodeMirror's own styles,
-// so font-size wins over ProseMark's theme regardless of extension cascade order.
+// so these base spacing rules sit after ProseMark's theme.
+// Heading font-size is set via buildHeadingHighlight with !important.
 $effect(() => {
   const s = proseSettings.current;
   const lh = s.lineHeight;
