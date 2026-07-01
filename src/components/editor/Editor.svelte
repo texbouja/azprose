@@ -58,17 +58,17 @@ onMount(() => {
           onChangeRef?.(update.state.doc.toString());
         }
       }),
-      onGutterClick && EditorView.domEventHandlers({
+      onGutterClick ? EditorView.domEventHandlers({
         mousedown: (event, view) => {
           const target = event.target as HTMLElement;
           if (!target.classList.contains("cm-lineNumber")) return false;
           const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
           if (pos == null) return false;
           const line = view.state.doc.lineAt(pos).number;
-          onGutterClick(line);
+          onGutterClick!(line);
           return false;
         },
-      }),
+      }) : [],
     ],
   });
 
