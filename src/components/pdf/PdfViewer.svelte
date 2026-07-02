@@ -80,8 +80,12 @@
     const pageView = (pdfViewer as any)?._pages?.[page - 1];
     if (!pageView) return;
     const [x, y] = pageView.getPagePoint(cssX, cssY);
+    console.debug(`synctex inverse: page=${page} css=(${cssX.toFixed(1)},${cssY.toFixed(1)}) pdf=(${x.toFixed(1)},${y.toFixed(1)}) scale=${pageView.viewport.scale}`);
     invoke<{ file: string; line: number }>("synctex_inverse", { pdfPath: path, page, x, y })
-      .then((r) => onInverseSync!(r.file, r.line))
+      .then((r) => {
+        console.debug(`synctex inverse result: file=${r.file} line=${r.line}`);
+        onInverseSync!(r.file, r.line);
+      })
       .catch((err) => console.error("synctex inverse failed", err));
   }
 

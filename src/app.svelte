@@ -1372,7 +1372,13 @@ const handleGutterClick = (line: number) => {
 };
 
 // Inverse synctex: user Ctrl+clicks PDF page → jump editor to source line
-const handleInverseSync = (file: string, line: number) => {
+const handleInverseSync = async (file: string, line: number) => {
+  // SyncTeX may return a different file (slave via \input/\include). Open it.
+  const normFile = file.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normActive = activePath?.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (normFile !== normActive) {
+    await openFileInTab(normFile, { silent: true, preview: true });
+  }
   jumpToLine = line - 1; // 1-based → 0-based
   if (!splitOn) handleSetEditorMode("raw");
   else { prosemarkOn = false; previewOn = false; presentationOn = false; }
