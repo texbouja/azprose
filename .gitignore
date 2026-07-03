@@ -47,3 +47,12 @@ marketing.md
 # dev session files
 tmp/
 ai/
+
+# local project config — never committed
+.azprose/
+.claude/
+test-latex/
+.nvmrc
+AGENTS.md
+MANIFEST.md
+opencode.json
