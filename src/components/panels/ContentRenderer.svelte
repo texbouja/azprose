@@ -24,6 +24,7 @@ let {
   prosemarkOn = false,
   forwardToPage = null as number | null,
   onInverseSync,
+  onJumpToLine,
   buildRev = 0,
   onToggleFullscreen,
 }: {
@@ -41,6 +42,7 @@ let {
   presentationOn?: never;
   forwardToPage?: number | null;
   onInverseSync?: (file: string, line: number) => void;
+  onJumpToLine?: (line: number) => void;
   buildRev?: number;
   onToggleFullscreen?: () => void;
 } = $props();
@@ -69,7 +71,7 @@ let {
   <LazyMarkdownPreview
     value={tab.source}
     filePath={tab.path}
-    onJumpToLine={() => {}}
+    {onJumpToLine}
   />
 {:else if panelId === "main" && extFromPath(tab.path) === "md" && prosemarkOn}
   <LazyProseMark

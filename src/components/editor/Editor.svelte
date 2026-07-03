@@ -72,10 +72,21 @@ onMount(() => {
   });
 
   view = new EditorView({ state, parent: hostEl });
+
+  const initialLine = jumpToLine;
+  if (initialLine != null) {
+    const lineNum = Math.min(Math.max(initialLine + 1, 1), view.state.doc.lines);
+    const lineObj = view.state.doc.line(lineNum);
+    const pos = jumpToCol != null ? Math.min(lineObj.from + jumpToCol, lineObj.to) : lineObj.from;
+    view.dispatch({
+      selection: { anchor: pos, head: pos },
+      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+    });
+    view.focus();
+    onJumpApplied?.();
+  }
 });
 
-// Reactive jump: fires for an already-mounted editor (console / preview click),
-// not just at mount. Line/col are 0-based; null col jumps to line start.
 $effect(() => {
   const line = jumpToLine;
   const col = jumpToCol;

@@ -24,6 +24,7 @@ let {
   prosemarkOn = false,
   forwardToPage = null as number | null,
   onInverseSync,
+  onJumpToLine,
   buildRev = 0,
   onSetEditorMode,
   onLatexViewer,
@@ -54,6 +55,7 @@ let {
   prosemarkOn?: boolean;
   forwardToPage?: number | null;
   onInverseSync?: (file: string, line: number) => void;
+  onJumpToLine?: (line: number) => void;
   buildRev?: number;
   onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
   onLatexViewer?: () => void;
@@ -137,6 +139,7 @@ function startResize(e: PointerEvent) {
       {vimOn}
       {forwardToPage}
       {onInverseSync}
+      {onJumpToLine}
       {buildRev}
       {onToggleRenderMode}
       {onToggleFullscreen}

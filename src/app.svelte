@@ -529,6 +529,12 @@ $effect(() => {
   return () => window.removeEventListener("azprose:crash", onCrash);
 });
 
+$effect(() => {
+  const onJump = (e: Event) => handleJumpToLine((e as CustomEvent<number>).detail);
+  window.addEventListener("azprose:jump-to-line", onJump);
+  return () => window.removeEventListener("azprose:jump-to-line", onJump);
+});
+
 async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean }) {
   if (!isOpenablePath(path)) {
     if (!opts?.silent) {
@@ -1597,6 +1603,7 @@ let cmds = $derived(
           onSourceChange={(next) => { pm.main.setSource(next); _panelVersion++; }}
           onSideSourceChange={(next) => { pm.side.setSource(next); _panelVersion++; }}
           onGutterClick={handleGutterClick}
+          onJumpToLine={handleJumpToLine}
           typo={typo}
           {jumpToLine}
           {jumpToCol}

@@ -19,6 +19,7 @@ let {
   prosemarkOn = false,
   forwardToPage = null as number | null,
   onInverseSync,
+  onJumpToLine,
   buildRev = 0,
   flex = "1",
   onSetEditorMode,
@@ -44,6 +45,7 @@ let {
   prosemarkOn?: boolean;
   forwardToPage?: number | null;
   onInverseSync?: (file: string, line: number) => void;
+  onJumpToLine?: (line: number) => void;
   buildRev?: number;
   flex?: string;
   onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
@@ -116,6 +118,7 @@ function handleViewerFullscreen() {
           {prosemarkOn}
           {forwardToPage}
           {onInverseSync}
+          {onJumpToLine}
           {buildRev}
           onToggleFullscreen={handleViewerFullscreen}
         />

@@ -146,9 +146,12 @@ $effect(() => {
     class="mdv-prose"
     ondblclick={(e) => {
       const block = (e.target as HTMLElement).closest<HTMLElement>("[data-sline]");
-      if (!block || !onJumpToLine) return;
+      if (!block) return;
       const line = Number(block.dataset.sline);
-      if (Number.isFinite(line)) onJumpToLine(line);
+      if (Number.isFinite(line)) {
+        onJumpToLine?.(line);
+        window.dispatchEvent(new CustomEvent("azprose:jump-to-line", { detail: line }));
+      }
     }}
   ></article>
   {/if}
