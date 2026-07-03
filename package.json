@@ -17,7 +17,7 @@
     "tauri": "tauri",
     "themes": "node scripts/build-themes.mjs",
     "catalog": "bun run scripts/gen-catalog.mjs",
-    "install": "bun run tauri build && sudo install -m 755 src-tauri/target/release/azprose /usr/local/bin/azprose"
+    "build-release": "bun run tauri build"
   },
   "engines": {
     "node": ">=24.0.0"
