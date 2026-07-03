@@ -1,4 +1,4 @@
-import { persistedState } from "./persisted.svelte";
+import { persistedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS } from "@/lib";
 
 // Slide themes adapted from Marp's built-in themes.

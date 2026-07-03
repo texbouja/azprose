@@ -1,21 +1,16 @@
 <script lang="ts">
   import {
     Check,
-    ChevronDown,
     ChevronRight,
-    Code2,
+    Columns2,
     Eye,
-    FileDown,
-    FileText,
     Globe,
     Maximize2,
-    Monitor,
     PanelBottom,
     PanelLeftClose,
     PanelLeftOpen,
     PanelTopClose,
     PanelTopOpen,
-    Pilcrow,
     Settings,
     Terminal,
   } from "@/lib/icons";
@@ -24,8 +19,6 @@
   import { shortcutLabel } from "@/lib";
   import type { TypographySettings } from "@/lib/typography";
   import ThemeButton from "./ThemeButton.svelte";
-  import { SLIDE_THEMES, SLIDE_MODES } from "@/stores/slide-settings.svelte";
-  import { slideSession } from "@/stores/slide-session.svelte";
   import exciteUrl from "@/assets/mascot/excite.png";
 
   let {
@@ -36,7 +29,6 @@
     rootPath,
     activePath,
     saveStatus,
-    onExportPdf,
     titlebarVisible,
     onToggleTitlebar,
     vimOn,
@@ -44,25 +36,12 @@
     typography,
     onTypographyChange,
     onResetTypography,
-    editorMode,
-    onSetEditorMode,
     onToggleFullscreen,
     onOpenSettings,
-    typstViewerOn,
-    onTypstCodeView,
-    onToggleTypstViewer,
-    compilingTypst,
-    onTypstBuild,
-    exportingTypst,
-    latexViewerOn,
-    latexBuilding,
-    latexEngine,
-    onLatexCodeView,
-    onToggleLatexViewer,
-    onLatexBuild,
-    onLatexEngineChange,
     consoleOpen,
     onToggleConsole,
+    viewPanelOpen,
+    onToggleViewPanel,
   }: {
     sidebarOpen: boolean;
     onToggleSidebar: () => void;
@@ -71,7 +50,6 @@
     rootPath: string | null;
     activePath: string | null;
     saveStatus: "idle" | "dirty" | "saving" | "saved";
-    onExportPdf?: () => void;
     titlebarVisible: boolean;
     onToggleTitlebar: () => void;
     vimOn?: boolean;
@@ -79,89 +57,18 @@
     typography: TypographySettings;
     onTypographyChange: (patch: Partial<TypographySettings>) => void;
     onResetTypography: () => void;
-    editorMode?: "raw" | "prose" | "preview" | "presentation";
-    onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
     onToggleFullscreen?: () => void;
     onOpenSettings?: () => void;
-    typstViewerOn?: boolean;
-    onTypstCodeView?: () => void;
-    onToggleTypstViewer?: () => void;
-    compilingTypst?: boolean;
-    onTypstBuild?: () => void;
-    exportingTypst?: boolean;
-    latexViewerOn?: boolean;
-    latexBuilding?: boolean;
-    latexEngine?: string;
-    onLatexCodeView?: () => void;
-    onToggleLatexViewer?: () => void;
-    onLatexBuild?: () => void;
-    onLatexEngineChange?: (engine: string) => void;
     consoleOpen?: boolean;
     onToggleConsole?: () => void;
+    viewPanelOpen?: boolean;
+    onToggleViewPanel?: () => void;
   } = $props();
 
   let t = $derived(getT($language));
 
-  let presBtnEl: HTMLDivElement | null = null;
-  let slideMenuOpen = $state(false);
   let langMenuOpen = $state(false);
   let langAnchorEl: HTMLDivElement | null = null;
-  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-  let longPressActive = false;
-  let buildLongPressTimer: ReturnType<typeof setTimeout> | null = null;
-  let buildLongPressActive = false;
-  let engineMenuOpen = $state(false);
-  let engineBtnEl: HTMLDivElement | null = null;
-
-  function onPresDown(e: PointerEvent) {
-    if (e.button !== 0) return;
-    longPressActive = false;
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      longPressActive = true;
-      slideMenuOpen = true;
-    }, 500);
-  }
-
-  function onPresRelease() {
-    if (longPressTimer !== null) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-    }
-  }
-
-  function onPresClick() {
-    if (longPressActive) { longPressActive = false; return; }
-    onSetEditorMode?.("presentation");
-  }
-
-  const ENGINE_OPTIONS = [
-    { value: "pdflatex", label: "pdfLaTeX" },
-    { value: "xelatex", label: "XeLaTeX" },
-    { value: "lualatex", label: "LuaLaTeX" },
-  ];
-
-  function onBuildDown(e: PointerEvent) {
-    if (e.button !== 0) return;
-    buildLongPressActive = false;
-    buildLongPressTimer = setTimeout(() => {
-      buildLongPressTimer = null;
-      buildLongPressActive = true;
-      engineMenuOpen = true;
-    }, 500);
-  }
-
-  function onBuildRelease() {
-    if (buildLongPressTimer !== null) {
-      clearTimeout(buildLongPressTimer);
-      buildLongPressTimer = null;
-    }
-  }
-
-  function onBuildClick() {
-    if (buildLongPressActive) { buildLongPressActive = false; return; }
-    onLatexBuild?.();
-  }
 
   const MAX_SEGMENTS = 4;
 
@@ -224,200 +131,6 @@
 
   <div class="mdv-breadcrumb__actions" data-tauri-drag-region>
 
-    <!-- Tools : boutons de mode (uniquement pour les fichiers .md) -->
-    {#if onSetEditorMode}
-      <div class="mdv-breadcrumb__mode-group">
-        <div class="mdv-pres-btn-wrap" bind:this={presBtnEl}>
-          <Button
-            data-tooltip={t("breadcrumb.presentation")}
-            aria-label={t("breadcrumb.presentation")}
-            aria-pressed={editorMode === "presentation"}
-            onpointerdown={onPresDown}
-            onpointerup={onPresRelease}
-            onpointerleave={onPresRelease}
-            onpointercancel={onPresRelease}
-            onclick={onPresClick}
-          >
-            {#snippet icon()}
-              <Icon icon={Monitor} size={14} strokeWidth={1.5} />
-            {/snippet}
-            {#snippet iconRight()}
-              <Icon icon={ChevronDown} size={10} strokeWidth={2} />
-            {/snippet}
-          </Button>
-          <Popover open={slideMenuOpen} onClose={() => (slideMenuOpen = false)} anchorRef={{ current: presBtnEl }}>
-            <div class="mdv-menu mdv-pres-menu">
-              <p class="mdv-pres-menu__label">{t("breadcrumb.slideTheme")}</p>
-              {#each SLIDE_THEMES as th (th.id)}
-                <label class="mdv-menu__item mdv-pres-menu__radio">
-                  <input type="radio" name="pres-theme" value={th.id}
-                    checked={slideSession.theme === th.id}
-                    onchange={() => { slideSession.theme = th.id; }} />
-                  {th.label}
-                </label>
-              {/each}
-              <div class="mdv-pres-menu__sep"></div>
-              <p class="mdv-pres-menu__label">{t("breadcrumb.slideMode")}</p>
-              {#each SLIDE_MODES as m (m.id)}
-                <label class="mdv-menu__item mdv-pres-menu__radio">
-                  <input type="radio" name="pres-mode" value={m.id}
-                    checked={slideSession.mode === m.id}
-                    onchange={() => { slideSession.mode = m.id; }} />
-                  {m.label}
-                </label>
-              {/each}
-              <div class="mdv-pres-menu__sep"></div>
-              <button type="button" class="mdv-menu__item"
-                onclick={() => { slideMenuOpen = false; onSetEditorMode?.("presentation"); onToggleFullscreen?.(); }}
-              >
-                {t("breadcrumb.fullscreen")}
-              </button>
-            </div>
-          </Popover>
-        </div>
-        <Button
-          data-tooltip={t("breadcrumb.preview")}
-          aria-label={t("breadcrumb.preview")}
-          aria-pressed={editorMode === "preview"}
-          onclick={() => onSetEditorMode?.("preview")}
-        >
-          {#snippet icon()}
-            <Icon icon={Eye} size={14} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-        <div class="mdv-breadcrumb__mode-sep" aria-hidden="true"></div>
-        <Button
-          data-tooltip={t("breadcrumb.prose")}
-          aria-label={t("breadcrumb.prose")}
-          aria-pressed={editorMode === "prose"}
-          onclick={() => onSetEditorMode?.("prose")}
-        >
-          {#snippet icon()}
-            <Icon icon={Pilcrow} size={14} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-        <Button
-          data-tooltip={t("breadcrumb.raw")}
-          aria-label={t("breadcrumb.raw")}
-          aria-pressed={editorMode === "raw"}
-          onclick={() => onSetEditorMode?.("raw")}
-        >
-          {#snippet icon()}
-            <Icon icon={Code2} size={14} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-        {#if onExportPdf}
-          <div class="mdv-breadcrumb__mode-sep" aria-hidden="true"></div>
-          <Button
-            data-tooltip={shortcutLabel(t("app.exportPdfShortcut"))}
-            aria-label={t("app.exportPdf")}
-            onclick={onExportPdf}
-          >
-            {#snippet icon()}
-              <Icon icon={FileDown} size={13} strokeWidth={1.5} />
-            {/snippet}
-          </Button>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- Tools : Typst CodeView / PDFView / Build -->
-    {#if activePath?.endsWith(".typ")}
-      <div class="mdv-breadcrumb__tools">
-        <Button
-          data-tooltip={t("breadcrumb.typstCodeView")}
-          aria-label={t("breadcrumb.typstCodeView")}
-          aria-pressed={!typstViewerOn}
-          onclick={onTypstCodeView}
-        >
-          {#snippet icon()}
-            <Icon icon={Code2} size={14} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-        <Button
-          data-tooltip={t("breadcrumb.typstViewer")}
-          aria-label={t("breadcrumb.typstViewer")}
-          aria-pressed={typstViewerOn}
-          disabled={compilingTypst}
-          onclick={onToggleTypstViewer}
-        >
-          {#snippet icon()}
-            <Icon icon={FileText} size={14} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-        <Button
-          data-tooltip={t("breadcrumb.typstBuild")}
-          aria-label={t("breadcrumb.typstBuild")}
-          disabled={exportingTypst}
-          onclick={onTypstBuild}
-        >
-          {#snippet icon()}
-            <Icon icon={FileDown} size={13} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-      </div>
-    {/if}
-
-    <!-- Tools : LaTeX Editor / Preview / Build -->
-    {#if activePath?.endsWith(".tex")}
-      <div class="mdv-breadcrumb__tools">
-        <Button
-          data-tooltip={t("breadcrumb.latexCodeView")}
-          aria-label={t("breadcrumb.latexCodeView")}
-          aria-pressed={!latexViewerOn && !latexBuilding}
-          onclick={onLatexCodeView}
-        >
-          {#snippet icon()}
-            <Icon icon={Code2} size={14} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-        <Button
-          data-tooltip={t("breadcrumb.latexViewer")}
-          aria-label={t("breadcrumb.latexViewer")}
-          aria-pressed={latexViewerOn}
-          disabled={latexBuilding}
-          onclick={onToggleLatexViewer}
-        >
-          {#snippet icon()}
-            <Icon icon={FileText} size={14} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-        <div class="mdv-build-btn-wrap" bind:this={engineBtnEl}>
-          <Button
-            data-tooltip={t("breadcrumb.latexBuild")}
-            aria-label={t("breadcrumb.latexBuild")}
-            disabled={latexBuilding}
-            onpointerdown={onBuildDown}
-            onpointerup={onBuildRelease}
-            onpointerleave={onBuildRelease}
-            onpointercancel={onBuildRelease}
-            onclick={onBuildClick}
-          >
-            {#snippet icon()}
-              <Icon icon={FileDown} size={13} strokeWidth={1.5} />
-            {/snippet}
-          </Button>
-          <Popover open={engineMenuOpen} onClose={() => (engineMenuOpen = false)} anchorRef={{ current: engineBtnEl }}>
-            <div class="mdv-menu">
-              <p class="mdv-pres-menu__label">{t("breadcrumb.engine")}</p>
-              {#each ENGINE_OPTIONS as opt}
-                <button
-                  type="button"
-                  class="mdv-menu__item"
-                  class:is-active={latexEngine === opt.value}
-                  onclick={() => { onLatexEngineChange?.(opt.value); engineMenuOpen = false; }}
-                  role="menuitemradio"
-                  aria-checked={latexEngine === opt.value}
-                >
-                  <span class="mdv-menu__item-label">{opt.label}</span>
-                </button>
-              {/each}
-            </div>
-          </Popover>
-        </div>
-      </div>
-    {/if}
-
     <!-- AFFICHAGE : barre d'outils, console, opencode, plein écran -->
     <div class="mdv-breadcrumb__display">
       <Button
@@ -451,6 +164,18 @@
         >
           {#snippet icon()}
             <Icon icon={Terminal} size={14} strokeWidth={1.5} />
+          {/snippet}
+        </Button>
+      {/if}
+      {#if onToggleViewPanel}
+        <Button
+          data-tooltip={t("breadcrumb.toggleViewPanel")}
+          aria-label={t("breadcrumb.toggleViewPanel")}
+          aria-pressed={viewPanelOpen}
+          onclick={onToggleViewPanel}
+        >
+          {#snippet icon()}
+            <Icon icon={Columns2} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
       {/if}
@@ -536,38 +261,6 @@
 </div>
 
 <style>
-  .mdv-pres-menu {
-    min-width: 130px;
-  }
-
-  .mdv-pres-menu__label {
-    margin: 0;
-    padding: 3px 10px 1px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .mdv-pres-menu__sep {
-    height: 1px;
-    background: var(--border);
-    margin: 3px 0;
-  }
-
-  .mdv-pres-menu__radio {
-    cursor: pointer;
-  }
-
-  .mdv-pres-menu__radio input[type="radio"] {
-    accent-color: var(--accent);
-    cursor: pointer;
-    width: 13px;
-    height: 13px;
-    flex-shrink: 0;
-  }
-
   .mdv-lang-wrap {
     position: relative;
   }

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { joinPath } from "./files";
 import type { ProseStyle } from "@/stores/prose-settings.svelte";
-import type { SlideTheme, SlideMode } from "@/stores/slide-settings.svelte";
+import type { SlideTheme, SlideMode } from "@/components/markdown/slide-settings.svelte";
 import type { DefaultEditorMode } from "@/stores/general-settings.svelte";
 import type { WritingFontSize, WritingLineHeight } from "./writing-display";
 import type { TypographySettings } from "./typography";

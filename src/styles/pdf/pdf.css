@@ -23,26 +23,23 @@
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--border);
 
-  /* Hidden by default, revealed on shell hover */
+  /* Hidden by default, revealed via JS hover zone (top 40px, click-outside to hide) */
   opacity: 0;
   transform: translateY(-100%);
   pointer-events: none;
-  /* Fast show, slower hide to avoid accidental dismissal */
   transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-.pdf-shell:hover .pdf-topbar {
+.pdf-topbar:not(.is-hidden) {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
-  transition: opacity 0.12s ease, transform 0.12s ease, opacity 0s 0.25s;
 }
 
-/* Keep toolbar visible while interacting with its own elements */
-.pdf-topbar:hover {
-  opacity: 1 !important;
-  transform: translateY(0) !important;
-  pointer-events: auto !important;
+/* Hide toolbar + hover zone in viewer fullscreen */
+.is-viewer-fullscreen .pdf-topbar,
+.is-viewer-fullscreen .pdf-hover-zone {
+  display: none !important;
 }
 
 .pdf-topbar__section {

@@ -7,7 +7,7 @@
 @import "./styles/chrome/titlebar.css";
 @import "./styles/chrome/breadcrumb.css";
 @import "./styles/chrome/statusbar.css";
-@import "./styles/editor/prose.css";
+@import "./styles/markdown/prose.css";
 
 @import "./styles/editor/tabs.css";
 @import "./styles/files/sidebar.css";
@@ -20,7 +20,7 @@
 @import "./styles/overlays/settings.css";
 @import "pdfjs-dist/web/pdf_viewer.css";
 @import "./styles/pdf/pdf.css";
-@import "./styles/preview/preview.css";
+@import "./styles/markdown/preview.css";
 
 /* shell layout */
 .mdv-app {
@@ -138,6 +138,13 @@
    Set on .mdv-editor so .cm-content (inside) inherits everything
    that prosemarkBaseThemeSetup() references via var(--). */
 .mdv-editor {
+  /* layout: fill parent flexbox and enable scrolling */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
   --font: var(--font-ui);
   --pm-header-mark-color: var(--syntax-keyword);
   --pm-link-color: var(--accent);
@@ -227,6 +234,12 @@
   color: var(--muted);
   font-size: 0.85rem;
   border: 0;
+}
+
+/* CodeMirror fills the editor container */
+.mdv-editor .cm-editor {
+  flex: 1;
+  height: 100%;
 }
 
 /* split editor/preview layout */

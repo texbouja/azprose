@@ -1,7 +1,8 @@
 <script lang="ts">
-import { ChevronRight, FileText, Star, Table2 } from "@/lib/icons";
+import { ChevronRight, Star } from "@/lib/icons";
 import Icon from "@/components/primitives/Icon.svelte";
-import { basename, isCsvPath, type FileEntry } from "@/lib";
+import FileIcon from "./FileIcon.svelte";
+import { basename, type FileEntry } from "@/lib";
 
 let {
   favorites,
@@ -112,7 +113,7 @@ const DRAG_MIME = "application/x-azprose-path";
               }}
             >
               <span class="mdv-tree__icon">
-                <Icon icon={isCsvPath(path) ? Table2 : FileText} size={13} strokeWidth={1.5} />
+                <FileIcon path={path} size={13} />
               </span>
               <span class="mdv-tree__name">{basename(path)}</span>
             </button>

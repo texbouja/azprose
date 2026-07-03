@@ -1,8 +1,9 @@
 <script lang="ts">
-import { Check, FilePlus2, FileText, Image as ImageIcon, Star, Table2 } from "@/lib/icons";
+import { Check, FilePlus2, Star } from "@/lib/icons";
 import Icon from "@/components/primitives/Icon.svelte";
+import FileIcon from "./FileIcon.svelte";
 import { DRAG_MIME } from "./folder-node.svelte";
-import { isCsvPath, isImagePath, type FileEntry } from "@/lib";
+import type { FileEntry } from "@/lib";
 
 let {
   entry,
@@ -13,6 +14,10 @@ let {
   onToggleStage,
   favorite = false,
   onToggleFavorite,
+  selected = false,
+  onToggleSelect,
+  onSelectRange,
+  onClearSelection,
   depth,
 }: {
   entry: FileEntry;
@@ -23,6 +28,10 @@ let {
   onToggleStage?: (path: string) => void;
   favorite?: boolean;
   onToggleFavorite?: (path: string) => void;
+  selected?: boolean;
+  onToggleSelect?: (path: string) => void;
+  onSelectRange?: (path: string) => void;
+  onClearSelection?: () => void;
   depth: number;
 } = $props();
 
@@ -40,12 +49,24 @@ function onCtx(e: MouseEvent) {
 }
 
 function handleClick(e: MouseEvent) {
-  if ((e.metaKey || e.ctrlKey) && onToggleStage) {
+  const meta = e.metaKey || e.ctrlKey;
+  if (meta && e.shiftKey && onToggleStage) {
     e.preventDefault();
     onToggleStage(entry.path);
     return;
   }
-  onSelect(entry.path, false); // single-click → preview (ephemeral) tab
+  if (meta) {
+    e.preventDefault();
+    onToggleSelect?.(entry.path);
+    return;
+  }
+  if (e.shiftKey) {
+    e.preventDefault();
+    onSelectRange?.(entry.path);
+    return;
+  }
+  onClearSelection?.();
+  onSelect(entry.path, false);
 }
 
 function handleDblClick() {
@@ -57,7 +78,7 @@ function handleDblClick() {
   <button
     type="button"
     draggable="true"
-    class="mdv-tree__row mdv-tree__row--file{active ? ' is-active' : ''}{staged ? ' is-staged' : ''}{onToggleFavorite ? ' has-fav' : ''}"
+    class="mdv-tree__row mdv-tree__row--file{active ? ' is-active' : ''}{staged ? ' is-staged' : ''}{selected ? ' is-selected' : ''}{onToggleFavorite ? ' has-fav' : ''}"
     style="padding-left:{8 + depth * 12 + 4}px"
     onclick={handleClick}
     ondblclick={handleDblClick}
@@ -66,7 +87,7 @@ function handleDblClick() {
     title={entry.path}
   >
     <span class="mdv-tree__icon">
-      <Icon icon={isCsvPath(entry.name) ? Table2 : isImagePath(entry.path) ? ImageIcon : FileText} size={13} strokeWidth={1.5} />
+      <FileIcon path={entry.path} size={13} />
     </span>
     <span class="mdv-tree__name">{entry.name}</span>
   </button>

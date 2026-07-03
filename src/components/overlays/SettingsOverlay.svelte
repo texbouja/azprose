@@ -13,7 +13,7 @@ import {
 } from "@/stores/prose-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
-import { slideSettings, SLIDE_THEMES, SLIDE_MODES, type SlideTheme } from "@/stores/slide-settings.svelte";
+import { slideSettings, SLIDE_THEMES, SLIDE_MODES, type SlideTheme } from "@/components/markdown/slide-settings.svelte";
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { restartApp } from "@/lib/restart";
 

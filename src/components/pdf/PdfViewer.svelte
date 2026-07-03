@@ -41,14 +41,15 @@
     items: OutlineNode[];
   };
 
-  let { path, rev = 0, forwardToPage = null, onInverseSync }:
-    { path: string; rev?: number; forwardToPage?: number | null; onInverseSync?: (file: string, line: number) => void }
+  let { path, rev = 0, forwardToPage = null, onInverseSync, onToggleFullscreen }:
+    { path: string; rev?: number; forwardToPage?: number | null; onInverseSync?: (file: string, line: number) => void; onToggleFullscreen?: () => void }
     = $props();
 
   // DOM refs
   let viewportEl: HTMLDivElement;
   let innerEl: HTMLDivElement;
   let pageInputEl: HTMLInputElement;
+  let shellEl: HTMLDivElement;
 
   // pdfjs instances
   let pdfViewer: PDFViewer | null = null;
@@ -64,6 +65,29 @@
   let pageInput   = $state("1");
   let loading     = $state(false);
   let errorMsg    = $state<string | null>(null);
+
+  // Toolbar hover-reveal (same pattern as ViewToolbar)
+  let toolbarVisible = $state(false);
+  let hoverZoneEl = $state<HTMLElement | null>(null);
+  let pdfToolbarEl = $state<HTMLElement | null>(null);
+
+  function showToolbar() { toolbarVisible = true; }
+  function hideToolbar() { toolbarVisible = false; }
+
+  function pdfClickOutside(e: MouseEvent) {
+    if (!pdfToolbarEl) return;
+    const target = e.target as Node;
+    if (!pdfToolbarEl.contains(target)) {
+      hideToolbar();
+    }
+  }
+
+  $effect(() => {
+    if (!toolbarVisible) return;
+    const handler = (e: MouseEvent) => pdfClickOutside(e);
+    requestAnimationFrame(() => document.addEventListener("click", handler));
+    return () => document.removeEventListener("click", handler);
+  });
 
   // Generation counter to discard stale async loadPdf calls
   let loadGen = 0;
@@ -215,6 +239,25 @@
 
     // Inverse synctex: Ctrl+click on PDF pages → jump to source line
     viewportEl.addEventListener("mousedown", onPdfMouseDown);
+
+    // Create hover zone for toolbar reveal (top 40px of pdf-shell)
+    if (shellEl) {
+      const zone = document.createElement("div");
+      zone.className = "pdf-hover-zone";
+      zone.style.cssText = "position:absolute;top:0;left:0;right:0;height:40px;z-index:19";
+      shellEl.appendChild(zone);
+      hoverZoneEl = zone;
+      zone.addEventListener("mouseenter", showToolbar);
+    }
+  });
+
+  $effect(() => {
+    if (!hoverZoneEl) return;
+    return () => {
+      hoverZoneEl.removeEventListener("mouseenter", showToolbar);
+      hoverZoneEl.remove();
+      hoverZoneEl = null;
+    };
   });
 
   // Forward synctex: scroll to page when parent requests it
@@ -234,13 +277,17 @@
     pdfDoc?.destroy();
     if (blobUrl) URL.revokeObjectURL(blobUrl);
     if (viewportEl) viewportEl.removeEventListener("mousedown", onPdfMouseDown);
+    if (hoverZoneEl) {
+      hoverZoneEl.removeEventListener("mouseenter", showToolbar);
+      hoverZoneEl.remove();
+    }
   });
 </script>
 
-<div class="pdf-shell">
+<div class="pdf-shell" bind:this={shellEl}>
 
   <!-- ── Top hover toolbar ── -->
-  <header class="pdf-topbar">
+  <header class="pdf-topbar" bind:this={pdfToolbarEl} class:is-hidden={!toolbarVisible}>
     <!-- Left: panel toggle -->
     <div class="pdf-topbar__section pdf-topbar__left">
       <button
@@ -299,6 +346,10 @@
       </button>
       <button class="pdf-btn" title={t("pdf.fitPage")} onclick={fitPage} disabled={!numPages}>
         <Icon icon={Shrink}    size={13} strokeWidth={1.6} />
+      </button>
+      <div class="pdf-vsep"></div>
+      <button class="pdf-btn" title="Fullscreen" onclick={() => onToggleFullscreen?.()}>
+        <Icon icon={Maximize2} size={14} strokeWidth={1.6} />
       </button>
     </div>
   </header>

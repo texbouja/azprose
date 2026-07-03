@@ -1,10 +1,27 @@
 {
-  "tabs": [
-    {
-      "path": "/home/GitHub/azprose/ai/audit_2026-06.md",
-      "title": "audit_2026-06.md"
-    }
-  ],
-  "activePath": "/home/GitHub/azprose/ai/audit_2026-06.md",
-  "lastFile": "/home/GitHub/azprose/ai/audit_2026-06.md"
+  "main": {
+    "tabs": [
+      {
+        "path": "/home/GitHub/azprose/ai/audit_2026-06.md",
+        "title": "audit_2026-06.md"
+      },
+      {
+        "path": "/home/GitHub/azprose/ai/consolidation_panels.md",
+        "title": "consolidation_panels.md"
+      }
+    ],
+    "activePath": "/home/GitHub/azprose/ai/consolidation_panels.md"
+  },
+  "side": {
+    "tabs": [
+      {
+        "path": "/home/GitHub/azprose/ai/consolidation_panels.md",
+        "title": "consolidation_panels.md",
+        "renderMode": "preview"
+      }
+    ],
+    "activePath": "/home/GitHub/azprose/ai/consolidation_panels.md",
+    "visible": true
+  },
+  "lastFile": "/home/GitHub/azprose/ai/consolidation_panels.md"
 }

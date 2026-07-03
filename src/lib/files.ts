@@ -43,6 +43,7 @@ export const TEXT_EXTENSIONS = new Set([
   "sql",
   "sh", "bash", "zsh",
   "tex", "sty", "cls", "ltx", "bib",
+  "typ",
   "r", "rda",
   "pl", "pm",
   "lua",

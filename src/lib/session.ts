@@ -31,9 +31,18 @@ export interface SessionTab {
   title: string;
 }
 
-export interface SessionData {
+export interface PanelSessionData {
   tabs: SessionTab[];
   activePath: string | null;
+}
+
+export interface SessionSideData extends PanelSessionData {
+  visible: boolean;
+}
+
+export interface SessionData {
+  main: PanelSessionData;
+  side: SessionSideData;
 }
 
 export function saveSession(data: SessionData): void {
@@ -45,10 +54,20 @@ export function saveSession(data: SessionData): void {
 export function loadSession(): SessionData {
   try {
     const raw = localStorage.getItem(SESSION_KEY + scope);
-    if (!raw) return { tabs: [], activePath: null };
-    return JSON.parse(raw) as SessionData;
+    if (!raw) return { main: { tabs: [], activePath: null }, side: { tabs: [], activePath: null, visible: false } };
+    const parsed = JSON.parse(raw);
+    // Old format { tabs, activePath } → migrate
+    if (Array.isArray(parsed.tabs)) {
+      const migrated: SessionData = {
+        main: { tabs: parsed.tabs, activePath: parsed.activePath ?? null },
+        side: { tabs: [], activePath: null, visible: false },
+      };
+      saveSession(migrated);
+      return migrated;
+    }
+    return parsed as SessionData;
   } catch {
-    return { tabs: [], activePath: null };
+    return { main: { tabs: [], activePath: null }, side: { tabs: [], activePath: null, visible: false } };
   }
 }
 

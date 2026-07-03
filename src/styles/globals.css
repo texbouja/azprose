@@ -6,7 +6,7 @@
 
 
 @import "./tokens.css";
-@import "./editor/slides.css";
+@import "./markdown/slides.css";
 
 *,
 *::before,
@@ -163,6 +163,18 @@ body.mdv-print .mdv-shell {
   background: #ffffff !important;
   color: #000000 !important;
   padding: 0 !important;
+}
+
+body.mdv-print .mdv-split {
+  display: block !important;
+  height: auto !important;
+}
+body.mdv-print .mdv-split__pane {
+  display: block !important;
+  height: auto !important;
+}
+body.mdv-print .mdv-split__resize {
+  display: none !important;
 }
 
 body.mdv-print .mdv-prose {

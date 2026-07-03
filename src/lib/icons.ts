@@ -4,6 +4,7 @@
 
 export type IconData = string;
 
+export const BookOpen: IconData = `<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>`;
 export const Check: IconData = `<path d="M20 6 9 17l-5-5"/>`;
 export const ChevronDown: IconData = `<path d="m6 9 6 6 6-6"/>`;
 export const ChevronLeft: IconData = `<path d="m15 18-6-6 6-6"/>`;
@@ -11,6 +12,7 @@ export const ChevronRight: IconData = `<path d="m9 18 6-6-6-6"/>`;
 export const ChevronsLeft: IconData = `<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>`;
 export const ChevronsRight: IconData = `<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>`;
 export const Circle: IconData = `<circle cx="12" cy="12" r="10"/>`;
+export const Columns2: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>`;
 export const CircleHelp: IconData = `<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>`;
 export const Cloud: IconData = `<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>`;
 export const Code2: IconData = `<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>`;
@@ -40,6 +42,8 @@ export const Paperclip: IconData = `<path d="M13.234 20.252 21 12.3"/><path d="m
 export const PanelBottom: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/>`;
 export const PanelLeftClose: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>`;
 export const PanelLeftOpen: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/>`;
+export const PanelRightClose: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m16 9 3 3-3 3"/>`;
+export const PanelRightOpen: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m19 15-3-3 3-3"/>`;
 export const PanelTopClose: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="m9 16 3-3 3 3"/>`;
 export const PanelTopOpen: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="m15 14-3 3-3-3"/>`;
 export const Pencil: IconData = `<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>`;
@@ -57,6 +61,7 @@ export const Table2: IconData = `<path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 
 export const Terminal: IconData = `<path d="M12 19h8"/><path d="m4 17 6-6-6-6"/>`;
 export const Trash2: IconData = `<path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>`;
 export const Undo2: IconData = `<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>`;
+export const Wallpaper: IconData = `<path d="M12 17v4"/><path d="M8 21h8"/><path d="m9 17 6.1-6.1a2 2 0 0 1 2.81.01L22 15"/><circle cx="8" cy="9" r="2"/><rect x="2" y="3" width="20" height="14" rx="2"/>`;
 export const Waves: IconData = `<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>`;
 export const Workflow: IconData = `<rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/>`;
 export const X: IconData = `<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`;

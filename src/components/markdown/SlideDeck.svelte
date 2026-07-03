@@ -226,4 +226,4 @@ function onKeyDown(e: KeyboardEvent) {
   </div>
 </div>
 
-<!-- styles in src/styles/editor/slides.css (global) -->
+<!-- styles in src/styles/markdown/slides.css (global) -->

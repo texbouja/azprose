@@ -24,6 +24,10 @@ let {
   onSubmitNew,
   onCancelNew,
   treeVersion = 0,
+  selectedPaths = new Set<string>(),
+  onToggleSelect,
+  onSelectRange,
+  onClearSelection,
   depth = 0,
 }: {
   rootPath: string;
@@ -42,11 +46,17 @@ let {
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
   treeVersion?: number;
+  selectedPaths?: Set<string>;
+  onToggleSelect?: (path: string) => void;
+  onSelectRange?: (clickedPath: string, siblingPaths: string[]) => void;
+  onClearSelection?: () => void;
   depth?: number;
 } = $props();
 
 let entries = $state<FileEntry[] | null>(null);
 let error = $state<string | null>(null);
+
+let siblingPaths = $derived(entries ? entries.map(e => e.path) : []);
 
 $effect(() => {
   // Read treeVersion so Svelte 5 re-runs this effect when the parent bumps it.
@@ -118,6 +128,10 @@ $effect(() => {
           {onSubmitNew}
           {onCancelNew}
           {treeVersion}
+          {selectedPaths}
+          {onToggleSelect}
+          {onSelectRange}
+          {onClearSelection}
           {depth}
         />
       {:else}
@@ -130,6 +144,10 @@ $effect(() => {
           {onToggleStage}
           favorite={favoritePaths.includes(entry.path)}
           {onToggleFavorite}
+          selected={selectedPaths.has(entry.path)}
+          onToggleSelect={onToggleSelect}
+          onSelectRange={(path) => onSelectRange?.(path, siblingPaths)}
+          onClearSelection={onClearSelection}
           {depth}
         />
       {/if}

@@ -5,7 +5,8 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl, openPath } from "@tauri-apps/plugin-opener";
+import { IS_MAC } from "@/lib/platform";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { FilePlus2, FolderPlus, Pencil, Copy, Trash2, FileText, FolderOpen, Star } from "@/lib/icons";
 import { checkForUpdate, applyUpdate } from "@/lib/updater";
@@ -56,23 +57,13 @@ import StatusBar from "@/components/chrome/StatusBar.svelte";
 import Sidebar from "@/components/files/sidebar.svelte";
 import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
+import { PanelManager } from "@/lib/panel-manager";
+import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import Editor from "@/components/editor/Editor.svelte";
-import TabsBar, { type Tab } from "@/components/editor/TabsBar.svelte";
-import LazyProseMark from "@/components/editor/LazyProseMark.svelte";
-import LazySlideDeck from "@/components/editor/LazySlideDeck.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
-import LazyMarkdownPreview from "@/components/preview/LazyMarkdownPreview.svelte";
-import TypstPreview from "@/components/typst/TypstPreview.svelte";
-import ConsolePanel from "@/components/typst/ConsolePanel.svelte";
-import {
-  createLatexState,
-  handleLatexBuild, handleLatexViewer, handleLatexSplit, handleLatexCodeView,
-  autoBuildIfDepChanged, clearLatexDeps,
-} from "@/components/tex/latex-build";
-import type { Diagnostic } from "@/lib/diagnostics";
+import { slideSettings } from "@/components/markdown/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
-import OpencodeSidebar from "@/components/opencode/OpencodeSidebar.svelte";
 import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { folderRelation } from "@/lib/paths";
@@ -80,7 +71,14 @@ import { saveSession, loadSession, saveDraft, loadDraft, clearDraft, setSessionS
 import { loadProjectSession, saveProjectSession, type PortableSession } from "@/lib/project-session";
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { proseSettings, DEFAULT_PROSE_STYLE } from "@/stores/prose-settings.svelte";
-import { slideSettings } from "@/stores/slide-settings.svelte";
+import {
+  createLatexState,
+  handleLatexBuild, handleLatexViewer, handleLatexCodeView,
+  autoBuildIfDepChanged, clearLatexDeps,
+} from "@/components/tex/latex-build";
+import type { Diagnostic } from "@/lib/diagnostics";
+import ConsolePanel from "@/components/typst/ConsolePanel.svelte";
+import OpencodeSidebar from "@/components/opencode/OpencodeSidebar.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { loadProjectConfig, saveProjectConfig } from "@/lib/project-config";
 import { theme } from "@/stores/theme.svelte";
@@ -123,47 +121,72 @@ let updateAvail = $state<{ version: string } | null>(null);
 let updateInstalling = $state(false);
 let updateUpToDate = $state(false);
 
-let tabs = $state<Tab[]>([]);
-let activeTabId = $state<string | null>(null);
+let rootPath = $state<string | null>(projectRoot);
+
+let pm = new PanelManager({
+  onSessionChange: (data) => {
+    _panelVersion++;
+    saveSession({
+      main: data.main,
+      side: { ...data.side, visible: pm.sideVisible },
+    });
+    scheduleSessionMirror();
+  },
+  onError: (title, message) => {
+    notifications.setLoadError({ title, message });
+  },
+});
+
+// Reactive panel version — incremented after every panel mutation to trigger
+// $derived.by re-evaluation. PanelManager stays non-reactive (plain class).
+let _panelVersion = $state(0);
+
+// sideVisible and splitRatio are $state directly (not driven by _panelVersion)
+// so they update in real-time during resize / toggle.
+let sideVisible = $state(pm.sideVisible);
+let splitRatio = $state(pm.splitRatio);
+
+// Main panel reactive views
+let tabs = $derived.by(() => { _panelVersion; return pm.main.tabs; });
+let activeTabId = $derived.by(() => { _panelVersion; return pm.main.activeTabId; });
+let source = $derived.by(() => { _panelVersion; return pm.main.source; });
+let savedContent = $derived.by(() => { _panelVersion; return pm.main.savedContent; });
+let activePath = $derived.by(() => { _panelVersion; return pm.main.activePath; });
+
+// Side panel reactive views
+let sideTabs = $derived.by(() => { _panelVersion; return pm.side.tabs; });
+let sideActiveTabId = $derived.by(() => { _panelVersion; return pm.side.activeTabId; });
+let sideActivePath = $derived.by(() => { _panelVersion; return pm.side.activePath; });
+
+$effect(() => {
+  if (sideTabs.length === 0 && sideVisible) {
+    pm.sideVisible = false;
+    sideVisible = false;
+  }
+});
 
 let words = $state(0);
 let minutes = $state(1);
 
-let source = $state("");
-let savedContent = $state("");
-let activePath = $state<string | null>(null);
-let rootPath = $state<string | null>(projectRoot);
-
 let vimOn = $state(false);
 let prosemarkOn = $state(generalSettings.defaultEditorMode === "prose");
-let presentationOn = $state(false);
-let previewOn = $state(false);
-let splitOn = $state(false);
-let splitRatio = $state(0.5);
-let leftPaneEl = $state<HTMLDivElement | null>(null);
-let rightPaneEl = $state<HTMLDivElement | null>(null);
 let jumpToLine = $state<number | null>(null);
 let jumpToCol = $state<number | null>(null);
 let forwardTargetPage = $state<number | null>(null);
 let presentationFs = $state(false);
-let typstPreviewOn = $state(false);
-let typstViewerOn = $state(false);
+let viewerFullscreenOn = $state(false);
 let ls = $state(createLatexState());
 // Non-reactive: keyed by filePath, stores last SVG + compiled source for instant re-display.
 const typstSvgCache: Record<string, { svg: string; compiledSource: string; diagnostics: Diagnostic[] }> = {};
-type TabViewState = {
-  splitOn?: boolean;
-  splitRatio?: number;
-  latexSplitOn?: boolean;
-  latexViewerOn?: boolean;
-  typstViewerOn?: boolean;
-  viewerPdfPath?: string | null;
-};
-// Non-reactive map: tabId → view state (split ratios, modes per tab)
-const tabViewState = new Map<string, TabViewState>();
 let consoleOpen = $state(false);
 let consoleHeight = $state(160);
 const consoleDiags = $derived(diagnosticsStore.all);
+const logLines = $derived.by(() => {
+  const ext = activePath ? extFromPath(activePath) : "";
+  if (ext === "typ") return typstBuildLog;
+  if (ext === "tex") return ls.buildLog;
+  return [];
+});
 let consoleTab = $state<"diagnostics" | "terminal" | "log">("diagnostics");
 // Once the console has been opened, keep ConsolePanel mounted (hidden when closed)
 // so the Terminal/shell session survives a close — VS Code behavior.
@@ -313,11 +336,8 @@ async function trackMtime(path: string) {
 
 async function reloadFile(path: string) {
   const fresh = await readMarkdown(path);
-  tabs = tabs.map(t => t.path === path ? { ...t, source: fresh, savedContent: fresh } : t);
-  if (activePath === path) {
-    source = fresh;
-    savedContent = fresh;
-  }
+  pm.main.tabs = pm.main.tabs.map((t: any) => t.path === path ? { ...t, source: fresh, savedContent: fresh } : t);
+  _panelVersion++;
   await trackMtime(path);
 }
 
@@ -430,13 +450,16 @@ onMount(() => {
   };
 });
 
-function findTabByPath(path: string): Tab | undefined {
-  return tabs.find(t => t.path === path);
+function findTabByPath(path: string) {
+  return pm.main.tabs.find((t: { path: string }) => t.path === path);
 }
 
 function saveSessionNow() {
-  const activePath = tabs.find(t => t.id === activeTabId)?.path ?? null;
-  saveSession({ tabs: tabs.map(t => ({ path: t.path, title: t.title })), activePath });
+  const data = pm.toJSON();
+  saveSession({
+    main: data.main,
+    side: { ...data.side, visible: pm.sideVisible },
+  });
   scheduleSessionMirror();
 }
 
@@ -446,11 +469,11 @@ function saveSessionNow() {
 let sessionMirrorTimer: ReturnType<typeof setTimeout> | null = null;
 
 function buildPortableSession(): PortableSession {
-  const activePath = tabs.find(t => t.id === activeTabId)?.path ?? null;
+  const data = pm.toJSON();
   return {
-    tabs: tabs.map(t => ({ path: t.path, title: t.title })),
-    activePath,
-    lastFile: activePath ?? loadLastFile(),
+    main: data.main,
+    side: { ...data.side, visible: pm.sideVisible },
+    lastFile: data.main.activePath ?? loadLastFile(),
   };
 }
 
@@ -478,11 +501,7 @@ function flushSessionMirror() {
 }
 
 function saveAllDirtyDrafts() {
-  for (const tab of tabs) {
-    if (!isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
-      saveDraft(tab.path, tab.source);
-    }
-  }
+  pm.saveAllDrafts();
 }
 
 // Crash plumbing. A render/effect error caught by the per-view <svelte:boundary>
@@ -511,133 +530,35 @@ $effect(() => {
 });
 
 async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean }) {
-  // Refuse anything that isn't a supported text/image/pdf (no-extension → text).
   if (!isOpenablePath(path)) {
     if (!opts?.silent) {
       notifications.setLoadError({ title: "Format", message: t("app.unsupportedFormat", { name: basename(path) }) });
     }
     return;
   }
-  const wantPreview = opts?.preview === true;
-
-  const existing = findTabByPath(path);
-  if (existing) {
-    saveCurrentTabViewState();
-    activeTabId = existing.id;
-    restoreTabViewState(existing.id);
-    // A permanent open (double-click) of an already-open preview tab pins it.
-    if (!wantPreview && existing.preview) {
-      tabs = tabs.map(t => t.id === existing.id ? { ...t, preview: false } : t);
-    }
-    saveSessionNow();
-    return;
-  }
-
-  // For a preview open, reuse the existing preview slot (replace its content)
-  // instead of piling up tabs — VS Code behavior.
-  const reuse = wantPreview ? tabs.find(t => t.preview) : undefined;
-  const title = basename(path);
-  const id = reuse?.id ?? crypto.randomUUID();
-  if (reuse) {
-    tabs = tabs.map(t => t.id === id ? { ...t, path, title, source: "", savedContent: "", preview: true } : t);
+  if (isImagePath(path)) {
+    await pm.openInSide(path, opts);
   } else {
-    tabs = [...tabs, { id, title, path, source: "", savedContent: "", preview: wantPreview }];
-  }
-  saveCurrentTabViewState();
-  activeTabId = id;
-
-  if (!isPdfPath(path) && !isImagePath(path)) {
-    try {
-      const fileSource = await readMarkdown(path);
-      const draft = opts?.preferDraft ? loadDraft(path) : null;
-      const source = (draft !== null && draft !== fileSource) ? draft : fileSource;
-      tabs = tabs.map(t => t.id === id ? { ...t, source, savedContent: fileSource } : t);
-    } catch (err) {
-      tabs = tabs.filter(t => t.id !== id);
-      if (activeTabId === id) activeTabId = tabs[tabs.length - 1]?.id ?? null;
-      if (!opts?.silent) throw err;
-      return;
-    }
+    await pm.openInMain(path, opts);
   }
   void trackMtime(path);
-  saveSessionNow();
   if (!proseWarmupDone && extFromPath(path) === "md") {
     proseWarmupDone = true;
-    void import("@/components/editor/ProseMarkEditor.svelte");
+    void import("@/components/markdown/ProseMarkEditor.svelte");
   }
 }
 
 function closeTab(id: string) {
-  const idx = tabs.findIndex(t => t.id === id);
-  if (idx === -1) return;
-  const tab = tabs[idx];
-  // Persist draft avant de fermer — récupérable si l'utilisateur rouvre le fichier
-  if (!isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
-    saveDraft(tab.path, tab.source);
-  }
-  // Save view state before closing
-  if (activeTabId === id) saveCurrentTabViewState();
-  if (activeTabId === id) tabViewState.delete(id);
-  tabs = tabs.filter(t => t.id !== id);
-  if (activeTabId === id) {
-    const next = tabs[Math.min(idx, tabs.length - 1)];
-    activeTabId = next?.id ?? null;
-    if (next) restoreTabViewState(next.id);
-  } else {
-    tabViewState.delete(id);
-  }
-  saveSessionNow();
-}
-
-function saveCurrentTabViewState() {
-  if (!activeTabId) return;
-  tabViewState.set(activeTabId, {
-    splitOn, splitRatio,
-    latexSplitOn: ls.latexSplitOn,
-    latexViewerOn: ls.latexViewerOn,
-    typstViewerOn,
-    viewerPdfPath: ls.viewerPdfPath,
-  });
-}
-
-function restoreTabViewState(id: string) {
-  const saved = tabViewState.get(id);
-  if (!saved) return;
-  splitOn = saved.splitOn ?? false;
-  if (saved.splitRatio != null) splitRatio = saved.splitRatio;
-  ls.latexSplitOn = saved.latexSplitOn ?? false;
-  ls.latexViewerOn = saved.latexViewerOn ?? false;
-  typstViewerOn = saved.typstViewerOn ?? false;
-  if (saved.viewerPdfPath !== undefined) ls.viewerPdfPath = saved.viewerPdfPath;
+  pm.main.close(id);
 }
 
 function handleTabSelect(id: string) {
-  saveCurrentTabViewState();
-  activeTabId = id;
-  restoreTabViewState(id);
-  saveSessionNow();
+  pm.main.select(id);
 }
 
 function handleTabReorder(from: number, to: number) {
-  const next = [...tabs];
-  const [moved] = next.splice(from, 1);
-  next.splice(to, 0, moved);
-  tabs = next;
-  saveSessionNow();
+  pm.main.reorder(from, to);
 }
-
-$effect(() => {
-  const tab = tabs.find(t => t.id === activeTabId);
-  if (tab) {
-    activePath = tab.path;
-    source = tab.source;
-    savedContent = tab.savedContent;
-  } else {
-    activePath = null;
-    source = "";
-    savedContent = "";
-  }
-});
 
 $effect(() => {
   if (source !== savedContent) {
@@ -653,28 +574,14 @@ $effect(() => {
   minutes = Math.max(1, Math.ceil(words / 200));
 });
 
-$effect(() => {
-  const tab = tabs.find(t => t.id === activeTabId);
-  if (tab && (tab.source !== source || tab.savedContent !== savedContent)) {
-    // Editing a preview tab promotes it to a permanent tab (VS Code behavior).
-    const promote = tab.preview === true && source !== savedContent;
-    tabs = tabs.map(t => t.id === activeTabId
-      ? { ...t, source, savedContent, ...(promote ? { preview: false } : null) }
-      : t);
-  }
-});
-
 const handleSave = async () => {
   if (!activePath || saveStatus !== "dirty") return;
   saveStatus = "saving";
   try {
-    await writeMarkdown(activePath, source);
-    savedContent = source;
+    await pm.main.save();
     saveStatus = "saved";
-    tabs = tabs.map(t => t.id === activeTabId ? { ...t, savedContent: source } : t);
     clearDraft(activePath);
     void trackMtime(activePath);
-    // Auto-rebuild LaTeX project if a dependency changed (always builds root)
     autoBuildIfDepChanged(ls, activePath, onLatexBuild);
   } catch (err) {
     console.error("azprose: save failed", err);
@@ -686,11 +593,12 @@ const handleSave = async () => {
 const handleSaveAll = async (deps: string[]) => {
   const norm = (p: string) => p.replace(/\\/g, "/");
   const depSet = new Set(deps.map(norm));
-  for (const tab of tabs) {
+  for (const tab of pm.main.tabs) {
     if (tab.source !== tab.savedContent && depSet.has(norm(tab.path))) {
       try {
         await writeMarkdown(tab.path, tab.source);
-        tabs = tabs.map(t => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
+        pm.main.tabs = pm.main.tabs.map((t: any) => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
+        _panelVersion++;
         if (tab.path !== activePath) clearDraft(tab.path);
       } catch { /* best-effort */ }
     }
@@ -731,13 +639,7 @@ $effect(() => {
 });
 
 $effect(() => {
-  if (!activePath || extFromPath(activePath) !== "md") {
-    presentationOn = false;
-    previewOn = false;
-  }
   if (!activePath || extFromPath(activePath) !== "typ") {
-    typstPreviewOn = false;
-    typstViewerOn = false;
     ls.viewerPdfPath = null;
     // Drop stale Typst diagnostics when leaving a .typ. The console itself is a
     // workspace-level panel (Terminal + Diagnostics) — never auto-closed here, so
@@ -747,21 +649,17 @@ $effect(() => {
     diagnosticsStore.set("typst", typstSvgCache[activePath]?.diagnostics ?? []);
   }
   if (!activePath || extFromPath(activePath) !== "tex") {
-    ls.latexViewerOn = false;
-    ls.latexSplitOn = false;
     ls.latexBuilding = false;
     diagnosticsStore.clear("latex");
     clearLatexDeps(ls);
   }
 });
 
-// Live diagnostics for the open console outside live-preview mode (code view /
-// viewer). In live-preview mode TypstPreview already feeds consoleDiags via
-// onCompileResult, so we skip to avoid a double compile.
+// Live diagnostics for the open console outside live-preview mode.
 $effect(() => {
   const path = activePath;
   const text = source;
-  if (!consoleOpen || !path || extFromPath(path) !== "typ" || typstPreviewOn) return;
+  if (!consoleOpen || !path || extFromPath(path) !== "typ") return;
   const timer = setTimeout(async () => {
     try {
       const res = await invoke<{ svg: string | null; diagnostics: Diagnostic[]; pages: number }>(
@@ -791,6 +689,16 @@ $effect(() => {
   return () => { cancelled = true; };
 });
 
+// Keep side panel preview/presentation tab source in sync with main editor
+$effect(() => {
+  if (!activePath || extFromPath(activePath) !== "md") return;
+  const sideTab = pm.side.tabs.find(t => t.path === activePath && (t.renderMode === "preview" || t.renderMode === "presentation"));
+  if (sideTab && sideTab.source !== source) {
+    pm.side.tabs = pm.side.tabs.map(t => t.id === sideTab.id ? { ...t, source } : t);
+    _panelVersion++;
+  }
+});
+
 $effect(() => {
   const timer = window.setTimeout(async () => {
     const result = await checkForUpdate();
@@ -799,6 +707,18 @@ $effect(() => {
     }
   }, 1500);
   return () => window.clearTimeout(timer);
+});
+
+$effect(() => {
+  if (!viewerFullscreenOn) return;
+  const handler = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      exitViewerFullscreen();
+    }
+  };
+  document.addEventListener("keydown", handler);
+  return () => document.removeEventListener("keydown", handler);
 });
 
 const handleApplyUpdate = async () => {
@@ -847,6 +767,22 @@ const toggleFullscreen = async () => {
   }
 };
 
+const toggleViewerFullscreen = async () => {
+  const win = getCurrentWindow();
+  try {
+    viewerFullscreenOn = !viewerFullscreenOn;
+    await win.setFullscreen(viewerFullscreenOn);
+  } catch (err) {
+    console.error("azprose: viewer fullscreen toggle failed", err);
+  }
+};
+
+function exitViewerFullscreen() {
+  if (!viewerFullscreenOn) return;
+  viewerFullscreenOn = false;
+  void getCurrentWindow().setFullscreen(false);
+}
+
 $effect(() => {
   let cancelled = false;
   let unlisten: (() => void) | undefined;
@@ -870,25 +806,38 @@ $effect(() => {
         } else {
           // Restauration de session : rouvrir tous les onglets avec leurs brouillons
           let session = loadSession();
-          if (session.tabs.length === 0 && projectRoot) {
+          if (session.main.tabs.length === 0 && projectRoot) {
             // localStorage vide pour ce projet → récupérer la copie portable
             // .azprose/session.json (projet déplacé/copié, ou nouvelle machine) et
             // réamorcer le localStorage scopé. localStorage reste le primaire ensuite.
             const portable = await loadProjectSession(projectRoot);
-            if (portable && portable.tabs.length > 0) {
-              session = { tabs: portable.tabs, activePath: portable.activePath };
+            if (portable && portable.main.tabs.length > 0) {
+              session = { main: portable.main, side: portable.side };
               saveSession(session);
               if (portable.lastFile) saveLastFile(portable.lastFile);
             }
           }
-          if (session.tabs.length > 0) {
-            for (const { path } of session.tabs) {
+          if (session.main.tabs.length > 0) {
+            for (const { path } of session.main.tabs) {
               if (cancelled) break;
               await openFileInTab(path, { preferDraft: true, silent: true });
             }
-            if (!cancelled && session.activePath) {
-              const active = findTabByPath(session.activePath);
-              if (active) activeTabId = active.id;
+            if (!cancelled && session.main.activePath) {
+              const active = findTabByPath(session.main.activePath);
+              if (active) pm.main.select(active.id);
+            }
+            // Restore side panel
+            if (session.side.visible && session.side.tabs.length > 0) {
+              for (const { path } of session.side.tabs) {
+                if (cancelled) break;
+                await pm.openInSide(path, { silent: true });
+              }
+              if (!cancelled && session.side.activePath) {
+                const sideTab = pm.side.tabs.find(t => t.path === session.side.activePath);
+                if (sideTab) pm.side.select(sideTab.id);
+              }
+              sideVisible = true;
+              pm.sideVisible = true;
             }
           } else {
             // Pas de session — fallback sur le dernier fichier ouvert
@@ -1023,8 +972,8 @@ const handleInitProject = async () => {
 };
 
 const handleCloseFolder = async (path: string) => {
-  const folderTabs = tabs.filter(t => t.path.startsWith(path + "/"));
-  const dirtyTabs = folderTabs.filter(t => !isPdfPath(t.path) && !isImagePath(t.path) && t.source !== t.savedContent);
+  const folderTabs = pm.main.tabs.filter((t: { path: string }) => t.path.startsWith(path + "/"));
+  const dirtyTabs = folderTabs.filter((t: { path: string; source: string; savedContent: string }) => !isPdfPath(t.path) && !isImagePath(t.path) && t.source !== t.savedContent);
   if (dirtyTabs.length > 0) {
     const ok = await confirm(t("tabs.closeUnsavedFolder"), { title: "", kind: "warning" });
     if (!ok) return;
@@ -1034,15 +983,13 @@ const handleCloseFolder = async (path: string) => {
       saveDraft(tab.path, tab.source);
     }
   }
-  const folderIds = new Set(folderTabs.map(t => t.id));
-  tabs = tabs.filter(t => !folderIds.has(t.id));
-  if (activeTabId && folderIds.has(activeTabId)) {
-    activeTabId = tabs[tabs.length - 1]?.id ?? null;
+  for (const tab of folderTabs) {
+    pm.main.close(tab.id);
   }
   const next = folders.current.filter((f) => f !== path);
   folders.update(() => next);
   if (rootPath === path) rootPath = next[0] ?? null;
-  saveGuests(folders.current.slice(1)); // persist remaining guests for this project
+  saveGuests(folders.current.slice(1));
   saveSessionNow();
 };
 
@@ -1072,9 +1019,11 @@ const handleMove = async (src: string, dstParent: string) => {
     const newPath = await moveEntry(src, dstParent);
     treeVersion++;
     if (activePath === src) {
-      activePath = newPath;
-      const content = await readMarkdown(newPath).catch(() => null);
-      if (content !== null) source = content;
+      const tab = pm.main.activeTab;
+      if (tab) {
+        pm.main.tabs = pm.main.tabs.map((t: any) => t.id === tab.id ? { ...t, path: newPath, title: basename(newPath) } : t);
+        _panelVersion++;
+      }
     }
   } catch (err) {
     console.error("azprose: move failed", err);
@@ -1097,6 +1046,12 @@ const handleContextMenu = (e: MouseEvent, entry: FileEntry) => {
       onSelect: () => { newEntry = { parent: parentDir, kind: "folder" }; },
     },
     "divider",
+    ...(entry.isDir ? [{
+      label: IS_MAC ? t("menu.revealFinder") : t("menu.revealExplorer"),
+      icon: FolderOpen,
+      onSelect: () => { openPath(entry.path); },
+    },
+    ] as ContextMenuItem[] : []),
     ...(!entry.isDir ? [{
       label: t("menu.openDefault"),
       icon: FileText,
@@ -1176,9 +1131,10 @@ const handleSubmitRename = async (src: string, newName: string) => {
   editingPath = null;
   try {
     const newPath = await renameEntry(src, newName);
-    const tab = tabs.find(t => t.path === src);
+    const tab = pm.main.tabs.find((t: { path: string }) => t.path === src);
     if (tab) {
-      tabs = tabs.map(t => t.path === src ? { ...t, path: newPath, title: basename(newPath) } : t);
+      pm.main.tabs = pm.main.tabs.map((t: any) => t.path === src ? { ...t, path: newPath, title: basename(newPath) } : t);
+      _panelVersion++;
     }
   } catch (err) {
     notifications.setLoadError({
@@ -1203,7 +1159,7 @@ const handleDelete = async (entry: FileEntry) => {
   try {
     await removeEntry(entry.path, entry.isDir);
     if (!entry.isDir) {
-      const tab = tabs.find(t => t.path === entry.path);
+      const tab = pm.main.tabs.find((t: { path: string }) => t.path === entry.path);
       if (tab) closeTab(tab.id);
     }
     treeVersion++;
@@ -1219,14 +1175,23 @@ const handleExportPdf = async () => {
   const isLinux = await invoke<boolean>("export_pdf");
   if (!isLinux) return;
 
-  // Ensure the rendered preview is in the DOM regardless of current mode.
-  const prev = { previewOn, prosemarkOn, presentationOn };
-  if (!previewOn) {
-    previewOn = true;
-    presentationOn = false;
+  // Lazily import the markdown renderer for printing.
+  const { renderMarkdown, ensurePreviewReady } = await import("@/lib/markdown-render");
+  await ensurePreviewReady();
+
+  const prevSideVisible = sideVisible;
+  const prevSideTabs = [...pm.side.tabs];
+  const prevPanelVersion = _panelVersion;
+
+  // Open a preview tab in the side panel so the rendered HTML is in the DOM.
+  if (activePath && extFromPath(activePath) === "md") {
+    await pm.openInSide(activePath, { preview: true });
+    const tab = pm.side.tabs.find(t => t.path === activePath);
+    if (tab) pm.side.setRenderMode(tab.id, "preview");
+    sideVisible = true;
+    pm.sideVisible = true;
     await tick();
-    // Give LazyMarkdownPreview time to resolve its dynamic import and render.
-    await new Promise<void>((r) => setTimeout(r, 250));
+    await new Promise<void>((r) => setTimeout(r, 300));
     await tick();
   }
 
@@ -1234,9 +1199,11 @@ const handleExportPdf = async () => {
   window.print();
   document.body.classList.remove("mdv-print");
 
-  previewOn = prev.previewOn;
-  prosemarkOn = prev.prosemarkOn;
-  presentationOn = prev.presentationOn;
+  // Restore side panel state.
+  pm.side.tabs = prevSideTabs;
+  _panelVersion++;
+  sideVisible = prevSideVisible;
+  pm.sideVisible = prevSideVisible;
 };
 
 $effect(() => {
@@ -1261,103 +1228,15 @@ const handleToggleTitlebar = () => {
 type EditorMode = "raw" | "prose" | "preview" | "presentation";
 
 let editorMode = $derived<EditorMode>(
-  previewOn ? "preview"
-  : prosemarkOn && presentationOn ? "presentation"
+  sideActivePath && pm.side.activeTab?.renderMode === "presentation" ? "presentation"
+  : sideActivePath && pm.side.activeTab?.renderMode === "preview" ? "preview"
   : prosemarkOn ? "prose"
   : "raw"
 );
 
-let canSplit = $derived(editorMode === "raw" && extFromPath(activePath ?? "") === "md");
-
-const handleToggleSplit = (_tabId: string) => {
-  if (!canSplit) return;
-  splitOn = !splitOn;
-};
-
-let splitResizeState: { startX: number; startRatio: number } | null = null;
-
-const startSplitResize = (e: PointerEvent) => {
-  const container = (e.currentTarget as HTMLElement).parentElement;
-  if (!container) return;
-  splitResizeState = { startX: e.clientX, startRatio: splitRatio };
-  const rect = container.getBoundingClientRect();
-  const onMove = (ev: PointerEvent) => {
-    if (!splitResizeState) return;
-    const delta = ev.clientX - splitResizeState.startX;
-    splitRatio = Math.max(0.2, Math.min(0.8, splitResizeState.startRatio + delta / rect.width));
-  };
-  const onUp = () => {
-    splitResizeState = null;
-    document.removeEventListener("pointermove", onMove);
-    document.removeEventListener("pointerup", onUp);
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-  };
-  document.addEventListener("pointermove", onMove);
-  document.addEventListener("pointerup", onUp);
-  document.body.style.cursor = "col-resize";
-  document.body.style.userSelect = "none";
-  e.preventDefault();
-};
-
-function syncScroll(left: HTMLElement, right: HTMLElement): () => void {
-  const pct = (el: HTMLElement) => {
-    const d = el.scrollHeight - el.clientHeight;
-    return d > 0 ? el.scrollTop / d : 0;
-  };
-
-  let lastL = pct(left);
-  let lastR = pct(right);
-
-  const onScroll = () => {
-    const curL = pct(left);
-    const curR = pct(right);
-    const movedL = curL !== lastL;
-    const movedR = curR !== lastR;
-
-    if (movedL && !movedR) {
-      right.scrollTop = curL * (right.scrollHeight - right.clientHeight);
-    } else if (movedR && !movedL) {
-      left.scrollTop = curR * (left.scrollHeight - left.clientHeight);
-    }
-
-    lastL = pct(left);
-    lastR = pct(right);
-  };
-
-  left.addEventListener("scroll", onScroll, { passive: true });
-  right.addEventListener("scroll", onScroll, { passive: true });
-  return () => {
-    left.removeEventListener("scroll", onScroll);
-    right.removeEventListener("scroll", onScroll);
-  };
-}
-
-$effect(() => {
-  if (!leftPaneEl || !rightPaneEl || !splitOn) return;
-  let cleanSync: (() => void) | undefined;
-  const attempt = () => {
-    const left = leftPaneEl.querySelector<HTMLElement>(".cm-scroller");
-    const right = rightPaneEl.querySelector<HTMLElement>(".mdv-preview");
-    if (!left || !right) return false;
-    cleanSync?.();
-    cleanSync = syncScroll(left, right);
-    return true;
-  };
-  const observer = new MutationObserver(() => { if (!cleanSync) attempt(); });
-  observer.observe(leftPaneEl, { childList: true, subtree: true });
-  observer.observe(rightPaneEl, { childList: true, subtree: true });
-  if (!attempt()) {
-    const timer = setInterval(() => { if (attempt()) clearInterval(timer); }, 200);
-    return () => { clearInterval(timer); observer.disconnect(); cleanSync?.(); };
-  }
-  return () => { observer.disconnect(); cleanSync?.(); };
-});
-
 const handleJumpToLine = (line: number) => {
   jumpToLine = line;
-  if (!splitOn) handleSetEditorMode("raw");
-  else { prosemarkOn = false; previewOn = false; presentationOn = false; }
+  handleSetEditorMode("raw");
 };
 
 // Forward synctex: user clicks a line number in the .tex editor gutter
@@ -1373,21 +1252,18 @@ const handleGutterClick = (line: number) => {
 
 // Inverse synctex: user Ctrl+clicks PDF page → jump editor to source line
 const handleInverseSync = async (file: string, line: number) => {
-  // SyncTeX may return a different file (slave via \input/\include). Open it.
   const normFile = file.replace(/\\/g, "/").replace(/\/+$/, "");
   const normActive = activePath?.replace(/\\/g, "/").replace(/\/+$/, "");
   if (normFile !== normActive) {
-    await openFileInTab(normFile, { silent: true, preview: true });
+    await pm.openInMain(normFile, { silent: true, preview: true });
   }
-  jumpToLine = line - 1; // 1-based → 0-based
-  if (!splitOn) handleSetEditorMode("raw");
-  else { prosemarkOn = false; previewOn = false; presentationOn = false; }
+  jumpToLine = line - 1;
+  handleSetEditorMode("raw");
 };
 
-// Console diagnostic click → editor. Diagnostics are 1-based; the editor is
-// 0-based. Ensure an editor is visible (leave viewer mode) to receive the jump.
 const handleConsoleJump = (line: number, col?: number | null) => {
-  if (typstViewerOn) { typstViewerOn = false; ls.viewerPdfPath = null; }
+  sideVisible = false;
+  pm.sideVisible = false;
   jumpToLine = line - 1;
   jumpToCol = col != null ? col - 1 : null;
 };
@@ -1397,37 +1273,86 @@ const handleSetEditorMode = (mode: EditorMode) => {
     presentationFs = false;
     void getCurrentWindow().setFullscreen(false);
   }
-  splitOn = false;
+  const isMd = activePath && extFromPath(activePath) === "md";
   switch (mode) {
-    case "raw":          prosemarkOn = false; previewOn = false; presentationOn = false; break;
-    case "prose":        prosemarkOn = true;  previewOn = false; presentationOn = false; break;
-    case "preview":      previewOn = true;    presentationOn = false; break;
-    // Presentation starts windowed — the user picks a theme from the breadcrumb
-    // dropdown, then toggles fullscreen manually.
-    case "presentation": prosemarkOn = true;  presentationOn = true; previewOn = false; break;
+    case "raw":
+      prosemarkOn = false;
+      break;
+    case "prose":
+      prosemarkOn = true;
+      break;
+    case "preview": {
+      if (!isMd) return;
+      const existing = pm.side.tabs.find(t => t.path === activePath);
+      if (existing) {
+        pm.side.setRenderMode(existing.id, "preview");
+        pm.side.select(existing.id);
+        sideVisible = true;
+        pm.sideVisible = true;
+      } else {
+        pm.openInSide(activePath, { preview: true }).catch(() => {});
+        const tab = pm.side.tabs.find(t => t.path === activePath);
+        if (tab) pm.side.setRenderMode(tab.id, "preview");
+        sideVisible = true;
+        pm.sideVisible = true;
+      }
+      break;
+    }
+    case "presentation": {
+      if (!isMd) return;
+      prosemarkOn = true;
+      const existing = pm.side.tabs.find(t => t.path === activePath);
+      if (existing) {
+        pm.side.setRenderMode(existing.id, "presentation");
+        pm.side.select(existing.id);
+        sideVisible = true;
+        pm.sideVisible = true;
+      } else {
+        pm.openInSide(activePath, { preview: true }).catch(() => {});
+        const tab = pm.side.tabs.find(t => t.path === activePath);
+        if (tab) pm.side.setRenderMode(tab.id, "presentation");
+        sideVisible = true;
+        pm.sideVisible = true;
+      }
+      break;
+    }
   }
+};
+
+const handleToggleSideRenderMode = () => {
+  const tab = pm.side.activeTab;
+  if (!tab) return;
+  const next: "preview" | "presentation" = tab.renderMode === "presentation" ? "preview" : "presentation";
+  pm.side.setRenderMode(tab.id, next);
+  _panelVersion++;
+  if (next === "presentation") presentationFs = false;
 };
 
 let compilingTypst = $state(false);
 let exportingTypst = $state(false);
+let typstBuildLog = $state<string[]>([]);
 
 function typstPdfName(path: string): string {
   return basename(path).replace(/\.typ$/i, ".pdf");
 }
 
-const handleToggleTypstPreview = () => {
-  typstPreviewOn = !typstPreviewOn;
-};
-
 const handleTypstCodeView = () => {
-  typstViewerOn = false;
+  sideVisible = false;
+  pm.sideVisible = false;
   ls.viewerPdfPath = null;
 };
 
 // Compile the current .typ for diagnostics only (no file output) and surface
 // them in the console. Returns true if there is no fatal error (safe to export).
-async function refreshTypstDiagnostics(): Promise<boolean> {
+// When { log: true } the build is also recorded in the Log tab.
+async function refreshTypstDiagnostics(opts?: { log?: boolean }): Promise<boolean> {
   if (!activePath) return false;
+  const shouldLog = opts?.log ?? false;
+  if (shouldLog) {
+    clearTypstLog();
+    logTypstLine(`info: typst compilation started`);
+    logTypstLine(`info: compiling ${basename(activePath)}`);
+  }
   try {
     const res = await invoke<{ svg: string | null; diagnostics: Diagnostic[]; pages: number }>(
       "typst_preview",
@@ -1435,10 +1360,22 @@ async function refreshTypstDiagnostics(): Promise<boolean> {
     );
     const diags = res.diagnostics ?? [];
     diagnosticsStore.set("typst", diags);
+    if (shouldLog) {
+      for (const d of diags) {
+        const loc = d.line ? `line ${d.line}${d.col ? `, col ${d.col}` : ""}` : "";
+        logTypstLine(`  ${d.severity}${loc ? ` (${loc})` : ""}: ${d.message}`);
+        for (const h of d.hints ?? []) logTypstLine(`    hint: ${h}`);
+      }
+      const errs = diags.filter((d) => d.severity === "error").length;
+      const warns = diags.filter((d) => d.severity === "warning").length;
+      logTypstLine(`info: finished — ${errs} error${errs !== 1 ? "s" : ""}, ${warns} warning${warns !== 1 ? "s" : ""}`);
+      consoleTab = "log";
+    }
     if (diags.some((d) => d.severity === "error")) consoleOpen = true;
     return res.svg !== null;
   } catch (err) {
     diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+    if (shouldLog) logTypstLine(`error: ${err}`);
     consoleOpen = true;
     return false;
   }
@@ -1448,13 +1385,17 @@ const handleTypstBuild = async () => {
   if (!activePath || exportingTypst) return;
   exportingTypst = true;
   try {
-    const ok = await refreshTypstDiagnostics();
-    if (!ok) return; // fatal errors already shown in the console
+    const ok = await refreshTypstDiagnostics({ log: true });
+    if (!ok) { logTypstLine("error: build aborted — fatal error"); return; }
     const outPath = dirname(activePath) + "/" + typstPdfName(activePath);
     await invoke("typst_export_pdf", { filePath: activePath, source, path: outPath });
+    logTypstLine(`info: exported ${typstPdfName(activePath)}`);
+    consoleTab = "log";
     notifications.setInfo(t("app.savedTo", { name: typstPdfName(activePath) }));
   } catch (err) {
     diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+    logTypstLine(`error: ${err}`);
+    consoleTab = "log";
     consoleOpen = true;
   } finally {
     exportingTypst = false;
@@ -1471,9 +1412,21 @@ const handleToggleConsole = () => {
   consoleOpen = true;
 };
 
+const handleToggleViewPanel = () => {
+  sideVisible = !sideVisible;
+  pm.sideVisible = sideVisible;
+  if (!sideVisible) {
+    ls.viewerPdfPath = null;
+  }
+};
+
+function clearTypstLog() { typstBuildLog = []; }
+function logTypstLine(line: string) { typstBuildLog = [...typstBuildLog, line]; }
+
 const handleToggleTypstViewer = async () => {
-  if (typstViewerOn) {
-    typstViewerOn = false;
+  if (sideVisible && sideActivePath?.endsWith(".pdf")) {
+    sideVisible = false;
+    pm.sideVisible = false;
     ls.viewerPdfPath = null;
     return;
   }
@@ -1484,28 +1437,53 @@ const handleToggleTypstViewer = async () => {
   const needsCompile = pdfMtime === null || (srcMtime !== null && srcMtime > pdfMtime);
   if (needsCompile) {
     compilingTypst = true;
-    const ok = await refreshTypstDiagnostics();
-    if (!ok) { compilingTypst = false; return; } // fatal errors shown in console
+    const ok = await refreshTypstDiagnostics({ log: true });
+    if (!ok) { logTypstLine("error: viewer aborted — fatal error"); compilingTypst = false; return; }
     try {
       await invoke("typst_export_pdf", { filePath: activePath, source, path: pdfPath });
+      logTypstLine(`info: exported ${basename(pdfPath)}`);
+      consoleTab = "log";
     } catch (err) {
       diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+      logTypstLine(`error: ${err}`);
+      consoleTab = "log";
       consoleOpen = true;
       compilingTypst = false;
       return;
     }
     compilingTypst = false;
   }
-  typstPreviewOn = false;
   ls.viewerPdfPath = pdfPath;
-  typstViewerOn = true;
+  await pm.openInSide(pdfPath);
+  sideVisible = true;
 };
 
-
-const onLatexBuild = () => handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
-const onLatexViewer = () => handleLatexViewer(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
-const onLatexSplit = () => handleLatexSplit(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
-const onLatexCodeView = () => handleLatexCodeView(ls);
+const onLatexBuild = async () => {
+  await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
+  if (ls.viewerPdfPath) {
+    await pm.openInSide(ls.viewerPdfPath);
+    sideVisible = true;
+  }
+};
+const onLatexViewer = async () => {
+  if (sideVisible && sideActivePath === ls.viewerPdfPath) {
+    sideVisible = false;
+    pm.sideVisible = false;
+    return;
+  }
+  if (!ls.viewerPdfPath) {
+    await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
+  }
+  if (ls.viewerPdfPath) {
+    await pm.openInSide(ls.viewerPdfPath);
+    sideVisible = true;
+  }
+};
+const onLatexCodeView = () => {
+  sideVisible = false;
+  pm.sideVisible = false;
+  ls.viewerPdfPath = null;
+};
 
 const handleTypographyChange = (patch: Partial<TypographySettings>) => {
   typography.current = { ...typo, ...patch };
@@ -1559,7 +1537,6 @@ let cmds = $derived(
     {rootPath}
     {activePath}
     {saveStatus}
-    onExportPdf={handleExportPdf}
     titlebarVisible={titlebarVisible.current}
     onToggleTitlebar={handleToggleTitlebar}
     {vimOn}
@@ -1567,25 +1544,12 @@ let cmds = $derived(
     typography={typo}
     onTypographyChange={handleTypographyChange}
     onResetTypography={handleResetTypography}
-    {editorMode}
-    onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}
     onToggleFullscreen={toggleFullscreen}
     onOpenSettings={overlays.showSettings}
-    {typstViewerOn}
-    {compilingTypst}
-    {exportingTypst}
-    onTypstCodeView={activePath && extFromPath(activePath) === "typ" ? handleTypstCodeView : undefined}
-    onToggleTypstViewer={activePath && extFromPath(activePath) === "typ" ? handleToggleTypstViewer : undefined}
-    onTypstBuild={activePath && extFromPath(activePath) === "typ" ? handleTypstBuild : undefined}
-    latexViewerOn={ls.latexViewerOn}
-    latexBuilding={ls.latexBuilding}
-    latexEngine={ls.latexEngine}
-    onLatexCodeView={activePath && extFromPath(activePath) === "tex" ? onLatexCodeView : undefined}
-    onToggleLatexViewer={activePath && extFromPath(activePath) === "tex" ? onLatexViewer : undefined}
-    onLatexBuild={activePath && extFromPath(activePath) === "tex" ? onLatexBuild : undefined}
-    onLatexEngineChange={(engine: string) => ls.latexEngine = engine}
     {consoleOpen}
     onToggleConsole={handleToggleConsole}
+    viewPanelOpen={sideVisible}
+    onToggleViewPanel={handleToggleViewPanel}
   />
 
   <main class="mdv-shell">
@@ -1618,150 +1582,39 @@ let cmds = $derived(
     />
 
     <div class="mdv-workspace">
-      {#if tabs.length > 0}
-        <TabsBar {tabs} {activeTabId} onSelect={handleTabSelect} onClose={closeTab} onReorder={handleTabReorder} {splitOn} {canSplit} onToggleSplit={handleToggleSplit} {typstPreviewOn} onToggleTypstPreview={!typstViewerOn && activePath && extFromPath(activePath) === "typ" ? handleToggleTypstPreview : undefined} latexSplitOn={ls.latexSplitOn} latexBuilding={ls.latexBuilding} onToggleLatexSplit={activePath && extFromPath(activePath) === "tex" ? onLatexSplit : undefined} onLatexBuild={activePath && extFromPath(activePath) === "tex" ? onLatexBuild : undefined} />
-      {/if}
       <div class="mdv-workspace__content">
         <svelte:boundary onerror={(error) => handleViewCrash(error)}>
-        {#if splitOn && canSplit}
-          <div class="mdv-split">
-            <div bind:this={leftPaneEl} class="mdv-split__pane" style="flex: {splitRatio}">
-              <Editor
-                value={source}
-                language={extFromPath(activePath)}
-                lineNumbers={typo.codeLineNumbers}
-                onChange={(next) => { source = next; }}
-                {jumpToLine}
-                {jumpToCol}
-                onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
-              />
-            </div>
-            <div
-              class="mdv-split__resize"
-              onpointerdown={startSplitResize}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize split"
-            />
-            <div bind:this={rightPaneEl} class="mdv-split__pane" style="flex: {1 - splitRatio}">
-              <LazyMarkdownPreview value={source} filePath={activePath} onJumpToLine={handleJumpToLine} />
-            </div>
-          </div>
-        {:else if typstPreviewOn && activePath && extFromPath(activePath) === "typ"}
-          <div class="mdv-split">
-            <div bind:this={leftPaneEl} class="mdv-split__pane" style="flex: {splitRatio}">
-              <Editor
-                value={source}
-                language={extFromPath(activePath)}
-                lineNumbers={typo.codeLineNumbers}
-                onChange={(next) => { source = next; }}
-                {jumpToLine}
-                {jumpToCol}
-                onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
-              />
-            </div>
-            <div
-              class="mdv-split__resize"
-              onpointerdown={startSplitResize}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize split"
-            />
-            <div bind:this={rightPaneEl} class="mdv-split__pane" style="flex: {1 - splitRatio}">
-              <TypstPreview
-                value={source}
-                filePath={activePath}
-                initialSvg={activePath ? (typstSvgCache[activePath]?.svg ?? null) : null}
-                initialCompiledSource={activePath ? (typstSvgCache[activePath]?.compiledSource ?? null) : null}
-                initialDiags={activePath ? (typstSvgCache[activePath]?.diagnostics ?? []) : []}
-                onCompileResult={(svg, diags, compiledSource) => {
-                  const safeDiags = diags ?? [];
-                  if (activePath) {
-                    const prev = typstSvgCache[activePath];
-                    typstSvgCache[activePath] = {
-                      svg: svg ?? prev?.svg ?? "",
-                      compiledSource,
-                      diagnostics: safeDiags,
-                    };
-                  }
-                  diagnosticsStore.set("typst", safeDiags);
-                  if (safeDiags.some((d) => d.severity === "error")) consoleOpen = true;
-                }}
-              />
-            </div>
-          </div>
-        {:else if typstViewerOn && ls.viewerPdfPath}
-          <div class="mdv-shell__editor-solo">
-            <LazyPdfViewer path={ls.viewerPdfPath} forwardToPage={forwardTargetPage} onInverseSync={handleInverseSync} />
-          </div>
-        {:else if ls.latexSplitOn && ls.viewerPdfPath}
-          <div class="mdv-split">
-            <div class="mdv-split__pane" style="flex: {splitRatio}">
-              <Editor
-                value={source}
-                language={extFromPath(activePath ?? "")}
-                lineNumbers={typo.codeLineNumbers}
-                onChange={(next) => { source = next; }}
-                {jumpToLine}
-                {jumpToCol}
-                onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
-                onGutterClick={extFromPath(activePath ?? "") === "tex" ? handleGutterClick : undefined}
-              />
-            </div>
-            <div
-              class="mdv-split__resize"
-              onpointerdown={startSplitResize}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize split"
-            />
-            <div class="mdv-split__pane" style="flex: {1 - splitRatio}">
-              <LazyPdfViewer path={ls.viewerPdfPath} rev={ls.buildRev} forwardToPage={forwardTargetPage} onInverseSync={handleInverseSync} />
-            </div>
-          </div>
-        {:else if ls.latexViewerOn && ls.viewerPdfPath}
-          <div class="mdv-shell__editor-solo">
-            <LazyPdfViewer path={ls.viewerPdfPath} rev={ls.buildRev} forwardToPage={forwardTargetPage} onInverseSync={handleInverseSync} />
-          </div>
-        {:else}
-          <div class="mdv-shell__editor-solo">
-            {#if activePath}
-              {#if isPdfPath(activePath)}
-                <LazyPdfViewer path={activePath} forwardToPage={forwardTargetPage} onInverseSync={handleInverseSync} />
-              {:else if isImagePath(activePath)}
-                <ImageViewer path={activePath} />
-              {:else if previewOn && extFromPath(activePath) === "md"}
-                <LazyMarkdownPreview value={source} filePath={activePath} onJumpToLine={handleJumpToLine} />
-              {:else if prosemarkOn && presentationOn && extFromPath(activePath) === "md"}
-                <LazySlideDeck value={source} filePath={activePath} fullscreen={presentationFs} onExitFullscreen={toggleFullscreen} />
-              {:else if prosemarkOn && extFromPath(activePath) === "md"}
-                <LazyProseMark
-                  value={source}
-                  onChange={(next: string) => { source = next; }}
-                />
-              {:else}
-                <Editor
-                  value={source}
-                  language={extFromPath(activePath)}
-                  lineNumbers={typo.codeLineNumbers}
-                  onChange={(next) => { source = next; }}
-                  {jumpToLine}
-                  {jumpToCol}
-                  onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
-                  onGutterClick={extFromPath(activePath) === "tex" ? handleGutterClick : undefined}
-                />
-              {/if}
-            {:else}
-              <div class="mdv-empty-state">
-                <p>{t("sidebar.browseNotes")}</p>
-                <button type="button" class="mdv-btn" onclick={handleAddFolder}>
-                  {t("sidebar.addFolder")}
-                </button>
-              </div>
-            {/if}
-          </div>
-        {/if}
-
+        <PanelLayout
+          panelManager={pm}
+          {tabs}
+          {activeTabId}
+          {sideTabs}
+          {sideActiveTabId}
+          {sideVisible}
+          {splitRatio}
+          onSplitRatioChange={(v) => { pm.splitRatio = v; splitRatio = v; }}
+          onSourceChange={(next) => { pm.main.setSource(next); _panelVersion++; }}
+          onSideSourceChange={(next) => { pm.side.setSource(next); _panelVersion++; }}
+          onGutterClick={handleGutterClick}
+          typo={typo}
+          {jumpToLine}
+          {jumpToCol}
+          onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
+          {vimOn}
+          {prosemarkOn}
+          forwardToPage={forwardTargetPage}
+          onInverseSync={handleInverseSync}
+          buildRev={ls.buildRev}
+          onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}
+          onLatexViewer={activePath && extFromPath(activePath) === "tex" ? onLatexViewer : undefined}
+          onLatexBuild={activePath && extFromPath(activePath) === "tex" ? onLatexBuild : undefined}
+          onToggleTypstViewer={activePath && extFromPath(activePath) === "typ" ? onToggleTypstViewer : undefined}
+          onTypstBuild={activePath && extFromPath(activePath) === "typ" ? onTypstBuild : undefined}
+          onToggleRenderMode={handleToggleSideRenderMode}
+          onToggleFullscreen={toggleFullscreen}
+          {viewerFullscreenOn}
+          onViewerFullscreen={toggleViewerFullscreen}
+        />
         {#snippet failed(error, reset)}
           <div class="mdv-view-crash">
             <p class="mdv-view-crash__title">Cette vue a planté.</p>
@@ -1777,7 +1630,7 @@ let cmds = $derived(
           height={consoleHeight}
           activeTab={consoleTab}
           terminalCwd={rootPath ?? (activePath ? dirname(activePath) : null)}
-          logLines={ls.buildLog}
+          logLines={logLines}
           hidden={!consoleOpen}
           onTabChange={(tab) => { consoleTab = tab; }}
           onHeightChange={(h) => { consoleHeight = h; }}

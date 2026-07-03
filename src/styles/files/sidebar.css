@@ -357,6 +357,14 @@
   color: var(--accent);
 }
 
+.mdv-tree__row.is-selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.mdv-tree__row.is-selected .mdv-tree__icon {
+  color: var(--accent);
+}
+
 .mdv-tree__stage {
   position: absolute;
   top: 50%;

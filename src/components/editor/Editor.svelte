@@ -1,6 +1,5 @@
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
-import { syncLine } from "@/stores/sync-line";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers as lineNumbersExt, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -73,19 +72,6 @@ onMount(() => {
   });
 
   view = new EditorView({ state, parent: hostEl });
-
-  // Restore scroll position from a previous mode (preview → editor switch).
-  // An explicit jumpToLine is handled by the reactive $effect below instead.
-  const restore = syncLine.current;
-  if (jumpToLine == null && restore != null) {
-    const lineNum = Math.min(Math.max(restore + 1, 1), view.state.doc.lines);
-    const pos = view.state.doc.line(lineNum).from;
-    view.dispatch({
-      selection: { anchor: pos, head: pos },
-      effects: EditorView.scrollIntoView(pos, { y: "start" }),
-    });
-  }
-  syncLine.current = null;
 });
 
 // Reactive jump: fires for an already-mounted editor (console / preview click),
@@ -106,14 +92,7 @@ $effect(() => {
 });
 
 onDestroy(() => {
-  if (view) {
-    // Capture the first visible source line so the next mode can restore position.
-    const firstPos = view.visibleRanges[0]?.from;
-    if (firstPos != null) {
-      syncLine.current = view.state.doc.lineAt(firstPos).number - 1; // 0-based
-    }
-    view.destroy();
-  }
+  view?.destroy();
 });
 
 $effect(() => {

@@ -31,21 +31,21 @@
     "presFontFamily": "custom",
     "presCustomFontName": "FiraGo",
     "presMonoFont": "fira-code",
-    "presFontSize": 15,
-    "presLineHeight": 1.75,
+    "presFontSize": 16,
+    "presLineHeight": 1.6,
     "presCss": "",
     "presH1Size": 2,
     "presH1Align": "left",
     "presH1FontFamily": "custom",
     "presH1CustomFontName": "FiraGo Heavy",
     "presH1MarginTop": 0,
-    "presH1MarginBottom": 0.75,
-    "presH2Size": 3,
+    "presH1MarginBottom": 0,
+    "presH2Size": 2,
     "presH2Align": "left",
     "presH2FontFamily": "custom",
     "presH2CustomFontName": "FiraGo Heavy",
-    "presH2MarginTop": 0,
-    "presH2MarginBottom": 0.5,
+    "presH2MarginTop": 0.5,
+    "presH2MarginBottom": 0,
     "presH3Size": 1.7,
     "presH3Align": "left",
     "presH3FontFamily": "fira-sans",
@@ -59,5 +59,5 @@
   "mathJaxPackages": [
     "mathtools"
   ],
-  "themeMode": "skarline-xcode-dark"
+  "themeMode": "mocha"
 }

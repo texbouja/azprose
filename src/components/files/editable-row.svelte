@@ -1,6 +1,7 @@
 <script lang="ts">
-import { ChevronRight, FileText, Folder } from "@/lib/icons";
+import { ChevronRight, Folder } from "@/lib/icons";
 import Icon from "@/components/primitives/Icon.svelte";
+import FileIcon from "./FileIcon.svelte";
 
 let {
   depth,
@@ -47,7 +48,7 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
-let Glyph = $derived(kind === "folder" ? Folder : FileText);
+let Glyph = $derived(kind === "folder" ? Folder : null);
 let padLeft = $derived(8 + depth * 12 + (kind === "file" ? 4 : 0));
 </script>
 
@@ -62,7 +63,11 @@ let padLeft = $derived(8 + depth * 12 + (kind === "file" ? 4 : 0));
       </span>
     {/if}
     <span class="mdv-tree__icon">
-      <Icon icon={Glyph} size={13} strokeWidth={1.5} />
+      {#if kind === "folder"}
+        <Icon icon={Glyph} size={13} strokeWidth={1.5} />
+      {:else}
+        <FileIcon path={initialValue} size={13} />
+      {/if}
     </span>
     <input
       bind:this={inputRef}

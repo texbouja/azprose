@@ -27,6 +27,10 @@ let {
   onSubmitNew,
   onCancelNew,
   treeVersion = 0,
+  selectedPaths = new Set<string>(),
+  onToggleSelect,
+  onSelectRange,
+  onClearSelection,
 }: {
   path: string;
   activePath: string | null;
@@ -47,6 +51,10 @@ let {
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
   treeVersion?: number;
+  selectedPaths?: Set<string>;
+  onToggleSelect?: (path: string) => void;
+  onSelectRange?: (clickedPath: string, siblingPaths: string[]) => void;
+  onClearSelection?: () => void;
 } = $props();
 
 let t = $derived(getT($language));
@@ -134,6 +142,10 @@ function onDrop(e: DragEvent) {
       {onSubmitNew}
       {onCancelNew}
       {treeVersion}
+      {selectedPaths}
+      {onToggleSelect}
+      {onSelectRange}
+      {onClearSelection}
       depth={1}
     />
   {/if}

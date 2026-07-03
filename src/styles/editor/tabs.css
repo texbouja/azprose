@@ -74,8 +74,7 @@
   font-style: italic;
 }
 
-.mdv-tab__close,
-.mdv-tab__split {
+.mdv-tab__close {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -87,20 +86,13 @@
   flex-shrink: 0;
 }
 
-.mdv-tab:hover .mdv-tab__close,
-.mdv-tab:hover .mdv-tab__split {
+.mdv-tab:hover .mdv-tab__close {
   opacity: 0.6;
 }
 
-.mdv-tab__close:hover,
-.mdv-tab__split:hover {
+.mdv-tab__close:hover {
   opacity: 1 !important;
   background: color-mix(in srgb, var(--fg) 12%, transparent);
-}
-
-.mdv-tab__split.is-active {
-  opacity: 1;
-  color: var(--accent);
 }
 
 .mdv-tab.is-dragging {

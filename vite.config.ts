@@ -7,24 +7,13 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [
     svelte({
-      include: [/\.svelte$/, /node_modules\/lucide-svelte\/.*\.svelte$/],
-      dynamicCompileOptions({ filename }: { filename: string }) {
-        if (filename.includes("node_modules/lucide-svelte")) {
-          return { runes: false };
-        }
-        return {};
-      },
       onwarn(_warning, _defaultHandler) {},
+      include: [/\.svelte$/],
+      exclude: [/node_modules\/(?!phosphor-svelte).*/],
     }),
   ],
 
-  optimizeDeps: {
-    exclude: ["lucide-svelte"],
-  },
 
-  ssr: {
-    noExternal: ["lucide-svelte"],
-  },
 
   resolve: {
     alias: {
@@ -40,6 +29,10 @@ export default defineConfig(async () => ({
         },
       },
     },
+  },
+
+  optimizeDeps: {
+    exclude: ["phosphor-svelte"],
   },
 
   clearScreen: false,

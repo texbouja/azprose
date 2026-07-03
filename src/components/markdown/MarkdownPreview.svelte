@@ -1,7 +1,6 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { syncLine } from "@/stores/sync-line";
 import {
   renderMarkdown,
   resolveLocalImages,
@@ -74,28 +73,6 @@ $effect(() => {
   return () => { cancelled = true; };
 });
 
-function findSlineBlock(root: HTMLElement, targetLine: number): HTMLElement | null {
-  let result: HTMLElement | null = null;
-  for (const el of root.querySelectorAll<HTMLElement>("[data-sline]")) {
-    if (Number(el.dataset.sline) <= targetLine) result = el;
-    else break;
-  }
-  return result ?? root.querySelector<HTMLElement>("[data-sline]");
-}
-
-onDestroy(() => {
-  if (!articleEl) return;
-  const container = articleEl.parentElement;
-  if (!container) return;
-  const top = container.getBoundingClientRect().top;
-  for (const el of articleEl.querySelectorAll<HTMLElement>("[data-sline]")) {
-    if (el.getBoundingClientRect().bottom > top + 4) {
-      syncLine.current = Number(el.dataset.sline);
-      return;
-    }
-  }
-});
-
 async function typesetMath(el: HTMLElement): Promise<void> {
   await import("mathjax/tex-svg.js");
   const mj = window.MathJax as
@@ -118,12 +95,6 @@ $effect(() => {
   void renderMarkdown(src, theme).then(async (html) => {
     if (cancelled || !articleEl) return;
     articleEl.innerHTML = html;
-
-    if (syncLine.current != null) {
-      const target = findSlineBlock(articleEl, syncLine.current);
-      syncLine.current = null;
-      target?.scrollIntoView({ block: "start", behavior: "instant" });
-    }
 
     cleanupCode();
     cleanupCode = decorateCodeBlocks(articleEl);

@@ -33,6 +33,10 @@ let {
   onSubmitNew,
   onCancelNew,
   treeVersion,
+  selectedPaths = new Set<string>(),
+  onToggleSelect,
+  onSelectRange,
+  onClearSelection,
   depth,
 }: {
   entry: FileEntry;
@@ -51,22 +55,31 @@ let {
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
   treeVersion: number;
+  selectedPaths?: Set<string>;
+  onToggleSelect?: (path: string) => void;
+  onSelectRange?: (clickedPath: string, siblingPaths: string[]) => void;
+  onClearSelection?: () => void;
   depth: number;
 } = $props();
 
 let open = $state(false);
+let userCollapsed = $state(false);
 let isDropTarget = $state(false);
 
 $effect(() => {
   if (newEntry && newEntry.parent === entry.path && !open) open = true;
 });
 
-// Auto-expand when active file is inside this folder
+// Auto-expand when active file is inside this folder, unless user collapsed it
 $effect(() => {
-  if (activePath && isDescendantPath(activePath, entry.path) && !open) open = true;
+  if (activePath && isDescendantPath(activePath, entry.path) && !open && !userCollapsed) open = true;
 });
 
-function toggle() { open = !open; }
+function toggle() {
+  open = !open;
+  if (!open) userCollapsed = true;
+  else userCollapsed = false;
+}
 
 function onDragStart(e: DragEvent) {
   e.dataTransfer?.setData(DRAG_MIME, entry.path);
@@ -107,7 +120,14 @@ function onCtx(e: MouseEvent) {
     draggable="true"
     class="mdv-tree__row mdv-tree__row--folder{isDropTarget ? ' is-drop-target' : ''}"
     style="padding-left:{8 + depth * 12}px"
-    onclick={toggle}
+    onclick={(e) => {
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        onToggleSelect?.(entry.path);
+        return;
+      }
+      toggle();
+    }}
     oncontextmenu={onCtx}
     ondragstart={onDragStart}
     ondragover={onDragOver}
@@ -141,6 +161,10 @@ function onCtx(e: MouseEvent) {
       {onSubmitNew}
       {onCancelNew}
       {treeVersion}
+      {selectedPaths}
+      {onToggleSelect}
+      {onSelectRange}
+      {onClearSelection}
       depth={depth + 1}
     />
   {/if}
