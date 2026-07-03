@@ -154,7 +154,7 @@
       const blob  = new Blob([bytes], { type: "application/pdf" });
       blobUrl = URL.createObjectURL(blob);
 
-      pdfDoc = await pdfjsLib.getDocument(blobUrl).promise;
+      pdfDoc = await pdfjsLib.getDocument({ url: blobUrl }).promise;
       if (gen !== loadGen) { pdfDoc.destroy(); pdfDoc = null; return; }
 
       numPages = pdfDoc.numPages;

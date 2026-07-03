@@ -62,7 +62,7 @@
     "markdown-it-mark": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
     "mathjax": "^4.1.2",
-    "pdfjs-dist": "4.10.38",
+    "pdfjs-dist": "6.1.200",
     "phosphor-svelte": "^3.1.0",
     "shiki": "^4.3.0",
     "svelte": "^5.56.4",
@@ -75,7 +75,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^26.0.1",
     "svelte-check": "^4.7.1",
-    "typescript": "~5.9.3",
-    "vite": "^7.0.4"
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3"
   }
 }
