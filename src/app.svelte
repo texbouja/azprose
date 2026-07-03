@@ -536,8 +536,9 @@ async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silen
     }
     return;
   }
-  if (isImagePath(path)) {
+  if (isImagePath(path) || isPdfPath(path)) {
     await pm.openInSide(path, opts);
+    sideVisible = true;
   } else {
     await pm.openInMain(path, opts);
   }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import * as pdfjsLib from "pdfjs-dist";
-  import type { PDFDocumentProxy } from "pdfjs-dist";
+  import type { PDFDocumentProxy, PDFDocumentLoadingTask } from "pdfjs-dist";
   import {
     EventBus,
     PDFViewer,
@@ -56,6 +56,7 @@
   let linkService: PDFLinkService | null = null;
   let eventBus: EventBus | null = null;
   let pdfDoc: PDFDocumentProxy | null = null;
+  let loadingTask: PDFDocumentLoadingTask | null = null;
   let blobUrl: string | null = null;
 
   // Viewer state
@@ -137,7 +138,7 @@
     attachments = null;
 
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
-    if (pdfDoc)  { pdfDoc.destroy(); pdfDoc = null; }
+    if (loadingTask) { void loadingTask.destroy(); loadingTask = null; pdfDoc = null; }
 
     // Use cached bytes if rev matches (avoids re-read on tab switch-back)
     const cached = getPdfCache(filePath);
@@ -154,8 +155,9 @@
       const blob  = new Blob([bytes], { type: "application/pdf" });
       blobUrl = URL.createObjectURL(blob);
 
-      pdfDoc = await pdfjsLib.getDocument({ url: blobUrl }).promise;
-      if (gen !== loadGen) { pdfDoc.destroy(); pdfDoc = null; return; }
+      loadingTask = pdfjsLib.getDocument({ url: blobUrl });
+      pdfDoc = await loadingTask.promise;
+      if (gen !== loadGen) { void loadingTask.destroy(); loadingTask = null; pdfDoc = null; return; }
 
       numPages = pdfDoc.numPages;
 
@@ -274,7 +276,7 @@
   $effect(() => { if (path && pdfViewer) void loadPdf(path); });
 
   onDestroy(() => {
-    pdfDoc?.destroy();
+    void loadingTask?.destroy();
     if (blobUrl) URL.revokeObjectURL(blobUrl);
     if (viewportEl) viewportEl.removeEventListener("mousedown", onPdfMouseDown);
     if (hoverZoneEl) {
