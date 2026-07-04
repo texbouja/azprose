@@ -3,6 +3,7 @@ import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation";
+export type TabSource = "latex" | "typst";
 
 export type Tab = {
   id: string;
@@ -12,10 +13,11 @@ export type Tab = {
   savedContent: string;
   preview?: boolean;
   renderMode?: RenderMode;
+  sourceType?: TabSource;
 };
 
 export type PanelSessionData = {
-  tabs: { path: string; title: string; renderMode?: RenderMode }[];
+  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource }[];
   activePath: string | null;
 };
 
@@ -57,7 +59,7 @@ export class PanelState {
     this.cbs.onSessionChange?.(this.toJSON());
   }
 
-  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean }): Promise<void> {
+  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource }): Promise<void> {
     if (!isOpenablePath(path)) {
       if (!opts?.silent) {
         this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
@@ -67,6 +69,7 @@ export class PanelState {
     const wantPreview = opts?.preview === true;
     const existing = this.tabs.find(t => t.path === path);
     if (existing) {
+      this.tabs = this.tabs.map(t => t.id === existing.id ? { ...t, sourceType: opts?.sourceType ?? t.sourceType } : t);
       this.activeTabId = existing.id;
       if (!wantPreview && existing.preview) {
         this.tabs = this.tabs.map(t => t.id === existing.id ? { ...t, preview: false } : t);
@@ -79,9 +82,9 @@ export class PanelState {
     const title = basename(path);
     const id = reuse?.id ?? crypto.randomUUID();
     if (reuse) {
-      this.tabs = this.tabs.map(t => t.id === id ? { ...t, path, title, source: "", savedContent: "", preview: true } : t);
+      this.tabs = this.tabs.map(t => t.id === id ? { ...t, path, title, source: "", savedContent: "", preview: true, sourceType: opts?.sourceType } : t);
     } else {
-      this.tabs = [...this.tabs, { id, title, path, source: "", savedContent: "", preview: wantPreview }];
+      this.tabs = [...this.tabs, { id, title, path, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType }];
     }
     this.activeTabId = id;
 
@@ -170,7 +173,7 @@ export class PanelState {
 
   toJSON(): PanelSessionData {
     return {
-      tabs: this.tabs.map(t => ({ path: t.path, title: t.title, renderMode: t.renderMode })),
+      tabs: this.tabs.map(t => ({ path: t.path, title: t.title, renderMode: t.renderMode, sourceType: t.sourceType })),
       activePath: this.activePath,
     };
   }
@@ -183,6 +186,7 @@ export class PanelState {
       source: "",
       savedContent: "",
       renderMode: t.renderMode,
+      sourceType: t.sourceType,
     }));
     if (data.activePath) {
       const tab = this.tabs.find(t => t.path === data.activePath);

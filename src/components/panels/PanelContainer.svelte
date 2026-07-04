@@ -43,7 +43,7 @@ let {
   vimOn?: boolean;
   prosemarkOn?: boolean;
   forwardToPage?: number | null;
-  onInverseSync?: (file: string, line: number) => void;
+  onInverseSync?: (file: string, line: number, col?: number) => void;
   buildRev?: number;
   flex?: string;
   onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
@@ -109,8 +109,8 @@ function handleViewerFullscreen() {
           {onSourceChange}
           {onGutterClick}
           {typo}
-          {jumpToLine}
-          {jumpToCol}
+          jumpToLine={tab.id === activeTabId ? jumpToLine : null}
+          jumpToCol={tab.id === activeTabId ? jumpToCol : null}
           {onJumpApplied}
           {vimOn}
           {prosemarkOn}

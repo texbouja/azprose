@@ -9,7 +9,6 @@
     PDFFindController,
   } from "pdfjs-dist/web/pdf_viewer.mjs";
   import { readFile } from "@tauri-apps/plugin-fs";
-  import { invoke } from "@tauri-apps/api/core";
   import {
     PanelLeftClose,
     PanelLeftOpen,
@@ -41,8 +40,8 @@
     items: OutlineNode[];
   };
 
-  let { path, rev = 0, forwardToPage = null, onInverseSync, onToggleFullscreen }:
-    { path: string; rev?: number; forwardToPage?: number | null; onInverseSync?: (file: string, line: number) => void; onToggleFullscreen?: () => void }
+  let { path, rev = 0, page = null, onPdfClick, onToggleFullscreen }:
+    { path: string; rev?: number; page?: number | null; onPdfClick?: (pageNum: number, x: number, y: number) => void; onToggleFullscreen?: () => void }
     = $props();
 
   // DOM refs
@@ -94,7 +93,7 @@
   let loadGen = 0;
 
   function onPdfMouseDown(e: MouseEvent) {
-    if (!(e.ctrlKey || e.metaKey) || !onInverseSync) return;
+    if (!(e.ctrlKey || e.metaKey) || !onPdfClick) return;
     const pageEl = (e.target as HTMLElement).closest("[data-page-number]") as HTMLElement | null;
     if (!pageEl) return;
     const page = Number(pageEl.dataset.pageNumber);
@@ -104,14 +103,10 @@
     const cssY = e.clientY - pageRect.top;
     const pageView = (pdfViewer as any)?._pages?.[page - 1];
     if (!pageView) return;
-    const [x, y] = pageView.getPagePoint(cssX, cssY);
-    console.debug(`synctex inverse: page=${page} css=(${cssX.toFixed(1)},${cssY.toFixed(1)}) pdf=(${x.toFixed(1)},${y.toFixed(1)}) scale=${pageView.viewport.scale}`);
-    invoke<{ file: string; line: number }>("synctex_inverse", { pdfPath: path, page, x, y })
-      .then((r) => {
-        console.debug(`synctex inverse result: file=${r.file} line=${r.line}`);
-        onInverseSync!(r.file, r.line);
-      })
-      .catch((err) => console.error("synctex inverse failed", err));
+    const [x] = pageView.getPagePoint(cssX, cssY);
+    const scale = pageView.viewport.scale;
+    const y = cssY / scale;
+    onPdfClick(page, x, y);
   }
 
   // Panel state
@@ -262,10 +257,10 @@
     };
   });
 
-  // Forward synctex: scroll to page when parent requests it
+  // Scroll to page when parent requests it
   $effect(() => {
-    if (forwardToPage != null && pdfViewer) {
-      const p = forwardToPage;
+    if (page != null && pdfViewer) {
+      const p = page;
       if (p >= 1 && pdfViewer.pagesCount && p <= pdfViewer.pagesCount) {
         pdfViewer.currentPageNumber = p;
       }

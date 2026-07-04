@@ -3,7 +3,7 @@ import { FileText } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import inspectUrl from "@/assets/mascot/inspect.png";
+import inspectUrl from "@/assets/mascot/az-inspect.svg";
 
 let t = $derived(getT($language));
 

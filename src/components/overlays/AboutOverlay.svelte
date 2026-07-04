@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button, Icon, Overlay } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import mascotUrl from "@/assets/mascot/excite.png";
+import mascotUrl from "@/assets/mascot/az-excite.svg";
 
 let t = $derived(getT($language));
 

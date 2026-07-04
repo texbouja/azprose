@@ -3,7 +3,7 @@ import { Download, FileText, Layers3, Palette, Sparkles, Table2, X } from "@/lib
 import { Button, Icon, Kbd, Overlay, Shortcut } from "@/components/primitives";
 import { shortcutLabel, type Translate } from "@/lib";
 import { language, getT } from "@/lib/i18n";
-import writeUrl from "@/assets/mascot/write.png";
+import writeUrl from "@/assets/mascot/az-write.svg";
 
 let {
   open,

@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="500"
+   height="500"
+   viewBox="0 0 132.29166 132.29167"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   sodipodi:docname="azprose.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="1.5162318"
+     inkscape:cx="283.92757"
+     inkscape:cy="261.50356"
+     inkscape:window-width="1852"
+     inkscape:window-height="1040"
+     inkscape:window-x="50"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1">
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Drop Shadow"
+       id="filter6"
+       x="-0.050428082"
+       y="-0.0779205"
+       width="1.1182628"
+       height="1.1692892">
+      <feFlood
+         result="flood"
+         in="SourceGraphic"
+         flood-opacity="0.47736163472020349"
+         flood-color="rgb(0,0,0)"
+         id="feFlood5" />
+      <feGaussianBlur
+         result="blur"
+         in="SourceGraphic"
+         stdDeviation="2.000000"
+         id="feGaussianBlur5" />
+      <feOffset
+         result="offset"
+         in="blur"
+         dx="2.000000"
+         dy="1.000000"
+         id="feOffset5" />
+      <feComposite
+         result="comp1"
+         operator="in"
+         in="flood"
+         in2="offset"
+         id="feComposite5" />
+      <feComposite
+         result="comp2"
+         operator="over"
+         in="SourceGraphic"
+         in2="comp1"
+         id="feComposite6" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Drop Shadow"
+       id="filter41"
+       x="-0.053908227"
+       y="-0.083297952"
+       width="1.125223"
+       height="1.1800441">
+      <feFlood
+         result="flood"
+         in="SourceGraphic"
+         flood-opacity="0.156863"
+         flood-color="rgb(174,0,0)"
+         id="feFlood40" />
+      <feGaussianBlur
+         result="blur"
+         in="SourceGraphic"
+         stdDeviation="2.000000"
+         id="feGaussianBlur40" />
+      <feOffset
+         result="offset"
+         in="blur"
+         dx="2.000000"
+         dy="1.000000"
+         id="feOffset40" />
+      <feComposite
+         result="comp1"
+         operator="out"
+         in="flood"
+         in2="offset"
+         id="feComposite40" />
+      <feComposite
+         result="comp2"
+         operator="atop"
+         in="comp1"
+         in2="SourceGraphic"
+         id="feComposite41" />
+    </filter>
+  </defs>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:114.675px;line-height:0;font-family:'Fantasque Sans Mono';-inkscape-font-specification:'Fantasque Sans Mono, Bold';letter-spacing:0px;word-spacing:3.86365px;writing-mode:lr-tb;direction:ltr;fill:#800000;stroke:#800000;stroke-width:1.98827;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1;filter:url(#filter6)"
+       x="30.368586"
+       y="76.164825"
+       id="text1"
+       transform="matrix(0.89840988,0,0,1.1130777,-1.0583333,3.7041668)"><tspan
+         sodipodi:role="line"
+         id="tspan1"
+         style="fill:#800000;stroke:#800000;stroke-width:1.98827;stroke-dasharray:none;stroke-opacity:1"
+         x="30.368586"
+         y="76.164825">AZ</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:43.807px;line-height:0;font-family:'Fantasque Sans Mono';-inkscape-font-specification:'Fantasque Sans Mono, Bold';letter-spacing:0px;word-spacing:1.47597px;writing-mode:lr-tb;direction:ltr;fill:#006363;fill-opacity:0.999112;stroke:#006363;stroke-width:1.27696;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
+       x="2.3990631"
+       y="116.53154"
+       id="text2"
+       transform="scale(0.96009978,1.0415584)"><tspan
+         sodipodi:role="line"
+         id="tspan2"
+         style="fill:#006363;fill-opacity:0.999112;stroke:#006363;stroke-width:1.27696;stroke-dasharray:none;stroke-opacity:1"
+         x="2.3990631"
+         y="116.53154">@prose</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:61.2713px;line-height:0;font-family:'Fantasque Sans Mono';-inkscape-font-specification:'Fantasque Sans Mono, Bold';letter-spacing:0px;word-spacing:6.89301px;writing-mode:lr-tb;direction:ltr;fill:#666666;fill-opacity:0.999112;stroke:none;stroke-width:8.68412;stroke-linecap:round;stroke-dasharray:none;stroke-opacity:1"
+       x="3.4016843"
+       y="44.818134"
+       id="text6"><tspan
+         sodipodi:role="line"
+         id="tspan6"
+         style="fill:#666666;fill-opacity:0.999112;stroke:none;stroke-width:8.68412"
+         x="3.4016843"
+         y="44.818134">#</tspan></text>
+  </g>
+</svg>

@@ -9,6 +9,8 @@ import LazyProseMark from "@/components/markdown/LazyProseMark.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
+import LazySynctexPdfViewer from "@/components/tex/LazySynctexPdfViewer.svelte";
+import LazyTypstPdfOutput from "@/components/typst/LazyTypstPdfOutput.svelte";
 import type { TypographySettings } from "@/lib/typography";
 
 let {
@@ -40,7 +42,7 @@ let {
   previewOn?: never;
   presentationOn?: never;
   forwardToPage?: number | null;
-  onInverseSync?: (file: string, line: number) => void;
+  onInverseSync?: (file: string, line: number, col?: number) => void;
   buildRev?: number;
   onToggleFullscreen?: () => void;
 } = $props();
@@ -49,13 +51,26 @@ let {
 {#if !tab}
   <div class="mdv-empty-state" />
 {:else if isPdfPath(tab.path)}
-  <LazyPdfViewer
-    path={tab.path}
-    rev={buildRev}
-    {forwardToPage}
-    {onInverseSync}
-    {onToggleFullscreen}
-  />
+  {#if tab.sourceType === "latex"}
+    <LazySynctexPdfViewer
+      path={tab.path}
+      rev={buildRev}
+      {forwardToPage}
+      {onInverseSync}
+      {onToggleFullscreen}
+    />
+  {:else if tab.sourceType === "typst"}
+    <LazyTypstPdfOutput
+      path={tab.path}
+      rev={buildRev}
+      {onToggleFullscreen}
+    />
+  {:else}
+    <LazyPdfViewer
+      path={tab.path}
+      {onToggleFullscreen}
+    />
+  {/if}
 {:else if isImagePath(tab.path)}
   <ImageViewer path={tab.path} />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}

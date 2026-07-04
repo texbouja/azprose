@@ -53,7 +53,7 @@ let {
   vimOn?: boolean;
   prosemarkOn?: boolean;
   forwardToPage?: number | null;
-  onInverseSync?: (file: string, line: number) => void;
+  onInverseSync?: (file: string, line: number, col?: number) => void;
   buildRev?: number;
   onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
   onLatexViewer?: () => void;

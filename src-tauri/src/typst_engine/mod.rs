@@ -242,13 +242,11 @@ mod tests {
             .expect("command should not hard-error");
         assert!(res.svg.is_some(), "valid source must yield an SVG");
         assert!(res.pages >= 1, "valid source must have at least one page");
-        eprintln!("[test] OK svg_len={} pages={}", res.svg.unwrap().len(), res.pages);
     }
 
     #[test]
     fn preview_error_is_structured_with_location() {
         let path = std::env::temp_dir().join("az_typst_err.typ");
-        // Line 2 references an undefined variable → compile error with a span.
         let res = typst_preview(path.to_string_lossy().into_owned(), "ok line\n#undefined_var\n".into())
             .expect("command should not hard-error");
         assert!(res.svg.is_none(), "compile failure must yield no SVG");
@@ -257,6 +255,5 @@ mod tests {
         assert_eq!(d.severity, "error");
         assert_eq!(d.line, Some(2), "error is on line 2 (1-indexed)");
         assert!(d.col.is_some(), "must report a column");
-        eprintln!("[test] ERR {} at {:?}:{:?} — {}", d.severity, d.line, d.col, d.message);
     }
 }

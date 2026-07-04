@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { Diagnostic } from "@/lib/diagnostics";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
+import { logStore } from "@/components/console/log.svelte";
 
-const log = (msg: string) => void import("@tauri-apps/api/core").then((m) => m.invoke("log_perf", { data: JSON.stringify({ ts: Date.now(), tag: "LatexBuild", msg }) }));
+
 
 export interface LatexState {
   viewerPdfPath: string | null;
@@ -11,7 +13,6 @@ export interface LatexState {
   latexSplitOn: boolean;
   latexEngine: string;
   buildRev: number;
-  buildLog: string[];
   dependencies: string[];
   savingForBuild: boolean;
   rootFilePath: string | null;
@@ -25,15 +26,10 @@ export function createLatexState(): LatexState {
     latexSplitOn: false,
     latexEngine: "pdflatex",
     buildRev: 0,
-    buildLog: [],
     dependencies: [],
     savingForBuild: false,
     rootFilePath: null,
   };
-}
-
-export function clearLatexLog(state: LatexState): void {
-  state.buildLog = [];
 }
 
 export function clearLatexDeps(state: LatexState): void {
@@ -79,7 +75,7 @@ export async function handleLatexBuild(
   }
   state.savingForBuild = false;
 
-  state.buildLog = [];
+  logStore.clear("latex");
   diagnosticsStore.set("latex", [{
     severity: "info",
     message: "Compilation started…",
@@ -89,7 +85,6 @@ export async function handleLatexBuild(
 
   state.latexBuilding = true;
   try {
-    log(`invoking latex_build: path="${buildPath}" engine="${state.latexEngine}"`);
     const res = await invoke<{
       pdf_path: string | null;
       diagnostics: Diagnostic[];
@@ -106,10 +101,7 @@ export async function handleLatexBuild(
       state.buildRev++;
       state.dependencies = res.dependencies ?? [];
       state.rootFilePath = buildPath;
-      log(`latex_build success: pdf_path="${res.pdf_path}" rev=${state.buildRev} deps=${state.dependencies.length}`);
     } else {
-      // Build failed — keep previous dep list, still try to parse .fls
-      log(`latex_build returned no pdf_path (build possibly failed)`);
       if (res.dependencies?.length) state.dependencies = res.dependencies;
     }
   } catch (err) {
@@ -163,4 +155,26 @@ export function handleLatexCodeView(state: LatexState): void {
   state.latexViewerOn = false;
   state.latexSplitOn = false;
   state.viewerPdfPath = null;
+}
+
+export function setupLatexLogListener(): () => void {
+  const unlistenLogP = listen<{ line: string }>("latex://log", (e) => {
+    logStore.append("latex", e.payload.line);
+  });
+  const unlistenCompleteP = listen("latex://build-complete", () => {
+    logStore.set("latex", logStore.get("latex"));
+  });
+  let cancelled = false;
+  let unlistenLog: (() => void) | undefined;
+  let unlistenComplete: (() => void) | undefined;
+  Promise.all([unlistenLogP, unlistenCompleteP]).then(([a, b]) => {
+    if (cancelled) { a(); b(); return; }
+    unlistenLog = a;
+    unlistenComplete = b;
+  });
+  return () => {
+    cancelled = true;
+    unlistenLog?.();
+    unlistenComplete?.();
+  };
 }

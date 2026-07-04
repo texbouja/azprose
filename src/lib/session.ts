@@ -29,6 +29,8 @@ function draftKey(path: string): string {
 export interface SessionTab {
   path: string;
   title: string;
+  sourceType?: "latex" | "typst";
+  renderMode?: "raw" | "prose" | "preview" | "presentation";
 }
 
 export interface PanelSessionData {

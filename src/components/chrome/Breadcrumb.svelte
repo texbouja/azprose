@@ -19,7 +19,7 @@
   import { shortcutLabel } from "@/lib";
   import type { TypographySettings } from "@/lib/typography";
   import ThemeButton from "./ThemeButton.svelte";
-  import exciteUrl from "@/assets/mascot/excite.png";
+  import exciteUrl from "@/assets/mascot/az-excite.svg";
 
   let {
     sidebarOpen,

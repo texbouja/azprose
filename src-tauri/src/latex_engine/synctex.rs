@@ -101,6 +101,7 @@ pub async fn synctex_inverse(
         &format!("{page}:{x}:{y}:{pdf_path}"),
     ];
 
+    eprintln!("[synctex] synctex edit -o {page}:{x}:{y}:{pdf_path}");
     let output = Command::new("synctex")
         .args(&args)
         .current_dir(pdf_dir)
@@ -109,13 +110,16 @@ pub async fn synctex_inverse(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("[synctex] stderr: {stderr}");
         return Err(format!("synctex failed: {stderr}"));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    eprintln!("[synctex] stdout:\n{stdout}");
+    
     let mut in_result = false;
     let mut file: Option<String> = None;
-    let mut line: Option<u32> = None;
+    let mut line_num: Option<u32> = None;
 
     for line_str in stdout.lines() {
         if line_str.contains("SyncTeX result begin") {
@@ -130,15 +134,34 @@ pub async fn synctex_inverse(
         let pos = line_str.find(':').ok_or_else(|| "malformed synctex output".to_string())?;
         let key = &line_str[..pos];
         let value = line_str[pos + 1..].trim();
+        
         match key {
-            "Input" => file = Some(value.to_string()),
-            "Line" => line = value.parse::<u32>().ok(),
-            _ => {}
+            "Input" => {
+                let normalized = value.replace('\\', "/");
+                let clean: String = normalized.split('/')
+                    .filter(|s| !s.is_empty() && *s != ".")
+                    .collect::<Vec<_>>()
+                    .join("/");
+                let clean = if value.starts_with('/') { format!("/{clean}") } else { clean };
+                file = Some(clean.clone());
+                eprintln!("[synctex] Input: {clean}");
+            },
+            "Line" => {
+                line_num = value.parse::<u32>().ok();
+                eprintln!("[synctex] Line: {:?}", line_num);
+            },
+            _ => {},
         }
     }
 
-    match (file, line) {
-        (Some(f), Some(l)) => Ok(SynctexInverseResult { file: f, line: l }),
-        _ => Err("incomplete synctex result".to_string()),
+    match (file.clone(), line_num) {
+        (Some(f), Some(l)) => {
+            eprintln!("[synctex] Result: file={f} line={l}");
+            Ok(SynctexInverseResult { file: f, line: l })
+        },
+        _ => {
+            eprintln!("[synctex] Incomplete result: file={:?} line={:?}", file, line_num);
+            Err("incomplete synctex result".to_string())
+        },
     }
 }

@@ -3,10 +3,10 @@ import { ChevronLeft, ChevronRight, FolderOpen, Sparkles } from "@/lib/icons";
 import { Button, Icon, Kbd, Overlay, Shortcut } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import logoUrl from "@/assets/mascot/mdview-transpa-bg.png";
+import logoUrl from "@/assets/mascot/az-logo.svg";
 import notebookUrl from "@/assets/mascot/notebook.png";
 import penUrl from "@/assets/mascot/pen.png";
-import exciteUrl from "@/assets/mascot/excite.png";
+import exciteUrl from "@/assets/mascot/az-excite.svg";
 
 let t = $derived(getT($language));
 

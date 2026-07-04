@@ -79,7 +79,7 @@
   $effect(() => {
     const n = logLines.length;
     n; // track length
-    if (logEndEl) logEndEl.scrollIntoView({ behavior: "smooth" });
+    if (logEndEl) logEndEl.scrollIntoView({ behavior: "instant" });
   });
 </script>
 
@@ -190,7 +190,7 @@
         <div class="diag-console__empty">No log</div>
       {:else}
         <div class="diag-console__log" bind:this={logEl}>
-          {#each logLines as line}
+          {#each logLines as line, i (i)}
             <div class="diag-console__log-line" data-log-severity={logSeverity(line)}>
               <pre class="diag-console__log-pre">{line}</pre>
             </div>

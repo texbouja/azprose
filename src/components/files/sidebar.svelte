@@ -4,7 +4,7 @@ import { Button, Icon } from "@/components/primitives";
 import { language, getT } from "@/lib/i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { dirname, type FileEntry } from "@/lib";
-import emptyTowerUrl from "@/assets/mascot/empty-m.png";
+import emptyTowerUrl from "@/assets/mascot/az-empty.svg";
 import type { NewEntry } from "./file-tree.svelte";
 import SearchResults from "./sidebar-search.svelte";
 import RootFolder from "./root-folder.svelte";

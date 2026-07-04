@@ -3,8 +3,8 @@ import { X } from "@/lib/icons";
 import { Button, Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import sadUrl from "@/assets/mascot/sad.png";
-import exciteUrl from "@/assets/mascot/excite.png";
+import sadUrl from "@/assets/mascot/az-sad.svg";
+import exciteUrl from "@/assets/mascot/az-excite.svg";
 
 let t = $derived(getT($language));
 

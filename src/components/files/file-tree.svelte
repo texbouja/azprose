@@ -1,6 +1,6 @@
 <script lang="ts">
 import { listFolder, type FileEntry } from "@/lib";
-import sadUrl from "@/assets/mascot/sad.png";
+import sadUrl from "@/assets/mascot/az-sad.svg";
 import EditableRow from "./editable-row.svelte";
 import FolderNode from "./folder-node.svelte";
 import FileNode from "./file-node.svelte";

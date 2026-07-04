@@ -1,4 +1,4 @@
-import { PanelState, type Tab } from "./panel-store";
+import { PanelState, type Tab, type TabSource } from "./panel-store";
 
 export type LayoutMode = "main" | "main+side";
 
@@ -41,19 +41,21 @@ export class PanelManager {
     this.layout = v ? "main+side" : "main";
   }
 
-  openInMain(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean }): Promise<void> {
+  openInMain(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource }): Promise<void> {
     return this.main.open(path, opts);
   }
 
-  openInSide(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean }): Promise<void> {
+  openInSide(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource }): Promise<void> {
     this.side.visible = true;
     this.layout = "main+side";
     return this.side.open(path, opts);
   }
 
   findTabByPath(path: string): { panel: "main" | "side"; tab: Tab } | null {
+    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+    const target = norm(path);
     for (const panel of [this.main, this.side]) {
-      const tab = panel.tabs.find(t => t.path === path);
+      const tab = panel.tabs.find(t => norm(t.path) === target);
       if (tab) return { panel: panel.id as "main" | "side", tab };
     }
     return null;

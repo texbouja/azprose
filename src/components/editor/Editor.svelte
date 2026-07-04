@@ -31,6 +31,7 @@ let hostEl: HTMLDivElement;
 let view: EditorView;
 let langCompartment: Compartment;
 let lineNumbersCompartment: Compartment;
+let docVersion = $state(0);
 let onChangeRef = onChange;
 $effect(() => { onChangeRef = onChange; });
 
@@ -55,6 +56,7 @@ onMount(() => {
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           onChangeRef?.(update.state.doc.toString());
+          docVersion++;
         }
       }),
       onGutterClick ? EditorView.domEventHandlers({
@@ -79,8 +81,10 @@ onMount(() => {
 $effect(() => {
   const line = jumpToLine;
   const col = jumpToCol;
+  const _dv = docVersion;
   if (!view || line == null) return;
-  const lineNum = Math.min(Math.max(line + 1, 1), view.state.doc.lines);
+  const lineNum = Math.min(line + 1, view.state.doc.lines);
+  if (lineNum < 1) return;
   const lineObj = view.state.doc.line(lineNum);
   const pos = col != null ? Math.min(lineObj.from + col, lineObj.to) : lineObj.from;
   view.dispatch({

@@ -5,17 +5,16 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl, openPath } from "@tauri-apps/plugin-opener";
-import { IS_MAC } from "@/lib/platform";
+import { openUrl } from "@tauri-apps/plugin-opener";
+
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { FilePlus2, FolderPlus, Pencil, Copy, Trash2, FileText, FolderOpen, Star } from "@/lib/icons";
+
 import { checkForUpdate, applyUpdate } from "@/lib/updater";
 import { language, getT } from "@/lib/i18n";
 import { overlays } from "@/stores/overlays.svelte";
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
 import { persistedState } from "@/stores/persisted.svelte";
-import type { ContextMenuItem } from "@/components/files/context-menu.svelte";
 import {
   STORAGE_KEYS,
   CHANGELOG_URL,
@@ -26,15 +25,9 @@ import {
   isOpenablePath,
   basename,
   dirname,
-  createFile,
-  createFolder,
-  renameEntry,
-  removeEntry,
-  moveEntry,
   buildCommands,
   getMtime,
 } from "@/lib";
-import type { FileEntry } from "@/lib";
 import {
   DEFAULT_TYPOGRAPHY,
   getTypographyVars,
@@ -64,6 +57,7 @@ import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
 import { slideSettings } from "@/components/markdown/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
+import { logStore } from "@/components/console/log.svelte";
 import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { folderRelation } from "@/lib/paths";
@@ -74,10 +68,18 @@ import { proseSettings, DEFAULT_PROSE_STYLE } from "@/stores/prose-settings.svel
 import {
   createLatexState,
   handleLatexBuild, handleLatexViewer, handleLatexCodeView,
-  autoBuildIfDepChanged, clearLatexDeps,
+  autoBuildIfDepChanged, clearLatexDeps, setupLatexLogListener,
 } from "@/components/tex/latex-build";
+import {
+  createTypstBuildState,
+  refreshDiagnostics as refreshTypstDiagnostics,
+  handleBuild as handleTypstBuild,
+  handleToggleViewer as handleTypstToggleViewer,
+  pdfName as typstPdfName,
+} from "@/components/typst/typst-build";
 import type { Diagnostic } from "@/lib/diagnostics";
-import ConsolePanel from "@/components/typst/ConsolePanel.svelte";
+import { FileOpsManager } from "@/lib/file-operations.svelte";
+import ConsolePanel from "@/components/console/ConsolePanel.svelte";
 import OpencodeSidebar from "@/components/opencode/OpencodeSidebar.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { loadProjectConfig, saveProjectConfig } from "@/lib/project-config";
@@ -176,6 +178,7 @@ let forwardTargetPage = $state<number | null>(null);
 let presentationFs = $state(false);
 let viewerFullscreenOn = $state(false);
 let ls = $state(createLatexState());
+let ts = $state(createTypstBuildState());
 // Non-reactive: keyed by filePath, stores last SVG + compiled source for instant re-display.
 const typstSvgCache: Record<string, { svg: string; compiledSource: string; diagnostics: Diagnostic[] }> = {};
 let consoleOpen = $state(false);
@@ -183,8 +186,8 @@ let consoleHeight = $state(160);
 const consoleDiags = $derived(diagnosticsStore.all);
 const logLines = $derived.by(() => {
   const ext = activePath ? extFromPath(activePath) : "";
-  if (ext === "typ") return typstBuildLog;
-  if (ext === "tex") return ls.buildLog;
+  if (ext === "typ") return logStore.get("typst");
+  if (ext === "tex") return logStore.get("latex");
   return [];
 });
 let consoleTab = $state<"diagnostics" | "terminal" | "log">("diagnostics");
@@ -425,16 +428,7 @@ onMount(() => {
   document.addEventListener("visibilitychange", onConfigVisibility);
 
   // — LaTeX build log streaming —
-  let unlistenLatexLog: (() => void) | null = null;
-  let unlistenLatexComplete: (() => void) | null = null;
-  (async () => {
-    unlistenLatexLog = await listen<{ line: string }>("latex://log", (e) => {
-      ls.buildLog.push(e.payload.line);
-    });
-    unlistenLatexComplete = await listen("latex://build-complete", () => {
-      ls.buildLog = ls.buildLog;
-    });
-  })();
+  const unlistenLatex = setupLatexLogListener();
 
   return () => {
     clearTimeout(splashSafety);
@@ -445,8 +439,7 @@ onMount(() => {
     document.removeEventListener("visibilitychange", onVisibilityVisible);
     window.removeEventListener("beforeunload", onConfigFlush);
     document.removeEventListener("visibilitychange", onConfigVisibility);
-    unlistenLatexLog?.();
-    unlistenLatexComplete?.();
+    unlistenLatex();
   };
 });
 
@@ -529,7 +522,7 @@ $effect(() => {
   return () => window.removeEventListener("azprose:crash", onCrash);
 });
 
-async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean }) {
+async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" | "typst" }) {
   if (!isOpenablePath(path)) {
     if (!opts?.silent) {
       notifications.setLoadError({ title: "Format", message: t("app.unsupportedFormat", { name: basename(path) }) });
@@ -552,6 +545,17 @@ async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silen
 function closeTab(id: string) {
   pm.main.close(id);
 }
+
+const fo = new FileOpsManager({
+  pm,
+  getRootPath: () => rootPath,
+  getActivePath: () => activePath,
+  onOpenFile: openFileInTab,
+  onTabClose: closeTab,
+  onTreeChange: () => { fo.treeVersion++; },
+  onPanelChange: () => { _panelVersion++; },
+  getT: () => t,
+});
 
 function handleTabSelect(id: string) {
   pm.main.select(id);
@@ -605,19 +609,6 @@ const handleSaveAll = async (deps: string[]) => {
     }
   }
 };
-
-let editingPath = $state<string | null>(null);
-let newEntry = $state<{ parent: string; kind: "file" | "folder" } | null>(null);
-let treeVersion = $state(0);
-let favorites = persistedState<string[]>(STORAGE_KEYS.favorites, []);
-
-let contextMenuItems = $state<ContextMenuItem[]>([]);
-
-// Directory to use when creating new files from toolbar/keyboard shortcut.
-// Follows the active file, falls back to rootPath.
-let activeDir = $derived(
-  activePath ? dirname(activePath) : (rootPath ?? "")
-);
 
 let typo = $derived<TypographySettings>({
   markdownFont: normalizeFontFamily(typography.current.markdownFont),
@@ -819,9 +810,9 @@ $effect(() => {
             }
           }
           if (session.main.tabs.length > 0) {
-            for (const { path } of session.main.tabs) {
+            for (const tab of session.main.tabs) {
               if (cancelled) break;
-              await openFileInTab(path, { preferDraft: true, silent: true });
+              await openFileInTab(tab.path, { preferDraft: true, silent: true, sourceType: tab.sourceType });
             }
             if (!cancelled && session.main.activePath) {
               const active = findTabByPath(session.main.activePath);
@@ -829,9 +820,9 @@ $effect(() => {
             }
             // Restore side panel
             if (session.side.visible && session.side.tabs.length > 0) {
-              for (const { path } of session.side.tabs) {
+              for (const tab of session.side.tabs) {
                 if (cancelled) break;
-                await pm.openInSide(path, { silent: true });
+                await pm.openInSide(tab.path, { silent: true, sourceType: tab.sourceType });
               }
               if (!cancelled && session.side.activePath) {
                 const sideTab = pm.side.tabs.find(t => t.path === session.side.activePath);
@@ -994,184 +985,6 @@ const handleCloseFolder = async (path: string) => {
   saveSessionNow();
 };
 
-const handleSelectFile = (path: string, permanent?: boolean) => {
-  // Single-click → preview (ephemeral) tab ; double-click → permanent tab.
-  openFileInTab(path, { preview: !permanent });
-};
-
-const handleToggleFavorite = (path: string) => {
-  const prev = favorites.current;
-  favorites.update(() =>
-    prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path],
-  );
-};
-
-const handleReorderFavorites = (from: number, to: number) => {
-  const prev = favorites.current;
-  if (from < 0 || from >= prev.length || to < 0 || to >= prev.length) return;
-  const next = [...prev];
-  const [moved] = next.splice(from, 1);
-  next.splice(to, 0, moved);
-  favorites.update(() => next);
-};
-
-const handleMove = async (src: string, dstParent: string) => {
-  try {
-    const newPath = await moveEntry(src, dstParent);
-    treeVersion++;
-    if (activePath === src) {
-      const tab = pm.main.activeTab;
-      if (tab) {
-        pm.main.tabs = pm.main.tabs.map((t: any) => t.id === tab.id ? { ...t, path: newPath, title: basename(newPath) } : t);
-        _panelVersion++;
-      }
-    }
-  } catch (err) {
-    console.error("azprose: move failed", err);
-  }
-};
-
-const handleContextMenu = (e: MouseEvent, entry: FileEntry) => {
-  const parentDir = entry.isDir ? entry.path : dirname(entry.path);
-  const isRoot = rootPath != null && entry.path === rootPath && entry.isDir;
-
-  contextMenuItems = [
-    {
-      label: t("menu.newFile"),
-      icon: FilePlus2,
-      onSelect: () => { newEntry = { parent: parentDir, kind: "file" }; },
-    },
-    {
-      label: t("menu.newFolder"),
-      icon: FolderPlus,
-      onSelect: () => { newEntry = { parent: parentDir, kind: "folder" }; },
-    },
-    "divider",
-    ...(entry.isDir ? [{
-      label: IS_MAC ? t("menu.revealFinder") : t("menu.revealExplorer"),
-      icon: FolderOpen,
-      onSelect: () => { openPath(entry.path); },
-    },
-    ] as ContextMenuItem[] : []),
-    ...(!entry.isDir ? [{
-      label: t("menu.openDefault"),
-      icon: FileText,
-      onSelect: () => openFileInTab(entry.path),
-    },
-    {
-      label: favorites.current.includes(entry.path) ? t("sidebar.unfavorite") : t("sidebar.favorite"),
-      icon: Star,
-      onSelect: () => handleToggleFavorite(entry.path),
-    },
-    ] as ContextMenuItem[] : []),
-    ...(!isRoot ? [{
-      label: t("menu.rename"),
-      icon: Pencil,
-      onSelect: () => { editingPath = entry.path; },
-    },
-    "divider",
-    {
-      label: entry.isDir ? t("menu.deleteFolder") : t("menu.delete"),
-      icon: Trash2,
-      destructive: true,
-      onSelect: () => void handleDelete(entry),
-    },
-    ] as ContextMenuItem[] : []),
-    ...(isRoot ? ["divider" as const] : []),
-    {
-      label: t("menu.copyPath"),
-      icon: Copy,
-      onSelect: () => void navigator.clipboard.writeText(entry.path),
-    },
-  ];
-  contextMenu.open(e, entry);
-};
-
-const handleOpenFile = async () => {
-  const { pickAnyFile } = await import("@/lib/files");
-  const file = await pickAnyFile();
-  if (file) openFileInTab(file);
-};
-
-const handleNewFile = (dir?: string) => {
-  const parent = dir ?? activeDir;
-  if (!parent) return;
-  newEntry = { parent, kind: "file" };
-};
-
-const handleNewFolder = (dir?: string) => {
-  const parent = dir ?? activeDir;
-  if (!parent) return;
-  newEntry = { parent, kind: "folder" };
-};
-
-const handleSubmitNew = async (parent: string, kind: "file" | "folder", name: string) => {
-  newEntry = null;
-  try {
-    if (kind === "folder") {
-      await createFolder(parent, name);
-    } else {
-      const path = await createFile(parent, name);
-      await openFileInTab(path);
-    }
-  } catch (err) {
-    notifications.setLoadError({
-      title: kind === "folder" ? t("menu.newFolder") : t("menu.newFile"),
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
-  treeVersion++;
-};
-
-const handleCancelNew = () => {
-  newEntry = null;
-};
-
-const handleSubmitRename = async (src: string, newName: string) => {
-  if (rootPath && src === rootPath) return;
-  editingPath = null;
-  try {
-    const newPath = await renameEntry(src, newName);
-    const tab = pm.main.tabs.find((t: { path: string }) => t.path === src);
-    if (tab) {
-      pm.main.tabs = pm.main.tabs.map((t: any) => t.path === src ? { ...t, path: newPath, title: basename(newPath) } : t);
-      _panelVersion++;
-    }
-  } catch (err) {
-    notifications.setLoadError({
-      title: t("menu.rename"),
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
-  treeVersion++;
-};
-
-const handleCancelEdit = () => {
-  editingPath = null;
-};
-
-const handleDelete = async (entry: FileEntry) => {
-  if (rootPath && entry.path === rootPath) return;
-  const msg = entry.isDir
-    ? t("menu.confirmDeleteFolder", { name: entry.name })
-    : t("menu.confirmDelete", { name: entry.name });
-  const ok = await confirm(msg, { title: entry.isDir ? t("menu.deleteFolder") : t("menu.delete"), kind: "warning" });
-  if (!ok) return;
-  try {
-    await removeEntry(entry.path, entry.isDir);
-    if (!entry.isDir) {
-      const tab = pm.main.tabs.find((t: { path: string }) => t.path === entry.path);
-      if (tab) closeTab(tab.id);
-    }
-    treeVersion++;
-  } catch (err) {
-    notifications.setLoadError({
-      title: entry.isDir ? t("menu.deleteFolder") : t("menu.delete"),
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
-};
-
 const handleExportPdf = async () => {
   const isLinux = await invoke<boolean>("export_pdf");
   if (!isLinux) return;
@@ -1245,18 +1058,24 @@ const handleGutterClick = (line: number) => {
   if (!activePath || !ls.viewerPdfPath) return;
   invoke("synctex_forward", { texPath: activePath, pdfPath: ls.viewerPdfPath, line, col: 0 })
     .then((res: any) => {
-      forwardTargetPage = res.page;
-      setTimeout(() => { forwardTargetPage = null; }, 0);
+      if (res?.page) {
+        forwardTargetPage = res.page;
+        setTimeout(() => { forwardTargetPage = null; }, 0);
+      }
     })
-    .catch((err: unknown) => console.error("synctex forward failed", err));
+    .catch((err: unknown) => notifications.setInfo(`synctex forward failed: ${err}`));
 };
 
 // Inverse synctex: user Ctrl+clicks PDF page → jump editor to source line
+
 const handleInverseSync = async (file: string, line: number) => {
-  const normFile = file.replace(/\\/g, "/").replace(/\/+$/, "");
-  const normActive = activePath?.replace(/\\/g, "/").replace(/\/+$/, "");
-  if (normFile !== normActive) {
-    await pm.openInMain(normFile, { silent: true, preview: true });
+  const normFile = file.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
+  const found = pm.findTabByPath(normFile);
+  if (found && found.panel === "main") {
+    if (found.tab.path !== normFile) found.tab.path = normFile;
+    pm.main.select(found.tab.id);
+  } else {
+    await pm.openInMain(normFile, { silent: true, preview: true, sourceType: "latex" });
   }
   jumpToLine = line - 1;
   handleSetEditorMode("raw");
@@ -1329,80 +1148,6 @@ const handleToggleSideRenderMode = () => {
   if (next === "presentation") presentationFs = false;
 };
 
-let compilingTypst = $state(false);
-let exportingTypst = $state(false);
-let typstBuildLog = $state<string[]>([]);
-
-function typstPdfName(path: string): string {
-  return basename(path).replace(/\.typ$/i, ".pdf");
-}
-
-const handleTypstCodeView = () => {
-  sideVisible = false;
-  pm.sideVisible = false;
-  ls.viewerPdfPath = null;
-};
-
-// Compile the current .typ for diagnostics only (no file output) and surface
-// them in the console. Returns true if there is no fatal error (safe to export).
-// When { log: true } the build is also recorded in the Log tab.
-async function refreshTypstDiagnostics(opts?: { log?: boolean }): Promise<boolean> {
-  if (!activePath) return false;
-  const shouldLog = opts?.log ?? false;
-  if (shouldLog) {
-    clearTypstLog();
-    logTypstLine(`info: typst compilation started`);
-    logTypstLine(`info: compiling ${basename(activePath)}`);
-  }
-  try {
-    const res = await invoke<{ svg: string | null; diagnostics: Diagnostic[]; pages: number }>(
-      "typst_preview",
-      { filePath: activePath, source },
-    );
-    const diags = res.diagnostics ?? [];
-    diagnosticsStore.set("typst", diags);
-    if (shouldLog) {
-      for (const d of diags) {
-        const loc = d.line ? `line ${d.line}${d.col ? `, col ${d.col}` : ""}` : "";
-        logTypstLine(`  ${d.severity}${loc ? ` (${loc})` : ""}: ${d.message}`);
-        for (const h of d.hints ?? []) logTypstLine(`    hint: ${h}`);
-      }
-      const errs = diags.filter((d) => d.severity === "error").length;
-      const warns = diags.filter((d) => d.severity === "warning").length;
-      logTypstLine(`info: finished — ${errs} error${errs !== 1 ? "s" : ""}, ${warns} warning${warns !== 1 ? "s" : ""}`);
-      consoleTab = "log";
-    }
-    if (diags.some((d) => d.severity === "error")) consoleOpen = true;
-    return res.svg !== null;
-  } catch (err) {
-    diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
-    if (shouldLog) logTypstLine(`error: ${err}`);
-    consoleOpen = true;
-    return false;
-  }
-}
-
-const handleTypstBuild = async () => {
-  if (!activePath || exportingTypst) return;
-  exportingTypst = true;
-  try {
-    const ok = await refreshTypstDiagnostics({ log: true });
-    if (!ok) { logTypstLine("error: build aborted — fatal error"); return; }
-    const outPath = dirname(activePath) + "/" + typstPdfName(activePath);
-    await invoke("typst_export_pdf", { filePath: activePath, source, path: outPath });
-    logTypstLine(`info: exported ${typstPdfName(activePath)}`);
-    consoleTab = "log";
-    notifications.setInfo(t("app.savedTo", { name: typstPdfName(activePath) }));
-  } catch (err) {
-    diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
-    logTypstLine(`error: ${err}`);
-    consoleTab = "log";
-    consoleOpen = true;
-  } finally {
-    exportingTypst = false;
-  }
-};
-
 const handleToggleConsole = () => {
   if (consoleOpen) {
     consoleOpen = false;
@@ -1416,68 +1161,60 @@ const handleToggleConsole = () => {
 const handleToggleViewPanel = () => {
   sideVisible = !sideVisible;
   pm.sideVisible = sideVisible;
-  if (!sideVisible) {
-    ls.viewerPdfPath = null;
-  }
 };
 
-function clearTypstLog() { typstBuildLog = []; }
-function logTypstLine(line: string) { typstBuildLog = [...typstBuildLog, line]; }
-
-const handleToggleTypstViewer = async () => {
+const onToggleTypstViewer = async () => {
   if (sideVisible && sideActivePath?.endsWith(".pdf")) {
     sideVisible = false;
     pm.sideVisible = false;
     ls.viewerPdfPath = null;
     return;
   }
-  if (!activePath || compilingTypst) return;
-  await handleSave();
-  const pdfPath = dirname(activePath) + "/" + typstPdfName(activePath);
-  const [srcMtime, pdfMtime] = await Promise.all([getMtime(activePath), getMtime(pdfPath)]);
-  const needsCompile = pdfMtime === null || (srcMtime !== null && srcMtime > pdfMtime);
-  if (needsCompile) {
-    compilingTypst = true;
-    const ok = await refreshTypstDiagnostics({ log: true });
-    if (!ok) { logTypstLine("error: viewer aborted — fatal error"); compilingTypst = false; return; }
-    try {
-      await invoke("typst_export_pdf", { filePath: activePath, source, path: pdfPath });
-      logTypstLine(`info: exported ${basename(pdfPath)}`);
-      consoleTab = "log";
-    } catch (err) {
-      diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
-      logTypstLine(`error: ${err}`);
-      consoleTab = "log";
-      consoleOpen = true;
-      compilingTypst = false;
-      return;
-    }
-    compilingTypst = false;
-  }
-  ls.viewerPdfPath = pdfPath;
-  await pm.openInSide(pdfPath);
-  sideVisible = true;
+  if (!activePath) return;
+  await handleTypstToggleViewer(
+    ts,
+    activePath,
+    source,
+    handleSave,
+    () => { consoleOpen = true; },
+    (pdfPath) => {
+      ls.viewerPdfPath = pdfPath;
+      pm.openInSide(pdfPath, { sourceType: "typst" });
+      sideVisible = true;
+    },
+  );
+};
+
+const onTypstBuild = async () => {
+  if (!activePath) return;
+  await handleTypstBuild(
+    ts,
+    activePath,
+    source,
+    handleSave,
+    () => { consoleOpen = true; },
+    () => { consoleTab = "log"; },
+    (name) => notifications.setInfo(t("app.savedTo", { name })),
+  );
 };
 
 const onLatexBuild = async () => {
   await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
   if (ls.viewerPdfPath) {
-    await pm.openInSide(ls.viewerPdfPath);
+    await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" });
     sideVisible = true;
   }
 };
 const onLatexViewer = async () => {
-  if (sideVisible && sideActivePath === ls.viewerPdfPath) {
-    sideVisible = false;
-    pm.sideVisible = false;
-    return;
-  }
   if (!ls.viewerPdfPath) {
     await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
   }
   if (ls.viewerPdfPath) {
-    await pm.openInSide(ls.viewerPdfPath);
-    sideVisible = true;
+    await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" });
+    if (!sideVisible) {
+      sideVisible = true;
+      pm.sideVisible = true;
+    }
   }
 };
 const onLatexCodeView = () => {
@@ -1496,8 +1233,8 @@ const handleResetTypography = () => {
 
 let cmds = $derived(
   buildCommands({
-    newFile: handleNewFile,
-    openFile: handleOpenFile,
+    newFile: fo.newFile,
+    openFile: fo.openFile,
     openFolder: handleAddFolder,
     save: handleSave,
     toggleSidebar: handleToggleSidebar,
@@ -1516,7 +1253,7 @@ let cmds = $derived(
     recentFiles: [],
     hasActivePath: activePath != null,
     sidebarOpen: sidebarOpen.current,
-    toggleFavorite: () => { if (activePath) handleToggleFavorite(activePath); },
+    toggleFavorite: () => { if (activePath) fo.toggleFavorite(activePath); },
     currentFilePath: activePath,
   }, t),
 );
@@ -1562,22 +1299,22 @@ let cmds = $derived(
       width={sidebarWidth.current}
       onWidthChange={(next) => sidebarWidth.current = next}
       onAddFolder={handleAddFolder}
-      onNewFile={handleNewFile}
-      onNewFolder={handleNewFolder}
+      onNewFile={fo.newFile}
+      onNewFolder={fo.newFolder}
       onCloseFolder={handleCloseFolder}
-      onSelectFile={handleSelectFile}
-      onContextMenu={handleContextMenu}
-      {editingPath}
-      onSubmitRename={handleSubmitRename}
-      onCancelEdit={handleCancelEdit}
-      {newEntry}
-      onSubmitNew={handleSubmitNew}
-      onCancelNew={handleCancelNew}
-      {treeVersion}
-      favorites={favorites.current}
-      onToggleFavorite={handleToggleFavorite}
-      onReorderFavorites={handleReorderFavorites}
-      onMove={handleMove}
+      onSelectFile={fo.selectFile}
+      onContextMenu={fo.buildContextMenu}
+      editingPath={fo.editingPath}
+      onSubmitRename={fo.submitRename}
+      onCancelEdit={fo.cancelEdit}
+      newEntry={fo.newEntry}
+      onSubmitNew={fo.submitNew}
+      onCancelNew={fo.cancelNew}
+      treeVersion={fo.treeVersion}
+      favorites={fo.favorites.current}
+      onToggleFavorite={fo.toggleFavorite}
+      onReorderFavorites={fo.reorderFavorites}
+      onMove={fo.move}
       onOpenProject={handleOpenProjectByPath}
       onProjectFromFolder={handleInitProject}
     />
@@ -1655,7 +1392,7 @@ let cmds = $derived(
     open={contextMenu.target !== null}
     x={contextMenu.target?.x ?? 0}
     y={contextMenu.target?.y ?? 0}
-    items={contextMenuItems}
+    items={fo.contextMenuItems}
     onClose={contextMenu.close}
   />
 
