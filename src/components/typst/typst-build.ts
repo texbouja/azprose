@@ -39,7 +39,7 @@ export async function refreshDiagnostics(
     logStore.append("typst", `info: compiling ${basename(filePath)}`);
   }
   try {
-    const res = await invoke<{ svg: string | null; diagnostics: Diagnostic[]; pages: number }>(
+    const res = await invoke<{ pages_svg: string[]; diagnostics: Diagnostic[]; pages: number }>(
       "typst_preview",
       { filePath, source },
     );
@@ -57,7 +57,7 @@ export async function refreshDiagnostics(
       opts?.onSwitchToLogTab?.();
     }
     if (diags.some((d) => d.severity === "error")) opts?.onOpenConsole?.();
-    return res.svg !== null;
+    return res.pages_svg.length > 0;
   } catch (err) {
     diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
     if (shouldLog) logStore.append("typst", `error: ${err}`);
@@ -100,7 +100,7 @@ export async function handleBuild(
   }
 }
 
-export async function handleToggleViewer(
+export async function handleOpenViewer(
   state: TypstBuildState,
   filePath: string,
   source: string,

@@ -74,8 +74,7 @@ import {
   createTypstBuildState,
   refreshDiagnostics as refreshTypstDiagnostics,
   handleBuild as handleTypstBuild,
-  handleToggleViewer as handleTypstToggleViewer,
-  pdfName as typstPdfName,
+  handleOpenViewer as handleTypstOpenViewer,
 } from "@/components/typst/typst-build";
 import type { Diagnostic } from "@/lib/diagnostics";
 import { FileOpsManager } from "@/lib/file-operations.svelte";
@@ -175,6 +174,8 @@ let prosemarkOn = $state(generalSettings.defaultEditorMode === "prose");
 let jumpToLine = $state<number | null>(null);
 let jumpToCol = $state<number | null>(null);
 let forwardTargetPage = $state<number | null>(null);
+let typstForwardTarget = $state<{ page: number; x: number; y: number } | null>(null);
+
 let presentationFs = $state(false);
 let viewerFullscreenOn = $state(false);
 let ls = $state(createLatexState());
@@ -652,9 +653,11 @@ $effect(() => {
   const path = activePath;
   const text = source;
   if (!consoleOpen || !path || extFromPath(path) !== "typ") return;
+  // When the live SVG preview is active in the side panel, it handles compilation
+  if (pm.findTabByPath(path)?.panel === "side") return;
   const timer = setTimeout(async () => {
     try {
-      const res = await invoke<{ svg: string | null; diagnostics: Diagnostic[]; pages: number }>(
+      const res = await invoke<{ pages_svg: string[]; diagnostics: Diagnostic[]; pages: number }>(
         "typst_preview",
         { filePath: path, source: text },
       );
@@ -1053,17 +1056,30 @@ const handleJumpToLine = (line: number) => {
   handleSetEditorMode("raw");
 };
 
-// Forward synctex: user clicks a line number in the .tex editor gutter
+// Forward sync: user clicks a line number in the editor gutter
 const handleGutterClick = (line: number) => {
-  if (!activePath || !ls.viewerPdfPath) return;
-  invoke("synctex_forward", { texPath: activePath, pdfPath: ls.viewerPdfPath, line, col: 0 })
-    .then((res: any) => {
-      if (res?.page) {
-        forwardTargetPage = res.page;
-        setTimeout(() => { forwardTargetPage = null; }, 0);
-      }
-    })
-    .catch((err: unknown) => notifications.setInfo(`synctex forward failed: ${err}`));
+  if (!activePath) return;
+  const ext = extFromPath(activePath);
+  if (ext === "tex" && ls.viewerPdfPath) {
+    invoke("synctex_forward", { texPath: activePath, pdfPath: ls.viewerPdfPath, line, col: 0 })
+      .then((res: any) => {
+        if (res?.page) {
+          forwardTargetPage = res.page;
+          setTimeout(() => { forwardTargetPage = null; }, 0);
+        }
+      })
+      .catch((err: unknown) => notifications.setInfo(`synctex forward failed: ${err}`));
+  } else if (ext === "typ") {
+    const src = pm.main.source || pm.side.source;
+    invoke<any>("typst_forward_line", { filePath: activePath, source: src, line })
+      .then((res) => {
+        if (res) {
+          typstForwardTarget = res;
+          setTimeout(() => { typstForwardTarget = null; }, 0);
+        }
+      })
+      .catch((err: unknown) => notifications.setInfo(`typst forward failed: ${err}`));
+  }
 };
 
 // Inverse synctex: user Ctrl+clicks PDF page → jump editor to source line
@@ -1163,26 +1179,18 @@ const handleToggleViewPanel = () => {
   pm.sideVisible = sideVisible;
 };
 
-const onToggleTypstViewer = async () => {
-  if (sideVisible && sideActivePath?.endsWith(".pdf")) {
-    sideVisible = false;
-    pm.sideVisible = false;
-    ls.viewerPdfPath = null;
-    return;
-  }
+const onTypstViewer = async () => {
   if (!activePath) return;
-  await handleTypstToggleViewer(
-    ts,
-    activePath,
-    source,
-    handleSave,
-    () => { consoleOpen = true; },
-    (pdfPath) => {
-      ls.viewerPdfPath = pdfPath;
-      pm.openInSide(pdfPath, { sourceType: "typst" });
-      sideVisible = true;
-    },
-  );
+  await pm.openInSide(activePath, { sourceType: "typst" });
+  // Sync current editor content to the side panel tab immediately
+  const found = pm.findTabByPath(activePath);
+  if (found && found.panel === "side") {
+    pm.side.setTabSource(found.tab.id, source);
+  }
+  if (!sideVisible) {
+    sideVisible = true;
+    pm.sideVisible = true;
+  }
 };
 
 const onTypstBuild = async () => {
@@ -1195,6 +1203,24 @@ const onTypstBuild = async () => {
     () => { consoleOpen = true; },
     () => { consoleTab = "log"; },
     (name) => notifications.setInfo(t("app.savedTo", { name })),
+  );
+};
+
+const onTypstViewPdf = async () => {
+  if (!activePath) return;
+  await handleTypstOpenViewer(
+    ts,
+    activePath,
+    source,
+    handleSave,
+    () => { consoleOpen = true; },
+    (pdfPath) => {
+      pm.openInSide(pdfPath, { sourceType: "typst" });
+      if (!sideVisible) {
+        sideVisible = true;
+        pm.sideVisible = true;
+      }
+    },
   );
 };
 
@@ -1331,7 +1357,16 @@ let cmds = $derived(
           {sideVisible}
           {splitRatio}
           onSplitRatioChange={(v) => { pm.splitRatio = v; splitRatio = v; }}
-          onSourceChange={(next) => { pm.main.setSource(next); _panelVersion++; }}
+          onSourceChange={(next) => {
+            pm.main.setSource(next);
+            if (activePath && extFromPath(activePath) === "typ") {
+              const found = pm.findTabByPath(activePath);
+              if (found && found.panel === "side") {
+                pm.side.setTabSource(found.tab.id, next);
+              }
+            }
+            _panelVersion++;
+          }}
           onSideSourceChange={(next) => { pm.side.setSource(next); _panelVersion++; }}
           onGutterClick={handleGutterClick}
           typo={typo}
@@ -1341,13 +1376,15 @@ let cmds = $derived(
           {vimOn}
           {prosemarkOn}
           forwardToPage={forwardTargetPage}
+          typstForwardTarget={typstForwardTarget}
           onInverseSync={handleInverseSync}
           buildRev={ls.buildRev}
           onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}
           onLatexViewer={activePath && extFromPath(activePath) === "tex" ? onLatexViewer : undefined}
           onLatexBuild={activePath && extFromPath(activePath) === "tex" ? onLatexBuild : undefined}
-          onToggleTypstViewer={activePath && extFromPath(activePath) === "typ" ? onToggleTypstViewer : undefined}
+          onTypstViewer={activePath && extFromPath(activePath) === "typ" ? onTypstViewer : undefined}
           onTypstBuild={activePath && extFromPath(activePath) === "typ" ? onTypstBuild : undefined}
+          onTypstViewPdf={activePath && extFromPath(activePath) === "typ" ? onTypstViewPdf : undefined}
           onToggleRenderMode={handleToggleSideRenderMode}
           onToggleFullscreen={toggleFullscreen}
           {viewerFullscreenOn}

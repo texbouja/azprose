@@ -1,7 +1,7 @@
 <script lang="ts">
 import { extFromPath } from "@/lib/editor-languages";
 import { isPdfPath, isImagePath } from "@/lib";
-import { ZoomIn, ZoomOut, Maximize2, Monitor, BookOpen, Wallpaper, Code2, Pencil, Eye, FileDown } from "@/lib/icons";
+import { ZoomIn, ZoomOut, Maximize2, Monitor, BookOpen, Wallpaper, Code2, Pencil, Eye, PdfLogo, FileDown } from "@/lib/icons";
 import { Button, Icon, Popover } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
@@ -17,8 +17,9 @@ let {
   onSetEditorMode,
   onLatexViewer,
   onLatexBuild,
-  onToggleTypstViewer,
+  onTypstViewer,
   onTypstBuild,
+  onTypstViewPdf,
   onToggleRenderMode,
   onToggleFullscreen,
   onCommand,
@@ -30,8 +31,9 @@ let {
   onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
-  onToggleTypstViewer?: () => void;
+  onTypstViewer?: () => void;
   onTypstBuild?: () => void;
+  onTypstViewPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleFullscreen?: () => void;
   onCommand?: (cmd: string) => void;
@@ -103,17 +105,20 @@ let isSide = $derived(panelId !== "main");
             </button>
           {:else if isTex}
             <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onLatexViewer?.()}>
-              <Icon icon={Eye} size={14} strokeWidth={1.8} /><span>{t("tabs.viewPdf")}</span>
+              {@html PdfLogo}<span>{t("tabs.viewPdf")}</span>
             </button>
             <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onLatexBuild?.()}>
               <Icon icon={FileDown} size={13} strokeWidth={1.8} /><span>{t("tabs.build")}</span>
             </button>
           {:else if isTyp}
-            <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onToggleTypstViewer?.()}>
-              <Icon icon={Eye} size={14} strokeWidth={1.8} /><span>{t("tabs.viewPdf")}</span>
+            <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onTypstViewer?.()}>
+              <Icon icon={Eye} size={14} strokeWidth={1.8} /><span>{t("tabs.liveView")}</span>
             </button>
             <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onTypstBuild?.()}>
-              <Icon icon={FileDown} size={13} strokeWidth={1.8} /><span>{t("tabs.build")}</span>
+              <Icon icon={FileDown} size={13} strokeWidth={1.8} /><span>{t("tabs.buildPdf")}</span>
+            </button>
+            <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onTypstViewPdf?.()}>
+              {@html PdfLogo}<span>{t("tabs.viewPdf")}</span>
             </button>
           {/if}
         </div>

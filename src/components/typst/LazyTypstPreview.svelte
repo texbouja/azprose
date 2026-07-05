@@ -1,18 +1,30 @@
 <script lang="ts">
   import type { Diagnostic } from "@/lib/diagnostics";
 
+  interface ForwardTarget {
+    page: number;
+    x: number;
+    y: number;
+  }
+
   let {
     value = "",
     filePath = "",
     initialSvg = null as string | null,
     initialCompiledSource = null as string | null,
     onCompileResult,
+    onToggleFullscreen,
+    onInverseSync,
+    forwardTo = null as ForwardTarget | null,
   }: {
     value?: string;
     filePath?: string;
     initialSvg?: string | null;
     initialCompiledSource?: string | null;
     onCompileResult?: (svg: string | null, diags: Diagnostic[], compiledSource: string) => void;
+    onToggleFullscreen?: () => void;
+    onInverseSync?: (file: string, line: number) => void;
+    forwardTo?: ForwardTarget | null;
   } = $props();
 
   let Cmp = $state<typeof import("./TypstPreview.svelte").default | null>(null);
@@ -37,7 +49,7 @@
 {#if loading}
   <div class="typst-preview-lazy">Chargement…</div>
 {:else if Cmp}
-  <Cmp {value} {filePath} {initialSvg} {initialCompiledSource} {onCompileResult} />
+  <Cmp {value} {filePath} {initialSvg} {initialCompiledSource} {onCompileResult} {onToggleFullscreen} {onInverseSync} {forwardTo} />
 {/if}
 
 <style>

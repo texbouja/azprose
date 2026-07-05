@@ -24,12 +24,14 @@ let {
   onSetEditorMode,
   onLatexViewer,
   onLatexBuild,
-  onToggleTypstViewer,
+  onTypstViewer,
   onTypstBuild,
+  onTypstViewPdf,
   onToggleRenderMode,
   onToggleFullscreen,
   viewerFullscreenOn = false,
   onViewerFullscreen,
+  typstForwardTarget = null as { page: number; x: number; y: number } | null,
 }: {
   panel: PanelState;
   tabs?: Tab[];
@@ -49,12 +51,14 @@ let {
   onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
-  onToggleTypstViewer?: () => void;
+  onTypstViewer?: () => void;
   onTypstBuild?: () => void;
+  onTypstViewPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
+  typstForwardTarget?: { page: number; x: number; y: number } | null;
 } = $props();
 
 let activeTab = $derived(tabs.find(t => t.id === activeTabId) ?? null);
@@ -95,8 +99,9 @@ function handleViewerFullscreen() {
       {onSetEditorMode}
       {onLatexViewer}
       {onLatexBuild}
-      {onToggleTypstViewer}
+      {onTypstViewer}
       {onTypstBuild}
+      {onTypstViewPdf}
       {onToggleRenderMode}
       onToggleFullscreen={handleViewerFullscreen}
       onCommand={handleViewerCommand}
@@ -117,6 +122,7 @@ function handleViewerFullscreen() {
           {forwardToPage}
           {onInverseSync}
           {buildRev}
+          {typstForwardTarget}
           onToggleFullscreen={handleViewerFullscreen}
         />
       </div>

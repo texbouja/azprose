@@ -11,6 +11,7 @@ import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelt
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
 import LazySynctexPdfViewer from "@/components/tex/LazySynctexPdfViewer.svelte";
 import LazyTypstPdfOutput from "@/components/typst/LazyTypstPdfOutput.svelte";
+import LazyTypstPreview from "@/components/typst/LazyTypstPreview.svelte";
 import type { TypographySettings } from "@/lib/typography";
 
 let {
@@ -28,6 +29,7 @@ let {
   onInverseSync,
   buildRev = 0,
   onToggleFullscreen,
+  typstForwardTarget = null as { page: number; x: number; y: number } | null,
 }: {
   tab?: Tab | null;
   panelId?: string;
@@ -45,6 +47,7 @@ let {
   onInverseSync?: (file: string, line: number, col?: number) => void;
   buildRev?: number;
   onToggleFullscreen?: () => void;
+  typstForwardTarget?: { page: number; x: number; y: number } | null;
 } = $props();
 </script>
 
@@ -73,6 +76,14 @@ let {
   {/if}
 {:else if isImagePath(tab.path)}
   <ImageViewer path={tab.path} />
+  {:else if panelId !== "main" && extFromPath(tab.path) === "typ"}
+  <LazyTypstPreview
+    value={tab.source}
+    filePath={tab.path}
+    {onToggleFullscreen}
+    {onInverseSync}
+    forwardTo={typstForwardTarget}
+  />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}
   <LazySlideDeck
     value={tab.source}
@@ -105,6 +116,6 @@ let {
     {jumpToLine}
     {jumpToCol}
     {onJumpApplied}
-    onGutterClick={extFromPath(tab.path) === "tex" && panelId === "main" ? onGutterClick : undefined}
+    onGutterClick={extFromPath(tab.path) === "tex" || extFromPath(tab.path) === "typ" ? onGutterClick : undefined}
   />
 {/if}

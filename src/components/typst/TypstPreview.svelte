@@ -2,6 +2,25 @@
   import { tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { Diagnostic } from "@/lib/diagnostics";
+  import { diagnosticsStore } from "@/stores/diagnostics.svelte";
+  import { ZoomIn, ZoomOut, Maximize2, ChevronLeft, ChevronRight } from "@/lib/icons";
+  import { Icon } from "@/components/primitives";
+  import { getT } from "@/lib/i18n";
+  import { language } from "@/lib/i18n";
+
+  let t = $derived(getT($language));
+
+  interface TypstPreviewResult {
+    pages_svg: string[];
+    diagnostics: Diagnostic[];
+    pages: number;
+  }
+
+  interface ForwardTarget {
+    page: number;
+    x: number;
+    y: number;
+  }
 
   let {
     value = "",
@@ -10,6 +29,9 @@
     initialCompiledSource = null as string | null,
     onCompileResult,
     initialDiags = [] as Diagnostic[],
+    onToggleFullscreen,
+    onInverseSync,
+    forwardTo = null as ForwardTarget | null,
   }: {
     value?: string;
     filePath?: string;
@@ -17,31 +39,58 @@
     initialCompiledSource?: string | null;
     onCompileResult?: (svg: string | null, diags: Diagnostic[], compiledSource: string) => void;
     initialDiags?: Diagnostic[];
+    onToggleFullscreen?: () => void;
+    onInverseSync?: (file: string, line: number) => void;
+    forwardTo?: ForwardTarget | null;
   } = $props();
 
-  interface TypstPreviewResult {
-    svg: string | null;
-    diagnostics: Diagnostic[];
-    pages: number;
-  }
-
-  let lastSvg = $state<string | null>(initialSvg);
+  let pagesSvg = $state<string[]>(initialSvg !== null ? [initialSvg] : []);
+  let pendingPages: string[] = [];
+  let progressiveRAF: number | null = null;
+  let currentPages = $state(0);
   let compiling = $state(false);
   let hasError = $state(false);
   let errorCount = $state(0);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastCompiledSource: string | null = initialCompiledSource;
   let hasValidSvg = initialSvg !== null;
   let lastDiags: Diagnostic[] = initialDiags;
-  let reportedCacheHit = false;
   let scrollEl = $state<HTMLElement | null>(null);
   let savedScrollTop = 0;
+  let shellEl = $state<HTMLElement | null>(null);
+  let toolbarEl = $state<HTMLElement | null>(null);
+  let toolbarVisible = $state(false);
 
   const ZOOM_MIN = 0.25;
   const ZOOM_MAX = 4;
   const ZOOM_STEP = 0.25;
   let fitWidth = $state(true);
   let zoom = $state(1.0);
+  let currentPage = $state(0);
+
+  function goPrev() {
+    if (currentPage > 0) {
+      currentPage--;
+      scrollToPage(currentPage);
+    }
+  }
+
+  function goNext() {
+    if (currentPage < pagesSvg.length - 1) {
+      currentPage++;
+      scrollToPage(currentPage);
+    }
+  }
+
+  function scrollToPage(idx: number) {
+    if (!scrollEl) return;
+    const el = scrollEl.querySelector(`[data-page="${idx}"]`) as HTMLElement | null;
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === "PageUp") { e.preventDefault(); goPrev(); }
+    if (e.key === "PageDown") { e.preventDefault(); goNext(); }
+  }
 
   function zoomIn() {
     if (fitWidth) { fitWidth = false; zoom = 1.0; }
@@ -55,98 +104,256 @@
     fitWidth = !fitWidth;
   }
 
+  function showToolbar() { toolbarVisible = true; }
+  function hideToolbar() { toolbarVisible = false; }
+
+  $effect(() => {
+    if (!shellEl || !toolbarEl) return;
+    const zone = document.createElement("div");
+    zone.className = "typst-preview__hover-zone";
+    zone.style.cssText = "position:absolute;top:0;left:0;right:0;height:40px;z-index:19;pointer-events:auto";
+    shellEl.appendChild(zone);
+    zone.onmouseenter = showToolbar;
+    const onLeave = () => {
+      setTimeout(() => { if (!toolbarEl?.matches(":hover")) hideToolbar(); }, 200);
+    };
+    zone.onmouseleave = onLeave;
+    toolbarEl.addEventListener("mouseleave", onLeave);
+    return () => { zone.remove(); };
+  });
+
+  // Compile on source change
   $effect(() => {
     const text = value;
     const path = filePath;
-    if (!path) return;
-
-    if (hasValidSvg && text === lastCompiledSource) {
-      if (!reportedCacheHit) {
-        reportedCacheHit = true;
-        onCompileResult?.(lastSvg, lastDiags, text);
-      }
-      return;
-    }
-    reportedCacheHit = false;
+    if (!path || !text) return;
 
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(async () => {
-      const hadValidSvg = hasValidSvg;
-      if (hadValidSvg && scrollEl) savedScrollTop = scrollEl.scrollTop;
-      compiling = true;
-      try {
-        const result = await invoke<TypstPreviewResult>("typst_preview", {
-          filePath: path,
-          source: text,
-        });
-        if (result.svg !== null) {
-          lastSvg = result.svg;
-          hasValidSvg = true;
-          hasError = false;
-          errorCount = 0;
-          await tick();
-          if (hadValidSvg && scrollEl) scrollEl.scrollTop = savedScrollTop;
-        } else {
-          hasError = true;
-          errorCount = (result.diagnostics ?? []).filter((d) => d.severity === "error").length || 1;
-        }
-        lastCompiledSource = text;
-        lastDiags = result.diagnostics ?? [];
-        reportedCacheHit = false;
-        onCompileResult?.(result.svg, lastDiags, text);
-      } catch (err) {
-        hasError = true;
-        errorCount = 1;
-        onCompileResult?.(null, [{ severity: "error", message: `${err}` }], text);
-      } finally {
-        compiling = false;
-      }
-    }, 300);
+    const isInitial = !hasValidSvg;
+    const delay = isInitial ? 1000 : 300;
 
-    return () => { if (debounceTimer) clearTimeout(debounceTimer); };
+    if (isInitial && document.hidden) {
+      const onVisible = () => {
+        document.removeEventListener("visibilitychange", onVisible);
+        debounceTimer = setTimeout(doCompile, delay);
+      };
+      document.addEventListener("visibilitychange", onVisible, { once: true });
+      return () => {
+        document.removeEventListener("visibilitychange", onVisible);
+        if (debounceTimer) clearTimeout(debounceTimer);
+        if (progressiveRAF !== null) { cancelAnimationFrame(progressiveRAF); progressiveRAF = null; }
+      };
+    }
+
+    debounceTimer = setTimeout(doCompile, delay);
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (progressiveRAF !== null) { cancelAnimationFrame(progressiveRAF); progressiveRAF = null; }
+    };
   });
+
+  async function doCompile() {
+    const text = value;
+    const path = filePath;
+    if (!path || !text) return;
+    const hadValidSvg = hasValidSvg;
+    if (hadValidSvg && scrollEl) savedScrollTop = scrollEl.scrollTop;
+    if (progressiveRAF !== null) { cancelAnimationFrame(progressiveRAF); progressiveRAF = null; }
+    compiling = true;
+    try {
+      const result = await invoke<TypstPreviewResult>("typst_preview", {
+        filePath: path,
+        source: text,
+      });
+      if (result.pages_svg.length > 0) {
+        currentPages = result.pages;
+        if (currentPage >= result.pages) currentPage = 0;
+        hasValidSvg = true;
+        hasError = false;
+        errorCount = 0;
+        pendingPages = result.pages_svg;
+        startProgressiveRender(hadValidSvg);
+      } else {
+        hasError = true;
+        errorCount = (result.diagnostics ?? []).filter((d) => d.severity === "error").length || 1;
+      }
+      lastDiags = result.diagnostics ?? [];
+      diagnosticsStore.set("typst", lastDiags);
+      const mergedSvg = result.pages_svg.length > 0 ? result.pages_svg[0] : null;
+      onCompileResult?.(mergedSvg, lastDiags, text);
+    } catch (err) {
+      hasError = true;
+      errorCount = 1;
+      const diags = [{ severity: "error" as const, message: `${err}` }];
+      diagnosticsStore.set("typst", diags);
+      onCompileResult?.(null, diags, text);
+    } finally {
+      compiling = false;
+    }
+  }
+
+  function startProgressiveRender(restoreScroll: boolean) {
+    const total = pendingPages.length;
+    let idx = 0;
+    const renderNext = () => {
+      if (idx >= total) return;
+      pagesSvg = pendingPages.slice(0, idx + 1);
+      if (restoreScroll && idx === 0) {
+        tick().then(() => {
+          if (scrollEl) scrollEl.scrollTop = savedScrollTop;
+        });
+      }
+      idx++;
+      if (idx < total) {
+        progressiveRAF = requestAnimationFrame(renderNext);
+      } else {
+        progressiveRAF = null;
+      }
+    };
+    progressiveRAF = requestAnimationFrame(renderNext);
+  }
+
+  // ── Inverse sync: handle click on SVG page ──
+
+  async function onSvgClick(e: MouseEvent, pageIdx: number) {
+    if (!onInverseSync) return;
+    const svg = (e.currentTarget as HTMLElement).querySelector("svg");
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const svgW = parseFloat(svg.getAttribute("width") || "0");
+    const svgH = parseFloat(svg.getAttribute("height") || "0");
+    if (!svgW || !svgH) return;
+    const scaleX = svgW / rect.width;
+    const scaleY = svgH / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    try {
+      const pos = await invoke<{ line: number; col: number } | null>("typst_resolve_span", {
+        filePath,
+        source: value,
+        page: pageIdx,
+        x,
+        y,
+      });
+      if (pos) {
+        onInverseSync(filePath, pos.line);
+      }
+    } catch (err) {
+      console.error("azprose: typst_resolve_span failed", err);
+    }
+  }
+
+  // ── Forward sync: scroll to target ──
+
+  $effect(() => {
+    if (forwardTo) {
+      scrollToPage(forwardTo.page);
+    }
+  });
+
+  $effect(() => {
+    const el = shellEl;
+    if (!el) return;
+    el.addEventListener("keydown", onKeydown);
+    return () => el.removeEventListener("keydown", onKeydown);
+  });
+
+
 </script>
 
-<div class="typst-preview">
-  {#if !lastSvg && compiling}
-    <div class="typst-preview__loading">Compilation…</div>
-  {:else}
-    <div class="typst-preview__toolbar" aria-label="Zoom controls">
-      <button type="button" class="typst-preview__zoom-btn" onclick={zoomOut} aria-label="Zoom out" disabled={fitWidth && zoom <= ZOOM_MIN}>−</button>
-      <button type="button" class="typst-preview__zoom-level" onclick={toggleFitWidth} title={fitWidth ? "Switch to fixed zoom" : "Fit width"}>
-        {fitWidth ? "fit" : `${Math.round(zoom * 100)}%`}
-      </button>
-      <button type="button" class="typst-preview__zoom-btn" onclick={zoomIn} aria-label="Zoom in" disabled={!fitWidth && zoom >= ZOOM_MAX}>+</button>
+<div class="typst-preview" bind:this={shellEl} tabindex="-1">
+
+  <!-- ── Top hover toolbar ── -->
+  <header class="typst-preview__topbar" bind:this={toolbarEl} class:is-hidden={!toolbarVisible}>
+    <div class="typst-preview__topbar-section">
       {#if compiling}
-        <span class="typst-preview__spinner" aria-label="Updating…"></span>
+        <span class="typst-preview__spinner" aria-label={t("pdf.loading")} />
+      {:else}
+        <span class="typst-preview__status-ok" title={t("pdf.loading")}>✓</span>
+      {/if}
+      {#if currentPages > 1}
+        <span class="typst-preview__vsep"></span>
+        <button class="typst-preview__btn" title="Previous page" onclick={goPrev} disabled={currentPage <= 0}>
+          <Icon icon={ChevronLeft} size={14} strokeWidth={1.6} />
+        </button>
+        <span class="typst-preview__pager">{currentPage + 1}/{currentPages}</span>
+        <button class="typst-preview__btn" title="Next page" onclick={goNext} disabled={currentPage >= pagesSvg.length - 1}>
+          <Icon icon={ChevronRight} size={14} strokeWidth={1.6} />
+        </button>
+        <span class="typst-preview__vsep"></span>
       {/if}
     </div>
-    {#if hasError}
-      <div
-        class="typst-preview__error-bar"
-        class:is-stale={lastSvg !== null}
-        title="Voir la console Diagnostics pour le détail"
+    <div class="typst-preview__topbar-section typst-preview__topbar-right">
+      <button class="typst-preview__btn" title={t("pdf.zoomOut")} onclick={zoomOut}>
+        <Icon icon={ZoomOut} size={14} strokeWidth={1.6} />
+      </button>
+      <span
+        class="typst-preview__scale-chip"
+        role="button"
+        tabindex="0"
+        onclick={toggleFitWidth}
+        onkeydown={(e) => { if (e.key === "Enter") toggleFitWidth(); }}
       >
+        {fitWidth ? "\u00A0 fit \u00A0" : `${Math.round(zoom * 100)}%`}
+      </span>
+      <button class="typst-preview__btn" title={t("pdf.zoomIn")} onclick={zoomIn}>
+        <Icon icon={ZoomIn} size={14} strokeWidth={1.6} />
+      </button>
+      <div class="typst-preview__vsep"></div>
+      <button class="typst-preview__btn" title={t("pdf.fitWidth")} onclick={toggleFitWidth}>
+        <Icon icon={Maximize2} size={13} strokeWidth={1.6} />
+      </button>
+      <div class="typst-preview__vsep"></div>
+      <button class="typst-preview__btn" title="Fullscreen" onclick={() => onToggleFullscreen?.()}>
+        <Icon icon={Maximize2} size={14} strokeWidth={1.6} />
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Loading overlay (first compile) ── -->
+  {#if pagesSvg.length === 0 && compiling}
+    <div class="typst-preview__overlay">
+      <span class="typst-preview__loading-text">Compiling…</span>
+    </div>
+  {:else if pagesSvg.length === 0 && hasError}
+    <div class="typst-preview__overlay typst-preview__error-overlay">
+      <p>{errorCount} error{errorCount > 1 ? "s" : ""}</p>
+    </div>
+  {:else}
+
+    <!-- ── Stale-error bar ── -->
+    {#if hasError}
+      <div class="typst-preview__error-bar" class:is-stale={pagesSvg.length > 0}>
         <span class="typst-preview__error-glyph" aria-hidden="true">⚠</span>
-        {#if lastSvg !== null}
-          {errorCount} erreur{errorCount > 1 ? "s" : ""} · dernier rendu valide affiché
+        {#if pagesSvg.length > 0}
+          {errorCount} error{errorCount > 1 ? "s" : ""} · stale preview shown
         {:else}
-          erreur de compilation
+          compilation error
         {/if}
       </div>
     {/if}
-    {#if lastSvg}
-      <div class="typst-preview__scroll" bind:this={scrollEl}>
+
+    <!-- ── Page SVGs ── -->
+    <div class="typst-preview__scroll" bind:this={scrollEl}>
+      {#each pagesSvg as svg, pageIdx (pageIdx)}
         <div
-          class="typst-preview__canvas"
+          class="typst-preview__page"
           class:is-fit={fitWidth}
+          data-page={pageIdx}
           style={fitWidth ? undefined : `zoom: ${zoom}`}
+          aria-label={`Page ${pageIdx + 1}`}
+          role="button"
+          tabindex="0"
+          onclick={(e) => onSvgClick(e, pageIdx)}
+          onkeydown={(e) => { if (e.key === "Enter") onSvgClick(e as unknown as MouseEvent, pageIdx); }}
         >
           <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-          {@html lastSvg}
+          {@html svg}
         </div>
-      </div>
-    {/if}
+      {/each}
+    </div>
+
   {/if}
 </div>
 
@@ -157,88 +364,155 @@
     flex-direction: column;
     overflow: hidden;
     background: var(--color-bg, #fff);
+    position: relative;
   }
 
-  .typst-preview__loading {
+  .typst-preview__topbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
     display: flex;
     align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--color-text-muted, #888);
-    font-size: 0.875rem;
+    height: 32px;
+    padding: 0 8px;
+    gap: 4px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-ui);
+    pointer-events: auto;
   }
 
-  .typst-preview__toolbar {
+  .typst-preview__topbar.is-hidden {
+    display: none;
+  }
+
+  .typst-preview__topbar-section {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: 2px;
-    padding: 3px 8px;
-    border-bottom: 1px solid var(--border, #e5e7eb);
-    background: var(--surface, #f9fafb);
-    flex-shrink: 0;
   }
 
-  .typst-preview__zoom-btn {
-    width: 22px;
-    height: 22px;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--fg, #374151);
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    display: flex;
+  .typst-preview__topbar-right {
+    margin-left: auto;
+  }
+
+  .typst-preview__btn {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.1s;
-  }
-
-  .typst-preview__zoom-btn:hover:not(:disabled) {
-    background: var(--surface-hover, #e5e7eb);
-  }
-
-  .typst-preview__zoom-btn:disabled {
-    opacity: 0.35;
-    cursor: default;
-  }
-
-  .typst-preview__zoom-level {
-    min-width: 40px;
-    height: 22px;
-    padding: 0 4px;
+    width: 26px;
+    height: 26px;
+    padding: 0;
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: var(--muted, #6b7280);
+    color: var(--muted);
     cursor: pointer;
-    font-family: var(--font-mono, monospace);
+    flex-shrink: 0;
+    transition: background var(--dur-fast) var(--easing), color var(--dur-fast) var(--easing);
+  }
+
+  .typst-preview__btn:hover {
+    background: color-mix(in srgb, var(--fg) 12%, transparent);
+    color: var(--fg);
+  }
+
+  .typst-preview__btn:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+  }
+
+  .typst-preview__btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .typst-preview__scale-chip {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
+    color: var(--muted, #6b7280);
+    cursor: pointer;
+    padding: 0 4px;
+    min-width: 36px;
     text-align: center;
-    transition: background 0.1s, color 0.1s;
+    line-height: 22px;
+    border-radius: 4px;
+    transition: background var(--dur-fast) var(--easing), color var(--dur-fast) var(--easing);
+    user-select: none;
   }
 
-  .typst-preview__zoom-level:hover {
-    background: var(--surface-hover, #e5e7eb);
-    color: var(--fg, #374151);
+  .typst-preview__scale-chip:hover {
+    background: color-mix(in srgb, var(--fg) 12%, transparent);
+    color: var(--fg);
+  }
+
+  .typst-preview__vsep {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 6px;
+    flex-shrink: 0;
+  }
+
+  .typst-preview__pager {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 0 2px;
+    min-width: 32px;
+    text-align: center;
+    line-height: 22px;
+    letter-spacing: 0.02em;
+    user-select: none;
   }
 
   .typst-preview__spinner {
     width: 12px;
     height: 12px;
     border: 1.5px solid transparent;
-    border-top-color: var(--accent, #6366f1);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: typst-spin 0.7s linear infinite;
-    flex-shrink: 0;
-    margin-left: 4px;
+    display: inline-block;
   }
 
   @keyframes typst-spin {
     to { transform: rotate(360deg); }
+  }
+
+  .typst-preview__status-ok {
+    font-size: 12px;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.6;
+  }
+
+  .typst-preview__overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+  }
+
+  .typst-preview__loading-text {
+    color: var(--color-text-muted, #888);
+    font-size: 0.875rem;
+  }
+
+  .typst-preview__error-overlay {
+    color: var(--color-error);
+  }
+
+  .typst-preview__error-overlay p {
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
   .typst-preview__error-bar {
@@ -255,8 +529,6 @@
     border-bottom: 1px solid var(--color-error-border, #fca5a5);
   }
 
-  /* When a previous valid render is still shown, soften to an amber "stale" hint
-     rather than a hard error — the preview below is just out of date. */
   .typst-preview__error-bar.is-stale {
     color: var(--color-warning, #92400e);
     background: var(--color-warning-bg, #fef3c7);
@@ -277,31 +549,33 @@
     align-items: center;
   }
 
-  /* Dim the stale render slightly so it's clear it's not the current source. */
-  .typst-preview__error-bar.is-stale ~ .typst-preview__scroll {
-    opacity: 0.55;
-    transition: opacity 0.15s;
-  }
-
-  .typst-preview__canvas.is-fit {
+  .typst-preview__page {
     width: 100%;
+    content-visibility: auto;
+    contain-intrinsic-size: 800px 1100px;
+    cursor: pointer;
   }
 
-  .typst-preview__canvas.is-fit :global(svg) {
+  .typst-preview__page.is-fit :global(svg) {
     width: 100%;
     height: auto;
     display: block;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
   }
 
-  .typst-preview__canvas:not(.is-fit) {
+  .typst-preview__page:not(.is-fit) {
     transform-origin: top center;
   }
 
-  .typst-preview__canvas:not(.is-fit) :global(svg) {
+  .typst-preview__page:not(.is-fit) :global(svg) {
     display: block;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  }
+
+  .typst-preview__error-bar.is-stale ~ .typst-preview__scroll {
+    opacity: 0.55;
+    transition: opacity 0.15s;
   }
 </style>
