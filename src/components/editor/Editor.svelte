@@ -6,6 +6,8 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { languageFromExt, mdHighlight, buildTheme } from "@/lib/editor-languages";
+import type { LspClient } from "@/lib/lsp/client";
+import { lspExtension } from "@/lib/lsp/cm6-plugin";
 
 let {
   value = "",
@@ -16,6 +18,8 @@ let {
   jumpToCol = null as number | null,
   onJumpApplied,
   onGutterClick,
+  lspClient = null as LspClient | null,
+  filePath = "",
 }: {
   value?: string;
   onChange?: (next: string) => void;
@@ -25,12 +29,15 @@ let {
   jumpToCol?: number | null;
   onJumpApplied?: () => void;
   onGutterClick?: (line: number) => void;
+  lspClient?: LspClient | null;
+  filePath?: string;
 } = $props();
 
 let hostEl: HTMLDivElement;
 let view: EditorView;
 let langCompartment: Compartment;
 let lineNumbersCompartment: Compartment;
+let lspCompartment: Compartment;
 let docVersion = $state(0);
 let onChangeRef = onChange;
 $effect(() => { onChangeRef = onChange; });
@@ -38,6 +45,7 @@ $effect(() => { onChangeRef = onChange; });
 onMount(() => {
   langCompartment = new Compartment();
   lineNumbersCompartment = new Compartment();
+  lspCompartment = new Compartment();
 
   const state = EditorState.create({
     doc: value,
@@ -49,6 +57,7 @@ onMount(() => {
       bracketMatching(),
       syntaxHighlighting(mdHighlight, { fallback: true }),
       langCompartment.of(languageFromExt(language)),
+      lspCompartment.of(lspClient && filePath ? lspExtension(lspClient, filePath) : []),
       EditorView.lineWrapping,
       search({ top: true }),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),

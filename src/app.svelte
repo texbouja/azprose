@@ -70,12 +70,8 @@ import {
   handleLatexBuild, handleLatexViewer, handleLatexCodeView,
   autoBuildIfDepChanged, clearLatexDeps, setupLatexLogListener,
 } from "@/components/tex/latex-build";
-import {
-  createTypstBuildState,
-  refreshDiagnostics as refreshTypstDiagnostics,
-  handleBuild as handleTypstBuild,
-  handleOpenViewer as handleTypstOpenViewer,
-} from "@/components/typst/typst-build";
+import * as typst from "@/typst";
+import { scrollPreview, getPreviewTaskId } from "@/typst/backend";
 import type { Diagnostic } from "@/lib/diagnostics";
 import { FileOpsManager } from "@/lib/file-operations.svelte";
 import ConsolePanel from "@/components/console/ConsolePanel.svelte";
@@ -174,16 +170,23 @@ let prosemarkOn = $state(generalSettings.defaultEditorMode === "prose");
 let jumpToLine = $state<number | null>(null);
 let jumpToCol = $state<number | null>(null);
 let forwardTargetPage = $state<number | null>(null);
-let typstForwardTarget = $state<{ page: number; x: number; y: number } | null>(null);
 
 let presentationFs = $state(false);
 let viewerFullscreenOn = $state(false);
 let ls = $state(createLatexState());
-let ts = $state(createTypstBuildState());
-// Non-reactive: keyed by filePath, stores last SVG + compiled source for instant re-display.
-const typstSvgCache: Record<string, { svg: string; compiledSource: string; diagnostics: Diagnostic[] }> = {};
+let ts = $state(typst.createBuildState());
 let consoleOpen = $state(false);
 let consoleHeight = $state(160);
+
+// POC: LSP frontend test — starts tinymist on mount, logs diagnostics to console
+let lspTested = $state(false);
+$effect(() => {
+  if (lspTested) return;
+  lspTested = true;
+  import("@/lib/lsp/test").then((m) => {
+    m.testTinymist().catch((err) => console.error("azprose:lsp:test failed", err));
+  });
+});
 const consoleDiags = $derived(diagnosticsStore.all);
 const logLines = $derived.by(() => {
   const ext = activePath ? extFromPath(activePath) : "";
@@ -445,7 +448,9 @@ onMount(() => {
 });
 
 function findTabByPath(path: string) {
-  return pm.main.tabs.find((t: { path: string }) => t.path === path);
+  const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+  const target = norm(path);
+  return pm.main.tabs.find((t: { path: string }) => norm(t.path) === target);
 }
 
 function saveSessionNow() {
@@ -634,12 +639,9 @@ $effect(() => {
 $effect(() => {
   if (!activePath || extFromPath(activePath) !== "typ") {
     ls.viewerPdfPath = null;
-    // Drop stale Typst diagnostics when leaving a .typ. The console itself is a
-    // workspace-level panel (Terminal + Diagnostics) — never auto-closed here, so
-    // switching tabs/files or clicking Diagnostics doesn't dismiss it.
-    diagnosticsStore.clear("typst");
+    typst.clearDiagnostics();
   } else {
-    diagnosticsStore.set("typst", typstSvgCache[activePath]?.diagnostics ?? []);
+    typst.clearDiagnostics();
   }
   if (!activePath || extFromPath(activePath) !== "tex") {
     ls.latexBuilding = false;
@@ -656,15 +658,7 @@ $effect(() => {
   // When the live SVG preview is active in the side panel, it handles compilation
   if (pm.findTabByPath(path)?.panel === "side") return;
   const timer = setTimeout(async () => {
-    try {
-      const res = await invoke<{ pages_svg: string[]; diagnostics: Diagnostic[]; pages: number }>(
-        "typst_preview",
-        { filePath: path, source: text },
-      );
-      diagnosticsStore.set("typst", res.diagnostics ?? []);
-    } catch (err) {
-      diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
-    }
+    await typst.liveDiagnostics(path, text, true, false);
   }, 300);
   return () => clearTimeout(timer);
 });
@@ -780,7 +774,7 @@ function exitViewerFullscreen() {
 
 $effect(() => {
   let cancelled = false;
-  let unlisten: (() => void) | undefined;
+  let unlisteners: (() => void)[] = [];
 
   listen<string>("azprose:open-file", (event) => {
     const path = event.payload;
@@ -790,7 +784,7 @@ $effect(() => {
     }
   }).then((un) => {
     if (cancelled) { un(); return; }
-    unlisten = un;
+    unlisteners.push(un);
     void invoke<string[]>("take_pending_open_files")
       .then(async (paths) => {
         if (cancelled) return;
@@ -848,9 +842,33 @@ $effect(() => {
       .catch((err) => console.warn("azprose: pending open-file check failed", err));
   });
 
+  // Projet ouvert via CLI (première instance) : dossier passé dans PendingProjectFolders
+  void invoke<string | null>("take_project_folder", { label: "main" }).then((dir) => {
+    if (cancelled) return;
+    if (dir && !urlRoot) {
+      rootPath = dir;
+      setSessionScope(dir);
+      folders.update(() => [dir, ...loadGuests().filter((g) => g !== dir)]);
+      theme.setProjectRoot(dir);
+      // Session sera restaurée dans le bloc ci-dessus via loadSession() (projet ?root= absent)
+    }
+  });
+
+  // Projet ouvert via CLI (seconde instance) : événement émis par single_instance
+  listen<string>("azprose:open-project", (event) => {
+    const dir = event.payload;
+    if (cancelled) return;
+    if (typeof dir === "string" && dir.length > 0) {
+      void handleOpenProjectByPath(dir);
+    }
+  }).then((un) => {
+    if (cancelled) return;
+    unlisteners.push(un);
+  });
+
   return () => {
     cancelled = true;
-    unlisten?.();
+    unlisteners.forEach((u) => u());
   };
 });
 
@@ -951,10 +969,15 @@ const handleOpenProjectByPath = async (folder: string) => {
       }
       return;
     }
+    // Disjoint → open alongside in a new window.
+    spawnProjectWindow(folder);
+  } else {
+    // Fenêtre vierge (aucun projet) → ouvrir dans la même fenêtre
+    rootPath = folder;
+    setSessionScope(folder);
+    folders.update(() => [folder, ...loadGuests().filter((g) => g !== folder)]);
+    theme.setProjectRoot(folder);
   }
-
-  // Disjoint → open alongside in a new window.
-  spawnProjectWindow(folder);
 };
 
 const handleInitProject = async () => {
@@ -1070,15 +1093,11 @@ const handleGutterClick = (line: number) => {
       })
       .catch((err: unknown) => notifications.setInfo(`synctex forward failed: ${err}`));
   } else if (ext === "typ") {
-    const src = pm.main.source || pm.side.source;
-    invoke<any>("typst_forward_line", { filePath: activePath, source: src, line })
-      .then((res) => {
-        if (res) {
-          typstForwardTarget = res;
-          setTimeout(() => { typstForwardTarget = null; }, 0);
-        }
-      })
-      .catch((err: unknown) => notifications.setInfo(`typst forward failed: ${err}`));
+    const taskId = getPreviewTaskId();
+    if (taskId) {
+      scrollPreview(taskId, { event: "panelScrollTo", filepath: activePath, line: line - 1, character: 0 })
+        .catch((err: unknown) => notifications.setInfo(`typst forward failed: ${err}`));
+    }
   }
 };
 
@@ -1088,10 +1107,10 @@ const handleInverseSync = async (file: string, line: number) => {
   const normFile = file.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
   const found = pm.findTabByPath(normFile);
   if (found && found.panel === "main") {
-    if (found.tab.path !== normFile) found.tab.path = normFile;
     pm.main.select(found.tab.id);
   } else {
-    await pm.openInMain(normFile, { silent: true, preview: true, sourceType: "latex" });
+    const ext = extFromPath(normFile);
+    await pm.openInMain(normFile, { silent: true, preview: true, sourceType: ext === "typ" ? "typst" : ext === "tex" ? "latex" : undefined });
   }
   jumpToLine = line - 1;
   handleSetEditorMode("raw");
@@ -1186,6 +1205,7 @@ const onTypstViewer = async () => {
   const found = pm.findTabByPath(activePath);
   if (found && found.panel === "side") {
     pm.side.setTabSource(found.tab.id, source);
+    _panelVersion++;
   }
   if (!sideVisible) {
     sideVisible = true;
@@ -1195,7 +1215,7 @@ const onTypstViewer = async () => {
 
 const onTypstBuild = async () => {
   if (!activePath) return;
-  await handleTypstBuild(
+  await typst.build(
     ts,
     activePath,
     source,
@@ -1208,7 +1228,7 @@ const onTypstBuild = async () => {
 
 const onTypstViewPdf = async () => {
   if (!activePath) return;
-  await handleTypstOpenViewer(
+  await typst.openViewer(
     ts,
     activePath,
     source,
@@ -1376,7 +1396,6 @@ let cmds = $derived(
           {vimOn}
           {prosemarkOn}
           forwardToPage={forwardTargetPage}
-          typstForwardTarget={typstForwardTarget}
           onInverseSync={handleInverseSync}
           buildRev={ls.buildRev}
           onSetEditorMode={activePath && extFromPath(activePath) === "md" ? handleSetEditorMode : undefined}

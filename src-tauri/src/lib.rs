@@ -18,10 +18,12 @@ use opencode::OpenCodeWebview;
 mod terminal;
 use terminal::TerminalState;
 
-#[cfg(feature = "typst")]
-mod typst_engine;
+mod typst_backend;
 
 mod latex_engine;
+
+mod lsp_bridge;
+use lsp_bridge::LspBridgeState;
 
 struct PendingOpenFiles(Mutex<Vec<String>>);
 struct PendingProjectFolders(Mutex<HashMap<String, String>>);
@@ -72,20 +74,23 @@ fn is_supported_ext(ext: &str) -> bool {
     )
 }
 
-#[cfg(target_os = "windows")]
-fn initial_open_files_from_args() -> Vec<String> {
-    std::env::args_os()
-        .skip(1)
-        .filter_map(|arg| {
-            let path = std::path::PathBuf::from(arg);
-            let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-            if path.is_file() && is_supported_ext(&ext) {
-                Some(path.to_string_lossy().to_string())
-            } else {
-                None
+fn parse_cli_args() -> (Vec<String>, Option<String>) {
+    let mut files = Vec::new();
+    let mut project_dir = None;
+    for arg in std::env::args_os().skip(1) {
+        let path = std::path::PathBuf::from(&arg);
+        if path.is_dir() {
+            project_dir = Some(path.to_string_lossy().to_string());
+        } else if path.is_file() {
+            if let Some(ext) = path.extension() {
+                let ext = ext.to_string_lossy().to_ascii_lowercase();
+                if is_supported_ext(&ext) {
+                    files.push(path.to_string_lossy().to_string());
+                }
             }
-        })
-        .collect()
+        }
+    }
+    (files, project_dir)
 }
 
 #[tauri::command]
@@ -404,36 +409,42 @@ fn write_project_session(root: String, content: String) -> Result<(), String> {
     atomic_write(&path, &content)
 }
 
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(target_os = "windows")]
-    let pending_open_files = initial_open_files_from_args();
-    #[cfg(not(target_os = "windows"))]
-    let pending_open_files = Vec::new();
+    let (pending_open_files, pending_project_dir) = parse_cli_args();
 
     let app = tauri::Builder::default()
         .manage(PendingOpenFiles(Mutex::new(pending_open_files)))
-        .manage(PendingProjectFolders(Mutex::new(HashMap::new())))
+        .manage(PendingProjectFolders(Mutex::new({
+            let mut map = HashMap::new();
+            if let Some(dir) = pending_project_dir {
+                map.insert("main".to_string(), dir);
+            }
+            map
+        })))
         .manage(OpenProjectWindows(Mutex::new(HashMap::new())))
         .manage(opencode::OpenCodeServer(Mutex::new(None)))
         .manage(OpenCodeWebview(Mutex::new(None)))
         .manage(TerminalState::default())
+        .manage(LspBridgeState::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            let paths: Vec<String> = args
-                .iter()
-                .skip(1)
-                .filter_map(|arg| {
-                    let path = std::path::PathBuf::from(arg);
-                    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-                    if path.is_file() && is_supported_ext(&ext) {
-                        Some(path.to_string_lossy().to_string())
-                    } else {
-                        None
+            let mut project_dir = None;
+            for arg in args.iter().skip(1) {
+                let path = std::path::PathBuf::from(arg);
+                if path.is_dir() {
+                    project_dir = Some(path.to_string_lossy().to_string());
+                } else if path.is_file() {
+                    if let Some(ext) = path.extension() {
+                        let ext = ext.to_string_lossy().to_ascii_lowercase();
+                        if is_supported_ext(&ext) {
+                            let _ = app.emit("azprose:open-file", path.to_string_lossy().to_string());
+                        }
                     }
-                })
-                .collect();
-            for path in paths {
-                let _ = app.emit("azprose:open-file", path);
+                }
+            }
+            if let Some(dir) = project_dir {
+                let _ = app.emit("azprose:open-project", dir);
             }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -446,6 +457,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             take_pending_open_files,
             store_project_folder,
@@ -476,10 +488,11 @@ pub fn run() {
             terminal::terminal_write,
             terminal::terminal_resize,
             terminal::terminal_kill,
-            #[cfg(feature = "typst")] typst_engine::typst_preview,
-            #[cfg(feature = "typst")] typst_engine::typst_resolve_span,
-            #[cfg(feature = "typst")] typst_engine::typst_forward_line,
-            #[cfg(feature = "typst")] typst_engine::typst_export_pdf,
+            lsp_bridge::lsp_spawn,
+            lsp_bridge::lsp_write,
+            lsp_bridge::lsp_kill,
+            typst_backend::typst_sidecar_export_pdf,
+            typst_backend::typst_sidecar_preview,
             latex_engine::latex_build,
             latex_engine::check_latexmk,
             latex_engine::synctex_forward,

@@ -66,8 +66,11 @@ export class PanelState {
       }
       return;
     }
+    // Normalize path to prevent duplicate tabs for /a/./b.md vs /a/b.md
+    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+    const normalized = norm(path);
     const wantPreview = opts?.preview === true;
-    const existing = this.tabs.find(t => t.path === path);
+    const existing = this.tabs.find(t => norm(t.path) === normalized);
     if (existing) {
       this.tabs = this.tabs.map(t => t.id === existing.id ? { ...t, sourceType: opts?.sourceType ?? t.sourceType } : t);
       this.activeTabId = existing.id;
@@ -79,19 +82,21 @@ export class PanelState {
     }
 
     const reuse = wantPreview ? this.tabs.find(t => t.preview) : undefined;
-    const title = basename(path);
+    const title = basename(normalized);
     const id = reuse?.id ?? crypto.randomUUID();
     if (reuse) {
-      this.tabs = this.tabs.map(t => t.id === id ? { ...t, path, title, source: "", savedContent: "", preview: true, sourceType: opts?.sourceType } : t);
+      this.tabs = this.tabs.map(t => t.id === id ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, sourceType: opts?.sourceType } : t);
     } else {
-      this.tabs = [...this.tabs, { id, title, path, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType }];
+      this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType }];
     }
     this.activeTabId = id;
+    this.cbs.onFileOpen?.(normalized);
+    this.notify();
 
-    if (!isPdfPath(path) && !isImagePath(path)) {
+    if (!isPdfPath(normalized) && !isImagePath(normalized)) {
       try {
-        const fileSource = await readMarkdown(path);
-        const draft = opts?.preferDraft ? loadDraft(path) : null;
+        const fileSource = await readMarkdown(normalized);
+        const draft = opts?.preferDraft ? loadDraft(normalized) : null;
         const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
         this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: content, savedContent: fileSource } : t);
       } catch (err) {
@@ -99,12 +104,12 @@ export class PanelState {
         if (this.activeTabId === id) {
           this.activeTabId = this.tabs[this.tabs.length - 1]?.id ?? null;
         }
+        this.notify();
         if (!opts?.silent) throw err;
         return;
       }
     }
 
-    this.cbs.onFileOpen?.(path);
     this.notify();
   }
 
@@ -157,6 +162,7 @@ export class PanelState {
       await writeMarkdown(tab.path, tab.source);
       this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
       clearDraft(tab.path);
+      this.notify();
     } catch (err) {
       console.error(`panel ${this.id}: save failed`, err);
       throw err;

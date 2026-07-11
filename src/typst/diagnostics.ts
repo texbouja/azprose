@@ -1,0 +1,67 @@
+import { diagnosticsStore } from "@/stores/diagnostics.svelte";
+import { logStore } from "@/components/console/log.svelte";
+import { basename } from "@/lib";
+import { preview } from "./backend";
+import type { Diagnostic } from "@/lib/diagnostics";
+
+export function clearDiagnostics(): void {
+  diagnosticsStore.clear("typst");
+}
+
+export function setDiagnostics(diags: Diagnostic[]): void {
+  diagnosticsStore.set("typst", diags);
+}
+
+export async function refreshFromPreview(
+  filePath: string,
+  source: string,
+  opts?: { log?: boolean; onOpenConsole?: () => void; onSwitchToLogTab?: () => void },
+): Promise<boolean> {
+  if (!filePath) return false;
+  const shouldLog = opts?.log ?? false;
+  if (shouldLog) {
+    logStore.clear("typst");
+    logStore.append("typst", `info: typst compilation started`);
+    logStore.append("typst", `info: compiling ${basename(filePath)}`);
+  }
+  try {
+    const res = await preview(filePath, source);
+    const diags = res.diagnostics ?? [];
+    diagnosticsStore.set("typst", diags);
+    if (shouldLog) {
+      for (const d of diags) {
+        const loc = d.line ? `line ${d.line}${d.col ? `, col ${d.col}` : ""}` : "";
+        logStore.append("typst", `  ${d.severity}${loc ? ` (${loc})` : ""}: ${d.message}`);
+        for (const h of d.hints ?? []) logStore.append("typst", `    hint: ${h}`);
+      }
+      const errs = diags.filter((d) => d.severity === "error").length;
+      const warns = diags.filter((d) => d.severity === "warning").length;
+      logStore.append("typst", `info: finished — ${errs} error${errs !== 1 ? "s" : ""}, ${warns} warning${warns !== 1 ? "s" : ""}`);
+      opts?.onSwitchToLogTab?.();
+    }
+    if (diags.some((d) => d.severity === "error")) opts?.onOpenConsole?.();
+    return res.pages_svg.length > 0;
+  } catch (err) {
+    diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+    if (shouldLog) logStore.append("typst", `error: ${err}`);
+    opts?.onOpenConsole?.();
+    return false;
+  }
+}
+
+export async function liveDiagnostics(
+  filePath: string,
+  source: string,
+  consoleOpen: boolean,
+  hasSidePanel: boolean,
+  onError?: (err: unknown) => void,
+): Promise<void> {
+  if (!consoleOpen || !filePath || hasSidePanel) return;
+  try {
+    const res = await preview(filePath, source);
+    diagnosticsStore.set("typst", res.diagnostics ?? []);
+  } catch (err) {
+    diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
+    onError?.(err);
+  }
+}

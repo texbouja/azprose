@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=AZprose
+Comment=Scientific text editor with Markdown, LaTeX and Typst support
+Exec=/opt/azprose/bin/azprose %F
+Icon=com.azprose.app
+Type=Application
+Terminal=false
+Categories=Office;TextEditor;Development;
+MimeType=text/markdown;text/x-markdown;text/plain;text/x-tex;text/x-latex;text/x-bibtex;text/x-csrc;text/x-c++src;text/x-python;text/x-java;text/x-rust;text/x-go;text/x-javascript;text/x-typescript;text/x-ruby;text/x-php;text/x-sql;text/x-script;text/xml;text/x-yaml;text/x-toml;text/x-json;text/x-sh;text/x-lua;text/x-perl;text/x-dart;text/x-swift;text/x-kotlin;text/x-sql;text/css;text/html;text/x-typst;application/x-typst;
+StartupNotify=true
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=/opt/azprose/bin/azprose

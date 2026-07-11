@@ -19,6 +19,13 @@
     "opener:default",
     "updater:default",
     "process:default",
+    "shell:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{ "name": "tinymist", "cmd": "tinymist", "args": true }]
+    },
+    "shell:allow-stdin-write",
+    "shell:allow-kill",
     {
       "identifier": "opener:allow-open-path",
       "allow": [{ "path": "**" }]

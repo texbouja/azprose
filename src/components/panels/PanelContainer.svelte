@@ -31,7 +31,6 @@ let {
   onToggleFullscreen,
   viewerFullscreenOn = false,
   onViewerFullscreen,
-  typstForwardTarget = null as { page: number; x: number; y: number } | null,
 }: {
   panel: PanelState;
   tabs?: Tab[];
@@ -58,7 +57,6 @@ let {
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
-  typstForwardTarget?: { page: number; x: number; y: number } | null;
 } = $props();
 
 let activeTab = $derived(tabs.find(t => t.id === activeTabId) ?? null);
@@ -122,7 +120,6 @@ function handleViewerFullscreen() {
           {forwardToPage}
           {onInverseSync}
           {buildRev}
-          {typstForwardTarget}
           onToggleFullscreen={handleViewerFullscreen}
         />
       </div>

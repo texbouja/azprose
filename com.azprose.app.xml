@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/x-typst">
+    <comment>Typst document</comment>
+    <glob pattern="*.typ"/>
+    <glob pattern="*.typst"/>
+    <sub-class-of type="text/plain"/>
+  </mime-type>
+  <mime-type type="application/x-typst">
+    <comment>Typst package</comment>
+    <glob pattern="*.typst-package"/>
+  </mime-type>
+</mime-info>

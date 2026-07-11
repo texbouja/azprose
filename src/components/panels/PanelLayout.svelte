@@ -35,7 +35,6 @@ let {
   onToggleFullscreen,
   viewerFullscreenOn = false,
   onViewerFullscreen,
-  typstForwardTarget = null as { page: number; x: number; y: number } | null,
 }: {
   panelManager: PanelManager;
   tabs?: Tab[];
@@ -67,7 +66,6 @@ let {
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
-  typstForwardTarget?: { page: number; x: number; y: number } | null;
 } = $props();
 
 let splitResizeState: { startX: number; startRatio: number } | null = null;
@@ -143,7 +141,6 @@ function startResize(e: PointerEvent) {
       {forwardToPage}
       {onInverseSync}
       {buildRev}
-      {typstForwardTarget}
       {onToggleRenderMode}
       {onToggleFullscreen}
       {viewerFullscreenOn}

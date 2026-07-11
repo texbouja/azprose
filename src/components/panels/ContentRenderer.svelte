@@ -13,6 +13,7 @@ import LazySynctexPdfViewer from "@/components/tex/LazySynctexPdfViewer.svelte";
 import LazyTypstPdfOutput from "@/components/typst/LazyTypstPdfOutput.svelte";
 import LazyTypstPreview from "@/components/typst/LazyTypstPreview.svelte";
 import type { TypographySettings } from "@/lib/typography";
+import { getTinymistClient, startTinymist } from "@/lib/lsp/tinymist";
 
 let {
   tab = null as Tab | null,
@@ -29,7 +30,6 @@ let {
   onInverseSync,
   buildRev = 0,
   onToggleFullscreen,
-  typstForwardTarget = null as { page: number; x: number; y: number } | null,
 }: {
   tab?: Tab | null;
   panelId?: string;
@@ -47,8 +47,10 @@ let {
   onInverseSync?: (file: string, line: number, col?: number) => void;
   buildRev?: number;
   onToggleFullscreen?: () => void;
-  typstForwardTarget?: { page: number; x: number; y: number } | null;
 } = $props();
+
+// Eagerly start tinymist LSP so it's ready when a .typ file is edited
+startTinymist();
 </script>
 
 {#if !tab}
@@ -82,7 +84,6 @@ let {
     filePath={tab.path}
     {onToggleFullscreen}
     {onInverseSync}
-    forwardTo={typstForwardTarget}
   />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}
   <LazySlideDeck
@@ -117,5 +118,7 @@ let {
     {jumpToCol}
     {onJumpApplied}
     onGutterClick={extFromPath(tab.path) === "tex" || extFromPath(tab.path) === "typ" ? onGutterClick : undefined}
+    lspClient={extFromPath(tab.path) === "typ" ? getTinymistClient() : null}
+    filePath={tab.path}
   />
 {/if}

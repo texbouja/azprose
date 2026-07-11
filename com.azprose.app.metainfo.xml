@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.azprose.app</id>
+  <name>AZprose</name>
+  <summary>Scientific text editor</summary>
+  <description>
+    <p>A modern scientific text editor with support for Markdown, LaTeX, and Typst.</p>
+  </description>
+  <url type="homepage">https://azprose.app</url>
+  <project_license>MIT</project_license>
+  <developer_name>Matt Enarle</developer_name>
+  <categories>
+    <category>Office</category>
+    <category>TextEditor</category>
+  </categories>
+  <mimetypes>
+    <mimetype>text/markdown</mimetype>
+    <mimetype>text/x-tex</mimetype>
+    <mimetype>text/x-typst</mimetype>
+  </mimetypes>
+  <releases>
+    <release version="0.1.0" date="2026-07-03"/>
+  </releases>
+  <launchable type="desktop-id">com.azprose.app.desktop</launchable>
+</component>
