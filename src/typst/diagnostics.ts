@@ -1,14 +1,13 @@
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { basename } from "@/lib";
-import { preview } from "./backend";
-import type { Diagnostic } from "@/lib/diagnostics";
+import { requestDiagnostics } from "./backend";
 
 export function clearDiagnostics(): void {
   diagnosticsStore.clear("typst");
 }
 
-export function setDiagnostics(diags: Diagnostic[]): void {
+export function setDiagnostics(diags: import("@/lib/diagnostics").Diagnostic[]): void {
   diagnosticsStore.set("typst", diags);
 }
 
@@ -25,8 +24,7 @@ export async function refreshFromPreview(
     logStore.append("typst", `info: compiling ${basename(filePath)}`);
   }
   try {
-    const res = await preview(filePath, source);
-    const diags = res.diagnostics ?? [];
+    const diags = await requestDiagnostics(filePath, source);
     diagnosticsStore.set("typst", diags);
     if (shouldLog) {
       for (const d of diags) {
@@ -40,7 +38,7 @@ export async function refreshFromPreview(
       opts?.onSwitchToLogTab?.();
     }
     if (diags.some((d) => d.severity === "error")) opts?.onOpenConsole?.();
-    return res.pages_svg.length > 0;
+    return !diags.some((d) => d.severity === "error");
   } catch (err) {
     diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
     if (shouldLog) logStore.append("typst", `error: ${err}`);
@@ -58,8 +56,8 @@ export async function liveDiagnostics(
 ): Promise<void> {
   if (!consoleOpen || !filePath || hasSidePanel) return;
   try {
-    const res = await preview(filePath, source);
-    diagnosticsStore.set("typst", res.diagnostics ?? []);
+    const diags = await requestDiagnostics(filePath, source);
+    diagnosticsStore.set("typst", diags);
   } catch (err) {
     diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
     onError?.(err);

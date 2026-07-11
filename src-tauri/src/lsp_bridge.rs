@@ -46,8 +46,6 @@ pub fn lsp_spawn(
         return Ok(());
     }
 
-    eprintln!("azprose:lsp_bridge: spawning {command} {args:?} with id={id}");
-
     let mut child = Command::new(&command)
         .args(&args)
         .stdin(Stdio::piped())
@@ -70,12 +68,10 @@ pub fn lsp_spawn(
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
-                    eprintln!("azprose:lsp_bridge: stdout chunk {n} bytes: {}", &chunk[..chunk.len().min(200)]);
                     let _ = app_out.emit("lsp://output", LspOutput { id: id_out.clone(), data: chunk });
                 }
             }
         }
-        eprintln!("azprose:lsp_bridge: stdout EOF for {id_out}");
         let _ = app_out.emit("lsp://exit", id_out.clone());
     });
 
@@ -89,7 +85,6 @@ pub fn lsp_spawn(
             match reader.read_line(&mut line) {
                 Ok(0) | Err(_) => break,
                 Ok(_) => {
-                    eprintln!("azprose:lsp_bridge: stderr [{id_err}]: {}", line.trim_end());
                     let _ = app_err.emit("lsp://stderr", LspOutput { id: id_err.clone(), data: line });
                 }
             }
@@ -115,8 +110,6 @@ pub fn lsp_write(
 
     let bytes = content.as_bytes();
     let header = format!("Content-Length: {}\r\n\r\n", bytes.len());
-    eprintln!("azprose:lsp_bridge: write id={id} len={}", bytes.len());
-
     session.stdin.write_all(header.as_bytes()).map_err(|e| format!("write header: {e}"))?;
     session.stdin.write_all(bytes).map_err(|e| format!("write body: {e}"))?;
     session.stdin.flush().map_err(|e| format!("flush: {e}"))?;
@@ -130,7 +123,6 @@ pub fn lsp_kill(
 ) -> Result<(), String> {
     if let Some(mut session) = state.sessions.lock().unwrap().remove(&id) {
         let _ = session.child.kill();
-        eprintln!("azprose:lsp_bridge: killed {id}");
     }
     Ok(())
 }

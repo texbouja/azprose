@@ -18,8 +18,6 @@ use opencode::OpenCodeWebview;
 mod terminal;
 use terminal::TerminalState;
 
-mod typst_backend;
-
 mod latex_engine;
 
 mod lsp_bridge;
@@ -491,8 +489,6 @@ pub fn run() {
             lsp_bridge::lsp_spawn,
             lsp_bridge::lsp_write,
             lsp_bridge::lsp_kill,
-            typst_backend::typst_sidecar_export_pdf,
-            typst_backend::typst_sidecar_preview,
             latex_engine::latex_build,
             latex_engine::check_latexmk,
             latex_engine::synctex_forward,

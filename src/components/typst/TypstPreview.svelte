@@ -2,7 +2,7 @@
   import { Icon } from "@/components/primitives";
   import { Maximize2 } from "@/lib/icons";
   import { startPreview, stopPreview, onPreviewNotification } from "@/typst/backend";
-  import { getTinymistClient, startTinymist } from "@/lib/lsp/tinymist";
+  import { getTinymistClient } from "@/lib/lsp/tinymist";
 
   let {
     value = "",
@@ -93,13 +93,19 @@
     if (!path) return;
 
     if (syncTimer) clearTimeout(syncTimer);
-    syncTimer = setTimeout(async () => {
+    syncTimer = setTimeout(() => {
       compiling = true;
       try {
         const client = getTinymistClient();
-        await startTinymist();
         syncVersion++;
-        await client.changeFile(text, syncVersion);
+        const uri = `file://${path}`;
+        client.notification("textDocument/didOpen", {
+          textDocument: { uri, languageId: "typst", version: syncVersion, text },
+        });
+        client.notification("textDocument/didChange", {
+          textDocument: { uri, version: syncVersion },
+          contentChanges: [{ text }],
+        });
       } finally {
         compiling = false;
       }

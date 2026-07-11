@@ -6,8 +6,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { languageFromExt, mdHighlight, buildTheme } from "@/lib/editor-languages";
-import type { LspClient } from "@/lib/lsp/client";
-import { lspExtension } from "@/lib/lsp/cm6-plugin";
+import type { LSPClient } from "@codemirror/lsp-client";
 
 let {
   value = "",
@@ -18,7 +17,7 @@ let {
   jumpToCol = null as number | null,
   onJumpApplied,
   onGutterClick,
-  lspClient = null as LspClient | null,
+  lspClient = null as LSPClient | null,
   filePath = "",
 }: {
   value?: string;
@@ -29,7 +28,7 @@ let {
   jumpToCol?: number | null;
   onJumpApplied?: () => void;
   onGutterClick?: (line: number) => void;
-  lspClient?: LspClient | null;
+  lspClient?: LSPClient | null;
   filePath?: string;
 } = $props();
 
@@ -57,7 +56,7 @@ onMount(() => {
       bracketMatching(),
       syntaxHighlighting(mdHighlight, { fallback: true }),
       langCompartment.of(languageFromExt(language)),
-      lspCompartment.of(lspClient && filePath ? lspExtension(lspClient, filePath) : []),
+      lspCompartment.of(lspClient && filePath ? lspClient.plugin(filePath) : []),
       EditorView.lineWrapping,
       search({ top: true }),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),

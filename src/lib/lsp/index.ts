@@ -1,3 +1,2 @@
-export { LspTransport } from "./transport";
-export { LspClient } from "./client";
-export type { JsonRpcMessage } from "./transport";
+export { createTauriTransport } from "./transport";
+export { getTinymistClient, stopTinymist, isTinymistReady } from "./tinymist";

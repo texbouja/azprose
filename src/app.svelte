@@ -179,14 +179,6 @@ let consoleOpen = $state(false);
 let consoleHeight = $state(160);
 
 // POC: LSP frontend test — starts tinymist on mount, logs diagnostics to console
-let lspTested = $state(false);
-$effect(() => {
-  if (lspTested) return;
-  lspTested = true;
-  import("@/lib/lsp/test").then((m) => {
-    m.testTinymist().catch((err) => console.error("azprose:lsp:test failed", err));
-  });
-});
 const consoleDiags = $derived(diagnosticsStore.all);
 const logLines = $derived.by(() => {
   const ext = activePath ? extFromPath(activePath) : "";

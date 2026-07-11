@@ -1,38 +1,45 @@
-import { LspClient } from "./client";
+import { LSPClient, type LSPClientConfig } from "@codemirror/lsp-client";
+import { createTauriTransport, killTransport } from "./transport";
 
-let _instance: LspClient | null = null;
-let _startPromise: Promise<void> | null = null;
+// ── Tinymist Singleton ──────────────────────────────────────────
 
-/** Get the shared tinymist LspClient singleton, starting it on first access. */
-export function getTinymistClient(): LspClient {
-  if (!_instance) {
-    _instance = new LspClient({
-      command: "tinymist",
-      args: ["lsp"],
-      languageId: "typst",
-    });
-  }
-  return _instance;
+let _client: LSPClient | null = null;
+let _id: string | null = null;
+
+/**
+ * Get the shared tinymist LSPClient.
+ * Created synchronously on first call; the actual process spawn
+ * and LSP initialize happen lazily on first message.
+ */
+export function getTinymistClient(
+  config?: {
+    notificationHandlers?: LSPClientConfig["notificationHandlers"];
+    unhandledNotification?: LSPClientConfig["unhandledNotification"];
+  },
+): LSPClient {
+  if (_client) return _client;
+
+  _id = `tinymist-${Date.now()}`;
+  const transport = createTauriTransport(_id, "tinymist", ["lsp"]);
+
+  _client = new LSPClient({
+    notificationHandlers: config?.notificationHandlers,
+    unhandledNotification: config?.unhandledNotification,
+  }).connect(transport);
+
+  return _client;
 }
 
-/** Start tinymist (initialize handshake). Safe to call multiple times. */
-export function startTinymist(): Promise<void> {
-  if (!_startPromise) {
-    _startPromise = getTinymistClient().start();
-  }
-  return _startPromise;
-}
-
-/** Stop tinymist. */
+/** Stop the tinymist server. */
 export async function stopTinymist(): Promise<void> {
-  if (_instance) {
-    await _instance.stop();
-    _instance = null;
-    _startPromise = null;
+  if (_id) {
+    await killTransport(_id);
+    _id = null;
   }
+  _client = null;
 }
 
-/** True once the initialize handshake has completed. */
+/** True once a tinymist client has been created. */
 export function isTinymistReady(): boolean {
-  return _instance !== null;
+  return _client !== null;
 }

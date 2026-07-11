@@ -13,7 +13,7 @@ import LazySynctexPdfViewer from "@/components/tex/LazySynctexPdfViewer.svelte";
 import LazyTypstPdfOutput from "@/components/typst/LazyTypstPdfOutput.svelte";
 import LazyTypstPreview from "@/components/typst/LazyTypstPreview.svelte";
 import type { TypographySettings } from "@/lib/typography";
-import { getTinymistClient, startTinymist } from "@/lib/lsp/tinymist";
+import { getTinymistClient } from "@/lib/lsp/tinymist";
 
 let {
   tab = null as Tab | null,
@@ -51,8 +51,7 @@ let {
   onToggleFullscreen?: () => void;
 } = $props();
 
-// Eagerly start tinymist LSP so it's ready when a .typ file is edited
-startTinymist();
+// tinymist starts lazily on first .typ file open
 </script>
 
 {#if !tab}
