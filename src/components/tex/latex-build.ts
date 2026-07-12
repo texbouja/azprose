@@ -132,31 +132,6 @@ export async function handleLatexViewer(
   }
 }
 
-export async function handleLatexSplit(
-  state: LatexState,
-  activePath: string | null,
-  handleSave?: () => Promise<void>,
-  handleSaveAll?: (deps: string[]) => Promise<void>,
-  onOpenConsole?: () => void,
-): Promise<void> {
-  if (state.latexSplitOn) {
-    state.latexSplitOn = false;
-    return;
-  }
-  if (!activePath || state.latexBuilding) return;
-  await handleLatexBuild(state, activePath, handleSave, handleSaveAll, onOpenConsole);
-  if (state.viewerPdfPath) {
-    state.latexViewerOn = false;
-    state.latexSplitOn = true;
-  }
-}
-
-export function handleLatexCodeView(state: LatexState): void {
-  state.latexViewerOn = false;
-  state.latexSplitOn = false;
-  state.viewerPdfPath = null;
-}
-
 export function setupLatexLogListener(): () => void {
   const unlistenLogP = listen<{ line: string }>("latex://log", (e) => {
     logStore.append("latex", e.payload.line);

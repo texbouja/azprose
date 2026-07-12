@@ -67,7 +67,7 @@ import { generalSettings } from "@/stores/general-settings.svelte";
 import { proseSettings, DEFAULT_PROSE_STYLE } from "@/stores/prose-settings.svelte";
 import {
   createLatexState,
-  handleLatexBuild, handleLatexViewer, handleLatexCodeView,
+  handleLatexBuild, handleLatexViewer,
   autoBuildIfDepChanged, clearLatexDeps, setupLatexLogListener,
 } from "@/components/tex/latex-build";
 import * as typst from "@/typst";
