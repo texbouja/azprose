@@ -111,18 +111,18 @@
       <button
         type="button"
         class="diag-console__tab"
-        class:is-active={activeTab === "terminal"}
-        onclick={() => onTabChange?.("terminal")}
-      >
-        Terminal
-      </button>
-      <button
-        type="button"
-        class="diag-console__tab"
         class:is-active={activeTab === "log"}
         onclick={() => onTabChange?.("log")}
       >
         Log
+      </button>
+      <button
+        type="button"
+        class="diag-console__tab"
+        class:is-active={activeTab === "terminal"}
+        onclick={() => onTabChange?.("terminal")}
+      >
+        Terminal
       </button>
     </div>
     {#if activeTab === "terminal" && terminalStarted}

@@ -10,7 +10,7 @@ import { python } from "@codemirror/lang-python";
 import { yaml } from "@codemirror/lang-yaml";
 import { sql } from "@codemirror/lang-sql";
 import { rust } from "@codemirror/lang-rust";
-import { stex } from "@codemirror/legacy-modes/mode/stex";
+import { latex, latexLanguage } from "codemirror-lang-latex";
 import { clojure } from "@codemirror/legacy-modes/mode/clojure";
 import { tags as t } from "@lezer/highlight";
 import {
@@ -79,7 +79,7 @@ export function languageFromExt(ext: string): LanguageSupport {
       const md = markdown({
         codeLanguages: (info) =>
           ["stex", "tex", "latex", "math"].includes(info)
-            ? StreamLanguage.define(stex)
+            ? latexLanguage
             : null,
         extensions: [mathMarkdownSyntaxExtension],
       });
@@ -122,7 +122,7 @@ export function languageFromExt(ext: string): LanguageSupport {
     case "cls":
     case "ltx":
     case "bib":
-      return new LanguageSupport(StreamLanguage.define(stex));
+      return latex();
     case "clj":
     case "cljs":
     case "edn":
@@ -253,6 +253,119 @@ export function buildTheme() {
       },
       ".cm-line": {
         padding: "0",
+      },
+
+      // ── Autocomplete overlay ────────────────────────────────────
+      ".cm-tooltip.cm-tooltip-autocomplete": {
+        backgroundColor: "var(--surface)",
+        color: "var(--fg)",
+        border: "1px solid var(--border)",
+        borderRadius: "6px",
+        boxShadow: "var(--shadow-soft)",
+        "& > ul": {
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--writing-font-size)",
+          lineHeight: "1.4",
+          "& > li": {
+            padding: "2px 8px",
+          },
+          "& > li[aria-selected]": {
+            backgroundColor: "color-mix(in srgb, var(--accent) 18%, transparent)",
+            color: "var(--fg)",
+          },
+          "& > completion-section": {
+            borderBottom: "1px solid var(--border)",
+            color: "var(--muted)",
+            fontSize: "0.85em",
+            padding: "4px 8px 2px",
+          },
+        },
+      },
+      ".cm-completionMatchedText": {
+        textDecoration: "underline",
+        color: "var(--accent)",
+      },
+      ".cm-completionDetail": {
+        marginLeft: "0.5em",
+        fontStyle: "italic",
+        color: "var(--muted)",
+      },
+      ".cm-completionIcon": {
+        opacity: "0.7",
+      },
+      ".cm-completionIcon-function:after": { content: "'ƒ'", color: "var(--syntax-function)" },
+      ".cm-completionIcon-class:after": { content: "'○'", color: "var(--syntax-type)" },
+      ".cm-completionIcon-variable:after": { content: "'𝑥'", color: "var(--fg)" },
+      ".cm-completionIcon-constant:after": { content: "'𝐶'", color: "var(--syntax-constant)" },
+      ".cm-completionIcon-keyword:after": { content: "'\\2022'", color: "var(--syntax-keyword)" },
+      ".cm-completionIcon-property:after": { content: "'□'", color: "var(--fg)" },
+      ".cm-completionIcon-text:after": { content: "'abc'", fontSize: "50%", verticalAlign: "middle", color: "var(--muted)" },
+      ".cm-tooltip.cm-completionInfo": {
+        backgroundColor: "var(--surface)",
+        color: "var(--fg)",
+        border: "1px solid var(--border)",
+        borderRadius: "6px",
+        boxShadow: "var(--shadow-soft)",
+        padding: "4px 10px",
+      },
+
+      // ── Lint / diagnostics ──────────────────────────────────────
+      ".cm-lintRange": {
+        backgroundImage: "none !important",
+        backgroundRepeat: "no-repeat",
+        backgroundSize: "auto",
+      },
+      ".cm-lintRange-error": {
+        borderBottom: "2px wavy var(--color-error, #f38ba8)",
+      },
+      ".cm-lintRange-warning": {
+        borderBottom: "2px wavy var(--color-warning, #f9e2af)",
+      },
+      ".cm-lintRange-info": {
+        borderBottom: "2px wavy var(--color-info, #89b4fa)",
+      },
+      ".cm-lintPoint": {
+        "&:after": {
+          borderBottomColor: "var(--color-error, #f38ba8) !important",
+        },
+      },
+      ".cm-lintPoint-warning": {
+        "&:after": {
+          borderBottomColor: "var(--color-warning, #f9e2af) !important",
+        },
+      },
+      ".cm-lintPoint-info": {
+        "&:after": {
+          borderBottomColor: "var(--color-info, #89b4fa) !important",
+        },
+      },
+      ".cm-lint-marker-error": {
+        content: "none",
+      },
+      ".cm-lint-marker-warning": {
+        content: "none",
+      },
+      ".cm-lint-marker-info": {
+        content: "none",
+      },
+      ".cm-tooltip-lint": {
+        backgroundColor: "var(--surface)",
+        color: "var(--fg)",
+        border: "1px solid var(--border)",
+        borderRadius: "6px",
+        boxShadow: "var(--shadow-soft)",
+        padding: "6px 10px",
+        fontSize: "0.9em",
+        maxWidth: "400px",
+      },
+      ".cm-lintMessage-error": {
+        color: "var(--color-error, #f38ba8)",
+      },
+      ".cm-lintMessage-warning": {
+        color: "var(--color-warning, #f9e2af)",
+      },
+      ".cm-lintMessage-info": {
+        color: "var(--color-info, #89b4fa)",
       },
     },
     { dark: false },

@@ -14,6 +14,7 @@ import LazyTypstPdfOutput from "@/components/typst/LazyTypstPdfOutput.svelte";
 import LazyTypstPreview from "@/components/typst/LazyTypstPreview.svelte";
 import type { TypographySettings } from "@/lib/typography";
 import { getTinymistClient } from "@/lib/lsp/tinymist";
+import { getTexlabClient } from "@/lib/lsp/texlab";
 
 let {
   tab = null as Tab | null,
@@ -51,7 +52,7 @@ let {
   onToggleFullscreen?: () => void;
 } = $props();
 
-// tinymist starts lazily on first .typ file open
+// tinymist and texlab start lazily on first .typ/.typ file open
 </script>
 
 {#if !tab}
@@ -119,7 +120,12 @@ let {
     {jumpToCol}
     {onJumpApplied}
     onGutterClick={extFromPath(tab.path) === "tex" || extFromPath(tab.path) === "typ" ? onGutterClick : undefined}
-    lspClient={extFromPath(tab.path) === "typ" ? getTinymistClient() : null}
+    lspClient={(() => {
+      const ext = extFromPath(tab.path);
+      if (ext === "typ") return getTinymistClient();
+      if (ext === "tex") return getTexlabClient();
+      return null;
+    })()}
     filePath={tab.path}
   />
 {/if}

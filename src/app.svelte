@@ -648,6 +648,20 @@ $effect(() => {
   }
 });
 
+// Detect root .tex file when switching to a LaTeX tab
+$effect(() => {
+  const p = activePath;
+  if (!p || extFromPath(p) !== "tex") return;
+  if (ls.rootFilePath) return; // already known (from build or prior detection)
+  invoke<{ root_file: string | null; method: string }>("latex_find_root", { path: p })
+    .then((res) => {
+      if (res.root_file && res.root_file !== p) {
+        ls.rootFilePath = res.root_file;
+      }
+    })
+    .catch(() => {});
+});
+
 // Live diagnostics for the open console outside live-preview mode.
 $effect(() => {
   const path = activePath;

@@ -123,6 +123,7 @@ pub fn lsp_kill(
 ) -> Result<(), String> {
     if let Some(mut session) = state.sessions.lock().unwrap().remove(&id) {
         let _ = session.child.kill();
+        let _ = session.child.wait();
     }
     Ok(())
 }

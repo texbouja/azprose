@@ -490,6 +490,7 @@ pub fn run() {
             lsp_bridge::lsp_write,
             lsp_bridge::lsp_kill,
             latex_engine::latex_build,
+            latex_engine::latex_find_root,
             latex_engine::check_latexmk,
             latex_engine::synctex_forward,
             latex_engine::synctex_inverse,

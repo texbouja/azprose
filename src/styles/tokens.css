@@ -49,6 +49,8 @@
   --syntax-operator: #9ca0b0;
   --syntax-comment: #9ca0b0;
   --syntax-constant: #df8e1d;
+  --color-warning: #df8e1d;
+  --color-info: #1e66f5;
   color-scheme: light;
 }
 
@@ -74,6 +76,8 @@
   --syntax-operator: #6f6f6f;
   --syntax-comment: #6f6f6f;
   --syntax-constant: #111111;
+  --color-warning: #b8860b;
+  --color-info: #2563eb;
   color-scheme: light;
 }
 
@@ -99,6 +103,8 @@
   --syntax-operator: #a3a3a3;
   --syntax-comment: #a3a3a3;
   --syntax-constant: #f7f7f7;
+  --color-warning: #ffb347;
+  --color-info: #6bb5ff;
   color-scheme: dark;
 }
 
@@ -124,6 +130,8 @@
   --syntax-operator: #737994;
   --syntax-comment: #737994;
   --syntax-constant: #e5c890;
+  --color-warning: #ef9f76;
+  --color-info: #8caaee;
   color-scheme: dark;
 }
 
@@ -149,6 +157,8 @@
   --syntax-operator: #6e738d;
   --syntax-comment: #6e738d;
   --syntax-constant: #eed49f;
+  --color-warning: #eed49f;
+  --color-info: #8aadf4;
   color-scheme: dark;
 }
 
@@ -175,6 +185,8 @@
   --syntax-operator: #6c7086;
   --syntax-comment: #6c7086;
   --syntax-constant: #f9e2af;
+  --color-warning: #f9e2af;
+  --color-info: #89b4fa;
   color-scheme: dark;
 }
 
@@ -200,6 +212,8 @@
   --syntax-operator: #E0E1E4;
   --syntax-comment: #909194;
   --syntax-constant: #AF9CFF;
+  --color-warning: #EBC88D;
+  --color-info: #87C3FF;
   color-scheme: dark;
 }
 
@@ -225,6 +239,8 @@
   --syntax-operator: #090909;
   --syntax-comment: #747576;
   --syntax-constant: #A31D8D;
+  --color-warning: #A31D8D;
+  --color-info: #1749BD;
   color-scheme: light;
 }
 
@@ -250,6 +266,8 @@
   --syntax-operator: #E0E1E4;
   --syntax-comment: #7e7d86;
   --syntax-constant: #93A6F5;
+  --color-warning: #4DACF0;
+  --color-info: #93A6F5;
   color-scheme: dark;
 }
 
@@ -275,6 +293,8 @@
   --syntax-operator: #dfdfe0;
   --syntax-comment: #7f8c98;
   --syntax-constant: #78c2b3;
+  --color-warning: #d9c97c;
+  --color-info: #78c2b3;
   color-scheme: dark;
 }
 
@@ -300,6 +320,8 @@
   --syntax-operator: #262626;
   --syntax-comment: #707f8c;
   --syntax-constant: #3e8087;
+  --color-warning: #272ad8;
+  --color-info: #3e8087;
   color-scheme: light;
 }
 

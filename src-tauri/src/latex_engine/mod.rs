@@ -1,5 +1,5 @@
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -218,11 +218,16 @@ fn extract_line_number(msg: &str) -> (Option<u32>, String) {
 /// Parse latexmk stdout for status/error messages.
 fn parse_latexmk_output(text: &str) -> Vec<LatexDiagnostic> {
     let mut diags = Vec::new();
-    for line in text.lines() {
-        let line = line.trim();
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim();
         if line.starts_with("Latexmk:") {
             // Error conditions
-            if line.contains("Could not find") || line.contains("missing") || line.contains("Errors") {
+            if line.contains("Could not find")
+                || line.contains("missing")
+                || line.contains("Errors")
+            {
                 diags.push(LatexDiagnostic {
                     severity: "error".into(),
                     message: line.to_string(),
@@ -242,23 +247,43 @@ fn parse_latexmk_output(text: &str) -> Vec<LatexDiagnostic> {
                 });
             }
         }
-        // Catch-all: "! " errors in stdout that weren't in the log file
+        // Catch-all: "! " errors — extract l.<line> if present on next lines
         if let Some(body) = line.strip_prefix("! ") {
+            let mut line_num: Option<u32> = None;
+            let mut context = String::new();
+            // Look ahead for l.<line> pattern (same logic as parse_log_file)
+            let mut j = i + 1;
+            while j < lines.len() {
+                let next = lines[j].trim();
+                if let Some(rest) = next.strip_prefix("l.") {
+                    let num_str = rest.split_whitespace().next().unwrap_or("");
+                    line_num = num_str.parse::<u32>().ok();
+                    context = rest.to_string();
+                    break;
+                }
+                j += 1;
+            }
+            let full_msg = if !context.is_empty() {
+                format!("{body} — {context}")
+            } else {
+                body.to_string()
+            };
             diags.push(LatexDiagnostic {
                 severity: "error".into(),
-                message: body.to_string(),
-                line: None,
+                message: full_msg,
+                line: line_num,
                 col: None,
                 hints: Vec::new(),
                 source: "latex".into(),
             });
         }
+        i += 1;
     }
     diags
 }
 
 /// Resolve the output directory given a project dir and optional $out_dir value.
-fn output_dir(dir: &Path, out_dir: &Option<String>) -> std::path::PathBuf {
+fn output_dir(dir: &Path, out_dir: &Option<String>) -> PathBuf {
     out_dir
         .as_ref()
         .map(|d| dir.join(d))
@@ -454,16 +479,14 @@ pub async fn latex_build(
 
     let pdf_path = out_dir_path.join(format!("{file_stem}.pdf"));
 
-    let _ = app.emit(
-        "latex://build-complete",
-        LatexLogPayload {
-            line: if pdf_path.exists() {
-                format!("info: build finished – {}", pdf_path.display())
-            } else {
-                "error: build finished – no PDF output".into()
-            },
-        },
-    );
+    // Emit build completion on BOTH latex://log (visible in Log tab) and latex://build-complete
+    let completion_msg = if pdf_path.exists() {
+        format!("info: build finished – {}", pdf_path.display())
+    } else {
+        "error: build failed – no PDF output".into()
+    };
+    let _ = app.emit("latex://log", LatexLogPayload { line: completion_msg.clone() });
+    let _ = app.emit("latex://build-complete", LatexLogPayload { line: completion_msg });
 
     if pdf_path.exists() {
         Ok(LatexBuildResult {
@@ -500,4 +523,147 @@ pub fn check_latexmk() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+// ── Root file detection (replicates texlab algorithm) ────────────────
+
+#[derive(Serialize)]
+pub struct LatexRootResult {
+    /// The detected root .tex file path, or `None` if unsure.
+    pub root_file: Option<String>,
+    /// Human-readable info about how the root was found.
+    pub method: String,
+}
+
+/// Find the root directory by traversing upward looking for marker files.
+/// Returns the directory containing the marker, or the file's own directory.
+fn find_root_dir(start: &Path) -> (std::path::PathBuf, String) {
+    // Phase A — traverse up looking for project markers
+    let mut cur = Some(start.to_path_buf());
+    while let Some(ref dir) = cur {
+        // .texlabroot / texlabroot
+        if dir.join(".texlabroot").exists() {
+            return (dir.clone(), ".texlabroot".into());
+        }
+        if dir.join("texlabroot").exists() {
+            return (dir.clone(), "texlabroot".into());
+        }
+        // Tectonic.toml
+        if dir.join("Tectonic.toml").exists() {
+            return (dir.clone(), "Tectonic.toml".into());
+        }
+        // .latexmkrc / latexmkrc
+        if dir.join(".latexmkrc").exists() {
+            return (dir.clone(), ".latexmkrc".into());
+        }
+        if dir.join("latexmkrc").exists() {
+            return (dir.clone(), "latexmkrc".into());
+        }
+        cur = dir.parent().map(|p| p.to_path_buf());
+    }
+    // Fallback: use the starting directory
+    (start.to_path_buf(), "default (file directory)".into())
+}
+
+/// Check if a .tex file contains `\documentclass` and is not a subfile.
+/// Returns true if the file has `\documentclass` but NOT
+/// `\documentclass{subfiles}` or `\documentclass{cpgesubdoc}`.
+fn has_documentclass(path: &Path) -> bool {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    // Quick check: does it contain \documentclass at all?
+    if !content.contains("\\documentclass") {
+        return false;
+    }
+    // Check for excluded classes: \documentclass{subfiles} or \documentclass{cpgesubdoc}
+    let lowered = content.to_lowercase();
+    for excluded in &["subfiles", "cpgesubdoc"] {
+        let pattern = format!("\\documentclass{{{excluded}}}");
+        if lowered.contains(&pattern.to_lowercase()) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Detect the LaTeX root file for a given .tex file.
+///
+/// Algorithm (replicates texlab's `deps/root.rs`):
+/// 1. Find root directory via marker files (.texlabroot, Tectonic.toml, .latexmkrc)
+/// 2. Walk from file upward to root_dir, scanning each directory for .tex files with
+///    `\documentclass` (excluding subfiles/cpgesubdoc). Pick the highest one.
+/// 3. Fallback: return the file itself
+#[tauri::command]
+pub fn latex_find_root(path: String) -> LatexRootResult {
+    let tex_path = Path::new(&path);
+    let file_dir = match tex_path.parent() {
+        Some(d) => d,
+        None => {
+            return LatexRootResult {
+                root_file: None,
+                method: "invalid path".into(),
+            }
+        }
+    };
+
+    // Phase A: find root directory via markers
+    let (root_dir, dir_method) = find_root_dir(file_dir);
+
+    // Phase B: walk from file's directory upward to root_dir, at each level scan for
+    // .tex files with \documentclass. The highest one (closest to root) is the root.
+    // If no markers were found (root_dir == file_dir), walk all the way up to "/".
+    let effective_root = if root_dir == file_dir {
+        PathBuf::from("/")
+    } else {
+        root_dir.clone()
+    };
+    let mut root_candidates: Vec<std::path::PathBuf> = Vec::new();
+    let mut cur_dir = std::path::PathBuf::from(file_dir);
+    loop {
+        // Scan .tex files in this directory for \documentclass
+        if let Ok(entries) = std::fs::read_dir(&cur_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|e| e.to_str()) == Some("tex") && has_documentclass(&p)
+                {
+                    root_candidates.push(p);
+                }
+            }
+        }
+        // Stop once we've reached the effective root
+        if cur_dir == effective_root {
+            break;
+        }
+        match cur_dir.parent() {
+            Some(parent) => cur_dir = parent.to_path_buf(),
+            None => break,
+        }
+    }
+
+    // root_candidates is ordered deepest-first; the first entry with \documentclass
+    // at the deepest level is the original file (if it qualifies). The last entry
+    // (highest in the tree) is the best root candidate.
+    //
+    // Prefer the current file if it has \documentclass; otherwise use the highest ancestor.
+    if has_documentclass(tex_path) {
+        LatexRootResult {
+            root_file: Some(path.clone()),
+            method: format!("current file has \\documentclass ({dir_method})"),
+        }
+    } else if let Some(best) = root_candidates.last() {
+        LatexRootResult {
+            root_file: Some(best.to_string_lossy().to_string()),
+            method: format!(
+                "highest \\documentclass in {dir_method} scan ({} candidates)",
+                root_candidates.len()
+            ),
+        }
+    } else {
+        LatexRootResult {
+            root_file: Some(path.clone()),
+            method: "fallback: no \\documentclass found, using current file".into(),
+        }
+    }
 }
