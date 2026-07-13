@@ -15,6 +15,7 @@ import LazyTypstPreview from "@/components/typst/LazyTypstPreview.svelte";
 import type { TypographySettings } from "@/lib/typography";
 import { getTinymistClient } from "@/lib/lsp/tinymist";
 import { getTexlabClient } from "@/lib/lsp/texlab";
+import { getMarkdownOxideClient } from "@/lib/lsp/markdown-oxide";
 
 let {
   tab = null as Tab | null,
@@ -124,6 +125,7 @@ let {
       const ext = extFromPath(tab.path);
       if (ext === "typ") return getTinymistClient();
       if (ext === "tex") return getTexlabClient();
+      if (ext === "md") return getMarkdownOxideClient();
       return null;
     })()}
     filePath={tab.path}

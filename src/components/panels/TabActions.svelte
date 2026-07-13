@@ -1,13 +1,13 @@
 <script lang="ts">
 import { extFromPath } from "@/lib/editor-languages";
 import { isPdfPath, isImagePath } from "@/lib";
-import { ZoomIn, ZoomOut, Maximize2, Monitor, BookOpen, Wallpaper, Code2, Pencil, Eye, PdfLogo, FileDown } from "@/lib/icons";
-import { Button, Icon, Popover } from "@/components/primitives";
+import { ZoomIn, ZoomOut, Maximize2, BookOpen, Wallpaper, Code2, Pencil, Eye, PdfLogo, FileDown } from "@/lib/icons";
+import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { slideSettings, SLIDE_THEMES, SLIDE_MODES } from "@/components/markdown/slide-settings.svelte";
+import { slideSettings, SLIDE_MODES } from "@/components/markdown/slide-settings.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
-import { Check, ChevronDown } from "@/lib/icons";
+import { ChevronDown } from "@/lib/icons";
 
 let {
   activeTab = null as Tab | null,
@@ -42,8 +42,6 @@ let {
 let visible = $state(false);
 let toolbarEl = $state<HTMLElement | null>(null);
 let triggerEl = $state<HTMLElement | null>(null);
-let themeMenuOpen = $state(false);
-let themeAnchorEl = $state<HTMLDivElement | null>(null);
 
 function show() { visible = true; }
 function hide() { visible = false; }
@@ -145,49 +143,6 @@ let isSide = $derived(panelId !== "main");
                 <span>{sm.label}</span>
               </label>
             {/each}
-            <span class="tab-actions__sep" />
-            <div class="tab-actions__theme-wrap" bind:this={themeAnchorEl}>
-              <Button
-                data-tooltip="Slide theme"
-                aria-label="Slide theme"
-                aria-haspopup="menu"
-                aria-expanded={themeMenuOpen}
-                onclick={() => themeMenuOpen = !themeMenuOpen}
-              >
-                {#snippet icon()}
-                  <Icon icon={Monitor} size={14} strokeWidth={1.5} />
-                {/snippet}
-              </Button>
-              <span class="tab-actions__theme-label">{SLIDE_THEMES.find(st => st.id === slideSettings.theme)?.label ?? slideSettings.theme}</span>
-              <Popover
-                align="left"
-                open={themeMenuOpen}
-                onClose={() => themeMenuOpen = false}
-                anchorRef={{ current: themeAnchorEl }}
-              >
-                <div class="mdv-menu" role="menu">
-                  <div class="mdv-menu__group-label">{t("slides.theme")}</div>
-                  {#each SLIDE_THEMES as st}
-                    {@const active = slideSettings.theme === st.id}
-                    <button
-                      type="button"
-                      class="mdv-menu__item"
-                      class:is-active={active}
-                      onclick={() => { slideSettings.theme = st.id; themeMenuOpen = false; }}
-                      role="menuitemradio"
-                      aria-checked={active}
-                    >
-                      <span class="mdv-menu__item-label">{st.label}</span>
-                      {#if active}
-                        <span class="mdv-menu__item-check">
-                          <Icon icon={Check} size={13} strokeWidth={2} />
-                        </span>
-                      {/if}
-                    </button>
-                  {/each}
-                </div>
-              </Popover>
-            </div>
           {/if}
         </div>
         <div class="tab-actions__section tab-actions__right">
@@ -331,16 +286,5 @@ let isSide = $derived(panelId !== "main");
 }
 .tab-actions__radio:hover {
   background: var(--surface-hover);
-}
-.tab-actions__theme-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  position: relative;
-}
-.tab-actions__theme-label {
-  font-size: 11px;
-  color: var(--fg-muted, var(--muted));
-  cursor: default;
 }
 </style>

@@ -13,6 +13,7 @@ export const ChevronsLeft: IconData = `<path d="m11 17-5-5 5-5"/><path d="m18 17
 export const ChevronsRight: IconData = `<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>`;
 export const Circle: IconData = `<circle cx="12" cy="12" r="10"/>`;
 export const Columns2: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>`;
+export const Diamond: IconData = `<path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>`;
 export const CircleHelp: IconData = `<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>`;
 export const Cloud: IconData = `<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>`;
 export const Code2: IconData = `<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>`;

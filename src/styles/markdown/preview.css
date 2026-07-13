@@ -1,6 +1,9 @@
 /* MarkdownPreview — rendu HTML complet avec contrôle CSS total.
    Contrairement à ProseMark (WYSIWYM), tous les éléments sont de vrais éléments DOM :
-   h1/h2/h3, ol, ul, etc. — toutes les propriétés CSS s'appliquent normalement. */
+   h1/h2/h3, ol, ul, etc. — toutes les propriétés CSS s'appliquent normalement.
+   Les styles de contenu s'appliquent aussi en mode SlideDeck (.azp-slide__content). */
+
+/* ── Layout (Preview only) ──────────────────────────────────────────────── */
 
 .mdv-prose {
   max-width: 800px;
@@ -15,37 +18,41 @@
 /* ── Headings ────────────────────────────────────────────────────────────── */
 
 .mdv-prose h1,
+.azp-slide__content h1,
 .mdv-prose h2,
+.azp-slide__content h2,
 .mdv-prose h3,
-.mdv-prose h4 {
+.azp-slide__content h3,
+.mdv-prose h4,
+.azp-slide__content h4 {
   font-weight: 600;
   letter-spacing: -0.018em;
   line-height: 1.25;
 }
 
-.mdv-prose h1 { font-size: 2.1em; margin: 0 0 0.5em; }
-.mdv-prose h2 { font-size: 1.55em; margin: 2em 0 0.5em; }
-.mdv-prose h3 { font-size: 1.25em; margin: 1.6em 0 0.5em; }
-.mdv-prose h4 { font-size: 1em; margin: 1.4em 0 0.4em; }
+.mdv-prose h1, .azp-slide__content h1 { font-size: 2.1em; margin: 0 0 0.5em; }
+.mdv-prose h2, .azp-slide__content h2 { font-size: 1.55em; margin: 2em 0 0.5em; }
+.mdv-prose h3, .azp-slide__content h3 { font-size: 1.25em; margin: 1.6em 0 0.5em; }
+.mdv-prose h4, .azp-slide__content h4 { font-size: 1em; margin: 1.4em 0 0.4em; }
 
 /* ── Paragraphs and spacing ──────────────────────────────────────────────── */
 
-.mdv-prose p { margin: 0 0 1em; }
-.mdv-prose h2 + p,
-.mdv-prose h3 + p { margin-top: 0; }
+.mdv-prose p, .azp-slide__content p { margin: 0 0 1em; }
+.mdv-prose h2 + p, .azp-slide__content h2 + p,
+.mdv-prose h3 + p, .azp-slide__content h3 + p { margin-top: 0; }
 
 /* ── Links ───────────────────────────────────────────────────────────────── */
 
-.mdv-prose a {
+.mdv-prose a, .azp-slide__content a {
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
-.mdv-prose a:hover { border-bottom-color: var(--accent); }
+.mdv-prose a:hover, .azp-slide__content a:hover { border-bottom-color: var(--accent); }
 
 /* ── Inline code ─────────────────────────────────────────────────────────── */
 
-.mdv-prose code {
+.mdv-prose code, .azp-slide__content code {
   font-family: var(--font-prose-mono, var(--font-mono));
   font-size: 0.88em;
   background: var(--surface);
@@ -55,7 +62,7 @@
 
 /* ── Code blocks ─────────────────────────────────────────────────────────── */
 
-.mdv-prose pre {
+.mdv-prose pre, .azp-slide__content pre {
   font-family: var(--font-prose-mono, var(--font-mono));
   font-size: 13px;
   line-height: 1.55;
@@ -69,7 +76,7 @@
   margin: 0 0 1em;
 }
 
-.mdv-prose pre code {
+.mdv-prose pre code, .azp-slide__content pre code {
   background: transparent;
   padding: 0;
   font-size: inherit;
@@ -77,8 +84,8 @@
 }
 
 /* shiki inline colors — strip backgrounds for theme consistency */
-.mdv-prose .shiki,
-.mdv-prose .shiki span {
+.mdv-prose .shiki, .azp-slide__content .shiki,
+.mdv-prose .shiki span, .azp-slide__content .shiki span {
   background-color: transparent !important;
 }
 
@@ -116,7 +123,7 @@
 
 /* ── Blockquote ──────────────────────────────────────────────────────────── */
 
-.mdv-prose blockquote {
+.mdv-prose blockquote, .azp-slide__content blockquote {
   border-left: 3px solid var(--accent);
   padding-left: 16px;
   color: var(--muted);
@@ -126,22 +133,23 @@
 
 /* ── Lists ───────────────────────────────────────────────────────────────── */
 
-.mdv-prose ul,
-.mdv-prose ol { padding-left: 1.6em; margin: 0 0 1em; }
-.mdv-prose ul ul,
-.mdv-prose ol ol,
-.mdv-prose ul ol,
-.mdv-prose ol ul { padding-left: 1.4em; margin: 0.1em 0; }
-.mdv-prose li + li { margin-top: 0.25em; }
-.mdv-prose li li + li { margin-top: 0.1em; }
+.mdv-prose ul, .azp-slide__content ul,
+.mdv-prose ol, .azp-slide__content ol { padding-left: 1.6em; margin: 0 0 1em; }
+.mdv-prose ul ul, .azp-slide__content ul ul,
+.mdv-prose ol ol, .azp-slide__content ol ol,
+.mdv-prose ul ol, .azp-slide__content ul ol,
+.mdv-prose ol ul, .azp-slide__content ol ul { padding-left: 1.4em; margin: 0.1em 0; }
+.mdv-prose li + li, .azp-slide__content li + li { margin-top: 0.25em; }
+.mdv-prose li li + li, .azp-slide__content li li + li { margin-top: 0.1em; }
 
-.mdv-prose ul { list-style-type: disc; }
-.mdv-prose ul ul { list-style-type: circle; }
-.mdv-prose ul ul ul { list-style-type: square; }
+.mdv-prose ul, .azp-slide__content ul { list-style-type: disc; }
+.mdv-prose ul ul, .azp-slide__content ul ul { list-style-type: circle; }
+.mdv-prose ul ul ul, .azp-slide__content ul ul ul { list-style-type: square; }
 
 /* task-list checkboxes */
-.mdv-prose .task-list-item { list-style: none; margin-left: -1.6em; }
-.mdv-prose .task-list-item input[type="checkbox"] {
+.mdv-prose .task-list-item, .azp-slide__content .task-list-item { list-style: none; margin-left: -1.6em; }
+.mdv-prose .task-list-item input[type="checkbox"],
+.azp-slide__content .task-list-item input[type="checkbox"] {
   margin-right: 0.5em;
   accent-color: var(--accent);
   width: 0.9em;
@@ -152,27 +160,26 @@
 
 /* ── Table ───────────────────────────────────────────────────────────────── */
 
-.mdv-prose table {
+.mdv-prose table, .azp-slide__content table {
   border-collapse: collapse;
   font-size: 0.93em;
   margin: 0 0 1em;
   width: 100%;
 }
-.mdv-prose th,
-.mdv-prose td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-.mdv-prose th {
+.mdv-prose th, .azp-slide__content th,
+.mdv-prose td, .azp-slide__content td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.mdv-prose th, .azp-slide__content th {
   background: color-mix(in srgb, var(--surface) 60%, transparent);
   font-weight: 600;
 }
 
 /* ── Images ──────────────────────────────────────────────────────────────── */
 
-.mdv-prose img { max-width: 100%; height: auto; border-radius: 6px; }
+.mdv-prose img, .azp-slide__content img { max-width: 100%; height: auto; border-radius: 6px; }
 
 /* ── Math (MathJax) ──────────────────────────────────────────────────────── */
 
-/* Display math block — centered, with breathing room */
-.mdv-prose .math-block {
+.mdv-prose .math-block, .azp-slide__content .math-block {
   text-align: center;
   margin: 1.2em 0;
   overflow-x: auto;
@@ -180,21 +187,21 @@
 
 /* ── Horizontal rule ─────────────────────────────────────────────────────── */
 
-.mdv-prose hr { border: 0; border-top: 1px solid var(--border); margin: 1.8em 0; }
+.mdv-prose hr, .azp-slide__content hr { border: 0; border-top: 1px solid var(--border); margin: 1.8em 0; }
 
 /* ── Inline formatting ───────────────────────────────────────────────────── */
 
-.mdv-prose strong { font-weight: 600; }
-.mdv-prose em { font-style: italic; }
-.mdv-prose s,
-.mdv-prose del { text-decoration: line-through; text-decoration-thickness: 1.5px; opacity: 0.7; }
-.mdv-prose mark {
+.mdv-prose strong, .azp-slide__content strong { font-weight: 600; }
+.mdv-prose em, .azp-slide__content em { font-style: italic; }
+.mdv-prose s, .azp-slide__content s,
+.mdv-prose del, .azp-slide__content del { text-decoration: line-through; text-decoration-thickness: 1.5px; opacity: 0.7; }
+.mdv-prose mark, .azp-slide__content mark {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: inherit;
   padding: 1px 4px;
   border-radius: 3px;
 }
-.mdv-prose kbd {
+.mdv-prose kbd, .azp-slide__content kbd {
   font-family: var(--font-mono);
   font-size: 0.78em;
   padding: 2px 6px;
@@ -242,4 +249,198 @@
   margin: 0 0.3em;
 }
 
+/* ── Wikilinks ────────────────────────────────────────────────────────────── */
 
+.mdv-prose a.wikilink, .azp-slide__content a.wikilink {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.mdv-prose a.wikilink:hover, .azp-slide__content a.wikilink:hover {
+  border-bottom-color: var(--accent);
+}
+
+.mdv-prose a.hashtag, .azp-slide__content a.hashtag {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.mdv-prose a.hashtag:hover, .azp-slide__content a.hashtag:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* ── Callouts (Obsidian-style) ────────────────────────────────────────────── */
+
+.mdv-prose, .azp-slide__content {
+  counter-reset: callout-num callout-ex;
+}
+.mdv-prose .callout, .azp-slide__content .callout {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin: 0 0 1em;
+  overflow: hidden;
+}
+.mdv-prose .callout .callout-title, .azp-slide__content .callout .callout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  font-weight: 600;
+  font-size: 0.93em;
+  cursor: default;
+}
+.mdv-prose .callout .callout-title-icon,
+.azp-slide__content .callout .callout-title-icon {
+  display: flex;
+  align-items: center;
+}
+.mdv-prose .callout .callout-title-icon svg,
+.azp-slide__content .callout .callout-title-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.mdv-prose .callout .callout-title-inner,
+.azp-slide__content .callout .callout-title-inner { flex: 1; }
+.mdv-prose .callout .callout-content,
+.azp-slide__content .callout .callout-content {
+  padding: 8px 12px;
+}
+.mdv-prose .callout .callout-content > :first-child,
+.azp-slide__content .callout .callout-content > :first-child { margin-top: 0; }
+.mdv-prose .callout .callout-content > :last-child,
+.azp-slide__content .callout .callout-content > :last-child { margin-bottom: 0; }
+
+/* Callout type colors */
+.mdv-prose .callout[data-callout="note"],        .azp-slide__content .callout[data-callout="note"]        { border-left: 3px solid #6b9eeb; }
+.mdv-prose .callout[data-callout="tip"],         .azp-slide__content .callout[data-callout="tip"]         { border-left: 3px solid #72b886; }
+.mdv-prose .callout[data-callout="success"],     .azp-slide__content .callout[data-callout="success"]     { border-left: 3px solid #72b886; }
+.mdv-prose .callout[data-callout="warning"],     .azp-slide__content .callout[data-callout="warning"]     { border-left: 3px solid #e6a94c; }
+.mdv-prose .callout[data-callout="danger"],      .azp-slide__content .callout[data-callout="danger"]      { border-left: 3px solid #e06464; }
+.mdv-prose .callout[data-callout="bug"],         .azp-slide__content .callout[data-callout="bug"]         { border-left: 3px solid #e06464; }
+.mdv-prose .callout[data-callout="quote"],       .azp-slide__content .callout[data-callout="quote"]       { border-left: 3px solid var(--muted); }
+.mdv-prose .callout[data-callout="info"],        .azp-slide__content .callout[data-callout="info"]        { border-left: 3px solid #6b9eeb; }
+.mdv-prose .callout[data-callout="example"],     .azp-slide__content .callout[data-callout="example"]     { border-left: 3px solid #b496e6; }
+.mdv-prose .callout[data-callout="todo"],        .azp-slide__content .callout[data-callout="todo"]        { border-left: 3px solid #e6a94c; }
+
+/* Custom math/science callouts — label replaces icon */
+.mdv-prose .callout[data-callout="theorem"],     .azp-slide__content .callout[data-callout="theorem"]     { border-left: 3px solid #e6a94c; }
+.mdv-prose .callout[data-callout="proposition"], .azp-slide__content .callout[data-callout="proposition"] { border-left: 3px solid #e6a94c; }
+.mdv-prose .callout[data-callout="definition"],  .azp-slide__content .callout[data-callout="definition"]  { border-left: 3px solid #6b9eeb; }
+.mdv-prose .callout[data-callout="remark"],      .azp-slide__content .callout[data-callout="remark"]      { border-left: 3px solid #72b886; }
+.mdv-prose .callout[data-callout="exercise"],    .azp-slide__content .callout[data-callout="exercise"]    { border-left: 3px solid #e06464; }
+
+/* Counter increments */
+.mdv-prose .callout[data-callout="theorem"],     .azp-slide__content .callout[data-callout="theorem"],
+.mdv-prose .callout[data-callout="proposition"], .azp-slide__content .callout[data-callout="proposition"],
+.mdv-prose .callout[data-callout="definition"],  .azp-slide__content .callout[data-callout="definition"],
+.mdv-prose .callout[data-callout="remark"],      .azp-slide__content .callout[data-callout="remark"],
+.mdv-prose .callout[data-callout="example"],     .azp-slide__content .callout[data-callout="example"]    { counter-increment: callout-num; }
+
+.mdv-prose .callout[data-callout="exercise"],    .azp-slide__content .callout[data-callout="exercise"]   { counter-increment: callout-ex; }
+
+/* Number prefix in label */
+.callout-type-label {
+  font-size: 0.85em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+.mdv-prose .callout[data-callout="theorem"]     .callout-type-label::before,
+.azp-slide__content .callout[data-callout="theorem"]     .callout-type-label::before,
+.mdv-prose .callout[data-callout="proposition"] .callout-type-label::before,
+.azp-slide__content .callout[data-callout="proposition"] .callout-type-label::before,
+.mdv-prose .callout[data-callout="definition"]  .callout-type-label::before,
+.azp-slide__content .callout[data-callout="definition"]  .callout-type-label::before,
+.mdv-prose .callout[data-callout="remark"]      .callout-type-label::before,
+.azp-slide__content .callout[data-callout="remark"]      .callout-type-label::before,
+.mdv-prose .callout[data-callout="example"]     .callout-type-label::before,
+.azp-slide__content .callout[data-callout="example"]     .callout-type-label::before {
+  content: counter(callout-num) " ";
+}
+
+.mdv-prose .callout[data-callout="exercise"]    .callout-type-label::before,
+.azp-slide__content .callout[data-callout="exercise"]    .callout-type-label::before {
+  content: counter(callout-ex) " ";
+}
+
+.callout-diamond {
+  margin-right: 2px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.mdv-prose .callout[data-callout="theorem"]     .callout-diamond,
+.azp-slide__content .callout[data-callout="theorem"]     .callout-diamond { color: #e6a94c; }
+.mdv-prose .callout[data-callout="proposition"] .callout-diamond,
+.azp-slide__content .callout[data-callout="proposition"] .callout-diamond { color: #e6a94c; }
+.mdv-prose .callout[data-callout="definition"]  .callout-diamond,
+.azp-slide__content .callout[data-callout="definition"]  .callout-diamond { color: #6b9eeb; }
+.mdv-prose .callout[data-callout="remark"]      .callout-diamond,
+.azp-slide__content .callout[data-callout="remark"]      .callout-diamond { color: #72b886; }
+.mdv-prose .callout[data-callout="example"]     .callout-diamond,
+.azp-slide__content .callout[data-callout="example"]     .callout-diamond { color: #b496e6; }
+.mdv-prose .callout[data-callout="exercise"]    .callout-diamond,
+.azp-slide__content .callout[data-callout="exercise"]    .callout-diamond { color: #e06464; }
+
+/* Collapsible callouts */
+.mdv-prose details.callout > summary,
+.azp-slide__content details.callout > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+}
+.mdv-prose details.callout > summary::-webkit-details-marker,
+.azp-slide__content details.callout > summary::-webkit-details-marker { display: none; }
+.mdv-prose details.callout > summary::marker,
+.azp-slide__content details.callout > summary::marker { display: none; content: ""; }
+
+.mdv-prose .callout-chevron,
+.azp-slide__content .callout-chevron {
+  margin-left: auto;
+  transition: transform 150ms;
+}
+.mdv-prose details.callout[open] > summary .callout-chevron,
+.azp-slide__content details.callout[open] > summary .callout-chevron {
+  transform: rotate(90deg);
+}
+
+/* ── Footnotes ────────────────────────────────────────────────────────────── */
+
+.mdv-prose .footnote-ref a, .azp-slide__content .footnote-ref a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.85em;
+}
+.mdv-prose .footnote-ref a:hover, .azp-slide__content .footnote-ref a:hover { text-decoration: underline; }
+
+.mdv-prose .footnotes, .azp-slide__content .footnotes {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+  color: var(--muted);
+}
+.mdv-prose .footnotes-list, .azp-slide__content .footnotes-list { padding-left: 1.6em; }
+.mdv-prose .footnote-item, .azp-slide__content .footnote-item { margin-bottom: 0.4em; }
+.mdv-prose .footnote-backref, .azp-slide__content .footnote-backref {
+  color: var(--accent);
+  text-decoration: none;
+  margin-left: 4px;
+}
+.mdv-prose .footnote-backref:hover, .azp-slide__content .footnote-backref:hover { text-decoration: underline; }
+
+/* ── Transclusion placeholders ────────────────────────────────────────────── */
+
+.mdv-prose .transclusion-placeholder, .azp-slide__content .transclusion-placeholder {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.9em;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  border-radius: 3px;
+}

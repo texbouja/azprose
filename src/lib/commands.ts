@@ -23,7 +23,7 @@ import { basename, dirname } from "./files";
 import { setThemeMode, setTransparency, THEME_CHOICES, THEME_HINTS, type ThemeMode } from "./theme";
 import type { Translate } from "./i18n";
 
-export type CommandCategory = "recent" | "file" | "view" | "edit" | "share" | "theme" | "help";
+export type CommandCategory = "recent" | "file" | "view" | "edit" | "share" | "theme" | "help" | "notes";
 
 export type Command = {
   id: string;
@@ -57,6 +57,13 @@ export type CommandActions = {
 
   toggleFavorite: () => void;
   currentFilePath: string | null;
+
+  // oxide: daily note commands
+  oxidToday: () => void;
+  oxidYesterday: () => void;
+  oxidTomorrow: () => void;
+  oxidJump: () => void;
+  isMdActive: boolean;
 };
 
 const THEME_ICONS: Record<string, IconData> = {
@@ -87,6 +94,7 @@ export const CATEGORY_ORDER: CommandCategory[] = [
   "file",
   "view",
   "edit",
+  "notes",
   "share",
   "theme",
   "help",
@@ -269,6 +277,43 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       category: "help",
       keywords: ["about", "version", "license", "github"],
       action: actions.showAbout,
+    },
+    // ── Daily note commands (markdown-oxide) ───────────────────
+    {
+      id: "oxid-today",
+      label: "Open today's daily note",
+      hint: "markdown-oxide",
+      icon: Sun,
+      category: "notes",
+      keywords: ["daily", "note", "today", "journal", "diary"],
+      action: actions.oxidToday,
+    },
+    {
+      id: "oxid-yesterday",
+      label: "Open yesterday's daily note",
+      hint: "markdown-oxide",
+      icon: Sun,
+      category: "notes",
+      keywords: ["daily", "note", "yesterday", "journal"],
+      action: actions.oxidYesterday,
+    },
+    {
+      id: "oxid-tomorrow",
+      label: "Open tomorrow's daily note",
+      hint: "markdown-oxide",
+      icon: Sun,
+      category: "notes",
+      keywords: ["daily", "note", "tomorrow", "journal"],
+      action: actions.oxidTomorrow,
+    },
+    {
+      id: "oxid-jump",
+      label: "Jump to daily note…",
+      hint: "markdown-oxide",
+      icon: Sparkles,
+      category: "notes",
+      keywords: ["daily", "note", "jump", "date", "calendar", "navigate"],
+      action: actions.oxidJump,
     },
   ];
 }

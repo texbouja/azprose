@@ -10,6 +10,7 @@
 @import "./styles/markdown/prose.css";
 
 @import "./styles/editor/tabs.css";
+@import "./styles/editor/search.css";
 @import "./styles/files/sidebar.css";
 @import "./styles/overlays/overlay.css";
 @import "./styles/overlays/palette.css";

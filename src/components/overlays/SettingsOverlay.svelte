@@ -13,7 +13,7 @@ import {
 } from "@/stores/prose-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
-import { slideSettings, SLIDE_THEMES, SLIDE_MODES, type SlideTheme } from "@/components/markdown/slide-settings.svelte";
+import { slideSettings, SLIDE_MODES } from "@/components/markdown/slide-settings.svelte";
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { restartApp } from "@/lib/restart";
 
@@ -554,19 +554,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           {/if}
 
           {#if activeModule === "presentation"}
-            <p class="mdv-settings__section-title">{t("settings.defaultTheme")}</p>
-            <div class="mdv-settings__radio-group">
-              {#each SLIDE_THEMES as th (th.id)}
-                <label class="mdv-settings__radio">
-                  <input type="radio" name="slide-theme"
-                    value={th.id}
-                    checked={slideSettings.theme === th.id}
-                    onchange={() => { slideSettings.theme = th.id as SlideTheme; }} />
-                  {th.label}
-                </label>
-              {/each}
-            </div>
-
             <p class="mdv-settings__section-title">{t("settings.defaultMode")}</p>
             <div class="mdv-settings__radio-group">
               {#each SLIDE_MODES as m (m.id)}

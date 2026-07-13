@@ -1,0 +1,53 @@
+/* CM6 search / find-replace panel — overrides baseTheme via plain CSS */
+.mdv-editor .cm-panel.cm-search {
+  background: var(--surface);
+  color: var(--fg);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  padding: 4px 8px;
+}
+
+.mdv-editor .cm-panel.cm-search .cm-textfield {
+  background: color-mix(in srgb, var(--fg) 5%, var(--surface));
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--writing-font-size);
+  outline: none;
+}
+
+.mdv-editor .cm-panel.cm-search .cm-textfield:focus {
+  border-color: var(--accent);
+}
+
+.mdv-editor .cm-panel.cm-search .cm-button {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.mdv-editor .cm-panel.cm-search .cm-button:hover {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.mdv-editor .cm-panel.cm-search label {
+  font-size: 0.85em;
+  color: var(--muted);
+  margin: 0 4px;
+}
+
+.mdv-editor .cm-panel.cm-search .cm-searchMatch {
+  background: color-mix(in srgb, var(--color-warning, #f9e2af) 35%, transparent);
+  border-radius: 2px;
+}
+
+.mdv-editor .cm-panel.cm-search .cm-searchMatch.cm-searchMatch-selected {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}

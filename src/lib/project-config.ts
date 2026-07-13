@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { joinPath } from "./files";
 import type { ProseStyle } from "@/stores/prose-settings.svelte";
-import type { SlideTheme, SlideMode } from "@/components/markdown/slide-settings.svelte";
+import type { SlideMode } from "@/components/markdown/slide-settings.svelte";
 import type { DefaultEditorMode } from "@/stores/general-settings.svelte";
 import type { WritingFontSize, WritingLineHeight } from "./writing-display";
 import type { TypographySettings } from "./typography";
@@ -9,7 +9,6 @@ import type { ThemeMode } from "./theme";
 
 export interface ProjectConfig {
   proseStyle?: ProseStyle | null;
-  slideTheme?: SlideTheme | null;
   slideMode?: SlideMode | null;
   defaultEditorMode?: DefaultEditorMode | null;
   // Deprecated (superseded by `typography`) — kept so old configs don't warn.
@@ -24,7 +23,6 @@ export interface ProjectConfig {
 
 const CONFIG_SCHEMA: Record<string, string> = {
   proseStyle: "string",
-  slideTheme: "string",
   slideMode: "string",
   defaultEditorMode: "string",
   writingFontSize: "string",

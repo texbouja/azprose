@@ -6,11 +6,17 @@ import {
   resolveLocalImages,
   decorateCodeBlocks,
   ensurePreviewReady,
+  markTranscludedBlocks,
+  makeCalloutsCollapsible,
 } from "@/lib/markdown-render";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { proseSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type ProseStyle } from "@/stores/prose-settings.svelte";
+import { resolveWikilinkPaths } from "@/lib/markdown-it-wikilinks";
+import { getRootPath } from "@/stores/root-path.svelte";
+import { consumeScrollTarget } from "@/stores/scroll-target.svelte";
+import { consumeSyncLine } from "@/stores/sync-line.svelte";
 
 let {
   value = "",
@@ -22,7 +28,7 @@ let {
   onJumpToLine?: (line: number) => void;
 } = $props();
 
-let articleEl: HTMLElement;
+let articleEl: HTMLElement | undefined = $state();
 let ready = $state(false);
 
 function buildPreviewProseCss(s: ProseStyle): string {
@@ -92,15 +98,49 @@ $effect(() => {
   let cancelled = false;
   let cleanupCode = () => {};
 
-  void renderMarkdown(src, theme).then(async (html) => {
+  void renderMarkdown(src, theme, filePath ?? undefined, getRootPath() ?? undefined).then(async (result) => {
     if (cancelled || !articleEl) return;
-    articleEl.innerHTML = html;
+
+    // Process callouts immediately before first paint
+    const tmp = document.createElement("div");
+    tmp.innerHTML = result.html;
+    for (const el of tmp.querySelectorAll<HTMLElement>(".callout")) {
+      if (!el.hasAttribute("data-callout-title")) {
+        const inner = el.querySelector<HTMLElement>(".callout-title-inner");
+        if (inner) inner.textContent = "";
+      }
+    }
+    makeCalloutsCollapsible(tmp);
+    articleEl.innerHTML = tmp.innerHTML;
 
     cleanupCode();
     cleanupCode = decorateCodeBlocks(articleEl);
     const broken = filePath ? await resolveLocalImages(articleEl, filePath) : [];
     await typesetMath(articleEl);
+    const rp = getRootPath();
+    if (rp) await resolveWikilinkPaths(articleEl, rp);
     if (!cancelled) collectRenderDiagnostics(articleEl, broken);
+
+    // Mark transcluded blocks so double-click opens the original source file
+    markTranscludedBlocks(articleEl, result.ranges);
+
+    // Scroll to heading if navigated via wikilink
+    const scrollHeading = consumeScrollTarget();
+    if (scrollHeading && articleEl) {
+      const id = scrollHeading.toLowerCase()
+        .replace(/[^\p{L}\p{N}\s-]/gu, "")
+        .replace(/ /g, "-")
+        .replace(/^-|-$/g, "");
+      const target = articleEl.querySelector(`#${CSS.escape(id)}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // Scroll to editor cursor position after save
+    const syncLine = consumeSyncLine();
+    if (syncLine != null && articleEl) {
+      const target = articleEl.querySelector<HTMLElement>(`[data-sline="${syncLine}"]`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   });
 
   return () => {
@@ -118,6 +158,25 @@ $effect(() => {
     if (!a) return;
     const href = a.getAttribute("href");
     if (!href) return;
+
+    // Wikilink with resolved full path: open directly
+    if (a.classList.contains("wikilink")) {
+      const fullpath = a.getAttribute("data-wikilink-fullpath");
+      const heading = a.getAttribute("data-wikilink-heading");
+      if (fullpath) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading } }));
+        return;
+      }
+      // Fallback: dispatch with target name for app.svelte resolution
+      const target = a.getAttribute("data-wikilink-target");
+      if (target) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading } }));
+      }
+      return;
+    }
+
     if (href.startsWith("#")) {
       e.preventDefault();
       const id = decodeURIComponent(href.slice(1));
@@ -145,6 +204,19 @@ $effect(() => {
     bind:this={articleEl}
     class="mdv-prose"
     ondblclick={(e) => {
+      // Transcluded block: open the original source file at the source line
+      const transcluded = (e.target as HTMLElement).closest<HTMLElement>("[data-transcluded-from]");
+      if (transcluded) {
+        const path = transcluded.dataset.transcludedFrom;
+        const line = Number(transcluded.dataset.transcludedLine);
+        if (path) {
+          window.dispatchEvent(new CustomEvent("azprose:jump-to-file", {
+            detail: { path, line: Number.isFinite(line) ? line : undefined },
+          }));
+        }
+        return;
+      }
+      // Normal inverse search: jump to line in current file
       const block = (e.target as HTMLElement).closest<HTMLElement>("[data-sline]");
       if (!block) return;
       const line = Number(block.dataset.sline);

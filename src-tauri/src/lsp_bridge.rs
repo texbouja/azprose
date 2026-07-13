@@ -10,6 +10,33 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
+/// Find the end of an LSP Content-Length header (double CRLF or double LF).
+/// Returns the byte position *after* the double CRLF/LF, or None.
+fn find_header_end(buf: &[u8]) -> Option<usize> {
+    // Look for \r\n\r\n first, then \n\n.
+    for i in 0..buf.len().saturating_sub(3) {
+        if &buf[i..i + 4] == b"\r\n\r\n" {
+            return Some(i + 4);
+        }
+    }
+    for i in 0..buf.len().saturating_sub(1) {
+        if &buf[i..i + 2] == b"\n\n" {
+            return Some(i + 2);
+        }
+    }
+    None
+}
+
+/// Parse the Content-Length value from an LSP header string.
+fn parse_content_length(header: &str) -> Option<usize> {
+    for line in header.lines() {
+        if let Some(val) = line.strip_prefix("Content-Length:") {
+            return val.trim().parse::<usize>().ok();
+        }
+    }
+    None
+}
+
 pub struct LspBridgeState {
     sessions: Mutex<HashMap<String, LspSession>>,
 }
@@ -58,17 +85,53 @@ pub fn lsp_spawn(
     let mut stdout = child.stdout.take().ok_or("no stdout")?;
     let stderr = child.stderr.take().ok_or("no stderr")?;
 
-    // stdout reader thread — raw bytes (LSP uses Content-Length framing, not newlines)
+    // stdout reader thread — parse Content-Length framing and emit complete messages.
+    // LSP Content-Length counts *bytes*, not characters. The JS side uses
+    // string.slice which counts characters, so non-ASCII JSON would be
+    // extracted incorrectly. We parse the framing here in Rust to avoid that.
     let app_out = app.clone();
     let id_out = id.clone();
     std::thread::spawn(move || {
-        let mut buf = [0u8; 8192];
+        let mut raw_buf: Vec<u8> = Vec::with_capacity(8192);
+        let mut tmp = [0u8; 8192];
         loop {
-            match stdout.read(&mut buf) {
+            match stdout.read(&mut tmp) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = app_out.emit("lsp://output", LspOutput { id: id_out.clone(), data: chunk });
+                    raw_buf.extend_from_slice(&tmp[..n]);
+                    // Try to extract complete LSP messages from the buffer.
+                    loop {
+                        // Look for "Content-Length: N\r\n\r\n" in the raw bytes.
+                        // We search for the double CRLF that ends the header.
+                        let header_end = find_header_end(&raw_buf);
+                        let Some(header_end_pos) = header_end else { break };
+
+                        // Parse the Content-Length value from the header bytes.
+                        let header_str = String::from_utf8_lossy(&raw_buf[..header_end_pos]);
+                        let content_length = match parse_content_length(&header_str) {
+                            Some(v) => v,
+                            None => {
+                                // Malformed header — skip to next double-CRLF or clear.
+                                raw_buf.drain(..header_end_pos);
+                                break;
+                            }
+                        };
+
+                        // Check if we have the full body.
+                        let body_start = header_end_pos;
+                        let body_end = body_start + content_length;
+                        if raw_buf.len() < body_end {
+                            break; // Wait for more data.
+                        }
+
+                        // Extract the JSON body (valid UTF-8 from LSP server).
+                        let body = raw_buf[body_start..body_end].to_vec();
+                        raw_buf.drain(..body_end);
+
+                        // Convert body to string and emit as complete message.
+                        let msg = String::from_utf8_lossy(&body).to_string();
+                        let _ = app_out.emit("lsp://output", LspOutput { id: id_out.clone(), data: msg });
+                    }
                 }
             }
         }

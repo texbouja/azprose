@@ -33,6 +33,7 @@
         { "path": "**/.agent/**" },
         { "path": "**/.azprose" },
         { "path": "**/.azprose/**" },
+        { "path": "**/.moxide.toml" },
         { "path": "**/.claude" },
         { "path": "**/.claude/**" },
         { "path": "**/.codex" },

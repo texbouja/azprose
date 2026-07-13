@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { renderMarkdown, resolveLocalImages, ensurePreviewReady } from "@/lib/markdown-render";
+import { renderMarkdown, resolveLocalImages, ensurePreviewReady, makeCalloutsCollapsible } from "@/lib/markdown-render";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { subscribeMode, type Theme } from "@/lib/theme";
 
@@ -78,9 +78,20 @@ $effect(() => {
   const theme = appTheme;
   let cancelled = false;
 
-  void Promise.all(currentPages.map((t) => renderMarkdown(t, theme))).then(async (html) => {
+  void Promise.all(currentPages.map((t) => renderMarkdown(t, theme))).then(async (results) => {
     if (cancelled) return;
-    slidesHtml = html;
+    slidesHtml = results.map(r => {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = r.html;
+      for (const el of tmp.querySelectorAll<HTMLElement>(".callout")) {
+        if (!el.hasAttribute("data-callout-title")) {
+          const inner = el.querySelector<HTMLElement>(".callout-title-inner");
+          if (inner) inner.textContent = "";
+        }
+      }
+      makeCalloutsCollapsible(tmp);
+      return tmp.innerHTML;
+    });
     await Promise.resolve();
     if (!cancelled && stageEl) {
       await hydrate(stageEl);
@@ -181,7 +192,7 @@ function onKeyDown(e: KeyboardEvent) {
     {:else}
       {#each slidesHtml as html, i (i)}
         <section
-          class="azp-slide azp-slide--{slideSession.theme}"
+          class="azp-slide"
           hidden={i !== current}
         >
           <div class="azp-slide__content">

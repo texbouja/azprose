@@ -58,13 +58,19 @@ import ImageViewer from "@/components/image/ImageViewer.svelte";
 import { slideSettings } from "@/components/markdown/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
-import { readMarkdown, writeMarkdown } from "@/lib/files";
+import { ensureMoxideConfig, executeOxideCommand, resolveWikilink } from "@/lib/lsp/markdown-oxide";
+import { readMarkdown, writeMarkdown, pathExists, walkSupportedTextFiles } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { folderRelation } from "@/lib/paths";
 import { saveSession, loadSession, saveDraft, loadDraft, clearDraft, setSessionScope, saveLastFile, loadLastFile, saveGuests, loadGuests } from "@/lib/session";
 import { loadProjectSession, saveProjectSession, type PortableSession } from "@/lib/project-session";
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { proseSettings, DEFAULT_PROSE_STYLE } from "@/stores/prose-settings.svelte";
+import { setRootPath } from "@/stores/root-path.svelte";
+import { setScrollTarget } from "@/stores/scroll-target.svelte";
+import { setSyncLine } from "@/stores/sync-line.svelte";
+import { getCursorLine } from "@/stores/cursor-line.svelte";
+import { navPush, navBack, navForward, navPushForward, navHistory, setNavActions } from "@/stores/nav-history.svelte";
 import {
   createLatexState,
   handleLatexBuild, handleLatexViewer,
@@ -119,6 +125,16 @@ let updateInstalling = $state(false);
 let updateUpToDate = $state(false);
 
 let rootPath = $state<string | null>(projectRoot);
+
+// Keep session scope (and getProjectRoot()) in sync with rootPath changes
+// so LSP servers can access the project root without prop drilling.
+$effect(() => { setSessionScope(rootPath); });
+
+// Keep the rootPath store in sync for preview components (wikilink resolution).
+$effect(() => { setRootPath(rootPath); });
+
+// Ensure .moxide.toml exists at project root before markdown-oxide spawns.
+$effect(() => { if (rootPath) void ensureMoxideConfig(rootPath); });
 
 let pm = new PanelManager({
   onSessionChange: (data) => {
@@ -184,6 +200,7 @@ const logLines = $derived.by(() => {
   const ext = activePath ? extFromPath(activePath) : "";
   if (ext === "typ") return logStore.get("typst");
   if (ext === "tex") return logStore.get("latex");
+  if (ext === "md") return logStore.get("markdown");
   return [];
 });
 let consoleTab = $state<"diagnostics" | "terminal" | "log">("diagnostics");
@@ -194,6 +211,7 @@ $effect(() => { if (consoleOpen) consoleMounted = true; });
 let proseWarmupDone = false;
 
 let saveStatus = $state<"idle" | "dirty" | "saving" | "saved">("idle");
+let cursorLine = $state<number | null>(null);
 
 let projectConfig = $state<ProjectConfig>({});
 let configRoot = $state<string | null>(null);
@@ -224,7 +242,6 @@ async function doConfigSync() {
   const ps = proseSettings.current;
   const cfg: ProjectConfig = {};
   if (ps !== DEFAULT_PROSE_STYLE) cfg.proseStyle = ps;
-  if (slideSettings.theme !== "default") cfg.slideTheme = slideSettings.theme;
   if (slideSettings.mode !== "16:9") cfg.slideMode = slideSettings.mode;
   if (generalSettings.defaultEditorMode !== "prose") cfg.defaultEditorMode = generalSettings.defaultEditorMode;
   if (JSON.stringify(typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) cfg.typography = typo;
@@ -249,7 +266,6 @@ async function loadConfig(root: string) {
   const { config: cfg, warnings } = await loadProjectConfig(root);
   projectConfig = cfg;
   if (cfg.proseStyle) proseSettings.patch(cfg.proseStyle);
-  if (cfg.slideTheme) slideSettings.theme = cfg.slideTheme;
   if (cfg.slideMode) slideSettings.mode = cfg.slideMode;
   if (cfg.defaultEditorMode != null) generalSettings.defaultEditorMode = cfg.defaultEditorMode;
   if (cfg.typography != null) typography.current = { ...DEFAULT_TYPOGRAPHY, ...cfg.typography };
@@ -426,6 +442,74 @@ onMount(() => {
   // — LaTeX build log streaming —
   const unlistenLatex = setupLatexLogListener();
 
+  // — markdown-oxide server requests (window/showDocument → open file) —
+  let unlistenOxide: (() => void) | undefined;
+  listen<{ path: string }>("azprose:oxide-show-document", (ev) => {
+    const p = ev.payload.path;
+    if (p) openFileInTab(p, { silent: true }).catch(() => {});
+  }).then((un) => { unlistenOxide = un; });
+
+  // — wikilink navigation from preview —
+  const onWikilinkNavigate = (e: Event) => {
+    const detail = (e as CustomEvent).detail as { path?: string; target?: string; heading?: string | null };
+    const heading = detail.heading ?? null;
+
+    const resolve = (path: string) => {
+      if (sideActivePath) navPush(sideActivePath);
+      if (heading) setScrollTarget(heading);
+      sideVisible = true;
+      pm.openInSide(path).catch((err) => console.error("[azprose] wikilink open failed", err));
+    };
+    // Direct path (resolved at render time) — open in side panel preview
+    if (detail.path) {
+      resolve(detail.path);
+      return;
+    }
+    // Fallback: resolve target name → file path via LSP / vault walk
+    const target = detail.target;
+    if (!target) return;
+
+    void (async () => {
+      const currentPath = activePath;
+      const sourceText = source;
+      if (currentPath && extFromPath(currentPath) === "md") {
+        const resolved = await resolveWikilink(currentPath, sourceText, target);
+        if (resolved) {
+          resolve(resolved);
+          return;
+        }
+      }
+      // Vault-wide fallback
+      const root = rootPath;
+      if (!root) return;
+      const files = await walkSupportedTextFiles(root);
+      const match = files.find((f) => {
+        const dot = f.name.lastIndexOf(".");
+        const base = dot > 0 ? f.name.slice(0, dot) : f.name;
+        return base === target;
+      });
+      if (match) resolve(match.path);
+    })();
+  };
+  window.addEventListener("azprose:wikilink-navigate", onWikilinkNavigate);
+
+  // — preview navigation history (back / forward) —
+  const navGoBack = () => {
+    if (!sideActivePath) return;
+    const prev = navBack();
+    if (!prev) return;
+    navPushForward(sideActivePath);
+    pm.openInSide(prev, { preview: true }).catch(() => {});
+  };
+  const navGoForward = () => {
+    if (!sideActivePath) return;
+    const next = navForward();
+    if (!next) return;
+    navPush(sideActivePath);
+    pm.openInSide(next, { preview: true }).catch(() => {});
+  };
+  setNavActions({ goBack: navGoBack, goForward: navGoForward });
+
   return () => {
     clearTimeout(splashSafety);
     window.removeEventListener("blur", onBlur);
@@ -436,6 +520,8 @@ onMount(() => {
     window.removeEventListener("beforeunload", onConfigFlush);
     document.removeEventListener("visibilitychange", onConfigVisibility);
     unlistenLatex();
+    unlistenOxide?.();
+    window.removeEventListener("azprose:wikilink-navigate", onWikilinkNavigate);
   };
 });
 
@@ -526,6 +612,27 @@ $effect(() => {
   return () => window.removeEventListener("azprose:jump-to-line", onJump);
 });
 
+$effect(() => {
+  const onJumpFile = async (e: Event) => {
+    const { path, line } = (e as CustomEvent<{ path: string; line?: number }>).detail;
+    if (!path) return;
+    // Normalize path (same as handleInverseSync)
+    const normFile = path.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
+    const found = pm.findTabByPath(normFile);
+    if (found && found.panel === "main") {
+      pm.main.select(found.tab.id);
+    } else {
+      await pm.openInMain(normFile, { silent: true, preview: true });
+    }
+    if (line != null) {
+      jumpToLine = line;
+      handleSetEditorMode("raw");
+    }
+  };
+  window.addEventListener("azprose:jump-to-file", onJumpFile);
+  return () => window.removeEventListener("azprose:jump-to-file", onJumpFile);
+});
+
 async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" | "typst" }) {
   if (!isOpenablePath(path)) {
     if (!opts?.silent) {
@@ -591,6 +698,20 @@ const handleSave = async () => {
     saveStatus = "saved";
     clearDraft(activePath);
     void trackMtime(activePath);
+    // Push saved content to side panel preview
+    if (extFromPath(activePath) === "md" || extFromPath(activePath) === "typ") {
+      const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+      const normActive = norm(activePath);
+      const sideTab = pm.side.tabs.find(t => norm(t.path) === normActive);
+      if (sideTab) {
+        // Sync preview scroll to editor cursor position after re-render
+        const cl = getCursorLine();
+        if (cl != null) setSyncLine(cl - 1);
+        const content = pm.main.activeTab?.source ?? "";
+        pm.side.setTabSource(sideTab.id, content);
+        _panelVersion++;
+      }
+    }
     autoBuildIfDepChanged(ls, activePath, onLatexBuild);
   } catch (err) {
     console.error("azprose: save failed", err);
@@ -1162,6 +1283,7 @@ const handleSetEditorMode = (mode: EditorMode) => {
         if (tab) pm.side.setRenderMode(tab.id, "preview");
         sideVisible = true;
         pm.sideVisible = true;
+        _panelVersion++;
       }
       break;
     }
@@ -1180,6 +1302,7 @@ const handleSetEditorMode = (mode: EditorMode) => {
         if (tab) pm.side.setRenderMode(tab.id, "presentation");
         sideVisible = true;
         pm.sideVisible = true;
+        _panelVersion++;
       }
       break;
     }
@@ -1200,8 +1323,8 @@ const handleToggleConsole = () => {
     consoleOpen = false;
     return;
   }
-  // Diagnostics only make sense on a .typ or .tex; otherwise open straight to the terminal.
-  if (!activePath || (extFromPath(activePath) !== "typ" && extFromPath(activePath) !== "tex")) consoleTab = "terminal";
+  // Diagnostics only make sense on a .typ, .tex or .md; otherwise open straight to the terminal.
+  if (!activePath || (extFromPath(activePath) !== "typ" && extFromPath(activePath) !== "tex" && extFromPath(activePath) !== "md")) consoleTab = "terminal";
   consoleOpen = true;
 };
 
@@ -1313,6 +1436,12 @@ let cmds = $derived(
     sidebarOpen: sidebarOpen.current,
     toggleFavorite: () => { if (activePath) fo.toggleFavorite(activePath); },
     currentFilePath: activePath,
+    // oxide: daily note commands
+    oxidToday: () => executeOxideCommand("today"),
+    oxidYesterday: () => executeOxideCommand("yesterday"),
+    oxidTomorrow: () => executeOxideCommand("tomorrow"),
+    oxidJump: () => executeOxideCommand("jump"),
+    isMdActive: activePath != null && extFromPath(activePath) === "md",
   }, t),
 );
 </script>
@@ -1391,12 +1520,6 @@ let cmds = $derived(
           onSplitRatioChange={(v) => { pm.splitRatio = v; splitRatio = v; }}
           onSourceChange={(next) => {
             pm.main.setSource(next);
-            if (activePath && extFromPath(activePath) === "typ") {
-              const found = pm.findTabByPath(activePath);
-              if (found && found.panel === "side") {
-                pm.side.setTabSource(found.tab.id, next);
-              }
-            }
             _panelVersion++;
           }}
           onSideSourceChange={(next) => { pm.side.setSource(next); _panelVersion++; }}

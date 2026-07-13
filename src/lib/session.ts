@@ -16,10 +16,17 @@ const GUESTS_KEY = "azp:guests";
 
 // Per-project scope appended to every key. Empty = no project (global fallback).
 let scope = "";
+let _projectRoot: string | null = null;
 
 /** Set the project scope for all session keys. Call once at boot, before load*(). */
 export function setSessionScope(root: string | null): void {
   scope = root ? "::" + root : "";
+  _projectRoot = root;
+}
+
+/** Return the current project root path, or null if no project is open. */
+export function getProjectRoot(): string | null {
+  return _projectRoot;
 }
 
 function draftKey(path: string): string {

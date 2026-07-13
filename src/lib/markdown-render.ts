@@ -2,9 +2,14 @@ import MarkdownIt from "markdown-it";
 import type { RenderRule } from "markdown-it/lib/renderer.mjs";
 import mark from "markdown-it-mark";
 import taskLists from "markdown-it-task-lists";
+import callouts from "markdown-it-obsidian-callouts";
+import footnote from "markdown-it-footnote";
 import { createHighlighter, type Highlighter } from "shiki";
 import { readFile } from "@tauri-apps/plugin-fs";
 import type { Theme } from "./theme";
+import { wikilinkPlugin } from "./markdown-it-wikilinks";
+import { resolveTransclusions, type TransclusionRange } from "./markdown-transclusion";
+import { ChevronRight as CHEVRON_ICON, Diamond as DIAMOND_ICON } from "./icons";
 
 const THEMES: Record<string, string> = {
   latte: "catppuccin-latte",
@@ -150,6 +155,18 @@ const md = new MarkdownIt({
 md.use(taskLists, { enabled: false, label: true });
 md.use(mark);
 md.use(mathPlugin);
+md.use(wikilinkPlugin);
+md.use(callouts, {
+  icons: {
+    theorem:    '<span class="callout-type-label">Théorème</span>',
+    proposition:'<span class="callout-type-label">Proposition</span>',
+    definition: '<span class="callout-type-label">Définition</span>',
+    remark:     '<span class="callout-type-label">Remarque</span>',
+    example:    '<span class="callout-type-label">Exemple</span>',
+    exercise:   '<span class="callout-type-label">Exercice</span>',
+  },
+});
+md.use(footnote);
 
 // Stamp block tokens with source line range for potential editor↔preview sync.
 md.core.ruler.push("source_lines", (state) => {
@@ -225,12 +242,25 @@ function renderFrontMatterHeader(meta: Record<string, string>): string {
   return html;
 }
 
+export interface RenderResult {
+  html: string;
+  ranges: TransclusionRange[];
+}
+
 export async function renderMarkdown(
   src: string,
   theme: Theme,
-): Promise<string> {
+  filePath?: string,
+  rootPath?: string,
+): Promise<RenderResult> {
   const { meta, body } = parseFrontMatter(src);
-  const content = body;
+  let content = body;
+  const ranges: TransclusionRange[] = [];
+
+  // Resolve ![[file]] transclusions before markdown-it rendering
+  if (filePath) {
+    content = await resolveTransclusions(content, filePath, 0, new Set(), rootPath, ranges);
+  }
 
   const h = await getHighlighter();
   const shikiTheme = THEMES[theme] ?? theme;
@@ -242,7 +272,8 @@ export async function renderMarkdown(
     activeShikiTheme = "github-light";
   }
   await ensureLangsLoaded(h, extractLangs(content));
-  return renderFrontMatterHeader(meta) + md.render(content);
+  const html = renderFrontMatterHeader(meta) + md.render(content);
+  return { html, ranges };
 }
 
 // ── Post-render DOM helpers ────────────────────────────────────────────────
@@ -293,6 +324,28 @@ export async function resolveLocalImages(article: HTMLElement, filePath: string)
   return broken;
 }
 
+/**
+ * Post-render: walk elements with data-sline and check if they fall within
+ * a transclusion range. If so, replace data-sline/data-eline with
+ * data-transcluded-from + data-transcluded-line so double-click opens the
+ * original source file at the correct line.
+ */
+export function markTranscludedBlocks(article: HTMLElement, ranges: TransclusionRange[]): void {
+  if (ranges.length === 0) return;
+  const els = article.querySelectorAll<HTMLElement>("[data-sline]");
+  for (const el of els) {
+    const line = Number(el.dataset.sline);
+    if (!Number.isFinite(line)) continue;
+    const range = ranges.find(r => line >= r.startLine && line < r.endLine);
+    if (range) {
+      el.removeAttribute("data-sline");
+      el.removeAttribute("data-eline");
+      el.setAttribute("data-transcluded-from", range.filePath);
+      el.setAttribute("data-transcluded-line", String(line - range.startLine));
+    }
+  }
+}
+
 const COPY_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 const CHECK_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
 
@@ -323,4 +376,68 @@ export function decorateCodeBlocks(root: HTMLElement): () => void {
     cleanups.push(() => btn.removeEventListener("click", onClick));
   });
   return () => cleanups.forEach((fn) => fn());
+}
+
+/**
+ * Post-render: convert all <div class="callout"> to <details>/<summary>
+ * so every callout is collapsible with a chevron on the right.
+ * Already-collapsible callouts (<details>) are left untouched.
+ */
+export function makeCalloutsCollapsible(article: HTMLElement): void {
+  const divs = article.querySelectorAll<HTMLDivElement>("div.callout");
+  for (const div of divs) {
+    const title = div.querySelector<HTMLElement>(":scope > .callout-title");
+    const content = div.querySelector<HTMLElement>(":scope > .callout-content");
+    if (!title || !content) continue;
+
+    const details = document.createElement("details");
+    details.className = div.className;
+    for (const attr of div.attributes) {
+      details.setAttribute(attr.name, attr.value);
+    }
+    details.open = true;
+
+    const summary = document.createElement("summary");
+    summary.className = title.className;
+    for (const child of Array.from(title.childNodes)) {
+      summary.appendChild(child);
+    }
+
+    // Insert diamond separator before .callout-type-label
+    const iconWrap = summary.querySelector<HTMLElement>(".callout-title-icon");
+    const label = iconWrap?.querySelector<HTMLElement>(".callout-type-label");
+    if (iconWrap && label) {
+      const diamond = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      diamond.setAttribute("class", "callout-diamond");
+      diamond.setAttribute("width", "0.55em");
+      diamond.setAttribute("height", "0.55em");
+      diamond.setAttribute("viewBox", "0 0 24 24");
+      diamond.setAttribute("fill", "none");
+      diamond.setAttribute("stroke", "currentColor");
+      diamond.setAttribute("stroke-width", "2");
+      diamond.setAttribute("stroke-linecap", "round");
+      diamond.setAttribute("stroke-linejoin", "round");
+      diamond.setAttribute("aria-hidden", "true");
+      diamond.innerHTML = DIAMOND_ICON;
+      iconWrap.insertBefore(diamond, label);
+    }
+
+    const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    chevron.setAttribute("class", "callout-chevron");
+    chevron.setAttribute("width", "16");
+    chevron.setAttribute("height", "16");
+    chevron.setAttribute("viewBox", "0 0 24 24");
+    chevron.setAttribute("fill", "none");
+    chevron.setAttribute("stroke", "currentColor");
+    chevron.setAttribute("stroke-width", "2");
+    chevron.setAttribute("stroke-linecap", "round");
+    chevron.setAttribute("stroke-linejoin", "round");
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.innerHTML = CHEVRON_ICON;
+    summary.appendChild(chevron);
+
+    details.appendChild(summary);
+    details.appendChild(content);
+    div.replaceWith(details);
+  }
 }

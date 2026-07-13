@@ -7,6 +7,12 @@ import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { languageFromExt, mdHighlight, buildTheme } from "@/lib/editor-languages";
 import type { LSPClient } from "@codemirror/lsp-client";
+import { setCursorLine } from "@/stores/cursor-line.svelte";
+
+/** Convert a raw filesystem path to a file:// URI (LSP protocol requires URIs). */
+function toFileUri(path: string): string {
+  return "file://" + encodeURI(path.replace(/\\/g, "/"));
+}
 
 let {
   value = "",
@@ -56,7 +62,7 @@ onMount(() => {
       bracketMatching(),
       syntaxHighlighting(mdHighlight, { fallback: true }),
       langCompartment.of(languageFromExt(language)),
-      lspCompartment.of(lspClient && filePath ? lspClient.plugin(filePath) : []),
+      lspCompartment.of(lspClient && filePath ? lspClient.plugin(toFileUri(filePath)) : []),
       EditorView.lineWrapping,
       search({ top: true }),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
@@ -65,6 +71,9 @@ onMount(() => {
         if (update.docChanged) {
           onChangeRef?.(update.state.doc.toString());
           docVersion++;
+        }
+        if (update.selectionSet) {
+          setCursorLine(update.state.doc.lineAt(update.state.selection.main.head).number);
         }
       }),
       onGutterClick ? EditorView.domEventHandlers({
