@@ -28,6 +28,7 @@ let {
   onTypstViewer,
   onTypstBuild,
   onTypstViewPdf,
+  onExportPdf,
   onToggleRenderMode,
   onToggleFullscreen,
   viewerFullscreenOn = false,
@@ -102,6 +103,7 @@ function handleViewerFullscreen() {
       {onTypstViewer}
       {onTypstBuild}
       {onTypstViewPdf}
+      {onExportPdf}
       {onToggleRenderMode}
       onToggleFullscreen={handleViewerFullscreen}
       onCommand={handleViewerCommand}

@@ -34,14 +34,14 @@ import {
   latexMarkdownEditorExtensions,
   type LatexMarkdownEditorOptions,
 } from "@prosemark/latex";
-import { createLatexPreambleExtension } from "./latex-preamble";
+import { createLatexPreambleExtension } from "@/stores/latex-preamble";
 import {
-  proseSettings,
+  proseMarkSettings,
   resolveFontFamily,
   resolveMonoFont,
   resolveHeadingFont,
-  type ProseStyle,
-} from "@/stores/prose-settings.svelte";
+  type ProseMarkStyle,
+} from "@/stores/markdown-settings.svelte";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 
 let {
@@ -95,7 +95,7 @@ function buildLineDecorations(view: EditorView): DecorationSet {
 // ── Heading inline style (font-size, font-weight, font-family) ────────────────
 // font-size uses !important to guarantee it wins over baseSyntaxHighlights.
 // Margins live on the host via CSS variables (updated reactively in $effect below).
-function buildHeadingHighlight(style: ProseStyle): Extension {
+function buildHeadingHighlight(style: ProseMarkStyle): Extension {
   return syntaxHighlighting(HighlightStyle.define([
     {
       tag: tags.heading1,
@@ -186,7 +186,7 @@ onMount(() => {
         }
       }),
       // Placed last so our HighlightStyle appears after ProseMark's in the cascade.
-      proseStyleCompartment.of(buildHeadingHighlight(proseSettings.current)),
+      proseStyleCompartment.of(buildHeadingHighlight(proseMarkSettings.current)),
     ],
   });
 
@@ -204,7 +204,7 @@ onDestroy(() => {
 // CSS custom properties on hostEl — inherited by .cm-content and .cm-line children.
 $effect(() => {
   if (!hostEl) return;
-  const s = proseSettings.current;
+  const s = proseMarkSettings.current;
   hostEl.style.setProperty("--font", resolveFontFamily(s.fontFamily, s.customFontName));
   hostEl.style.setProperty("--pm-code-font", resolveMonoFont(s.monoFont));
   // Heading margins — consumed by EditorView.theme() .cm-heading*-line rules above.
@@ -220,7 +220,7 @@ $effect(() => {
 // so these base spacing rules sit after ProseMark's theme.
 // Heading font-size is set via buildHeadingHighlight with !important.
 $effect(() => {
-  const s = proseSettings.current;
+  const s = proseMarkSettings.current;
   const lh = s.lineHeight;
   const fs = s.fontSize;
   const mw = s.maxWidth;
@@ -240,14 +240,14 @@ $effect(() => {
 $effect(() => {
   if (!view) return;
   view.dispatch({
-    effects: proseStyleCompartment.reconfigure(buildHeadingHighlight(proseSettings.current)),
+    effects: proseStyleCompartment.reconfigure(buildHeadingHighlight(proseMarkSettings.current)),
   });
 });
 
 // User-defined custom CSS injected as a global <style> tag.
 // Targets .cm-html-widget for HTML block content and arbitrary editor selectors.
 $effect(() => {
-  const s = proseSettings.current;
+  const s = proseMarkSettings.current;
   const css = s.customCss;
   let el = document.getElementById("mdv-prose-custom-css") as HTMLStyleElement | null;
   if (!el) {

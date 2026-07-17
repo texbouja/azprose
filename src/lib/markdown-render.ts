@@ -10,6 +10,7 @@ import type { Theme } from "./theme";
 import { wikilinkPlugin } from "./markdown-it-wikilinks";
 import { resolveTransclusions, type TransclusionRange } from "./markdown-transclusion";
 import { ChevronRight as CHEVRON_ICON, Diamond as DIAMOND_ICON } from "./icons";
+import type { CalloutDef } from "@/stores/callout-settings.svelte";
 
 const THEMES: Record<string, string> = {
   latte: "catppuccin-latte",
@@ -156,16 +157,11 @@ md.use(taskLists, { enabled: false, label: true });
 md.use(mark);
 md.use(mathPlugin);
 md.use(wikilinkPlugin);
-md.use(callouts, {
-  icons: {
-    theorem:    '<span class="callout-type-label">Théorème</span>',
-    proposition:'<span class="callout-type-label">Proposition</span>',
-    definition: '<span class="callout-type-label">Définition</span>',
-    remark:     '<span class="callout-type-label">Remarque</span>',
-    example:    '<span class="callout-type-label">Exemple</span>',
-    exercise:   '<span class="callout-type-label">Exercice</span>',
-  },
-});
+
+// Callout icons: mutable reference — updated by updateCalloutIcons() before each render.
+const calloutOptions = { icons: {} as Record<string, string> };
+md.use(callouts, calloutOptions);
+
 md.use(footnote);
 
 // Stamp block tokens with source line range for potential editor↔preview sync.
@@ -245,6 +241,14 @@ function renderFrontMatterHeader(meta: Record<string, string>): string {
 export interface RenderResult {
   html: string;
   ranges: TransclusionRange[];
+}
+
+/** Update callout icons from definitions — mutate shared object before each render. */
+export function updateCalloutIcons(defs: CalloutDef[]): void {
+  for (const def of defs) {
+    calloutOptions.icons[def.name] =
+      `<span class="callout-type-label">${escapeHtml(def.label)}</span>`;
+  }
 }
 
 export async function renderMarkdown(

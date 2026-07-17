@@ -4,14 +4,15 @@ import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { renderMarkdown, resolveLocalImages, ensurePreviewReady, makeCalloutsCollapsible } from "@/lib/markdown-render";
+import { renderMarkdown, resolveLocalImages, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons } from "@/lib/markdown-render";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { subscribeMode, type Theme } from "@/lib/theme";
 
 let t = $derived(getT($language));
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { slideSession } from "@/stores/slide-session.svelte";
-import { proseSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type ProseStyle } from "@/stores/prose-settings.svelte";
+import { presentationSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PresentationStyle } from "@/stores/markdown-settings.svelte";
+import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 
 let {
   value = "",
@@ -78,16 +79,20 @@ $effect(() => {
   const theme = appTheme;
   let cancelled = false;
 
+  // Update callout icons from current settings before rendering
+  updateCalloutIcons(calloutSettings.current);
+
   void Promise.all(currentPages.map((t) => renderMarkdown(t, theme))).then(async (results) => {
     if (cancelled) return;
     slidesHtml = results.map(r => {
       const tmp = document.createElement("div");
       tmp.innerHTML = r.html;
       for (const el of tmp.querySelectorAll<HTMLElement>(".callout")) {
-        if (!el.hasAttribute("data-callout-title")) {
-          const inner = el.querySelector<HTMLElement>(".callout-title-inner");
-          if (inner) inner.textContent = "";
-        }
+        const inner = el.querySelector<HTMLElement>(".callout-title-inner");
+        if (!inner) continue;
+        const type = el.dataset.callout ?? "";
+        const auto = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+        if (inner.textContent?.trim() === auto) inner.textContent = "";
       }
       makeCalloutsCollapsible(tmp);
       return tmp.innerHTML;
@@ -123,27 +128,36 @@ async function hydrate(stage: HTMLElement): Promise<void> {
 onDestroy(() => clearRenderDiagnostics());
 
 $effect(() => {
-  const s = proseSettings.current;
+  const s = presentationSettings.current;
   const head = (n: 1 | 2 | 3) => {
-    const size = s[`presH${n}Size`] as number;
-    const align = s[`presH${n}Align`] as string;
-    const font = resolveHeadingFont(s[`presH${n}FontFamily`] as ProseStyle["h1FontFamily"], s[`presH${n}CustomFontName`] as string);
-    const mt = s[`presH${n}MarginTop`] as number;
-    const mb = s[`presH${n}MarginBottom`] as number;
+    const size = s[`h${n}Size`] as number;
+    const align = s[`h${n}Align`] as string;
+    const font = resolveHeadingFont(s[`h${n}FontFamily`] as PresentationStyle["h1FontFamily"], s[`h${n}CustomFontName`] as string);
+    const mt = s[`h${n}MarginTop`] as number;
+    const mb = s[`h${n}MarginBottom`] as number;
     return `.azp-slide .azp-slide__content h${n}{font-size:${size}em !important;text-align:${align} !important;font-family:${font} !important;margin:${mt}em 0 ${mb}em !important;}`;
   };
-  const fontFamily = resolveFontFamily(s.presFontFamily, s.presCustomFontName);
-  const monoFont  = resolveMonoFont(s.presMonoFont);
+  const fontFamily = resolveFontFamily(s.fontFamily, s.customFontName);
+  const monoFont  = resolveMonoFont(s.monoFont);
   const css = [
-    `.azp-slide .azp-slide__content{font-family:${fontFamily};font-size:${s.presFontSize}px;line-height:${s.presLineHeight};}`,
+    `.azp-slide .azp-slide__content{font-family:${fontFamily};font-size:${s.fontSize}px;line-height:${s.lineHeight};}`,
     `.azp-slide .azp-slide__content code,.azp-slide .azp-slide__content pre{font-family:${monoFont};}`,
     head(1), head(2), head(3),
-    s.presCss,
+    s.customCss,
   ].join("\n");
   let el = document.getElementById("azp-slide-style") as HTMLStyleElement | null;
   if (!el) { el = document.createElement("style"); el.id = "azp-slide-style"; document.head.appendChild(el); }
   el.textContent = css;
   return () => { document.getElementById("azp-slide-style")?.remove(); };
+});
+
+$effect(() => {
+  const css = generateCalloutCss(calloutSettings.current);
+  const el = document.createElement("style");
+  el.id = "azp-slide-callout-css";
+  el.textContent = css;
+  document.head.appendChild(el);
+  return () => el.remove();
 });
 
 function prev() { if (current > 0) current--; }

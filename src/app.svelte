@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount, tick } from "svelte";
+import { onMount } from "svelte";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
@@ -55,7 +55,7 @@ import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import Editor from "@/components/editor/Editor.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
-import { slideSettings } from "@/components/markdown/slide-settings.svelte";
+import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { ensureMoxideConfig, executeOxideCommand, resolveWikilink } from "@/lib/lsp/markdown-oxide";
@@ -65,7 +65,9 @@ import { folderRelation } from "@/lib/paths";
 import { saveSession, loadSession, saveDraft, loadDraft, clearDraft, setSessionScope, saveLastFile, loadLastFile, saveGuests, loadGuests } from "@/lib/session";
 import { loadProjectSession, saveProjectSession, type PortableSession } from "@/lib/project-session";
 import { generalSettings } from "@/stores/general-settings.svelte";
-import { proseSettings, DEFAULT_PROSE_STYLE } from "@/stores/prose-settings.svelte";
+import { proseMarkSettings, previewSettings, presentationSettings, DEFAULT_PROSE_MARK_STYLE, DEFAULT_PREVIEW_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte";
+import { calloutSettings } from "@/stores/callout-settings.svelte";
+import { sendTinymistConfig, isTinymistReady } from "@/lib/lsp/tinymist";
 import { setRootPath } from "@/stores/root-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
@@ -75,6 +77,7 @@ import {
   createLatexState,
   handleLatexBuild, handleLatexViewer,
   autoBuildIfDepChanged, clearLatexDeps, setupLatexLogListener,
+  cleanLatexBuild, cleanLatexAll,
 } from "@/components/tex/latex-build";
 import * as typst from "@/typst";
 import { scrollPreview, getPreviewTaskId } from "@/typst/backend";
@@ -83,6 +86,8 @@ import { FileOpsManager } from "@/lib/file-operations.svelte";
 import ConsolePanel from "@/components/console/ConsolePanel.svelte";
 import OpencodeSidebar from "@/components/opencode/OpencodeSidebar.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
+import { latexSettings } from "@/stores/latex-settings.svelte";
+import { typstSettings } from "@/stores/typst-settings.svelte";
 import { loadProjectConfig, saveProjectConfig } from "@/lib/project-config";
 import { theme } from "@/stores/theme.svelte";
 import { listCustomThemes, injectThemeCSS } from "@/lib/custom-themes";
@@ -239,16 +244,64 @@ function flushConfigSync() {
 
 async function doConfigSync() {
   if (!configRoot) return;
-  const ps = proseSettings.current;
   const cfg: ProjectConfig = {};
-  if (ps !== DEFAULT_PROSE_STYLE) cfg.proseStyle = ps;
-  if (slideSettings.mode !== "16:9") cfg.slideMode = slideSettings.mode;
-  if (generalSettings.defaultEditorMode !== "prose") cfg.defaultEditorMode = generalSettings.defaultEditorMode;
-  if (JSON.stringify(typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) cfg.typography = typo;
-  if (mathJaxPreamble.current) cfg.mathJaxPreamble = mathJaxPreamble.current;
-  if (mathJaxPackages.current.length) cfg.mathJaxPackages = mathJaxPackages.current;
-  if (vimOn) cfg.vim = true;
-  if (theme.mode !== "latte") cfg.themeMode = theme.mode;
+
+  // editor
+  const editor: import("@/lib/project-config").EditorConfig = {};
+  if (generalSettings.defaultEditorMode !== "prose") editor.defaultMode = generalSettings.defaultEditorMode;
+  if (vimOn) editor.vim = true;
+  if (theme.mode !== "latte") editor.theme = theme.mode;
+  if (JSON.stringify(typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) editor.typography = typo;
+  if (Object.keys(editor).length) cfg.editor = editor;
+
+  // proseMark
+  const pms = proseMarkSettings.current;
+  if (JSON.stringify(pms) !== JSON.stringify(DEFAULT_PROSE_MARK_STYLE)) {
+    cfg.proseMark = { style: pms };
+  }
+
+  // preview
+  const pvs = previewSettings.current;
+  if (JSON.stringify(pvs) !== JSON.stringify(DEFAULT_PREVIEW_STYLE)) {
+    cfg.preview = { style: pvs };
+  }
+
+  // presentation
+  const prs = presentationSettings.current;
+  const presNonDefault = JSON.stringify(prs) !== JSON.stringify(DEFAULT_PRESENTATION_STYLE);
+  const slideNonDefault = slideSettings.mode !== "16:9";
+  if (presNonDefault || slideNonDefault) {
+    cfg.presentation = {};
+    if (presNonDefault) cfg.presentation.style = prs;
+    if (slideNonDefault) cfg.presentation.slideMode = slideSettings.mode;
+  }
+
+  // math
+  const math: import("@/lib/project-config").MathConfig = {};
+  if (mathJaxPreamble.current) math.preamble = mathJaxPreamble.current;
+  if (mathJaxPackages.current.length) math.packages = mathJaxPackages.current;
+  if (Object.keys(math).length) cfg.math = math;
+
+  // latex
+  const ls = latexSettings.current;
+  if (ls.engine !== "pdflatex" || ls.shellEscape || ls.outputDir !== "output" || ls.auxDir !== "auxdir" || ls.maxRuns !== 5 || ls.bibtex !== "auto") {
+    cfg.latex = ls;
+  }
+
+  // typst
+  const ts = typstSettings.current;
+  if (ts.formatterMode !== "typstyle" || ts.formatterPrintWidth !== 120 || ts.formatterIndentSize !== 2
+    || ts.exportPdf !== "never" || ts.outputPath !== "output" || ts.lintEnabled
+    || !ts.systemFonts || !ts.semanticTokens || ts.typstExtraArgs) {
+    cfg.typst = ts;
+  }
+
+  // callouts
+  cfg.callouts = calloutSettings.current;
+
+  // favorites
+  if (fo.favorites.current.length) cfg.favorites = fo.favorites.current;
+
   projectConfig = cfg;
   await saveProjectConfig(configRoot, cfg);
 }
@@ -265,15 +318,14 @@ async function loadConfig(root: string) {
   } catch { /* crafted CSS is best-effort */ }
   const { config: cfg, warnings } = await loadProjectConfig(root);
   projectConfig = cfg;
-  if (cfg.proseStyle) proseSettings.patch(cfg.proseStyle);
-  if (cfg.slideMode) slideSettings.mode = cfg.slideMode;
-  if (cfg.defaultEditorMode != null) generalSettings.defaultEditorMode = cfg.defaultEditorMode;
-  if (cfg.typography != null) typography.current = { ...DEFAULT_TYPOGRAPHY, ...cfg.typography };
-  if (cfg.mathJaxPreamble != null) mathJaxPreamble.current = cfg.mathJaxPreamble;
-  if (cfg.mathJaxPackages != null) mathJaxPackages.current = cfg.mathJaxPackages;
-  if (cfg.vim != null) vimOn = cfg.vim;
-  if (cfg.themeMode != null) {
-    theme.setMode(cfg.themeMode);
+
+  // editor section
+  const ed = cfg.editor;
+  if (ed?.defaultMode != null) generalSettings.defaultEditorMode = ed.defaultMode;
+  if (ed?.vim != null) vimOn = ed.vim;
+  if (ed?.typography != null) typography.current = { ...DEFAULT_TYPOGRAPHY, ...ed.typography };
+  if (ed?.theme != null) {
+    theme.setMode(ed.theme);
   } else {
     // No per-project theme: keep the global default, unless it points at a crafted
     // theme this project doesn't have → fall back to a builtin to avoid a broken :root.
@@ -283,6 +335,33 @@ async function loadConfig(root: string) {
       || crafted.some((c) => c.name === m);
     if (!ok) theme.setMode("latte");
   }
+
+  // proseMark section
+  if (cfg.proseMark?.style) proseMarkSettings.patch(cfg.proseMark.style);
+
+  // preview section
+  if (cfg.preview?.style) previewSettings.patch(cfg.preview.style);
+
+  // presentation section
+  if (cfg.presentation?.style) presentationSettings.patch(cfg.presentation.style);
+  if (cfg.presentation?.slideMode) slideSettings.mode = cfg.presentation.slideMode;
+
+  // math section
+  if (cfg.math?.preamble != null) mathJaxPreamble.current = cfg.math.preamble;
+  if (cfg.math?.packages != null) mathJaxPackages.current = cfg.math.packages;
+
+  // latex section
+  if (cfg.latex != null) latexSettings.patch(cfg.latex);
+
+  // typst section
+  if (cfg.typst != null) typstSettings.patch(cfg.typst);
+
+  // callouts
+  if (cfg.callouts != null) calloutSettings.load(cfg.callouts);
+
+  // favorites
+  if (cfg.favorites != null) fo.favorites.current = cfg.favorites;
+
   configLoaded = true;
   themeBootDone = true;
   if (warnings.length) {
@@ -314,8 +393,9 @@ $effect(() => {
 
 $effect(() => {
   if (!configRoot) return;
-  proseSettings.current;
-  slideSettings.theme;
+  proseMarkSettings.current;
+  previewSettings.current;
+  presentationSettings.current;
   slideSettings.mode;
   generalSettings.defaultEditorMode;
   typography.current;
@@ -323,7 +403,32 @@ $effect(() => {
   mathJaxPackages.current;
   vimOn;
   theme.mode;
+  latexSettings.current;
+  typstSettings.current;
   scheduleConfigSync();
+});
+
+// Send typst settings to tinymist when they change (if server is running)
+$effect(() => {
+  const s = typstSettings.current;
+  if (isTinymistReady()) sendTinymistConfig(s, rootPath);
+});
+
+// Auto-export Typst PDF while typing (debounced 1.5s)
+let _typstOnTypeTimer: ReturnType<typeof setTimeout> | null = null;
+$effect(() => {
+  const mode = typstSettings.current.exportPdf;
+  const p = activePath;
+  if (mode !== "onType" || !p || extFromPath(p) !== "typ") { if (_typstOnTypeTimer) { clearTimeout(_typstOnTypeTimer); _typstOnTypeTimer = null; } return; }
+  // Track source changes via _panelVersion
+  _panelVersion;
+  if (_typstOnTypeTimer) clearTimeout(_typstOnTypeTimer);
+  _typstOnTypeTimer = setTimeout(() => {
+    _typstOnTypeTimer = null;
+    if (ts.exporting || ts.compiling) return;
+    onTypstBuild();
+  }, 1500);
+  return () => { if (_typstOnTypeTimer) { clearTimeout(_typstOnTypeTimer); _typstOnTypeTimer = null; } };
 });
 
 // mtime tracking for external change detection
@@ -713,6 +818,10 @@ const handleSave = async () => {
       }
     }
     autoBuildIfDepChanged(ls, activePath, onLatexBuild);
+    // Auto-export Typst PDF on save
+    if (extFromPath(activePath) === "typ" && typstSettings.current.exportPdf === "onSave") {
+      onTypstBuild();
+    }
   } catch (err) {
     console.error("azprose: save failed", err);
     saveStatus = "dirty";
@@ -1145,38 +1254,17 @@ const handleCloseFolder = async (path: string) => {
 };
 
 const handleExportPdf = async () => {
-  const isLinux = await invoke<boolean>("export_pdf");
-  if (!isLinux) return;
+  if (!activePath || extFromPath(activePath) !== "md") return;
 
-  // Lazily import the markdown renderer for printing.
-  const { renderMarkdown, ensurePreviewReady } = await import("@/lib/markdown-render");
-  await ensurePreviewReady();
+  const tab = pm.main.tabs.find(t => t.id === pm.main.activeTabId);
+  if (!tab || !tab.source) return;
 
-  const prevSideVisible = sideVisible;
-  const prevSideTabs = [...pm.side.tabs];
-  const prevPanelVersion = _panelVersion;
-
-  // Open a preview tab in the side panel so the rendered HTML is in the DOM.
-  if (activePath && extFromPath(activePath) === "md") {
-    await pm.openInSide(activePath, { preview: true });
-    const tab = pm.side.tabs.find(t => t.path === activePath);
-    if (tab) pm.side.setRenderMode(tab.id, "preview");
-    sideVisible = true;
-    pm.sideVisible = true;
-    await tick();
-    await new Promise<void>((r) => setTimeout(r, 300));
-    await tick();
+  const { exportMarkdownPdf } = await import("@/lib/pdf-export");
+  try {
+    await exportMarkdownPdf(tab.source, theme.resolved, tab.path);
+  } catch (err) {
+    console.error("PDF export failed:", err);
   }
-
-  document.body.classList.add("mdv-print");
-  window.print();
-  document.body.classList.remove("mdv-print");
-
-  // Restore side panel state.
-  pm.side.tabs = prevSideTabs;
-  _panelVersion++;
-  sideVisible = prevSideVisible;
-  pm.sideVisible = prevSideVisible;
 };
 
 $effect(() => {
@@ -1184,6 +1272,10 @@ $effect(() => {
     if ((e.metaKey || e.ctrlKey) && e.key === "s") {
       e.preventDefault();
       handleSave();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "p") {
+      e.preventDefault();
+      handleExportPdf();
     }
   };
   window.addEventListener("keydown", onKey);
@@ -1442,6 +1534,13 @@ let cmds = $derived(
     oxidTomorrow: () => executeOxideCommand("tomorrow"),
     oxidJump: () => executeOxideCommand("jump"),
     isMdActive: activePath != null && extFromPath(activePath) === "md",
+    exportPdf: handleExportPdf,
+    isTypstActive: activePath != null && extFromPath(activePath) === "typ",
+    isLatexActive: activePath != null && extFromPath(activePath) === "tex",
+    typstClean: () => activePath && typst.cleanBuild(activePath),
+    typstCleanAll: () => activePath && typst.cleanAll(dirname(activePath)),
+    latexClean: () => activePath && cleanLatexBuild(activePath),
+    latexCleanAll: () => activePath && cleanLatexAll(dirname(activePath)),
   }, t),
 );
 </script>
@@ -1540,6 +1639,7 @@ let cmds = $derived(
           onTypstViewer={activePath && extFromPath(activePath) === "typ" ? onTypstViewer : undefined}
           onTypstBuild={activePath && extFromPath(activePath) === "typ" ? onTypstBuild : undefined}
           onTypstViewPdf={activePath && extFromPath(activePath) === "typ" ? onTypstViewPdf : undefined}
+          onExportPdf={activePath && extFromPath(activePath) === "md" ? handleExportPdf : undefined}
           onToggleRenderMode={handleToggleSideRenderMode}
           onToggleFullscreen={toggleFullscreen}
           {viewerFullscreenOn}

@@ -3,6 +3,8 @@ import { createTauriTransport, killTransport } from "./transport";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import type { Diagnostic } from "@/lib/diagnostics";
+import { getRootPath } from "@/stores/root-path.svelte";
+import { joinPath } from "@/lib/files";
 
 // ── Texlab Singleton ────────────────────────────────────────────
 
@@ -71,7 +73,14 @@ export function getTexlabClient(
   if (_client) return _client;
 
   _id = `texlab-${Date.now()}`;
-  const transport = createTauriTransport(_id, "texlab", []);
+
+  // Set TEXMFHOME to .azprose/texmf so texlab finds local packages
+  const rp = getRootPath();
+  const env: Record<string, string> | undefined = rp
+    ? { TEXMFHOME: joinPath(joinPath(rp, ".azprose"), "texmf") }
+    : undefined;
+
+  const transport = createTauriTransport(_id, "texlab", [], env);
 
   _client = new LSPClient({
     notificationHandlers: config?.notificationHandlers,

@@ -21,6 +21,8 @@ use terminal::TerminalState;
 mod latex_engine;
 
 mod lsp_bridge;
+
+mod mdprinter;
 use lsp_bridge::LspBridgeState;
 
 struct PendingOpenFiles(Mutex<Vec<String>>);
@@ -123,11 +125,6 @@ fn reveal_in_file_manager(path: String) {
         };
         let _ = std::process::Command::new("xdg-open").arg(target).spawn();
     }
-}
-
-#[tauri::command]
-fn export_pdf() -> bool {
-    cfg!(target_os = "linux")
 }
 
 #[tauri::command]
@@ -407,6 +404,18 @@ fn write_project_session(root: String, content: String) -> Result<(), String> {
     atomic_write(&path, &content)
 }
 
+/// Open a directory in the system file manager (bypasses opener plugin scope).
+#[tauri::command]
+fn open_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    { std::process::Command::new("open").arg(&path).spawn().map_err(|e| e.to_string())?; }
+    #[cfg(target_os = "windows")]
+    { std::process::Command::new("cmd").args(["/C", "start", "", &path]).spawn().map_err(|e| e.to_string())?; }
+    #[cfg(target_os = "linux")]
+    { std::process::Command::new("xdg-open").arg(&path).spawn().map_err(|e| e.to_string())?; }
+    Ok(())
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -465,7 +474,7 @@ pub fn run() {
             find_project_window,
             set_external_change_alerts,
             reveal_in_file_manager,
-            export_pdf,
+            mdprinter::export_markdown_pdf,
             read_project_config,
             write_project_config,
             read_project_session,
@@ -489,11 +498,14 @@ pub fn run() {
             lsp_bridge::lsp_spawn,
             lsp_bridge::lsp_write,
             lsp_bridge::lsp_kill,
+            open_folder,
             latex_engine::latex_build,
             latex_engine::latex_find_root,
             latex_engine::check_latexmk,
             latex_engine::synctex_forward,
             latex_engine::synctex_inverse,
+            latex_engine::latex_init_texmf,
+            latex_engine::latex_rehash_texmf,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

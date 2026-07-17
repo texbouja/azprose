@@ -8,11 +8,13 @@ import {
   ensurePreviewReady,
   markTranscludedBlocks,
   makeCalloutsCollapsible,
+  updateCalloutIcons,
 } from "@/lib/markdown-render";
+import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
-import { proseSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type ProseStyle } from "@/stores/prose-settings.svelte";
+import { previewSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PreviewStyle } from "@/stores/markdown-settings.svelte";
 import { resolveWikilinkPaths } from "@/lib/markdown-it-wikilinks";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { consumeScrollTarget } from "@/stores/scroll-target.svelte";
@@ -31,18 +33,18 @@ let {
 let articleEl: HTMLElement | undefined = $state();
 let ready = $state(false);
 
-function buildPreviewProseCss(s: ProseStyle): string {
+function buildPreviewProseCss(s: PreviewStyle): string {
   const head = (n: 1 | 2 | 3) => {
     const size = s[`h${n}Size`] as number;
     const align = s[`h${n}Align`] as string;
-    const font = resolveHeadingFont(s[`h${n}FontFamily`] as ProseStyle["h1FontFamily"], s[`h${n}CustomFontName`] as string);
+    const font = resolveHeadingFont(s[`h${n}FontFamily`] as PreviewStyle["h1FontFamily"], s[`h${n}CustomFontName`] as string);
     const mt = s[`h${n}MarginTop`] as number;
     const mb = s[`h${n}MarginBottom`] as number;
     return `.mdv-prose h${n}{font-size:${size}em;text-align:${align};font-family:${font};margin:${mt}em 0 ${mb}em;}`;
   };
   const fontFamily = resolveFontFamily(s.fontFamily, s.customFontName);
   const monoFont  = resolveMonoFont(s.monoFont);
-  return [
+  const base = [
     `.mdv-prose{font-family:${fontFamily};font-size:${s.fontSize}px;line-height:${s.lineHeight};max-width:${s.maxWidth}px;}`,
     `.mdv-prose code,.mdv-prose pre{font-family:${monoFont};}`,
     head(1), head(2), head(3),
@@ -50,12 +52,23 @@ function buildPreviewProseCss(s: ProseStyle): string {
     `.mdv-prose ol ol{list-style-type:${s.olLevel2};}`,
     `.mdv-prose ol ol ol{list-style-type:${s.olLevel3};}`,
   ].join("\n");
+  const custom = s.customCss;
+  return custom ? base + "\n" + custom : base;
 }
 
 $effect(() => {
-  const css = buildPreviewProseCss(proseSettings.current);
+  const css = buildPreviewProseCss(previewSettings.current);
   const el = document.createElement("style");
   el.id = "mdv-preview-prose-css";
+  el.textContent = css;
+  document.head.appendChild(el);
+  return () => el.remove();
+});
+
+$effect(() => {
+  const css = generateCalloutCss(calloutSettings.current);
+  const el = document.createElement("style");
+  el.id = "mdv-preview-callout-css";
   el.textContent = css;
   document.head.appendChild(el);
   return () => el.remove();
@@ -98,6 +111,9 @@ $effect(() => {
   let cancelled = false;
   let cleanupCode = () => {};
 
+  // Update callout icons from current settings before rendering
+  updateCalloutIcons(calloutSettings.current);
+
   void renderMarkdown(src, theme, filePath ?? undefined, getRootPath() ?? undefined).then(async (result) => {
     if (cancelled || !articleEl) return;
 
@@ -105,10 +121,11 @@ $effect(() => {
     const tmp = document.createElement("div");
     tmp.innerHTML = result.html;
     for (const el of tmp.querySelectorAll<HTMLElement>(".callout")) {
-      if (!el.hasAttribute("data-callout-title")) {
-        const inner = el.querySelector<HTMLElement>(".callout-title-inner");
-        if (inner) inner.textContent = "";
-      }
+      const inner = el.querySelector<HTMLElement>(".callout-title-inner");
+      if (!inner) continue;
+      const type = el.dataset.callout ?? "";
+      const auto = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+      if (inner.textContent?.trim() === auto) inner.textContent = "";
     }
     makeCalloutsCollapsible(tmp);
     articleEl.innerHTML = tmp.innerHTML;

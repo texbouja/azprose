@@ -29,6 +29,7 @@ export function createTauriTransport(
   id: string,
   command: string,
   args: string[],
+  env?: Record<string, string>,
 ): TauriTransport {
   const handlers: Array<(value: string) => void> = [];
   let filter: ((raw: string) => boolean) | null = null;
@@ -91,7 +92,7 @@ export function createTauriTransport(
     if (!initPromise) {
       initPromise = (async () => {
         console.log(`[transport:${command}] spawning… id=${id}`);
-        await invoke("lsp_spawn", { id, command, args });
+        await invoke("lsp_spawn", { id, command, args, env: env ?? null });
         console.log(`[transport:${command}] spawn done, registering listeners`);
 
         await listen<{ id: string; data: string }>("lsp://output", (ev) => {

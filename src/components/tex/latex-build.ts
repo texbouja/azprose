@@ -3,6 +3,9 @@ import { listen } from "@tauri-apps/api/event";
 import type { Diagnostic } from "@/lib/diagnostics";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
+import { latexSettings } from "@/stores/latex-settings.svelte";
+import { exists, readDir, remove } from "@tauri-apps/plugin-fs";
+import { basename, dirname } from "@/lib";
 
 
 
@@ -11,7 +14,6 @@ export interface LatexState {
   latexBuilding: boolean;
   latexViewerOn: boolean;
   latexSplitOn: boolean;
-  latexEngine: string;
   buildRev: number;
   dependencies: string[];
   savingForBuild: boolean;
@@ -24,7 +26,6 @@ export function createLatexState(): LatexState {
     latexBuilding: false,
     latexViewerOn: false,
     latexSplitOn: false,
-    latexEngine: "pdflatex",
     buildRev: 0,
     dependencies: [],
     savingForBuild: false,
@@ -89,7 +90,14 @@ export async function handleLatexBuild(
       pdf_path: string | null;
       diagnostics: Diagnostic[];
       dependencies: string[];
-    }>("latex_build", { path: buildPath, engine: state.latexEngine });
+    }>("latex_build", {
+      path: buildPath,
+      engine: latexSettings.current.engine,
+      shellEscape: latexSettings.current.shellEscape,
+      maxRuns: latexSettings.current.maxRuns,
+      outDir: latexSettings.current.outputDir,
+      auxDir: latexSettings.current.auxDir,
+    });
     const diags = (res.diagnostics ?? []).map((d) => ({
       ...d,
       severity: d.severity === "error" ? ("error" as const) : ("warning" as const),
@@ -152,4 +160,50 @@ export function setupLatexLogListener(): () => void {
     unlistenLog?.();
     unlistenComplete?.();
   };
+}
+
+const LATEX_ARTIFACT_EXTS = new Set([".aux", ".log", ".out", ".toc", ".bbl", ".blg", ".fls", ".fdb_latexmk", ".synctex.gz", ".nav", ".snm", ".vrb"]);
+
+/** Remove the generated PDF for a single .tex file. */
+export async function cleanLatexBuild(filePath: string): Promise<void> {
+  const name = basename(filePath).replace(/\.tex$/i, "");
+  const outDir = latexSettings.current.outputDir;
+  const dir = dirname(filePath);
+  const pdfPath = `${dir}/${outDir}/${name}.pdf`;
+  if (await exists(pdfPath)) {
+    await remove(pdfPath);
+    logStore.append("latex", `info: removed ${name}.pdf`);
+  }
+}
+
+/** Remove all LaTeX artifacts (PDFs + aux files) from output and aux directories. */
+export async function cleanLatexAll(projectRoot: string): Promise<void> {
+  const outDir = latexSettings.current.outputDir;
+  const auxDir = latexSettings.current.auxDir;
+  let count = 0;
+
+  for (const subdir of [outDir, auxDir]) {
+    const dirPath = `${projectRoot}/${subdir}`;
+    if (!await exists(dirPath)) continue;
+    const entries = await readDir(dirPath);
+    for (const e of entries) {
+      const ext = e.name?.substring(e.name.lastIndexOf("."))?.toLowerCase();
+      if (ext && (ext === ".pdf" || LATEX_ARTIFACT_EXTS.has(ext))) {
+        await remove(`${dirPath}/${e.name}`);
+        count++;
+      }
+    }
+  }
+
+  logStore.append("latex", `info: cleaned ${count} file(s)`);
+}
+
+/** Initialize .azprose/texmf/ with TDS structure. */
+export async function initTexmf(projectRoot: string): Promise<string> {
+  return invoke<string>("latex_init_texmf", { projectRoot });
+}
+
+/** Run mktexlsr/texhash on .azprose/texmf/ to rebuild ls-R database. */
+export async function rehashTexmf(projectRoot: string): Promise<string> {
+  return invoke<string>("latex_rehash_texmf", { projectRoot });
 }

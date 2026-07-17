@@ -67,18 +67,27 @@ pub fn lsp_spawn(
     id: String,
     command: String,
     args: Vec<String>,
+    env: Option<HashMap<String, String>>,
 ) -> Result<(), String> {
     // Idempotent
     if state.sessions.lock().unwrap().contains_key(&id) {
         return Ok(());
     }
 
-    let mut child = Command::new(&command)
-        .args(&args)
+    let mut cmd = Command::new(&command);
+    cmd.args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+
+    // Inject environment variables (e.g. TEXMFHOME for texlab)
+    if let Some(env_map) = env {
+        for (k, v) in &env_map {
+            cmd.env(k, v);
+        }
+    }
+
+    let mut child = cmd.spawn()
         .map_err(|e| format!("failed to spawn {command}: {e}"))?;
 
     let stdin = child.stdin.take().ok_or("no stdin")?;

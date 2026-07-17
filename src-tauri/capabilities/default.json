@@ -16,13 +16,14 @@
     "core:window:allow-set-focus",
     "core:window:allow-unminimize",
     "core:webview:allow-create-webview-window",
+    "core:event:default",
     "opener:default",
     "updater:default",
     "process:default",
     "shell:default",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "**" }]
+      "allow": [{ "path": "/**" }, { "path": "**" }]
     },
     "dialog:default",
     "fs:default",

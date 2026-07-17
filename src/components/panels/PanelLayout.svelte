@@ -32,6 +32,7 @@ let {
   onTypstViewer,
   onTypstBuild,
   onTypstViewPdf,
+  onExportPdf,
   onToggleRenderMode,
   onToggleFullscreen,
   viewerFullscreenOn = false,
@@ -64,6 +65,7 @@ let {
   onTypstViewer?: () => void;
   onTypstBuild?: () => void;
   onTypstViewPdf?: () => void;
+  onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
@@ -120,6 +122,7 @@ function startResize(e: PointerEvent) {
     {onTypstViewer}
     {onTypstBuild}
     {onTypstViewPdf}
+    {onExportPdf}
   />
   {#if sideVisible}
     <div

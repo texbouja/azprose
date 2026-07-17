@@ -5,17 +5,28 @@ import { Button, Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import {
-  proseSettings,
-  type ProseStyle,
+  proseMarkSettings,
+  previewSettings,
+  presentationSettings,
+  type ProseMarkStyle,
+  type PreviewStyle,
+  type PresentationStyle,
   type TextAlign,
   type HeadingFont,
   type OlType,
-} from "@/stores/prose-settings.svelte";
+} from "@/stores/markdown-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
-import { slideSettings, SLIDE_MODES } from "@/components/markdown/slide-settings.svelte";
+import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { restartApp } from "@/lib/restart";
+import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
+import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
+import { typstSettings } from "@/stores/typst-settings.svelte";
+import { getRootPath } from "@/stores/root-path.svelte";
+import { notifications } from "@/stores/notifications.svelte";
+import { mkdir } from "@tauri-apps/plugin-fs";
+import { joinPath } from "@/lib/files";
 
 let t = $derived(getT($language));
 
@@ -27,8 +38,8 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax";
-type SectionId = "markdown";
+type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "latex-general" | "latex-build" | "typst-general" | "typst-build";
+type SectionId = "markdown" | "latex" | "typst";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
   {
@@ -40,36 +51,66 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "apercu",        labelKey: "settings.module.apercu" },
       { id: "presentation",  labelKey: "settings.module.presentation" },
       { id: "mathjax",       labelKey: "settings.module.mathjax" },
+      { id: "callouts",      labelKey: "settings.module.callouts" },
+    ],
+  },
+  {
+    id: "latex",
+    labelKey: "settings.section.latex",
+    modules: [
+      { id: "latex-general", labelKey: "settings.module.latexGeneral" },
+      { id: "latex-build",   labelKey: "settings.module.latexBuild" },
+    ],
+  },
+  {
+    id: "typst",
+    labelKey: "settings.section.typst",
+    modules: [
+      { id: "typst-general", labelKey: "settings.module.typstGeneral" },
+      { id: "typst-build",   labelKey: "settings.module.typstBuild" },
     ],
   },
 ];
 
 let activeModule = $state<ModuleId>("general");
-let expandedSections = $state(new Set<SectionId>(["markdown"]));
+let expandedSections = $state(new Set<SectionId>(["markdown", "latex", "typst"]));
 
-// Explicit $derived so the template tracks proseSettings.current reactively.
-let s = $derived(proseSettings.current);
+// Explicit $derived so the template tracks settings reactively.
+let s = $derived(proseMarkSettings.current);
+let pvs = $derived(previewSettings.current);
+let prs = $derived(presentationSettings.current);
 
-// Font availability check via canvas — fires after 400 ms of no typing.
+// Debounced text input: delays store write so typing stays snappy.
+const _inputTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function debounceInput(key: string, value: string, write: (v: string) => void, ms = 200) {
+  clearTimeout(_inputTimers.get(key));
+  _inputTimers.set(key, setTimeout(() => { _inputTimers.delete(key); write(value); }, ms));
+}
+
+// Font availability check — memoized, only recalculates when name changes.
+const _fontCache = new Map<string, boolean>();
 function checkFontAvailable(name: string): boolean {
+  const key = name.trim().toLowerCase();
+  if (_fontCache.has(key)) return _fontCache.get(key)!;
   try {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
-    if (!ctx) return true;
+    if (!ctx) { _fontCache.set(key, true); return true; }
     const sample = "mmmmmmmmmllliiii";
     ctx.font = "16px monospace";
     const fallback = ctx.measureText(sample).width;
     ctx.font = `16px '${name.trim()}', monospace`;
-    return ctx.measureText(sample).width !== fallback;
-  } catch { return true; }
+    const ok = ctx.measureText(sample).width !== fallback;
+    _fontCache.set(key, ok);
+    return ok;
+  } catch { _fontCache.set(key, true); return true; }
 }
 
-// Synchronous canvas check — fast enough to run reactively on each keystroke.
 let customFontOk = $derived(
   s.fontFamily === "custom" && s.customFontName.trim() ? checkFontAvailable(s.customFontName) : null
 );
-let presCustomFontOk = $derived(
-  s.presFontFamily === "custom" && s.presCustomFontName.trim() ? checkFontAvailable(s.presCustomFontName) : null
+let prsCustomFontOk = $derived(
+  prs.fontFamily === "custom" && prs.customFontName.trim() ? checkFontAvailable(prs.customFontName) : null
 );
 
 function toggleSection(id: SectionId) {
@@ -77,6 +118,37 @@ function toggleSection(id: SectionId) {
   if (next.has(id)) next.delete(id);
   else next.add(id);
   expandedSections = next;
+}
+
+let newCalloutName = $state("");
+const _labelTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const _labelDrafts = new Map<string, string>();
+
+function getLabelDraft(name: string, fallback: string): string {
+  return _labelDrafts.has(name) ? _labelDrafts.get(name)! : fallback;
+}
+
+function onLabelInput(name: string, value: string, builtin: boolean) {
+  _labelDrafts.set(name, value);
+  clearTimeout(_labelTimers.get(name));
+  _labelTimers.set(name, setTimeout(() => {
+    _labelTimers.delete(name);
+    _labelDrafts.delete(name);
+    if (builtin) calloutSettings.updateBuiltin(name, { label: value });
+    else calloutSettings.updateUser(name, { label: value });
+  }, 400));
+}
+
+function addNewCallout() {
+  const name = newCalloutName.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  if (!name) return;
+  calloutSettings.addUser({
+    name,
+    label: name.charAt(0).toUpperCase() + name.slice(1),
+    numbering: "none",
+    color: "info",
+  });
+  newCalloutName = "";
 }
 
 $effect(() => {
@@ -172,7 +244,7 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
     <div class="mdv-settings__font-row">
       <span class="mdv-settings__font-label">{t("settings.fontMain")}</span>
       <select class="mdv-settings__select" class:mdv-settings__select--inline={s.fontFamily === "custom"}
-        onchange={(e) => proseSettings.patch({ fontFamily: e.currentTarget.value as ProseStyle["fontFamily"] })}>
+        onchange={(e) => proseMarkSettings.patch({ fontFamily: e.currentTarget.value as ProseMarkStyle["fontFamily"] })}>
         <option value="fira-sans" selected={s.fontFamily === "fira-sans"}>Fira Sans</option>
         <option value="inter"     selected={s.fontFamily === "inter"}>Inter</option>
         <option value="system"    selected={s.fontFamily === "system"}>{t("settings.fontSystem")}</option>
@@ -183,14 +255,14 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           style={customFontOk === false ? "color: var(--color-error)" : ""}
           placeholder={t("settings.fontPlaceholder")}
           value={s.customFontName}
-          oninput={(e) => proseSettings.patch({ customFontName: e.currentTarget.value })}
+          oninput={(e) => debounceInput("font-main", e.currentTarget.value, (v) => proseMarkSettings.patch({ customFontName: v }))}
           spellcheck={false} />
       {/if}
     </div>
     <div class="mdv-settings__font-row">
       <span class="mdv-settings__font-label">{t("settings.fontMono")}</span>
       <select class="mdv-settings__select"
-        onchange={(e) => proseSettings.patch({ monoFont: e.currentTarget.value as ProseStyle["monoFont"] })}>
+        onchange={(e) => proseMarkSettings.patch({ monoFont: e.currentTarget.value as ProseMarkStyle["monoFont"] })}>
         <option value="fira-code"      selected={s.monoFont === "fira-code"}>Fira Code</option>
         <option value="jetbrains-mono" selected={s.monoFont === "jetbrains-mono"}>JetBrains Mono</option>
         <option value="system"         selected={s.monoFont === "system"}>{t("settings.fontSystem")}</option>
@@ -204,29 +276,61 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
   <div class="mdv-settings__fonts">
     <div class="mdv-settings__font-row">
       <span class="mdv-settings__font-label">{t("settings.fontMain")}</span>
-      <select class="mdv-settings__select" class:mdv-settings__select--inline={s.presFontFamily === "custom"}
-        onchange={(e) => proseSettings.patch({ presFontFamily: e.currentTarget.value as ProseStyle["presFontFamily"] })}>
-        <option value="fira-sans" selected={s.presFontFamily === "fira-sans"}>Fira Sans</option>
-        <option value="inter"     selected={s.presFontFamily === "inter"}>Inter</option>
-        <option value="system"    selected={s.presFontFamily === "system"}>{t("settings.fontSystem")}</option>
-        <option value="custom"    selected={s.presFontFamily === "custom"}>{t("settings.fontCustom")}</option>
+      <select class="mdv-settings__select" class:mdv-settings__select--inline={prs.fontFamily === "custom"}
+        onchange={(e) => presentationSettings.patch({ fontFamily: e.currentTarget.value as PresentationStyle["fontFamily"] })}>
+        <option value="fira-sans" selected={prs.fontFamily === "fira-sans"}>Fira Sans</option>
+        <option value="inter"     selected={prs.fontFamily === "inter"}>Inter</option>
+        <option value="system"    selected={prs.fontFamily === "system"}>{t("settings.fontSystem")}</option>
+        <option value="custom"    selected={prs.fontFamily === "custom"}>{t("settings.fontCustom")}</option>
       </select>
-      {#if s.presFontFamily === "custom"}
+      {#if prs.fontFamily === "custom"}
         <input type="text" class="mdv-settings__font-custom-input"
-          style={presCustomFontOk === false ? "color: var(--color-error)" : ""}
+          style={prsCustomFontOk === false ? "color: var(--color-error)" : ""}
           placeholder={t("settings.fontPlaceholder")}
-          value={s.presCustomFontName}
-          oninput={(e) => proseSettings.patch({ presCustomFontName: e.currentTarget.value })}
+          value={prs.customFontName}
+          oninput={(e) => debounceInput("font-pres", e.currentTarget.value, (v) => presentationSettings.patch({ customFontName: v }))}
           spellcheck={false} />
       {/if}
     </div>
     <div class="mdv-settings__font-row">
       <span class="mdv-settings__font-label">{t("settings.fontMono")}</span>
       <select class="mdv-settings__select"
-        onchange={(e) => proseSettings.patch({ presMonoFont: e.currentTarget.value as ProseStyle["presMonoFont"] })}>
-        <option value="fira-code"      selected={s.presMonoFont === "fira-code"}>Fira Code</option>
-        <option value="jetbrains-mono" selected={s.presMonoFont === "jetbrains-mono"}>JetBrains Mono</option>
-        <option value="system"         selected={s.presMonoFont === "system"}>{t("settings.fontSystem")}</option>
+        onchange={(e) => presentationSettings.patch({ monoFont: e.currentTarget.value as PresentationStyle["monoFont"] })}>
+        <option value="fira-code"      selected={prs.monoFont === "fira-code"}>Fira Code</option>
+        <option value="jetbrains-mono" selected={prs.monoFont === "jetbrains-mono"}>JetBrains Mono</option>
+        <option value="system"         selected={prs.monoFont === "system"}>{t("settings.fontSystem")}</option>
+      </select>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet policesSectionPreview()}
+  <p class="mdv-settings__section-title">{t("settings.fonts")}</p>
+  <div class="mdv-settings__fonts">
+    <div class="mdv-settings__font-row">
+      <span class="mdv-settings__font-label">{t("settings.fontMain")}</span>
+      <select class="mdv-settings__select" class:mdv-settings__select--inline={pvs.fontFamily === "custom"}
+        onchange={(e) => previewSettings.patch({ fontFamily: e.currentTarget.value as PreviewStyle["fontFamily"] })}>
+        <option value="fira-sans" selected={pvs.fontFamily === "fira-sans"}>Fira Sans</option>
+        <option value="inter"     selected={pvs.fontFamily === "inter"}>Inter</option>
+        <option value="system"    selected={pvs.fontFamily === "system"}>{t("settings.fontSystem")}</option>
+        <option value="custom"    selected={pvs.fontFamily === "custom"}>{t("settings.fontCustom")}</option>
+      </select>
+      {#if pvs.fontFamily === "custom"}
+        <input type="text" class="mdv-settings__font-custom-input"
+          placeholder={t("settings.fontPlaceholder")}
+          value={pvs.customFontName}
+          oninput={(e) => debounceInput("font-prev", e.currentTarget.value, (v) => previewSettings.patch({ customFontName: v }))}
+          spellcheck={false} />
+      {/if}
+    </div>
+    <div class="mdv-settings__font-row">
+      <span class="mdv-settings__font-label">{t("settings.fontMono")}</span>
+      <select class="mdv-settings__select"
+        onchange={(e) => previewSettings.patch({ monoFont: e.currentTarget.value as PreviewStyle["monoFont"] })}>
+        <option value="fira-code"      selected={pvs.monoFont === "fira-code"}>Fira Code</option>
+        <option value="jetbrains-mono" selected={pvs.monoFont === "jetbrains-mono"}>JetBrains Mono</option>
+        <option value="system"         selected={pvs.monoFont === "system"}>{t("settings.fontSystem")}</option>
       </select>
     </div>
   </div>
@@ -252,9 +356,9 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               const val = e.currentTarget.value as HeadingFont;
               if (val === "custom" && !fontName.trim()) {
                 const fallback = s.h1CustomFontName || s.h2CustomFontName || s.h3CustomFontName;
-                if (fallback) { proseSettings.patch({ [row.key]: val, [row.nameKey]: fallback }); return; }
+                if (fallback) { proseMarkSettings.patch({ [row.key]: val, [row.nameKey]: fallback }); return; }
               }
-              proseSettings.patch({ [row.key]: val });
+              proseMarkSettings.patch({ [row.key]: val });
             }}>
             {#each HEADING_FONT_OPTIONS as opt}
               <option value={opt.value} selected={s[row.key] === opt.value}>{t(opt.labelKey)}</option>
@@ -265,7 +369,7 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               style={fontValid === false ? "color: var(--color-error)" : ""}
               placeholder={t("settings.fontPlaceholder")}
               value={fontName}
-              oninput={(e) => proseSettings.patch({ [row.nameKey]: e.currentTarget.value })}
+              oninput={(e) => debounceInput("heading-" + row.tag, e.currentTarget.value, (v) => proseMarkSettings.patch({ [row.nameKey]: v }))}
               spellcheck={false} />
           {/if}
         </div>
@@ -281,22 +385,22 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
         <span>{t("settings.headingMarginBottom")}</span>
       </div>
       {@render headingRow("H1",
-        s.h1Size,    (v) => proseSettings.patch({ h1Size: v }),
-        showAlign ? s.h1Align : null, showAlign ? (v) => proseSettings.patch({ h1Align: v }) : null,
-        s.h1MarginTop,  (v) => proseSettings.patch({ h1MarginTop: v }),
-        s.h1MarginBottom, (v) => proseSettings.patch({ h1MarginBottom: v }),
+        s.h1Size,    (v) => proseMarkSettings.patch({ h1Size: v }),
+        showAlign ? s.h1Align : null, showAlign ? (v) => proseMarkSettings.patch({ h1Align: v }) : null,
+        s.h1MarginTop,  (v) => proseMarkSettings.patch({ h1MarginTop: v }),
+        s.h1MarginBottom, (v) => proseMarkSettings.patch({ h1MarginBottom: v }),
       )}
       {@render headingRow("H2",
-        s.h2Size,    (v) => proseSettings.patch({ h2Size: v }),
-        showAlign ? s.h2Align : null, showAlign ? (v) => proseSettings.patch({ h2Align: v }) : null,
-        s.h2MarginTop,  (v) => proseSettings.patch({ h2MarginTop: v }),
-        s.h2MarginBottom, (v) => proseSettings.patch({ h2MarginBottom: v }),
+        s.h2Size,    (v) => proseMarkSettings.patch({ h2Size: v }),
+        showAlign ? s.h2Align : null, showAlign ? (v) => proseMarkSettings.patch({ h2Align: v }) : null,
+        s.h2MarginTop,  (v) => proseMarkSettings.patch({ h2MarginTop: v }),
+        s.h2MarginBottom, (v) => proseMarkSettings.patch({ h2MarginBottom: v }),
       )}
       {@render headingRow("H3",
-        s.h3Size,    (v) => proseSettings.patch({ h3Size: v }),
-        showAlign ? s.h3Align : null, showAlign ? (v) => proseSettings.patch({ h3Align: v }) : null,
-        s.h3MarginTop,  (v) => proseSettings.patch({ h3MarginTop: v }),
-        s.h3MarginBottom, (v) => proseSettings.patch({ h3MarginBottom: v }),
+        s.h3Size,    (v) => proseMarkSettings.patch({ h3Size: v }),
+        showAlign ? s.h3Align : null, showAlign ? (v) => proseMarkSettings.patch({ h3Align: v }) : null,
+        s.h3MarginTop,  (v) => proseMarkSettings.patch({ h3MarginTop: v }),
+        s.h3MarginBottom, (v) => proseMarkSettings.patch({ h3MarginBottom: v }),
       )}
     </div>
   </div>
@@ -307,12 +411,12 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
   <div class="mdv-settings__titres-layout">
     <div class="mdv-settings__heading-fonts">
       {#each ([
-        { tag: "H1", key: "presH1FontFamily", nameKey: "presH1CustomFontName" },
-        { tag: "H2", key: "presH2FontFamily", nameKey: "presH2CustomFontName" },
-        { tag: "H3", key: "presH3FontFamily", nameKey: "presH3CustomFontName" },
+        { tag: "H1", key: "h1FontFamily", nameKey: "h1CustomFontName" },
+        { tag: "H2", key: "h2FontFamily", nameKey: "h2CustomFontName" },
+        { tag: "H3", key: "h3FontFamily", nameKey: "h3CustomFontName" },
       ] as const) as row}
-        {@const isCustom = s[row.key] === "custom"}
-        {@const fontName = s[row.nameKey]}
+        {@const isCustom = prs[row.key] === "custom"}
+        {@const fontName = prs[row.nameKey]}
         {@const fontValid = isCustom && fontName.trim() ? checkFontAvailable(fontName) : null}
         <div class="mdv-settings__font-row">
           <span class="mdv-settings__font-label mdv-settings__heading-tag">{row.tag}</span>
@@ -320,13 +424,13 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             onchange={(e) => {
               const val = e.currentTarget.value as HeadingFont;
               if (val === "custom" && !fontName.trim()) {
-                const fallback = s.presH1CustomFontName || s.presH2CustomFontName || s.presH3CustomFontName;
-                if (fallback) { proseSettings.patch({ [row.key]: val, [row.nameKey]: fallback }); return; }
+                const fallback = prs.h1CustomFontName || prs.h2CustomFontName || prs.h3CustomFontName;
+                if (fallback) { presentationSettings.patch({ [row.key]: val, [row.nameKey]: fallback }); return; }
               }
-              proseSettings.patch({ [row.key]: val });
+              presentationSettings.patch({ [row.key]: val });
             }}>
             {#each HEADING_FONT_OPTIONS as opt}
-              <option value={opt.value} selected={s[row.key] === opt.value}>{t(opt.labelKey)}</option>
+              <option value={opt.value} selected={prs[row.key] === opt.value}>{t(opt.labelKey)}</option>
             {/each}
           </select>
           {#if isCustom}
@@ -334,7 +438,7 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               style={fontValid === false ? "color: var(--color-error)" : ""}
               placeholder={t("settings.fontPlaceholder")}
               value={fontName}
-              oninput={(e) => proseSettings.patch({ [row.nameKey]: e.currentTarget.value })}
+              oninput={(e) => debounceInput("heading-" + row.tag, e.currentTarget.value, (v) => presentationSettings.patch({ [row.nameKey]: v }))}
               spellcheck={false} />
           {/if}
         </div>
@@ -350,22 +454,89 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
         <span>{t("settings.headingMarginBottom")}</span>
       </div>
       {@render headingRow("H1",
-        s.presH1Size,    (v) => proseSettings.patch({ presH1Size: v }),
-        s.presH1Align,   (v) => proseSettings.patch({ presH1Align: v }),
-        s.presH1MarginTop,  (v) => proseSettings.patch({ presH1MarginTop: v }),
-        s.presH1MarginBottom, (v) => proseSettings.patch({ presH1MarginBottom: v }),
+        prs.h1Size,    (v) => presentationSettings.patch({ h1Size: v }),
+        prs.h1Align,   (v) => presentationSettings.patch({ h1Align: v }),
+        prs.h1MarginTop,  (v) => presentationSettings.patch({ h1MarginTop: v }),
+        prs.h1MarginBottom, (v) => presentationSettings.patch({ h1MarginBottom: v }),
       )}
       {@render headingRow("H2",
-        s.presH2Size,    (v) => proseSettings.patch({ presH2Size: v }),
-        s.presH2Align,   (v) => proseSettings.patch({ presH2Align: v }),
-        s.presH2MarginTop,  (v) => proseSettings.patch({ presH2MarginTop: v }),
-        s.presH2MarginBottom, (v) => proseSettings.patch({ presH2MarginBottom: v }),
+        prs.h2Size,    (v) => presentationSettings.patch({ h2Size: v }),
+        prs.h2Align,   (v) => presentationSettings.patch({ h2Align: v }),
+        prs.h2MarginTop,  (v) => presentationSettings.patch({ h2MarginTop: v }),
+        prs.h2MarginBottom, (v) => presentationSettings.patch({ h2MarginBottom: v }),
       )}
       {@render headingRow("H3",
-        s.presH3Size,    (v) => proseSettings.patch({ presH3Size: v }),
-        s.presH3Align,   (v) => proseSettings.patch({ presH3Align: v }),
-        s.presH3MarginTop,  (v) => proseSettings.patch({ presH3MarginTop: v }),
-        s.presH3MarginBottom, (v) => proseSettings.patch({ presH3MarginBottom: v }),
+        prs.h3Size,    (v) => presentationSettings.patch({ h3Size: v }),
+        prs.h3Align,   (v) => presentationSettings.patch({ h3Align: v }),
+        prs.h3MarginTop,  (v) => presentationSettings.patch({ h3MarginTop: v }),
+        prs.h3MarginBottom, (v) => presentationSettings.patch({ h3MarginBottom: v }),
+      )}
+    </div>
+  </div>
+{/snippet}
+
+{#snippet titresSectionPreview()}
+  <p class="mdv-settings__section-title">{t("settings.headings")}</p>
+  <div class="mdv-settings__titres-layout">
+    <div class="mdv-settings__heading-fonts">
+      {#each ([
+        { tag: "H1", key: "h1FontFamily", nameKey: "h1CustomFontName" },
+        { tag: "H2", key: "h2FontFamily", nameKey: "h2CustomFontName" },
+        { tag: "H3", key: "h3FontFamily", nameKey: "h3CustomFontName" },
+      ] as const) as row}
+        {@const isCustom = pvs[row.key] === "custom"}
+        {@const fontName = pvs[row.nameKey]}
+        <div class="mdv-settings__font-row">
+          <span class="mdv-settings__font-label mdv-settings__heading-tag">{row.tag}</span>
+          <select class="mdv-settings__select" class:mdv-settings__select--inline={isCustom}
+            onchange={(e) => {
+              const val = e.currentTarget.value as HeadingFont;
+              if (val === "custom" && !fontName.trim()) {
+                const fallback = pvs.h1CustomFontName || pvs.h2CustomFontName || pvs.h3CustomFontName;
+                if (fallback) { previewSettings.patch({ [row.key]: val, [row.nameKey]: fallback }); return; }
+              }
+              previewSettings.patch({ [row.key]: val });
+            }}>
+            {#each HEADING_FONT_OPTIONS as opt}
+              <option value={opt.value} selected={pvs[row.key] === opt.value}>{t(opt.labelKey)}</option>
+            {/each}
+          </select>
+          {#if isCustom}
+            <input type="text" class="mdv-settings__font-custom-input"
+              placeholder={t("settings.fontPlaceholder")}
+              value={fontName}
+              oninput={(e) => debounceInput("heading-prev-" + row.tag, e.currentTarget.value, (v) => previewSettings.patch({ [row.nameKey]: v }))}
+              spellcheck={false} />
+          {/if}
+        </div>
+      {/each}
+    </div>
+
+    <div class="mdv-settings__headings">
+      <div class="mdv-settings__heading-header">
+        <span></span>
+        <span>{t("settings.headingSize")}</span>
+        <span>{t("settings.headingAlign")}</span>
+        <span>{t("settings.headingMarginTop")}</span>
+        <span>{t("settings.headingMarginBottom")}</span>
+      </div>
+      {@render headingRow("H1",
+        pvs.h1Size,    (v) => previewSettings.patch({ h1Size: v }),
+        pvs.h1Align,   (v) => previewSettings.patch({ h1Align: v }),
+        pvs.h1MarginTop,  (v) => previewSettings.patch({ h1MarginTop: v }),
+        pvs.h1MarginBottom, (v) => previewSettings.patch({ h1MarginBottom: v }),
+      )}
+      {@render headingRow("H2",
+        pvs.h2Size,    (v) => previewSettings.patch({ h2Size: v }),
+        pvs.h2Align,   (v) => previewSettings.patch({ h2Align: v }),
+        pvs.h2MarginTop,  (v) => previewSettings.patch({ h2MarginTop: v }),
+        pvs.h2MarginBottom, (v) => previewSettings.patch({ h2MarginBottom: v }),
+      )}
+      {@render headingRow("H3",
+        pvs.h3Size,    (v) => previewSettings.patch({ h3Size: v }),
+        pvs.h3Align,   (v) => previewSettings.patch({ h3Align: v }),
+        pvs.h3MarginTop,  (v) => previewSettings.patch({ h3MarginTop: v }),
+        pvs.h3MarginBottom, (v) => previewSettings.patch({ h3MarginBottom: v }),
       )}
     </div>
   </div>
@@ -377,21 +548,21 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
     <div class="mdv-settings__list-row">
       <span class="mdv-settings__list-label">{t("settings.listLevel1")}</span>
       <select class="mdv-settings__select"
-        onchange={(e) => proseSettings.patch({ olLevel1: e.currentTarget.value as OlType })}>
+        onchange={(e) => proseMarkSettings.patch({ olLevel1: e.currentTarget.value as OlType })}>
         {#each OL_OPTIONS as opt}<option value={opt.value} selected={s.olLevel1 === opt.value}>{t(opt.labelKey)}</option>{/each}
       </select>
     </div>
     <div class="mdv-settings__list-row">
       <span class="mdv-settings__list-label">{t("settings.listLevel2")}</span>
       <select class="mdv-settings__select"
-        onchange={(e) => proseSettings.patch({ olLevel2: e.currentTarget.value as OlType })}>
+        onchange={(e) => proseMarkSettings.patch({ olLevel2: e.currentTarget.value as OlType })}>
         {#each OL_OPTIONS as opt}<option value={opt.value} selected={s.olLevel2 === opt.value}>{t(opt.labelKey)}</option>{/each}
       </select>
     </div>
     <div class="mdv-settings__list-row">
       <span class="mdv-settings__list-label">{t("settings.listLevel3")}</span>
       <select class="mdv-settings__select"
-        onchange={(e) => proseSettings.patch({ olLevel3: e.currentTarget.value as OlType })}>
+        onchange={(e) => proseMarkSettings.patch({ olLevel3: e.currentTarget.value as OlType })}>
         {#each OL_OPTIONS as opt}<option value={opt.value} selected={s.olLevel3 === opt.value}>{t(opt.labelKey)}</option>{/each}
       </select>
     </div>
@@ -490,21 +661,21 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                 <span class="mdv-settings__slider-label">{t("settings.fontSize")}</span>
                 <input type="range" class="mdv-settings__range" min="12" max="24" step="1"
                   value={s.fontSize}
-                  oninput={(e) => proseSettings.patch({ fontSize: Number(e.currentTarget.value) })} />
+                  oninput={(e) => proseMarkSettings.patch({ fontSize: Number(e.currentTarget.value) })} />
                 <span class="mdv-settings__slider-value">{s.fontSize} px</span>
               </div>
               <div class="mdv-settings__slider-row">
                 <span class="mdv-settings__slider-label">{t("settings.lineHeight")}</span>
                 <input type="range" class="mdv-settings__range" min="1.3" max="2.2" step="0.05"
                   value={s.lineHeight}
-                  oninput={(e) => proseSettings.patch({ lineHeight: Number(e.currentTarget.value) })} />
+                  oninput={(e) => proseMarkSettings.patch({ lineHeight: Number(e.currentTarget.value) })} />
                 <span class="mdv-settings__slider-value">{s.lineHeight.toFixed(2)}</span>
               </div>
               <div class="mdv-settings__slider-row">
                 <span class="mdv-settings__slider-label">{t("settings.columnWidth")}</span>
                 <input type="range" class="mdv-settings__range" min="500" max="1200" step="10"
                   value={s.maxWidth}
-                  oninput={(e) => proseSettings.patch({ maxWidth: Number(e.currentTarget.value) })} />
+                  oninput={(e) => proseMarkSettings.patch({ maxWidth: Number(e.currentTarget.value) })} />
                 <span class="mdv-settings__slider-value">{s.maxWidth} px</span>
               </div>
             </div>
@@ -516,41 +687,51 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <textarea
               class="mdv-settings__css-editor"
               value={s.customCss}
-              oninput={(e) => proseSettings.patch({ customCss: e.currentTarget.value })}
+              oninput={(e) => debounceInput("css-prose", e.currentTarget.value, (v) => proseMarkSettings.patch({ customCss: v }))}
               spellcheck={false} autocomplete="off" autocapitalize="off"
               aria-label={t("settings.customCssAria")}
             ></textarea>
           {/if}
 
           {#if activeModule === "apercu"}
-            {@render policesSection()}
+            {@render policesSectionPreview()}
 
             <p class="mdv-settings__section-title">{t("settings.typography")}</p>
             <div class="mdv-settings__sliders">
               <div class="mdv-settings__slider-row">
                 <span class="mdv-settings__slider-label">{t("settings.fontSize")}</span>
                 <input type="range" class="mdv-settings__range" min="12" max="24" step="1"
-                  value={s.fontSize}
-                  oninput={(e) => proseSettings.patch({ fontSize: Number(e.currentTarget.value) })} />
-                <span class="mdv-settings__slider-value">{s.fontSize} px</span>
+                  value={pvs.fontSize}
+                  oninput={(e) => previewSettings.patch({ fontSize: Number(e.currentTarget.value) })} />
+                <span class="mdv-settings__slider-value">{pvs.fontSize} px</span>
               </div>
               <div class="mdv-settings__slider-row">
                 <span class="mdv-settings__slider-label">{t("settings.lineHeight")}</span>
                 <input type="range" class="mdv-settings__range" min="1.3" max="2.2" step="0.05"
-                  value={s.lineHeight}
-                  oninput={(e) => proseSettings.patch({ lineHeight: Number(e.currentTarget.value) })} />
-                <span class="mdv-settings__slider-value">{s.lineHeight.toFixed(2)}</span>
+                  value={pvs.lineHeight}
+                  oninput={(e) => previewSettings.patch({ lineHeight: Number(e.currentTarget.value) })} />
+                <span class="mdv-settings__slider-value">{pvs.lineHeight.toFixed(2)}</span>
               </div>
               <div class="mdv-settings__slider-row">
                 <span class="mdv-settings__slider-label">{t("settings.columnWidth")}</span>
                 <input type="range" class="mdv-settings__range" min="500" max="1200" step="10"
-                  value={s.maxWidth}
-                  oninput={(e) => proseSettings.patch({ maxWidth: Number(e.currentTarget.value) })} />
-                <span class="mdv-settings__slider-value">{s.maxWidth} px</span>
+                  value={pvs.maxWidth}
+                  oninput={(e) => previewSettings.patch({ maxWidth: Number(e.currentTarget.value) })} />
+                <span class="mdv-settings__slider-value">{pvs.maxWidth} px</span>
               </div>
             </div>
 
-            {@render titresSection(true, true)}
+            {@render titresSectionPreview()}
+
+            <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
+            <p class="mdv-settings__hint">{t("settings.customCssHint")}</p>
+            <textarea
+              class="mdv-settings__css-editor"
+              value={pvs.customCss}
+              oninput={(e) => debounceInput("css-preview", e.currentTarget.value, (v) => previewSettings.patch({ customCss: v }))}
+              spellcheck={false} autocomplete="off" autocapitalize="off"
+              aria-label={t("settings.customCssAria")}
+            ></textarea>
           {/if}
 
           {#if activeModule === "presentation"}
@@ -576,16 +757,16 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               <div class="mdv-settings__slider-row">
                 <span class="mdv-settings__slider-label">{t("settings.fontSize")}</span>
                 <input type="range" class="mdv-settings__range" min="12" max="32" step="1"
-                  value={s.presFontSize}
-                  oninput={(e) => proseSettings.patch({ presFontSize: Number(e.currentTarget.value) })} />
-                <span class="mdv-settings__slider-value">{s.presFontSize} px</span>
+                  value={prs.fontSize}
+                  oninput={(e) => presentationSettings.patch({ fontSize: Number(e.currentTarget.value) })} />
+                <span class="mdv-settings__slider-value">{prs.fontSize} px</span>
               </div>
               <div class="mdv-settings__slider-row">
                 <span class="mdv-settings__slider-label">{t("settings.lineHeight")}</span>
                 <input type="range" class="mdv-settings__range" min="1.0" max="2.2" step="0.05"
-                  value={s.presLineHeight}
-                  oninput={(e) => proseSettings.patch({ presLineHeight: Number(e.currentTarget.value) })} />
-                <span class="mdv-settings__slider-value">{s.presLineHeight.toFixed(2)}</span>
+                  value={prs.lineHeight}
+                  oninput={(e) => presentationSettings.patch({ lineHeight: Number(e.currentTarget.value) })} />
+                <span class="mdv-settings__slider-value">{prs.lineHeight.toFixed(2)}</span>
               </div>
             </div>
 
@@ -595,8 +776,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <p class="mdv-settings__hint">{t("settings.customCssPresHint")}</p>
             <textarea
               class="mdv-settings__css-editor"
-              value={s.presCss}
-              oninput={(e) => proseSettings.patch({ presCss: e.currentTarget.value })}
+              value={prs.customCss}
+              oninput={(e) => debounceInput("css-pres", e.currentTarget.value, (v) => presentationSettings.patch({ customCss: v }))}
               spellcheck={false} autocomplete="off" autocapitalize="off"
               aria-label={t("settings.customCssPresAria")}
             ></textarea>
@@ -619,11 +800,319 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <textarea
               class="mdv-settings__css-editor"
               value={mathJaxPreamble.current}
-              oninput={(e) => (mathJaxPreamble.current = e.currentTarget.value)}
+              oninput={(e) => debounceInput("mathjax", e.currentTarget.value, (v) => (mathJaxPreamble.current = v))}
               spellcheck={false} autocomplete="off" autocapitalize="off"
               placeholder={t("settings.mathjaxPlaceholder")}
               aria-label={t("settings.mathjaxAria")}
             ></textarea>
+          {/if}
+
+          {#if activeModule === "callouts"}
+            <p class="mdv-settings__section-title">{t("settings.calloutsTitle")}</p>
+
+            {#each calloutSettings.current as def (def.name)}
+              <div class="mdv-settings__callout-row">
+                <div class="mdv-settings__callout-header">
+                  <span class="mdv-settings__callout-badge" style="background:{CALLOUT_COLORS.find(c => c.id === def.color)?.hex ?? '#888'}; opacity:0.7"></span>
+                  <span class="mdv-settings__callout-name">{def.name}</span>
+                  {#if !def.builtin}
+                    <button type="button" class="mdv-settings__callout-remove"
+                      onclick={() => calloutSettings.removeUser(def.name)}
+                      aria-label={t("settings.calloutRemove")}>✕</button>
+                  {/if}
+                </div>
+
+                <div class="mdv-settings__callout-fields">
+                  <label class="mdv-settings__callout-field">
+                    <span>{t("settings.calloutLabel")}</span>
+                    <input type="text" class="mdv-settings__callout-input"
+                      value={getLabelDraft(def.name, def.label)}
+                      oninput={(e) => onLabelInput(def.name, e.currentTarget.value, def.builtin)} />
+                  </label>
+
+                  <label class="mdv-settings__callout-field">
+                    <span>{t("settings.calloutNumbering")}</span>
+                    <select class="mdv-settings__select"
+                      onchange={(e) => {
+                        const v = e.currentTarget.value as CalloutNumbering;
+                        if (def.builtin) calloutSettings.updateBuiltin(def.name, { numbering: v });
+                        else calloutSettings.updateUser(def.name, { numbering: v });
+                      }}>
+                      <option value="theorems" selected={def.numbering === "theorems"}>{t("settings.calloutNumTheorems")}</option>
+                      <option value="exercises" selected={def.numbering === "exercises"}>{t("settings.calloutNumExercises")}</option>
+                      <option value="none"      selected={def.numbering === "none"}>{t("settings.calloutNumNone")}</option>
+                    </select>
+                  </label>
+
+                  <label class="mdv-settings__callout-field">
+                    <span>{t("settings.calloutColor")}</span>
+                    <div class="mdv-settings__callout-colors">
+                      {#each CALLOUT_COLORS as c (c.id)}
+                        <button type="button"
+                          class="mdv-settings__callout-swatch"
+                          class:is-active={def.color === c.id}
+                          style="background:{c.hex}"
+                          onclick={() => {
+                            if (def.builtin) calloutSettings.updateBuiltin(def.name, { color: c.id });
+                            else calloutSettings.updateUser(def.name, { color: c.id });
+                          }}
+                          aria-label={c.id}
+                        ></button>
+                      {/each}
+                    </div>
+                  </label>
+                </div>
+              </div>
+            {/each}
+
+            <div class="mdv-settings__callout-add">
+              <input type="text" class="mdv-settings__callout-input"
+                placeholder={t("settings.calloutAddPlaceholder")}
+                bind:value={newCalloutName}
+                onkeydown={(e) => { if (e.key === "Enter") addNewCallout(); }} />
+              <button type="button" class="mdv-settings__callout-add-btn"
+                onclick={addNewCallout}
+                disabled={!newCalloutName.trim()}>
+                {t("settings.calloutAdd")}
+              </button>
+            </div>
+
+            <p class="mdv-settings__hint">{t("settings.calloutsHint")}</p>
+          {/if}
+
+          {#if activeModule === "latex-general"}
+            <p class="mdv-settings__section-title">{t("settings.latexEngine")}</p>
+            <div class="mdv-settings__radio-group">
+              <label class="mdv-settings__radio">
+                <input type="radio" name="latex-engine" value="pdflatex"
+                  checked={latexSettings.current.engine === "pdflatex"}
+                  onchange={() => latexSettings.patch({ engine: "pdflatex" })} />
+                {t("settings.latexEnginePdflatex")}
+              </label>
+              <label class="mdv-settings__radio">
+                <input type="radio" name="latex-engine" value="xelatex"
+                  checked={latexSettings.current.engine === "xelatex"}
+                  onchange={() => latexSettings.patch({ engine: "xelatex" })} />
+                {t("settings.latexEngineXelatex")}
+              </label>
+              <label class="mdv-settings__radio">
+                <input type="radio" name="latex-engine" value="lualatex"
+                  checked={latexSettings.current.engine === "lualatex"}
+                  onchange={() => latexSettings.patch({ engine: "lualatex" })} />
+                {t("settings.latexEngineLualatex")}
+              </label>
+            </div>
+
+            <p class="mdv-settings__section-title">{t("settings.latexShellEscape")}</p>
+            <label class="mdv-settings__radio">
+              <input type="checkbox"
+                checked={latexSettings.current.shellEscape}
+                onchange={(e) => latexSettings.patch({ shellEscape: (e.currentTarget as HTMLInputElement).checked })} />
+              {t("settings.latexShellEscapeHint")}
+            </label>
+          {/if}
+
+          {#if activeModule === "latex-build"}
+            <p class="mdv-settings__section-title">{t("settings.latexOutputDir")}</p>
+            <input type="text" class="mdv-settings__input"
+              value={latexSettings.current.outputDir}
+              oninput={(e) => debounceInput("latex-output-dir", e.currentTarget.value, (v) => latexSettings.patch({ outputDir: v }))}
+              spellcheck={false} />
+            <p class="mdv-settings__hint">{t("settings.latexOutputDirHint")}</p>
+
+            <p class="mdv-settings__section-title">{t("settings.latexAuxDir")}</p>
+            <input type="text" class="mdv-settings__input"
+              value={latexSettings.current.auxDir}
+              oninput={(e) => debounceInput("latex-aux-dir", e.currentTarget.value, (v) => latexSettings.patch({ auxDir: v }))}
+              spellcheck={false} />
+            <p class="mdv-settings__hint">{t("settings.latexAuxDirHint")}</p>
+
+            <p class="mdv-settings__section-title">{t("settings.latexMaxRuns")}</p>
+            <input type="number" class="mdv-settings__input"
+              value={latexSettings.current.maxRuns}
+              min={1} max={20}
+              oninput={(e) => {
+                const v = parseInt(e.currentTarget.value, 10);
+                if (v >= 1 && v <= 20) latexSettings.patch({ maxRuns: v });
+              }} />
+
+            <p class="mdv-settings__section-title">{t("settings.latexBibtex")}</p>
+            <select class="mdv-settings__select mdv-settings__select--auto"
+              onchange={(e) => latexSettings.patch({ bibtex: e.currentTarget.value as BibtexMode })}>
+              <option value="auto"     selected={latexSettings.current.bibtex === "auto"}>{t("settings.latexBibtexAuto")}</option>
+              <option value="bibtex"   selected={latexSettings.current.bibtex === "bibtex"}>{t("settings.latexBibtexBibtex")}</option>
+              <option value="biber"    selected={latexSettings.current.bibtex === "biber"}>{t("settings.latexBibtexBiber")}</option>
+              <option value="disabled" selected={latexSettings.current.bibtex === "disabled"}>{t("settings.latexBibtexDisabled")}</option>
+            </select>
+            <p class="mdv-settings__hint">{t("settings.latexBibtexHint")}</p>
+
+            <p class="mdv-settings__section-title">{t("settings.latexTexmf")}</p>
+            <p class="mdv-settings__hint">{t("settings.latexTexmfHint")}</p>
+            <div style="display:flex;gap:8px">
+              <button type="button" class="mdv-settings__restart"
+                onclick={async () => {
+                  const rp = getRootPath();
+                  if (rp) {
+                    const dir = joinPath(joinPath(rp, ".azprose"), "texmf");
+                    const { initTexmf } = await import("@/components/tex/latex-build");
+                    await initTexmf(rp);
+                    const { invoke } = await import("@tauri-apps/api/core");
+                    invoke("open_folder", { path: dir });
+                  }
+                }}>
+                {t("settings.latexTexmfOpen")}
+              </button>
+              <button type="button" class="mdv-settings__restart"
+                onclick={async () => {
+                  const rp = getRootPath();
+                  if (rp) {
+                    const { rehashTexmf } = await import("@/components/tex/latex-build");
+                    const msg = await rehashTexmf(rp);
+                    notifications.setInfo(msg);
+                  }
+                }}>
+                {t("settings.latexTexmfRehash")}
+              </button>
+            </div>
+          {/if}
+
+          {#if activeModule === "typst-general"}
+            <p class="mdv-settings__section-title">{t("settings.typstFormatter")}</p>
+            <div class="mdv-settings__radio-group">
+              <label class="mdv-settings__radio">
+                <input type="radio" name="typst-formatter" value="typstyle"
+                  checked={typstSettings.current.formatterMode === "typstyle"}
+                  onchange={() => typstSettings.patch({ formatterMode: "typstyle" })} />
+                {t("settings.typstFormatterTypstyle")}
+              </label>
+              <label class="mdv-settings__radio">
+                <input type="radio" name="typst-formatter" value="typstfmt"
+                  checked={typstSettings.current.formatterMode === "typstfmt"}
+                  onchange={() => typstSettings.patch({ formatterMode: "typstfmt" })} />
+                {t("settings.typstFormatterTypstfmt")}
+              </label>
+              <label class="mdv-settings__radio">
+                <input type="radio" name="typst-formatter" value="disable"
+                  checked={typstSettings.current.formatterMode === "disable"}
+                  onchange={() => typstSettings.patch({ formatterMode: "disable" })} />
+                {t("settings.typstFormatterDisable")}
+              </label>
+            </div>
+
+            <p class="mdv-settings__section-title">{t("settings.typstPrintWidth")}</p>
+            <input type="number" class="mdv-settings__input"
+              value={typstSettings.current.formatterPrintWidth}
+              min={60} max={200}
+              oninput={(e) => {
+                const v = parseInt(e.currentTarget.value, 10);
+                if (v >= 60 && v <= 200) typstSettings.patch({ formatterPrintWidth: v });
+              }} />
+
+            <p class="mdv-settings__section-title">{t("settings.typstIndentSize")}</p>
+            <input type="number" class="mdv-settings__input"
+              value={typstSettings.current.formatterIndentSize}
+              min={1} max={8}
+              oninput={(e) => {
+                const v = parseInt(e.currentTarget.value, 10);
+                if (v >= 1 && v <= 8) typstSettings.patch({ formatterIndentSize: v });
+              }} />
+
+            <p class="mdv-settings__section-title">{t("settings.typstSemanticTokens")}</p>
+            <label class="mdv-settings__radio">
+              <input type="checkbox"
+                checked={typstSettings.current.semanticTokens}
+                onchange={(e) => typstSettings.patch({ semanticTokens: (e.currentTarget as HTMLInputElement).checked })} />
+              {t("settings.typstSemanticTokensHint")}
+            </label>
+
+            <p class="mdv-settings__section-title">{t("settings.typstSystemFonts")}</p>
+            <label class="mdv-settings__radio">
+              <input type="checkbox"
+                checked={typstSettings.current.systemFonts}
+                onchange={(e) => typstSettings.patch({ systemFonts: (e.currentTarget as HTMLInputElement).checked })} />
+              {t("settings.typstSystemFontsHint")}
+            </label>
+          {/if}
+
+          {#if activeModule === "typst-build"}
+            <p class="mdv-settings__section-title">{t("settings.typstExportPdf")}</p>
+            <div class="mdv-settings__radio-group">
+              <label class="mdv-settings__radio">
+                <input type="radio" name="typst-export" value="never"
+                  checked={typstSettings.current.exportPdf === "never"}
+                  onchange={() => typstSettings.patch({ exportPdf: "never" })} />
+                {t("settings.typstExportPdfNever")}
+              </label>
+              <label class="mdv-settings__radio">
+                <input type="radio" name="typst-export" value="onSave"
+                  checked={typstSettings.current.exportPdf === "onSave"}
+                  onchange={() => typstSettings.patch({ exportPdf: "onSave" })} />
+                {t("settings.typstExportPdfOnSave")}
+              </label>
+              <label class="mdv-settings__radio">
+                <input type="radio" name="typst-export" value="onType"
+                  checked={typstSettings.current.exportPdf === "onType"}
+                  onchange={() => typstSettings.patch({ exportPdf: "onType" })} />
+                {t("settings.typstExportPdfOnType")}
+              </label>
+            </div>
+
+            <p class="mdv-settings__section-title">{t("settings.typstOutputPath")}</p>
+            <input type="text" class="mdv-settings__input"
+              value={typstSettings.current.outputPath}
+              oninput={(e) => debounceInput("typst-output", e.currentTarget.value, (v) => typstSettings.patch({ outputPath: v }))}
+              placeholder="$dir/$name"
+              spellcheck={false} />
+            <p class="mdv-settings__hint">{t("settings.typstOutputPathHint")}</p>
+
+            <p class="mdv-settings__section-title">{t("settings.typstLint")}</p>
+            <label class="mdv-settings__radio">
+              <input type="checkbox"
+                checked={typstSettings.current.lintEnabled}
+                onchange={(e) => typstSettings.patch({ lintEnabled: (e.currentTarget as HTMLInputElement).checked })} />
+              {t("settings.typstLintHint")}
+            </label>
+
+            {#if typstSettings.current.lintEnabled}
+              <p class="mdv-settings__section-title">{t("settings.typstLintWhen")}</p>
+              <div class="mdv-settings__radio-group">
+                <label class="mdv-settings__radio">
+                  <input type="radio" name="typst-lint-when" value="onSave"
+                    checked={typstSettings.current.lintWhen === "onSave"}
+                    onchange={() => typstSettings.patch({ lintWhen: "onSave" })} />
+                  {t("settings.typstLintOnSave")}
+                </label>
+                <label class="mdv-settings__radio">
+                  <input type="radio" name="typst-lint-when" value="onType"
+                    checked={typstSettings.current.lintWhen === "onType"}
+                    onchange={() => typstSettings.patch({ lintWhen: "onType" })} />
+                  {t("settings.typstLintOnType")}
+                </label>
+              </div>
+            {/if}
+
+            <p class="mdv-settings__section-title">{t("settings.typstPackages")}</p>
+            <p class="mdv-settings__hint">{t("settings.typstPackagesHint")}</p>
+            <button type="button" class="mdv-settings__restart"
+              onclick={async () => {
+                const rp = getRootPath();
+                if (rp) {
+                  const dir = joinPath(joinPath(rp, ".azprose"), "typst");
+                  await mkdir(dir, { recursive: true });
+                  const { invoke } = await import("@tauri-apps/api/core");
+                  invoke("open_folder", { path: dir });
+                }
+              }}>
+              {t("settings.typstPackagesOpen")}
+            </button>
+
+            <p class="mdv-settings__section-title">{t("settings.typstExtraArgs")}</p>
+            <input type="text" class="mdv-settings__input"
+              value={typstSettings.current.typstExtraArgs}
+              oninput={(e) => debounceInput("typst-extra", e.currentTarget.value, (v) => typstSettings.patch({ typstExtraArgs: v }))}
+              placeholder="--input key=value"
+              spellcheck={false} />
+            <p class="mdv-settings__hint">{t("settings.typstExtraArgsHint")}</p>
           {/if}
 
         </div>
@@ -637,8 +1126,16 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           <button type="button" class="mdv-settings__reset" onclick={() => generalSettings.reset()}>
             {t("settings.reset")}
           </button>
-        {:else if activeModule === "prose-writing" || activeModule === "apercu" || activeModule === "presentation"}
-          <button type="button" class="mdv-settings__reset" onclick={() => proseSettings.reset()}>
+        {:else if activeModule === "prose-writing"}
+          <button type="button" class="mdv-settings__reset" onclick={() => proseMarkSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "apercu"}
+          <button type="button" class="mdv-settings__reset" onclick={() => previewSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "presentation"}
+          <button type="button" class="mdv-settings__reset" onclick={() => presentationSettings.reset()}>
             {t("settings.reset")}
           </button>
         {:else if activeModule === "mathjax"}
@@ -647,6 +1144,18 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           </button>
           <button type="button" class="mdv-settings__restart" onclick={restartApp}>
             {t("settings.restart")}
+          </button>
+        {:else if activeModule === "callouts"}
+          <button type="button" class="mdv-settings__reset" onclick={() => calloutSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "latex-general" || activeModule === "latex-build"}
+          <button type="button" class="mdv-settings__reset" onclick={() => latexSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "typst-general" || activeModule === "typst-build"}
+          <button type="button" class="mdv-settings__reset" onclick={() => typstSettings.reset()}>
+            {t("settings.reset")}
           </button>
         {/if}
       </footer>

@@ -5,6 +5,9 @@ export {
   openViewer,
   closeViewer,
   pdfName,
+  resolveOutputPath,
+  cleanBuild,
+  cleanAll,
 } from "./build";
 export {
   clearDiagnostics,

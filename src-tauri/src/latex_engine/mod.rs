@@ -1,3 +1,4 @@
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -345,6 +346,10 @@ fn parse_fls_file(dir: &Path, out_dir_path: &Path, aux_dir_path: Option<&Path>, 
 pub async fn latex_build(
     path: String,
     engine: String,
+    shell_escape: Option<bool>,
+    max_runs: Option<u32>,
+    out_dir: Option<String>,
+    aux_dir: Option<String>,
     app: AppHandle,
 ) -> Result<LatexBuildResult, String> {
     if !check_latexmk() {
@@ -381,12 +386,23 @@ pub async fn latex_build(
         .ok_or_else(|| "invalid file name".to_string())?;
     let flag = engine_flag(&engine);
 
-    let (out_dir, aux_dir) = parse_latexmkrc(dir);
-    if let Some(ref d) = out_dir {
+    let (rc_out_dir, rc_aux_dir) = parse_latexmkrc(dir);
+    // Frontend settings override latexmkrc values
+    let effective_out_dir = out_dir.or(rc_out_dir);
+    let effective_aux_dir = aux_dir.or(rc_aux_dir);
+    if let Some(ref d) = effective_out_dir {
         let _ = app.emit(
             "latex://log",
             LatexLogPayload {
-                line: format!("info: output directory from latexmkrc → {d}"),
+                line: format!("info: output directory → {d}"),
+            },
+        );
+    }
+    if let Some(ref d) = effective_aux_dir {
+        let _ = app.emit(
+            "latex://log",
+            LatexLogPayload {
+                line: format!("info: aux directory → {d}"),
             },
         );
     }
@@ -399,8 +415,34 @@ pub async fn latex_build(
     )
     .ok();
 
+    let mut cmd_args: Vec<String> = vec![flag.into(), "-synctex=1".into(), "-interaction=nonstopmode".into(), "-halt-on-error".into()];
+    if shell_escape.unwrap_or(false) {
+        // Warn: MiKTeX may restrict \write18
+        if cfg!(target_os = "windows") || std::env::var("MSYSTEM").is_ok() {
+            let _ = app.emit(
+                "latex://log",
+                LatexLogPayload {
+                    line: "warning: --shell-escape on MiKTeX may be restricted. \\write18 requires elevated permissions.".into(),
+                },
+            );
+        }
+        cmd_args.push("--shell-escape".into());
+    }
+    if let Some(runs) = max_runs {
+        if runs >= 1 && runs <= 20 {
+            cmd_args.push(format!("-max_repeat={runs}"));
+        }
+    }
+    if let Some(ref d) = effective_out_dir {
+        cmd_args.push(format!("-outdir={d}"));
+    }
+    if let Some(ref d) = effective_aux_dir {
+        cmd_args.push(format!("-auxdir={d}"));
+    }
+    cmd_args.push(file_stem.into());
+
     let mut child = Command::new("latexmk")
-        .args([flag, "-synctex=1", "-interaction=nonstopmode", "-halt-on-error", file_stem])
+        .args(&cmd_args)
         .current_dir(dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -450,7 +492,7 @@ pub async fn latex_build(
     let mut diags = Vec::new();
 
     // 1. Parse the .log file for structured diagnostics (best source)
-    let out_dir_path = output_dir(dir, &out_dir);
+    let out_dir_path = output_dir(dir, &effective_out_dir);
     let log_path = out_dir_path.join(format!("{file_stem}.log"));
     if log_path.exists() {
         diags.extend(parse_log_file(&log_path));
@@ -467,7 +509,7 @@ pub async fn latex_build(
     }
 
     // 4. Parse .fls for dependency tracking (try out_dir first, then aux_dir)
-    let aux_dir_path = aux_dir.as_ref().map(|d| dir.join(d));
+    let aux_dir_path = effective_aux_dir.as_ref().map(|d| dir.join(d));
     let dependencies = parse_fls_file(dir, &out_dir_path, aux_dir_path.as_deref(), file_stem);
     let dep_count = dependencies.len();
     let _ = app.emit(
@@ -666,4 +708,54 @@ pub fn latex_find_root(path: String) -> LatexRootResult {
             method: "fallback: no \\documentclass found, using current file".into(),
         }
     }
+}
+
+/// Initialize .azprose/texmf/ with TDS structure and run mktexlsr.
+#[tauri::command]
+pub fn latex_init_texmf(project_root: String) -> Result<String, String> {
+    let texmf = Path::new(&project_root).join(".azprose").join("texmf");
+
+    // Create TDS directories
+    let dirs = [
+        "tex/latex",
+        "bibtex/bst",
+        "bibtex/bib",
+        "fonts",
+    ];
+    for d in &dirs {
+        let full = texmf.join(d);
+        fs::create_dir_all(&full).map_err(|e| format!("create {d}: {e}"))?;
+    }
+
+    Ok("texmf directory created".into())
+}
+
+/// Run mktexlsr/texhash on .azprose/texmf/ to rebuild the ls-R database.
+#[tauri::command]
+pub fn latex_rehash_texmf(project_root: String) -> Result<String, String> {
+    let texmf = Path::new(&project_root).join(".azprose").join("texmf");
+    if !texmf.exists() {
+        return Err("texmf directory does not exist".into());
+    }
+
+    // Try mktexlsr first, then texhash
+    for cmd in &["mktexlsr", "texhash"] {
+        let output = std::process::Command::new(cmd)
+            .arg(texmf.to_string_lossy().to_string())
+            .output();
+        match output {
+            Ok(o) if o.status.success() => {
+                let msg = String::from_utf8_lossy(&o.stdout);
+                return Ok(format!("{cmd} — {msg}"));
+            }
+            Ok(o) => {
+                let err = String::from_utf8_lossy(&o.stderr);
+                if !err.contains("not found") && !err.contains("No such file") {
+                    return Ok(format!("{cmd} warning: {err}"));
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+    Ok("ls-R not generated — mktexlsr/texhash not found (file lookup still works via TEXMFHOME)".into())
 }

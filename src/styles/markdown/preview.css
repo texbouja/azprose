@@ -314,7 +314,7 @@
 .mdv-prose .callout .callout-content > :last-child,
 .azp-slide__content .callout .callout-content > :last-child { margin-bottom: 0; }
 
-/* Callout type colors */
+/* Callout type colors (native Obsidian callouts — static) */
 .mdv-prose .callout[data-callout="note"],        .azp-slide__content .callout[data-callout="note"]        { border-left: 3px solid #6b9eeb; }
 .mdv-prose .callout[data-callout="tip"],         .azp-slide__content .callout[data-callout="tip"]         { border-left: 3px solid #72b886; }
 .mdv-prose .callout[data-callout="success"],     .azp-slide__content .callout[data-callout="success"]     { border-left: 3px solid #72b886; }
@@ -326,23 +326,9 @@
 .mdv-prose .callout[data-callout="example"],     .azp-slide__content .callout[data-callout="example"]     { border-left: 3px solid #b496e6; }
 .mdv-prose .callout[data-callout="todo"],        .azp-slide__content .callout[data-callout="todo"]        { border-left: 3px solid #e6a94c; }
 
-/* Custom math/science callouts — label replaces icon */
-.mdv-prose .callout[data-callout="theorem"],     .azp-slide__content .callout[data-callout="theorem"]     { border-left: 3px solid #e6a94c; }
-.mdv-prose .callout[data-callout="proposition"], .azp-slide__content .callout[data-callout="proposition"] { border-left: 3px solid #e6a94c; }
-.mdv-prose .callout[data-callout="definition"],  .azp-slide__content .callout[data-callout="definition"]  { border-left: 3px solid #6b9eeb; }
-.mdv-prose .callout[data-callout="remark"],      .azp-slide__content .callout[data-callout="remark"]      { border-left: 3px solid #72b886; }
-.mdv-prose .callout[data-callout="exercise"],    .azp-slide__content .callout[data-callout="exercise"]    { border-left: 3px solid #e06464; }
+/* Custom callout colors/counters/diamonds — dynamically injected via callout-settings.svelte.ts */
 
-/* Counter increments */
-.mdv-prose .callout[data-callout="theorem"],     .azp-slide__content .callout[data-callout="theorem"],
-.mdv-prose .callout[data-callout="proposition"], .azp-slide__content .callout[data-callout="proposition"],
-.mdv-prose .callout[data-callout="definition"],  .azp-slide__content .callout[data-callout="definition"],
-.mdv-prose .callout[data-callout="remark"],      .azp-slide__content .callout[data-callout="remark"],
-.mdv-prose .callout[data-callout="example"],     .azp-slide__content .callout[data-callout="example"]    { counter-increment: callout-num; }
-
-.mdv-prose .callout[data-callout="exercise"],    .azp-slide__content .callout[data-callout="exercise"]   { counter-increment: callout-ex; }
-
-/* Number prefix in label */
+/* Number prefix in label (shared styles) */
 .callout-type-label {
   font-size: 0.85em;
   font-weight: 700;
@@ -351,41 +337,11 @@
   opacity: 0.85;
 }
 
-.mdv-prose .callout[data-callout="theorem"]     .callout-type-label::before,
-.azp-slide__content .callout[data-callout="theorem"]     .callout-type-label::before,
-.mdv-prose .callout[data-callout="proposition"] .callout-type-label::before,
-.azp-slide__content .callout[data-callout="proposition"] .callout-type-label::before,
-.mdv-prose .callout[data-callout="definition"]  .callout-type-label::before,
-.azp-slide__content .callout[data-callout="definition"]  .callout-type-label::before,
-.mdv-prose .callout[data-callout="remark"]      .callout-type-label::before,
-.azp-slide__content .callout[data-callout="remark"]      .callout-type-label::before,
-.mdv-prose .callout[data-callout="example"]     .callout-type-label::before,
-.azp-slide__content .callout[data-callout="example"]     .callout-type-label::before {
-  content: counter(callout-num) " ";
-}
-
-.mdv-prose .callout[data-callout="exercise"]    .callout-type-label::before,
-.azp-slide__content .callout[data-callout="exercise"]    .callout-type-label::before {
-  content: counter(callout-ex) " ";
-}
-
 .callout-diamond {
   margin-right: 2px;
   flex-shrink: 0;
   vertical-align: middle;
 }
-.mdv-prose .callout[data-callout="theorem"]     .callout-diamond,
-.azp-slide__content .callout[data-callout="theorem"]     .callout-diamond { color: #e6a94c; }
-.mdv-prose .callout[data-callout="proposition"] .callout-diamond,
-.azp-slide__content .callout[data-callout="proposition"] .callout-diamond { color: #e6a94c; }
-.mdv-prose .callout[data-callout="definition"]  .callout-diamond,
-.azp-slide__content .callout[data-callout="definition"]  .callout-diamond { color: #6b9eeb; }
-.mdv-prose .callout[data-callout="remark"]      .callout-diamond,
-.azp-slide__content .callout[data-callout="remark"]      .callout-diamond { color: #72b886; }
-.mdv-prose .callout[data-callout="example"]     .callout-diamond,
-.azp-slide__content .callout[data-callout="example"]     .callout-diamond { color: #b496e6; }
-.mdv-prose .callout[data-callout="exercise"]    .callout-diamond,
-.azp-slide__content .callout[data-callout="exercise"]    .callout-diamond { color: #e06464; }
 
 /* Collapsible callouts */
 .mdv-prose details.callout > summary,

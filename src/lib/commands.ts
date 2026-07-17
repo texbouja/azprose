@@ -4,6 +4,7 @@ import {
 
   FilePlus2,
   FileText,
+  FileDown,
   FolderOpen,
   FolderPlus,
   Download,
@@ -64,6 +65,17 @@ export type CommandActions = {
   oxidTomorrow: () => void;
   oxidJump: () => void;
   isMdActive: boolean;
+
+  // pdf export
+  exportPdf: () => void;
+
+  // Typst/LaTeX clean
+  typstClean: () => void;
+  typstCleanAll: () => void;
+  latexClean: () => void;
+  latexCleanAll: () => void;
+  isTypstActive: boolean;
+  isLatexActive: boolean;
 };
 
 const THEME_ICONS: Record<string, IconData> = {
@@ -164,6 +176,56 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       keywords: ["save", "write", "disk"],
       action: actions.save,
     },
+    ...(actions.isMdActive ? [{
+      id: "export-pdf",
+      label: t("tabs.exportPdf"),
+      hint: t("app.exportPdfShortcut"),
+      shortcut: "⌘P",
+      icon: FileDown,
+      category: "file" as CommandCategory,
+      keywords: ["pdf", "export", "print", "download"],
+      action: actions.exportPdf,
+    }] : []),
+    ...(actions.isTypstActive ? [
+      {
+        id: "typst-clean",
+        label: t("command.typstClean"),
+        hint: t("command.typstCleanHint"),
+        icon: FileDown,
+        category: "file" as CommandCategory,
+        keywords: ["typst", "clean", "build", "pdf"],
+        action: actions.typstClean,
+      },
+      {
+        id: "typst-clean-all",
+        label: t("command.typstCleanAll"),
+        hint: t("command.typstCleanAllHint"),
+        icon: FileDown,
+        category: "file" as CommandCategory,
+        keywords: ["typst", "clean", "all", "pdf"],
+        action: actions.typstCleanAll,
+      },
+    ] : []),
+    ...(actions.isLatexActive ? [
+      {
+        id: "latex-clean",
+        label: t("command.latexClean"),
+        hint: t("command.latexCleanHint"),
+        icon: FileDown,
+        category: "file" as CommandCategory,
+        keywords: ["latex", "clean", "build", "pdf", "aux"],
+        action: actions.latexClean,
+      },
+      {
+        id: "latex-clean-all",
+        label: t("command.latexCleanAll"),
+        hint: t("command.latexCleanAllHint"),
+        icon: FileDown,
+        category: "file" as CommandCategory,
+        keywords: ["latex", "clean", "all", "pdf", "aux"],
+        action: actions.latexCleanAll,
+      },
+    ] : []),
     {
       id: "undo-file-op",
       label: t("command.undoFileOp"),

@@ -73,6 +73,15 @@ export async function pickAnyFile(): Promise<string | null> {
   return null;
 }
 
+export async function pickSavePdf(defaultPath?: string): Promise<string | null> {
+  const result = await dialogSave({
+    title: "exporter en PDF",
+    defaultPath,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+  return result ?? null;
+}
+
 export async function pickSaveMarkdown(defaultPath?: string): Promise<string | null> {
   const result = await dialogSave({
     title: "save markdown",

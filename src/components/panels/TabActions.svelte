@@ -5,7 +5,7 @@ import { ZoomIn, ZoomOut, Maximize2, BookOpen, Wallpaper, Code2, Pencil, Eye, Pd
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { slideSettings, SLIDE_MODES } from "@/components/markdown/slide-settings.svelte";
+import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
 import { ChevronDown } from "@/lib/icons";
 
@@ -20,6 +20,7 @@ let {
   onTypstViewer,
   onTypstBuild,
   onTypstViewPdf,
+  onExportPdf,
   onToggleRenderMode,
   onToggleFullscreen,
   onCommand,
@@ -34,6 +35,7 @@ let {
   onTypstViewer?: () => void;
   onTypstBuild?: () => void;
   onTypstViewPdf?: () => void;
+  onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleFullscreen?: () => void;
   onCommand?: (cmd: string) => void;
@@ -100,6 +102,9 @@ let isSide = $derived(panelId !== "main");
             </button>
             <button type="button" class="tab-actions__btn tab-actions__btn--label" class:is-active={renderMode === "preview" || renderMode === "presentation"} onclick={() => onSetEditorMode?.("preview")}>
               <Icon icon={Eye} size={14} strokeWidth={1.8} /><span>{t("tabs.preview")}</span>
+            </button>
+            <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onExportPdf?.()} title={t("tabs.exportPdf")}>
+              <Icon icon={FileDown} size={13} strokeWidth={1.8} /><span>{t("tabs.exportPdf")}</span>
             </button>
           {:else if isTex}
             <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onLatexViewer?.()}>
