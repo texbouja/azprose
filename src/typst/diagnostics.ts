@@ -39,9 +39,10 @@ export async function refreshFromPreview(
     }
     if (diags.some((d) => d.severity === "error")) opts?.onOpenConsole?.();
     return !diags.some((d) => d.severity === "error");
-  } catch (err) {
-    diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
-    if (shouldLog) logStore.append("typst", `error: ${err}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "message" in err ? String((err as { message: unknown }).message) : `${err}`);
+    diagnosticsStore.set("typst", [{ severity: "error", message: msg }]);
+    if (shouldLog) logStore.append("typst", `error: ${msg}`);
     opts?.onOpenConsole?.();
     return false;
   }

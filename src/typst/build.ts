@@ -2,7 +2,6 @@ import { basename, dirname } from "@/lib";
 import { remove, exists, readDir } from "@tauri-apps/plugin-fs";
 import { logStore } from "@/components/console/log.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
-import { typstSettings } from "@/stores/typst-settings.svelte";
 import { refreshFromPreview } from "./diagnostics";
 import { exportPdf } from "./backend";
 import type { TypstBuildState } from "./types";
@@ -13,18 +12,11 @@ export function pdfName(path: string): string {
   return basename(path).replace(/\.typ$/i, ".pdf");
 }
 
-/** Resolve output path from the configured template (default "output" = subdirectory). */
+/** Resolve output path — PDF lives next to the .typ source file. */
 export function resolveOutputPath(filePath: string): string {
   const dir = dirname(filePath);
   const name = basename(filePath).replace(/\.typ$/i, "");
-  const tpl = typstSettings.current.outputPath || "output";
-  if (tpl === "." || tpl === "./") return dir + "/" + name + ".pdf";
-  // If the template contains a path separator, treat it as a full template
-  if (tpl.includes("/") || tpl.includes("\\")) {
-    return tpl.replace(/\$dir/g, dir).replace(/\$name/g, name) + ".pdf";
-  }
-  // Simple subdirectory name (like LaTeX outputDir)
-  return dir + "/" + tpl + "/" + name + ".pdf";
+  return dir + "/" + name + ".pdf";
 }
 
 export async function build(
@@ -46,14 +38,14 @@ export async function build(
       onSwitchToLogTab,
     });
     if (!ok) { logStore.append("typst", "error: build aborted — fatal error"); return; }
-    const outPath = resolveOutputPath(filePath);
-    await exportPdf(filePath, source, outPath);
+    await exportPdf(filePath, source);
     logStore.append("typst", `info: exported ${pdfName(filePath)}`);
     onSwitchToLogTab?.();
     notifySaved?.(pdfName(filePath));
-  } catch (err) {
-    diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
-    logStore.append("typst", `error: ${err}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "message" in err ? String((err as { message: unknown }).message) : `${err}`);
+    diagnosticsStore.set("typst", [{ severity: "error", message: msg }]);
+    logStore.append("typst", `error: ${msg}`);
     onSwitchToLogTab?.();
     onOpenConsole?.();
   } finally {
@@ -84,11 +76,12 @@ export async function openViewer(
     });
     if (!ok) { logStore.append("typst", "error: viewer aborted — fatal error"); state.compiling = false; return; }
     try {
-      await exportPdf(filePath, source, pdfPath);
+      await exportPdf(filePath, source);
       logStore.append("typst", `info: exported ${basename(pdfPath)}`);
-    } catch (err) {
-      diagnosticsStore.set("typst", [{ severity: "error", message: `${err}` }]);
-      logStore.append("typst", `error: ${err}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : (typeof err === "object" && err !== null && "message" in err ? String((err as { message: unknown }).message) : `${err}`);
+      diagnosticsStore.set("typst", [{ severity: "error", message: msg }]);
+      logStore.append("typst", `error: ${msg}`);
       state.compiling = false;
       return;
     }
@@ -111,18 +104,16 @@ export async function cleanBuild(filePath: string): Promise<void> {
   }
 }
 
-/** Remove all PDFs in the typst output directory. */
+/** Remove all Typst PDFs in the source file's directory. */
 export async function cleanAll(projectRoot: string): Promise<void> {
-  const tpl = typstSettings.current.outputPath || "output";
-  const outDir = (tpl === "." || tpl === "./") ? projectRoot : projectRoot + "/" + tpl;
-  if (!await exists(outDir)) return;
-  const entries = await readDir(outDir);
+  if (!await exists(projectRoot)) return;
+  const entries = await readDir(projectRoot);
   let count = 0;
   for (const e of entries) {
     if (e.name?.endsWith(".pdf")) {
-      await remove(outDir + "/" + e.name);
+      await remove(projectRoot + "/" + e.name);
       count++;
     }
   }
-  logStore.append("typst", `info: cleaned ${count} PDF(s) from ${tpl}/`);
+  logStore.append("typst", `info: cleaned ${count} PDF(s)`);
 }

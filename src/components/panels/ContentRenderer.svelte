@@ -26,7 +26,7 @@ let {
   jumpToLine = null as number | null,
   jumpToCol = null as number | null,
   onJumpApplied,
-  vimOn = false,
+  vimOn: _vimOn = false,
   prosemarkOn = false,
   forwardToPage = null as number | null,
   onInverseSync,
@@ -83,7 +83,6 @@ let {
   <ImageViewer path={tab.path} />
   {:else if panelId !== "main" && extFromPath(tab.path) === "typ"}
   <LazyTypstPreview
-    value={tab.source}
     filePath={tab.path}
     {onToggleFullscreen}
     {onInverseSync}

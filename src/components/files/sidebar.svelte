@@ -50,8 +50,8 @@ let {
   width: number;
   onWidthChange: (next: number) => void;
   onAddFolder: () => void;
-  onNewFile?: () => void;
-  onNewFolder?: () => void;
+  onNewFile?: (dir?: string) => void;
+  onNewFolder?: (dir?: string) => void;
   onCloseFolder: (path: string) => void;
   onOpenProject: (path: string) => void;
   onProjectFromFolder: () => void;
@@ -127,7 +127,7 @@ let startX = 0;
 let startWidth = 0;
 
 $effect(() => {
-  const _ = rootPath;
+  void rootPath;
   query = "";
   searchOpen = false;
 });

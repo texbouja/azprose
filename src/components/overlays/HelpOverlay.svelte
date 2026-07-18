@@ -1,7 +1,7 @@
 <script lang="ts">
 import { Download, FileText, Layers3, Palette, Sparkles, Table2, X } from "@/lib/icons";
 import { Button, Icon, Kbd, Overlay, Shortcut } from "@/components/primitives";
-import { shortcutLabel, type Translate } from "@/lib";
+import { shortcutLabel } from "@/lib";
 import { language, getT } from "@/lib/i18n";
 import writeUrl from "@/assets/mascot/az-write.svg";
 
@@ -45,7 +45,7 @@ let groups = $derived<Group[]>([
   {
     title: t("help.view"),
     rows: [
-      { keys: "⌘+K", label: t("help.openPalette") },
+      { keys: "⌘+⇧+P", label: t("help.openPalette") },
       { keys: "⌘+B", label: t("help.showHideSidebar") },
       { keys: "⌃+⌘+F", label: t("help.toggleFullscreen") },
     ],

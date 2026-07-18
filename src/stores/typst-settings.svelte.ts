@@ -12,7 +12,6 @@ export interface TypstSettings {
   formatterIndentSize: number;
   // Export
   exportPdf: ExportPdfMode;
-  outputPath: string;
   // Lint
   lintEnabled: boolean;
   lintWhen: LintWhen;
@@ -28,7 +27,6 @@ const DEFAULTS: TypstSettings = {
   formatterPrintWidth: 120,
   formatterIndentSize: 2,
   exportPdf: "never",
-  outputPath: "output",
   lintEnabled: false,
   lintWhen: "onSave",
   systemFonts: true,

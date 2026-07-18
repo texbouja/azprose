@@ -120,12 +120,11 @@ $effect(() => {
     {:else}
       {#each rows as row}
         {#if row.kind === "header"}
-          <li key={row.key} class="mdv-palette__group" role="presentation">{row.label}</li>
+          <li class="mdv-palette__group" role="presentation">{row.label}</li>
         {:else}
           {@const cmd = row.cmd}
           {@const index = row.index}
           <li
-            key={row.key}
             data-index={index}
             class="mdv-palette__item{index === activeIndex ? " is-active" : ""}"
             onclick={() => { onClose(); void cmd.action(); }}

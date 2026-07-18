@@ -21,6 +21,7 @@ export const STORAGE_KEYS = {
   callouts:   "mdview.callouts",
   latexSettings: "mdview.latex.settings",
   typstSettings: "mdview.typst.settings",
+  shortcuts: "mdview.shortcuts",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

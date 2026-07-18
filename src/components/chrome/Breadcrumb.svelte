@@ -3,7 +3,7 @@
     Check,
     ChevronRight,
     Columns2,
-    Eye,
+
     Globe,
     Maximize2,
     PanelBottom,

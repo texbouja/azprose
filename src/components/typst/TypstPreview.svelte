@@ -1,126 +1,130 @@
 <script lang="ts">
   import { Icon } from "@/components/primitives";
   import { Maximize2 } from "@/lib/icons";
-  import { startPreview, stopPreview, onPreviewNotification } from "@/typst/backend";
-  import { getTinymistClient } from "@/lib/lsp/tinymist";
+  import { startPreview, stopPreview, scrollToCursor, unregisterPreview, onPreviewNotification, onShowDocument, onPreviewDispose } from "@/typst/backend";
 
   let {
-    value = "",
     filePath = "",
     onToggleFullscreen,
     onInverseSync,
   }: {
-    value?: string;
     filePath?: string;
     onToggleFullscreen?: () => void;
     onInverseSync?: (file: string, line: number) => void;
   } = $props();
 
-  let iframeEl = $state<HTMLIFrameElement | null>(null);
   let previewUrl = $state<string | null>(null);
-  let loading = $state(true);
   let error = $state<string | null>(null);
-  let compiling = $state(false);
+  let myTaskId: string | null = null;
+  let iframeReady = $state(false);
 
-  // Start preview via LSP on mount, stop on unmount
+  // ── Preview lifecycle ──────────────────────────────────────────
+  // startPreview sends didOpen + doStartPreview with --refresh-style on-save.
+  // tinymist's CompileWatcher only renders when compilation comes from
+  // a file-system save event. No SVG re-rendering on keystrokes.
+
   $effect(() => {
     const path = filePath;
     if (!path) return;
 
     let cancelled = false;
+    iframeReady = false;
 
     (async () => {
       try {
-        const port = await startPreview(path, value);
+        const result = await startPreview(path);
         if (!cancelled) {
-          previewUrl = `http://127.0.0.1:${port}/`;
-          loading = false;
+          myTaskId = result.taskId;
+          previewUrl = `http://127.0.0.1:${result.port}/`;
         }
       } catch (err) {
         if (!cancelled) {
           error = String(err);
-          loading = false;
         }
       }
     })();
 
     return () => {
       cancelled = true;
-      stopPreview().catch(() => {});
+      previewUrl = null;
+      iframeReady = false;
+      if (myTaskId) {
+        unregisterPreview(path);
+        stopPreview(myTaskId).catch(() => {});
+      }
+      myTaskId = null;
     };
   });
 
-  // Listen for preview notifications (inverse sync)
+  // ── Scroll to cursor after preview ready ───────────────────────
+  // When iframe loads for the first time, scroll to the editor cursor position.
+
+  $effect(() => {
+    const ready = iframeReady;
+    const taskId = myTaskId;
+    const path = filePath;
+    if (!ready || !taskId || !path) return;
+
+    // Small delay to let tinymist finish the first compile
+    const timer = setTimeout(() => {
+      scrollToCursor(path, taskId).catch(() => {});
+    }, 300);
+    return () => clearTimeout(timer);
+  });
+
+  // ── Handle external preview dispose ────────────────────────────
+
+  $effect(() => {
+    const unsub = onPreviewDispose((taskId) => {
+      if (taskId === myTaskId) {
+        previewUrl = null;
+        error = "Preview was closed";
+        myTaskId = null;
+      }
+    });
+    return unsub;
+  });
+
+  // ── Inverse sync (preview → editor) ────────────────────────────
+
   $effect(() => {
     const onSync = onInverseSync;
     if (!onSync) return;
 
-    // Debounced inverse sync — collapses rapid window/showDocument bursts from
-    // tinymist's initial outline analysis into a single jump.
     let inverseTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const unsub = onPreviewNotification((msg) => {
+    const unsubShowDoc = onShowDocument((params) => {
+      const uri = params.uri;
+      const line = params.selection?.start?.line;
+      if (uri && line != null) {
+        const file = uri.replace(/^file:\/\//, "");
+        if (file !== filePath) return;
+        if (inverseTimer) clearTimeout(inverseTimer);
+        inverseTimer = setTimeout(() => {
+          onSync(file, line + 1);
+        }, 50);
+      }
+    });
+
+    const unsubNotif = onPreviewNotification((msg) => {
       if (msg.method === "tinymist/preview/scrollSource" && msg.params) {
         const p = msg.params as { filepath?: string; start?: [number, number] | null };
-        if (p.filepath && p.start) {
+        if (p.filepath && p.start && p.filepath === filePath) {
           onSync(p.filepath, p.start[0] + 1);
-        }
-      }
-      if (msg.method === "window/showDocument" && msg.params) {
-        const p = msg.params as { uri?: string; selection?: { start?: { line?: number } } };
-        if (p.uri && p.selection?.start?.line != null) {
-          if (inverseTimer) clearTimeout(inverseTimer);
-          inverseTimer = setTimeout(() => {
-            const file = p.uri!.replace(/^file:\/\//, "");
-            onSync(file, p.selection!.start!.line! + 1);
-          }, 200);
         }
       }
     });
 
     return () => {
       if (inverseTimer) clearTimeout(inverseTimer);
-      unsub();
-    };
-  });
-
-  // Sync content to tinymist LSP on edit (debounced 150ms)
-  let syncTimer: ReturnType<typeof setTimeout> | null = null;
-  let syncVersion = 1;
-  $effect(() => {
-    const text = value;
-    const path = filePath;
-    if (!path) return;
-
-    if (syncTimer) clearTimeout(syncTimer);
-    syncTimer = setTimeout(() => {
-      compiling = true;
-      try {
-        const client = getTinymistClient();
-        syncVersion++;
-        const uri = `file://${path}`;
-        client.notification("textDocument/didOpen", {
-          textDocument: { uri, languageId: "typst", version: syncVersion, text },
-        });
-        client.notification("textDocument/didChange", {
-          textDocument: { uri, version: syncVersion },
-          contentChanges: [{ text }],
-        });
-      } finally {
-        compiling = false;
-      }
-    }, 150);
-    return () => {
-      if (syncTimer) clearTimeout(syncTimer);
+      unsubShowDoc();
+      unsubNotif();
     };
   });
 </script>
 
 <div class="typst-preview" tabindex="-1">
   <header class="typst-preview__topbar">
-    {#if compiling}
-      <span class="typst-preview__compiling">compiling…</span>
-    {/if}
     <div class="typst-preview__topbar-section typst-preview__topbar-right">
       <button
         class="typst-preview__btn"
@@ -138,11 +142,17 @@
     </div>
   {:else if previewUrl}
     <iframe
-      bind:this={iframeEl}
       src={previewUrl}
       title="Typst Preview"
       class="typst-preview__iframe"
+      class:typst-preview__iframe--visible={iframeReady}
+      onload={() => { iframeReady = true; }}
     ></iframe>
+    {#if !iframeReady}
+      <div class="typst-preview__loading">
+        <p>Compiling...</p>
+      </div>
+    {/if}
   {:else}
     <div class="typst-preview__loading">
       <p>Starting preview...</p>
@@ -219,6 +229,12 @@
     width: 100%;
     border: none;
     background: #fff;
+    opacity: 0;
+    transition: opacity 0.3s ease-in;
+  }
+
+  .typst-preview__iframe--visible {
+    opacity: 1;
   }
 
   .typst-preview__loading,
@@ -233,18 +249,5 @@
 
   .typst-preview__error {
     color: #c00;
-  }
-
-  .typst-preview__compiling {
-    font-size: 0.7rem;
-    font-family: var(--font-ui);
-    color: var(--muted);
-    opacity: 0.7;
-    animation: pulse 1.2s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 0.8; }
   }
 </style>

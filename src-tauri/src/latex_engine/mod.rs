@@ -430,7 +430,8 @@ pub async fn latex_build(
     }
     if let Some(runs) = max_runs {
         if runs >= 1 && runs <= 20 {
-            cmd_args.push(format!("-max_repeat={runs}"));
+            cmd_args.push("-e".into());
+            cmd_args.push(format!("$max_repeat={runs}"));
         }
     }
     if let Some(ref d) = effective_out_dir {
@@ -565,6 +566,20 @@ pub fn check_latexmk() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+#[derive(Serialize)]
+pub struct LatexDirs {
+    pub out_dir: Option<String>,
+    pub aux_dir: Option<String>,
+}
+
+#[tauri::command]
+pub fn latex_resolve_dirs(path: String) -> LatexDirs {
+    let tex_path = Path::new(&path);
+    let dir = tex_path.parent().unwrap_or(Path::new("."));
+    let (out_dir, aux_dir) = parse_latexmkrc(dir);
+    LatexDirs { out_dir, aux_dir }
 }
 
 // ── Root file detection (replicates texlab algorithm) ────────────────

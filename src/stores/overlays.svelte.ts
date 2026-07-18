@@ -19,6 +19,7 @@ function createOverlays() {
     get settingsOpen() { return settingsOpen; },
     setSettingsOpen(v: boolean) { settingsOpen = v; },
     showSettings() { settingsOpen = true; },
+    openSettings(_section?: string) { settingsOpen = true; },
     get welcomeOpen() { return welcomeOpen; },
     dismissWelcome() { welcomeOpen = false; welcomed.current = true; },
     showWelcome() { welcomeOpen = true; },

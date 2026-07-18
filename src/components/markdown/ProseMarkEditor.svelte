@@ -10,7 +10,7 @@ import "@fontsource/fira-sans/700.css";
 import "@fontsource/fira-code/400.css";
 import "@fontsource/fira-code/500.css";
 import { onMount, onDestroy } from "svelte";
-import { Compartment, EditorState, RangeSetBuilder, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, Transaction, RangeSetBuilder, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, syntaxHighlighting, HighlightStyle, syntaxTree } from "@codemirror/language";
@@ -263,6 +263,7 @@ $effect(() => {
   if (view && view.state.doc.toString() !== next) {
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: next },
+      annotations: Transaction.addToHistory.of(false),
     });
   }
 });

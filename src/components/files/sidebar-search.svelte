@@ -7,7 +7,7 @@ let {
   rootPath,
   query,
   activePath,
-  treeVersion = 0,
+  treeVersion: _treeVersion = 0,
   onSelect,
 }: {
   rootPath: string;

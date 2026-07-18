@@ -7,12 +7,12 @@ import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
-import { ChevronDown } from "@/lib/icons";
+
 
 let {
   activeTab = null as Tab | null,
   panelId = "main",
-  viewportEl = null as HTMLElement | null,
+  viewportEl: _viewportEl = null as HTMLElement | null,
   renderMode = "raw" as RenderMode,
   onSetEditorMode,
   onLatexViewer,
@@ -70,7 +70,6 @@ let isMd = $derived(ext === "md");
 let isTex = $derived(ext === "tex");
 let isTyp = $derived(ext === "typ");
 let isMain = $derived(panelId === "main");
-let isSide = $derived(panelId !== "main");
 </script>
 
 {#if activeTab}

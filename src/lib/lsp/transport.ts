@@ -12,6 +12,8 @@ export interface ServerRequest {
 export interface TauriTransport extends Transport {
   /** Set a filter that runs BEFORE handlers. Return true to consume the message. */
   setFilter(filter: ((raw: string) => boolean) | null): void;
+  /** Set a filter on OUTGOING messages. Return true to suppress the message. */
+  setOutFilter(filter: ((raw: string) => boolean) | null): void;
   /** Handle server requests not consumed by the filter.
    *  Return a JSON-RPC response string to send back, or null for -32601. */
   onServerRequest(handler: ((req: ServerRequest) => string | null) | null): void;
@@ -33,6 +35,7 @@ export function createTauriTransport(
 ): TauriTransport {
   const handlers: Array<(value: string) => void> = [];
   let filter: ((raw: string) => boolean) | null = null;
+  let outFilter: ((raw: string) => boolean) | null = null;
   let serverReqHandler: ((req: ServerRequest) => string | null) | null = null;
   let initPromise: Promise<void> | null = null;
   let _reqId = 0;
@@ -43,6 +46,7 @@ export function createTauriTransport(
     subscribe(_h: (v: string) => void) { /* filled below */ },
     unsubscribe(_h: (v: string) => void) { /* filled below */ },
     setFilter(_f: ((raw: string) => boolean) | null) { /* filled below */ },
+    setOutFilter(_f: ((raw: string) => boolean) | null) { /* filled below */ },
     onServerRequest(_h: ((req: ServerRequest) => string | null) | null) { /* filled below */ },
     sendRequest(_method: string, _params?: unknown, _timeoutMs?: number): Promise<unknown> { return Promise.resolve(null); },
   };
@@ -117,11 +121,21 @@ export function createTauriTransport(
   };
 
   // Wire up the self-reference so processBuffer can send responses.
-  self.send = (message: string) => {
+  const _realSend = (message: string) => {
     ensureInit().then(() => {
       invoke("lsp_write", { id, content: message })
         .catch((e) => console.error(`[transport:${command}] → write FAILED:`, e));
     });
+  };
+  self.send = (message: string) => {
+    if (outFilter && outFilter(message)) {
+      try {
+        const msg = JSON.parse(message);
+        if (msg.method) console.log(`[transport:${command}] → filtered outgoing: ${msg.method}`);
+      } catch { /* ignore */ }
+      return;
+    }
+    _realSend(message);
   };
   self.subscribe = (handler) => { handlers.push(handler); };
   self.unsubscribe = (handler) => {
@@ -129,6 +143,7 @@ export function createTauriTransport(
     if (idx >= 0) handlers.splice(idx, 1);
   };
   self.setFilter = (f) => { filter = f; };
+  self.setOutFilter = (f) => { outFilter = f; };
   self.onServerRequest = (h) => { serverReqHandler = h; };
 
   self.sendRequest = (method: string, params?: unknown, timeoutMs = 5000): Promise<unknown> => {

@@ -65,7 +65,6 @@
   let warnCount = $derived(diagnostics.filter((d) => d.severity === "warning").length);
 
   // — Log tab —
-  let logEl: HTMLDivElement;
   let logEndEl: HTMLDivElement;
 
   function logSeverity(line: string): string {
@@ -189,7 +188,7 @@
       {#if logLines.length === 0}
         <div class="diag-console__empty">No log</div>
       {:else}
-        <div class="diag-console__log" bind:this={logEl}>
+        <div class="diag-console__log">
           {#each logLines as line, i (i)}
             <div class="diag-console__log-line" data-log-severity={logSeverity(line)}>
               <pre class="diag-console__log-pre">{line}</pre>

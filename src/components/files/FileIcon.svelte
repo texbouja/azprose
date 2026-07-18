@@ -4,7 +4,6 @@ import FileMd from "phosphor-svelte/lib/FileMd";
 import FileCsv from "phosphor-svelte/lib/FileCsv";
 import FileImage from "phosphor-svelte/lib/FileImage";
 import FileZip from "phosphor-svelte/lib/FileZip";
-import FileArchive from "phosphor-svelte/lib/FileArchive";
 import FileAudio from "phosphor-svelte/lib/FileAudio";
 import FileVideo from "phosphor-svelte/lib/FileVideo";
 import FileHtml from "phosphor-svelte/lib/FileHtml";

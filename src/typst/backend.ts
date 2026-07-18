@@ -1,8 +1,65 @@
 import type { TypstBuildState } from "./types";
 import { getTinymistClient } from "@/lib/lsp/tinymist";
 import type { Diagnostic } from "@/lib/diagnostics";
+import type { ServerRequest } from "@/lib/lsp/transport";
+import { readTextFile } from "@tauri-apps/plugin-fs";
+import { getCursorLine } from "@/stores/cursor-line.svelte";
+import {
+  registerPreview,
+  unregisterPreview,
+  getPreviewTaskForFile,
+  getPreviewTaskId,
+} from "./preview-task-id.svelte";
+
+export { registerPreview, unregisterPreview, getPreviewTaskForFile, getPreviewTaskId };
 
 export { type TypstBuildState } from "./types";
+
+/** Convert a raw filesystem path to a file:// URI (LSP protocol requires URIs). */
+function toFileUri(path: string): string {
+  return "file://" + encodeURI(path.replace(/\\/g, "/"));
+}
+
+// ── Server request handlers (for tinymist transport) ────────────
+// tinymist sends `window/showDocument` as a JSON-RPC server REQUEST (with id),
+// NOT as a notification. The transport's routeMessage consumes it before the
+// handlers[] array. We register a serverReqHandler that dispatches to
+// registered callbacks.
+
+type ShowDocumentHandler = (params: {
+  uri?: string;
+  selection?: { start?: { line?: number; character?: number } };
+}) => void;
+
+const _showDocHandlers: ShowDocumentHandler[] = [];
+let _serverReqInstalled = false;
+
+function _ensureServerReqHandler() {
+  if (_serverReqInstalled) return;
+  _serverReqInstalled = true;
+  const client = getTinymistClient();
+  const transport = (client as unknown as { transport: { onServerRequest: (h: ((req: ServerRequest) => string | null) | null) => void } }).transport;
+
+  transport.onServerRequest((req: ServerRequest) => {
+    if (req.method === "window/showDocument") {
+      for (const handler of _showDocHandlers) {
+        try { handler(req.params as Record<string, unknown>); } catch (e) { console.error("[typst:server-req] handler error:", e); }
+      }
+      return JSON.stringify({ jsonrpc: "2.0", id: req.id, result: { success: true } });
+    }
+    return null;
+  });
+}
+
+/** Register a handler for window/showDocument server requests from tinymist. */
+export function onShowDocument(handler: ShowDocumentHandler): () => void {
+  _showDocHandlers.push(handler);
+  _ensureServerReqHandler();
+  return () => {
+    const idx = _showDocHandlers.indexOf(handler);
+    if (idx >= 0) _showDocHandlers.splice(idx, 1);
+  };
+}
 
 // ── Scroll request sent to tinymist.scrollPreview ────────────────
 
@@ -47,7 +104,7 @@ export async function requestDiagnostics(
   source: string,
 ): Promise<Diagnostic[]> {
   const client = getTinymistClient();
-  const uri = `file://${filePath}`;
+  const uri = toFileUri(filePath);
 
   return new Promise<Diagnostic[]>((resolve) => {
     let resolved = false;
@@ -96,10 +153,9 @@ export async function requestDiagnostics(
 export async function exportPdf(
   filePath: string,
   source: string,
-  outputPath: string,
 ): Promise<void> {
   const client = getTinymistClient();
-  const uri = `file://${filePath}`;
+  const uri = toFileUri(filePath);
   client.notification("textDocument/didOpen", {
     textDocument: { uri, languageId: "typst", version: 1, text: source },
   });
@@ -107,20 +163,42 @@ export async function exportPdf(
     textDocument: { uri, version: 2 },
     contentChanges: [{ text: source }],
   });
+  // tinymist.exportPdf args: [path, ExportPdfOpts, ExportActionOpts]
+  // tinymist expects a filesystem path (not a URI) to resolve $dir/$name.
   await client.request("workspace/executeCommand", {
     command: "tinymist.exportPdf",
-    arguments: [{ path: uri, outputPath }],
+    arguments: [filePath, {}, { write: true }],
   });
 }
 
 // ── Preview via LSP ──────────────────────────────────────────────
 
-let _previewTaskId: string | null = null;
+export interface StartPreviewResult {
+  port: number;
+  taskId: string;
+}
 
-/** Start a tinymist preview via LSP. Returns the data plane port. */
-export async function startPreview(filePath: string, content: string): Promise<number> {
+/** Start a tinymist preview via LSP. Returns { port, taskId }.
+ *  Sends didOpen with filesystem content before doStartPreview to ensure
+ *  tinymist has the document loaded when the preview server starts.
+ *  --refresh-style on-save tells tinymist's CompileWatcher to only render
+ *  SVG updates when the compile was triggered by a file-system save event
+ *  (by_fs_events), NOT by LSP didOpen/didChange. This prevents the flash
+ *  and re-rendering on every keystroke. */
+export async function startPreview(filePath: string): Promise<StartPreviewResult> {
   const client = getTinymistClient();
-  const uri = `file://${filePath}`;
+  const uri = toFileUri(filePath);
+
+  // Read file content from filesystem and send didOpen BEFORE starting preview.
+  // This eliminates the race condition where doStartPreview arrives before
+  // tinymist has processed CM6's didOpen (sent during Editor mount).
+  let content: string;
+  try {
+    content = await readTextFile(filePath);
+  } catch (err) {
+    throw new Error(`Cannot read ${filePath}: ${err}`);
+  }
+
   client.notification("textDocument/didOpen", {
     textDocument: { uri, languageId: "typst", version: 1, text: content },
   });
@@ -129,38 +207,48 @@ export async function startPreview(filePath: string, content: string): Promise<n
   const args = [
     "--task-id", taskId,
     "--data-plane-host", "127.0.0.1:0",
+    "--refresh-style", "on-save",
     "--no-open",
     filePath,
   ];
 
-  const resp = await client.request<
-    { command: string; arguments: unknown[] },
-    { dataPlanePort?: number }
-  >(
-    "workspace/executeCommand",
-    { command: "tinymist.doStartPreview", arguments: [args] },
-  );
+  let resp: { dataPlanePort?: number } | undefined;
+  try {
+    resp = await client.request<
+      { command: string; arguments: unknown[] },
+      { dataPlanePort?: number }
+    >(
+      "workspace/executeCommand",
+      { command: "tinymist.doStartPreview", arguments: [args] },
+    );
+  } catch (err: unknown) {
+    const msg = err && typeof err === "object" && "message" in err
+      ? String((err as { message: unknown }).message)
+      : JSON.stringify(err);
+    throw new Error(`Preview start failed: ${msg}`);
+  }
 
   if (!resp?.dataPlanePort) {
     throw new Error("tinymist preview did not return a data plane port");
   }
 
-  _previewTaskId = taskId;
-  return resp.dataPlanePort;
+  registerPreview(filePath, taskId);
+  return { port: resp.dataPlanePort, taskId };
 }
 
-/** Kill the current tinymist preview task. */
-export async function stopPreview(): Promise<void> {
-  if (!_previewTaskId) return;
-  const client = getTinymistClient();
-  await client.request("workspace/executeCommand", {
-    command: "tinymist.doKillPreview",
-    arguments: [_previewTaskId],
-  });
-  _previewTaskId = null;
+/** Kill a specific tinymist preview by task ID. */
+export async function stopPreview(taskId: string): Promise<void> {
+  if (!taskId) return;
+  try {
+    const client = getTinymistClient();
+    await client.request("workspace/executeCommand", {
+      command: "tinymist.doKillPreview",
+      arguments: [taskId],
+    });
+  } catch { /* ignore — preview may already be dead */ }
 }
 
-/** Send a scroll command to the tinymist preview. */
+/** Send a scroll command to a specific tinymist preview. */
 export async function scrollPreview(taskId: string, req: ScrollPreviewRequest): Promise<void> {
   const client = getTinymistClient();
   await client.request("workspace/executeCommand", {
@@ -169,10 +257,64 @@ export async function scrollPreview(taskId: string, req: ScrollPreviewRequest): 
   });
 }
 
-/** Get the current preview task ID (or null). */
-export function getPreviewTaskId(): string | null {
-  return _previewTaskId;
+/** Send didChange to tinymist preview (called on save, NOT on every keystroke). */
+export async function updatePreview(filePath: string, source: string): Promise<void> {
+  const client = getTinymistClient();
+  const uri = toFileUri(filePath);
+  client.notification("textDocument/didChange", {
+    textDocument: { uri, version: Date.now() },
+    contentChanges: [{ text: source }],
+  });
 }
+
+/** Scroll the preview to the editor's current cursor position. */
+export async function scrollToCursor(filePath: string, taskId: string): Promise<void> {
+  const line = getCursorLine();
+  const lineNum = line != null ? Math.max(line - 1, 0) : 0;
+  await scrollPreview(taskId, {
+    event: "changeCursorPosition",
+    filepath: filePath,
+    line: lineNum,
+    character: 0,
+  }).catch(() => {});
+}
+
+// ── Preview dispose notification ─────────────────────────────────
+// tinymist sends `tinymist/preview/dispose` when a preview is killed.
+
+type DisposeHandler = (taskId: string) => void;
+const _disposeHandlers: DisposeHandler[] = [];
+let _disposeListenerInstalled = false;
+
+function _ensureDisposeListener() {
+  if (_disposeListenerInstalled) return;
+  _disposeListenerInstalled = true;
+  const client = getTinymistClient();
+  const transport = (client as unknown as { transport: { subscribe: (h: (v: string) => void) => void; unsubscribe: (h: (v: string) => void) => void } }).transport;
+
+  transport.subscribe((raw: string) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.method === "tinymist/preview/dispose" && msg.params?.task_id) {
+        for (const handler of _disposeHandlers) {
+          try { handler(msg.params.task_id); } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+  });
+}
+
+/** Register a handler for tinymist/preview/dispose. Returns unsubscribe. */
+export function onPreviewDispose(handler: DisposeHandler): () => void {
+  _disposeHandlers.push(handler);
+  _ensureDisposeListener();
+  return () => {
+    const idx = _disposeHandlers.indexOf(handler);
+    if (idx >= 0) _disposeHandlers.splice(idx, 1);
+  };
+}
+
+// ── Preview notifications ────────────────────────────────────────
 
 /** Register a listener for tinymist preview notifications. Returns unsubscribe. */
 export function onPreviewNotification(handler: (msg: { method?: string; params?: unknown }) => void): () => void {
@@ -182,11 +324,13 @@ export function onPreviewNotification(handler: (msg: { method?: string; params?:
   const wrappedHandler = (raw: string) => {
     try {
       const msg = JSON.parse(raw);
-      if (msg.method?.startsWith("tinymist/preview/") || msg.method === "window/showDocument") {
+      if (msg.method?.startsWith("tinymist/preview/")) {
         handler(msg);
       }
     } catch { /* ignore */ }
   };
   transport.subscribe(wrappedHandler);
-  return () => transport.unsubscribe(wrappedHandler);
+  return () => {
+    transport.unsubscribe(wrappedHandler);
+  };
 }

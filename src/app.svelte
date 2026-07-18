@@ -6,6 +6,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { watch } from "@tauri-apps/plugin-fs";
 
 import { confirm } from "@tauri-apps/plugin-dialog";
 
@@ -13,6 +14,7 @@ import { checkForUpdate, applyUpdate } from "@/lib/updater";
 import { language, getT } from "@/lib/i18n";
 import { overlays } from "@/stores/overlays.svelte";
 import { notifications } from "@/stores/notifications.svelte";
+import { shortcuts } from "@/stores/shortcuts.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
 import { persistedState } from "@/stores/persisted.svelte";
 import {
@@ -37,7 +39,7 @@ import {
   normalizeFontFamily,
   type TypographySettings,
 } from "@/lib/typography";
-import Toast, { type ToastAction } from "@/components/overlays/Toast.svelte";
+import Toast from "@/components/overlays/Toast.svelte";
 import DropOverlay from "@/components/overlays/DropOverlay.svelte";
 import CommandPalette from "@/components/overlays/CommandPalette.svelte";
 import HelpOverlay from "@/components/overlays/HelpOverlay.svelte";
@@ -52,36 +54,32 @@ import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
 import PanelLayout from "@/components/panels/PanelLayout.svelte";
-import Editor from "@/components/editor/Editor.svelte";
-import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
-import ImageViewer from "@/components/image/ImageViewer.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { ensureMoxideConfig, executeOxideCommand, resolveWikilink } from "@/lib/lsp/markdown-oxide";
-import { readMarkdown, writeMarkdown, pathExists, walkSupportedTextFiles } from "@/lib/files";
+import { readMarkdown, writeMarkdown, walkSupportedTextFiles } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { folderRelation } from "@/lib/paths";
-import { saveSession, loadSession, saveDraft, loadDraft, clearDraft, setSessionScope, saveLastFile, loadLastFile, saveGuests, loadGuests } from "@/lib/session";
+import { saveSession, loadSession, saveDraft, clearDraft, setSessionScope, saveLastFile, loadLastFile, saveGuests, loadGuests } from "@/lib/session";
 import { loadProjectSession, saveProjectSession, type PortableSession } from "@/lib/project-session";
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { proseMarkSettings, previewSettings, presentationSettings, DEFAULT_PROSE_MARK_STYLE, DEFAULT_PREVIEW_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte";
 import { calloutSettings } from "@/stores/callout-settings.svelte";
-import { sendTinymistConfig, isTinymistReady } from "@/lib/lsp/tinymist";
+import { sendTinymistConfig, isTinymistReady, getTinymistTransport } from "@/lib/lsp/tinymist";
 import { setRootPath } from "@/stores/root-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
-import { getCursorLine } from "@/stores/cursor-line.svelte";
-import { navPush, navBack, navForward, navPushForward, navHistory, setNavActions } from "@/stores/nav-history.svelte";
+import { getCursorLine, cursorLine } from "@/stores/cursor-line.svelte";
+import { navPush, navBack, navForward, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
 import {
   createLatexState,
-  handleLatexBuild, handleLatexViewer,
+  handleLatexBuild,
   autoBuildIfDepChanged, clearLatexDeps, setupLatexLogListener,
-  cleanLatexBuild, cleanLatexAll,
+  cleanLatexAux, cleanLatexAuxAndOutput, cleanLatexAll,
 } from "@/components/tex/latex-build";
 import * as typst from "@/typst";
-import { scrollPreview, getPreviewTaskId } from "@/typst/backend";
-import type { Diagnostic } from "@/lib/diagnostics";
+import { scrollPreview, getPreviewTaskForFile, updatePreview, scrollToCursor } from "@/typst/backend";
 import { FileOpsManager } from "@/lib/file-operations.svelte";
 import ConsolePanel from "@/components/console/ConsolePanel.svelte";
 import OpencodeSidebar from "@/components/opencode/OpencodeSidebar.svelte";
@@ -94,6 +92,21 @@ import { listCustomThemes, injectThemeCSS } from "@/lib/custom-themes";
 import { BUILTIN_THEMES } from "@/lib/theme";
 import type { ProjectConfig } from "@/lib/project-config";
 import "./app.css";
+
+// ── Typst preview: suppress CM6's didChange at transport level ──
+// Belt-and-suspenders: --refresh-style on-save already prevents SVG re-rendering,
+// but filtering didChange also prevents tinymist's LSP compiler from recompiling
+// on every keystroke (saving CPU). Preview only updates on save.
+{
+  const transport = getTinymistTransport();
+  transport.setOutFilter((raw) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.method === "textDocument/didChange") return true;
+    } catch { /* ignore */ }
+    return false;
+  });
+}
 
 let t = $derived(getT($language));
 
@@ -216,9 +229,7 @@ $effect(() => { if (consoleOpen) consoleMounted = true; });
 let proseWarmupDone = false;
 
 let saveStatus = $state<"idle" | "dirty" | "saving" | "saved">("idle");
-let cursorLine = $state<number | null>(null);
 
-let projectConfig = $state<ProjectConfig>({});
 let configRoot = $state<string | null>(null);
 let configLoaded = $state(false);
 // Gate the boot splash removal on the theme being applied (crafted CSS injected +
@@ -291,7 +302,7 @@ async function doConfigSync() {
   // typst
   const ts = typstSettings.current;
   if (ts.formatterMode !== "typstyle" || ts.formatterPrintWidth !== 120 || ts.formatterIndentSize !== 2
-    || ts.exportPdf !== "never" || ts.outputPath !== "output" || ts.lintEnabled
+    || ts.exportPdf !== "never" || ts.lintEnabled
     || !ts.systemFonts || !ts.semanticTokens || ts.typstExtraArgs) {
     cfg.typst = ts;
   }
@@ -302,7 +313,6 @@ async function doConfigSync() {
   // favorites
   if (fo.favorites.current.length) cfg.favorites = fo.favorites.current;
 
-  projectConfig = cfg;
   await saveProjectConfig(configRoot, cfg);
 }
 
@@ -317,7 +327,6 @@ async function loadConfig(root: string) {
     for (const c of crafted) injectThemeCSS(c.name, c.css);
   } catch { /* crafted CSS is best-effort */ }
   const { config: cfg, warnings } = await loadProjectConfig(root);
-  projectConfig = cfg;
 
   // editor section
   const ed = cfg.editor;
@@ -472,7 +481,7 @@ async function checkExternalChanges() {
       if (tab.source === tab.savedContent || !externalChangeAlerts) {
         await reloadFile(tab.path);
         if (externalChangeAlerts) {
-          notifications.setInfo({ title: "", message: t("app.fileReloaded") });
+          notifications.setInfo(t("app.fileReloaded"));
         }
       } else {
         fileConflict = tab.path;
@@ -773,13 +782,31 @@ const fo = new FileOpsManager({
   getT: () => t,
 });
 
-function handleTabSelect(id: string) {
-  pm.main.select(id);
-}
+// ── Filesystem watcher: bump treeVersion on external changes ──
+let _fsWatchCleanup: (() => void) | null = null;
+let _fsDebounce: ReturnType<typeof setTimeout> | null = null;
 
-function handleTabReorder(from: number, to: number) {
-  pm.main.reorder(from, to);
-}
+$effect(() => {
+  const p = rootPath;
+  _fsWatchCleanup?.();
+  _fsWatchCleanup = null;
+  if (!p) return;
+
+  watch(
+    p,
+    () => {
+      if (_fsDebounce) clearTimeout(_fsDebounce);
+      _fsDebounce = setTimeout(() => { fo.treeVersion++; }, 200);
+    },
+    { recursive: true, delayMs: 200 },
+  ).then((unwatch) => { _fsWatchCleanup = unwatch; });
+
+  return () => {
+    _fsWatchCleanup?.();
+    _fsWatchCleanup = null;
+    if (_fsDebounce) { clearTimeout(_fsDebounce); _fsDebounce = null; }
+  };
+});
 
 $effect(() => {
   if (source !== savedContent) {
@@ -821,6 +848,15 @@ const handleSave = async () => {
     // Auto-export Typst PDF on save
     if (extFromPath(activePath) === "typ" && typstSettings.current.exportPdf === "onSave") {
       onTypstBuild();
+    }
+    // Update typst live preview and scroll to cursor
+    if (extFromPath(activePath) === "typ") {
+      const taskId = getPreviewTaskForFile(activePath);
+      if (taskId) {
+        const content = pm.main.activeTab?.source ?? "";
+        updatePreview(activePath, content).catch(() => {});
+        scrollToCursor(activePath, taskId).catch(() => {});
+      }
     }
   } catch (err) {
     console.error("azprose: save failed", err);
@@ -920,15 +956,41 @@ $effect(() => {
   return () => { cancelled = true; };
 });
 
-// Keep side panel preview/presentation tab source in sync with main editor
+// Keep side panel preview/presentation tab source in sync with main editor.
+// Tracks _panelVersion so it re-fires when side tabs are created/modified.
 $effect(() => {
-  if (!activePath || extFromPath(activePath) !== "md") return;
-  const sideTab = pm.side.tabs.find(t => t.path === activePath && (t.renderMode === "preview" || t.renderMode === "presentation"));
+  if (!activePath) return;
+  _panelVersion; // re-run when side panel structure changes
+  const ext = extFromPath(activePath);
+  let sideTab;
+  if (ext === "md") {
+    sideTab = pm.side.tabs.find(t => t.path === activePath && (t.renderMode === "preview" || t.renderMode === "presentation"));
+  } else if (ext === "typ") {
+    sideTab = pm.side.tabs.find(t => t.path === activePath && t.sourceType === "typst");
+  }
   if (sideTab && sideTab.source !== source) {
     pm.side.tabs = pm.side.tabs.map(t => t.id === sideTab.id ? { ...t, source } : t);
     _panelVersion++;
   }
 });
+
+// Forward sync: editor cursor → Typst Live View (debounced 100ms)
+// Safe now: didChange is filtered at transport level AND
+// preview uses --refresh-style on-save, so scrollPreview
+// only scrolls the existing render — no recompilation, no flash.
+let _typstForwardTimer: ReturnType<typeof setTimeout> | null = null;
+$effect(() => {
+  const line = cursorLine();
+  if (line == null || !activePath || extFromPath(activePath) !== "typ") return;
+  const taskId = getPreviewTaskForFile(activePath);
+  if (!taskId) return;
+  if (_typstForwardTimer) clearTimeout(_typstForwardTimer);
+  _typstForwardTimer = setTimeout(() => {
+    scrollPreview(taskId, { event: "changeCursorPosition", filepath: activePath, line: line - 1, character: 0 })
+      .catch((err: unknown) => console.warn("[typst:forward] scrollPreview failed:", err));
+  }, 100);
+});
+$effect(() => { return () => { if (_typstForwardTimer) clearTimeout(_typstForwardTimer); }; });
 
 $effect(() => {
   const timer = window.setTimeout(async () => {
@@ -1269,13 +1331,72 @@ const handleExportPdf = async () => {
 
 $effect(() => {
   const onKey = (e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+    // Command Palette: Ctrl/Cmd+Shift+P
+    if (shortcuts.matches(e, "commandPalette")) {
+      e.preventDefault();
+      overlays.setPaletteOpen(!overlays.paletteOpen);
+      return;
+    }
+    // Save: Ctrl/Cmd+S
+    if (shortcuts.matches(e, "save")) {
       e.preventDefault();
       handleSave();
+      return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === "p") {
+    // Export PDF: Ctrl/Cmd+P
+    if (shortcuts.matches(e, "exportPdf")) {
       e.preventDefault();
       handleExportPdf();
+      return;
+    }
+    // Sidebar toggle: Ctrl/Cmd+B
+    if (shortcuts.matches(e, "sidebar")) {
+      e.preventDefault();
+      sidebarOpen.current = !sidebarOpen.current;
+      return;
+    }
+    // Help: Ctrl/Cmd+/
+    if (shortcuts.matches(e, "help")) {
+      e.preventDefault();
+      overlays.showHelp();
+      return;
+    }
+    // Build: Ctrl/Cmd+Alt+B
+    if (shortcuts.matches(e, "build")) {
+      e.preventDefault();
+      if (activePath && extFromPath(activePath) === "tex") onLatexBuild();
+      else if (activePath && extFromPath(activePath) === "typ") onTypstBuild();
+      return;
+    }
+    // Editor mode 1 (raw): Ctrl/Cmd+1
+    if (shortcuts.matches(e, "editorMode1")) {
+      e.preventDefault();
+      handleSetEditorMode("raw");
+      return;
+    }
+    // Editor mode 2 (prose): Ctrl/Cmd+2
+    if (shortcuts.matches(e, "editorMode2")) {
+      e.preventDefault();
+      handleSetEditorMode("prose");
+      return;
+    }
+    // Editor mode 3 (preview): Ctrl/Cmd+3
+    if (shortcuts.matches(e, "editorMode3")) {
+      e.preventDefault();
+      handleSetEditorMode("preview");
+      return;
+    }
+    // View panel toggle: Ctrl/Cmd+\
+    if (shortcuts.matches(e, "viewPanel")) {
+      e.preventDefault();
+      sidebarOpen.current = !sidebarOpen.current;
+      return;
+    }
+    // Settings: Ctrl/Cmd+,
+    if (shortcuts.matches(e, "settings")) {
+      e.preventDefault();
+      overlays.openSettings("general");
+      return;
     }
   };
   window.addEventListener("keydown", onKey);
@@ -1318,7 +1439,7 @@ const handleGutterClick = (line: number) => {
       })
       .catch((err: unknown) => notifications.setInfo(`synctex forward failed: ${err}`));
   } else if (ext === "typ") {
-    const taskId = getPreviewTaskId();
+    const taskId = getPreviewTaskForFile(activePath);
     if (taskId) {
       scrollPreview(taskId, { event: "panelScrollTo", filepath: activePath, line: line - 1, character: 0 })
         .catch((err: unknown) => notifications.setInfo(`typst forward failed: ${err}`));
@@ -1428,10 +1549,12 @@ const handleToggleViewPanel = () => {
 const onTypstViewer = async () => {
   if (!activePath) return;
   await pm.openInSide(activePath, { sourceType: "typst" });
-  // Sync current editor content to the side panel tab immediately
-  const found = pm.findTabByPath(activePath);
-  if (found && found.panel === "side") {
-    pm.side.setTabSource(found.tab.id, source);
+  // Sync current editor content to the side panel tab immediately.
+  // Use pm.side.tabs.find directly — pm.findTabByPath would return the main
+  // panel's tab (checked first), causing the source sync to be skipped.
+  const sideTab = pm.side.tabs.find(t => t.path === activePath && t.sourceType === "typst");
+  if (sideTab) {
+    pm.side.setTabSource(sideTab.id, source);
     _panelVersion++;
   }
   if (!sideVisible) {
@@ -1490,11 +1613,6 @@ const onLatexViewer = async () => {
     }
   }
 };
-const onLatexCodeView = () => {
-  sideVisible = false;
-  pm.sideVisible = false;
-  ls.viewerPdfPath = null;
-};
 
 const handleTypographyChange = (patch: Partial<TypographySettings>) => {
   typography.current = { ...typo, ...patch };
@@ -1507,7 +1625,6 @@ const handleResetTypography = () => {
 let cmds = $derived(
   buildCommands({
     newFile: fo.newFile,
-    openFile: fo.openFile,
     openFolder: handleAddFolder,
     save: handleSave,
     toggleSidebar: handleToggleSidebar,
@@ -1539,15 +1656,34 @@ let cmds = $derived(
     isLatexActive: activePath != null && extFromPath(activePath) === "tex",
     typstClean: () => activePath && typst.cleanBuild(activePath),
     typstCleanAll: () => activePath && typst.cleanAll(dirname(activePath)),
-    latexClean: () => activePath && cleanLatexBuild(activePath),
-    latexCleanAll: () => activePath && cleanLatexAll(dirname(activePath)),
+    latexCleanAux: () => activePath && cleanLatexAux(ls.rootFilePath ?? activePath),
+    latexCleanAuxAndOutput: () => activePath && cleanLatexAuxAndOutput(ls.rootFilePath ?? activePath),
+    latexCleanAll: async () => {
+      if (!activePath) return;
+      const ok = await confirm(t("latex.cleanAllConfirm"), { title: t("latex.cleanAllTitle"), kind: "warning" });
+      if (ok) await cleanLatexAll(ls.rootFilePath ?? activePath);
+    },
+    setEditorMode: (mode: "raw" | "prose" | "preview") => {
+      handleSetEditorMode(mode);
+    },
+    startPresentation: () => handleSetEditorMode("presentation"),
+    editorMode,
+    latexBuild: () => onLatexBuild(),
+    latexViewPdf: () => onLatexViewer(),
+    typstBuild: () => onTypstBuild(),
+    typstLiveView: () => onTypstViewer(),
+    typstViewPdf: () => onTypstViewPdf(),
+    toggleConsole: handleToggleConsole,
+    toggleViewPanel: handleToggleSidebar,
+    toggleTitlebar: handleToggleTitlebar,
+    openSettings: () => overlays.openSettings("general"),
   }, t),
 );
 </script>
 
 <div
   class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}{!titlebarVisible.current ? " has-hidden-titlebar" : ""}"
-  style={typographyStyle}
+  style={Object.entries(typographyStyle).map(([k, v]) => `${k}:${v}`).join(";")}
 >
   <TitleBar
     rootName={rootPath ? basename(rootPath) : undefined}

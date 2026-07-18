@@ -30,7 +30,7 @@ let {
   onTypstViewPdf,
   onExportPdf,
   onToggleRenderMode,
-  onToggleFullscreen,
+  onToggleFullscreen: _onToggleFullscreen,
   viewerFullscreenOn = false,
   onViewerFullscreen,
 }: {
@@ -56,6 +56,7 @@ let {
   onTypstViewer?: () => void;
   onTypstBuild?: () => void;
   onTypstViewPdf?: () => void;
+  onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;

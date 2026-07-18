@@ -9,3 +9,8 @@ export function setCursorLine(line: number | null): void {
 export function getCursorLine(): number | null {
   return _line;
 }
+
+/** Reactive getter for use in $effect(). */
+export function cursorLine(): number | null {
+  return _line;
+}

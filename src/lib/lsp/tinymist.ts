@@ -1,10 +1,11 @@
 import { LSPClient, type LSPClientConfig } from "@codemirror/lsp-client";
-import { createTauriTransport, killTransport } from "./transport";
+import { createTauriTransport, killTransport, type TauriTransport } from "./transport";
 import type { TypstSettings } from "@/stores/typst-settings.svelte";
 
 // ── Tinymist Singleton ──────────────────────────────────────────
 
 let _client: LSPClient | null = null;
+let _transport: TauriTransport | null = null;
 let _id: string | null = null;
 
 /**
@@ -21,12 +22,12 @@ export function getTinymistClient(
   if (_client) return _client;
 
   _id = `tinymist-${Date.now()}`;
-  const transport = createTauriTransport(_id, "tinymist", ["lsp"]);
+  _transport = createTauriTransport(_id, "tinymist", ["lsp"]);
 
   _client = new LSPClient({
     notificationHandlers: config?.notificationHandlers,
     unhandledNotification: config?.unhandledNotification,
-  }).connect(transport);
+  }).connect(_transport);
 
   return _client;
 }
@@ -52,7 +53,6 @@ export function sendTinymistConfig(settings: TypstSettings, projectRoot?: string
         formatterPrintWidth: settings.formatterPrintWidth,
         formatterIndentSize: settings.formatterIndentSize,
         exportPdf: settings.exportPdf,
-        outputPath: settings.outputPath || "",
         lint: { enabled: settings.lintEnabled, when: settings.lintWhen },
         semanticTokens: settings.semanticTokens ? "enable" : "disable",
         typstExtraArgs,
@@ -73,4 +73,10 @@ export async function stopTinymist(): Promise<void> {
 /** True once a tinymist client has been created. */
 export function isTinymistReady(): boolean {
   return _client !== null;
+}
+
+/** Get the tinymist transport (for installing outFilter, etc.). Creates client if needed. */
+export function getTinymistTransport(): TauriTransport {
+  getTinymistClient();
+  return _transport!;
 }

@@ -147,7 +147,7 @@
     }
 
     try {
-      const blob  = new Blob([bytes], { type: "application/pdf" });
+      const blob  = new Blob([bytes as BlobPart], { type: "application/pdf" });
       blobUrl = URL.createObjectURL(blob);
 
       loadingTask = pdfjsLib.getDocument({ url: blobUrl });
@@ -250,9 +250,10 @@
 
   $effect(() => {
     if (!hoverZoneEl) return;
+    const el = hoverZoneEl;
     return () => {
-      hoverZoneEl.removeEventListener("mouseenter", showToolbar);
-      hoverZoneEl.remove();
+      el.removeEventListener("mouseenter", showToolbar);
+      el.remove();
       hoverZoneEl = null;
     };
   });

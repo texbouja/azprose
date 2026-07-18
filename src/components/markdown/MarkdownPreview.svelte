@@ -170,6 +170,7 @@ onDestroy(() => clearRenderDiagnostics());
 
 $effect(() => {
   if (!articleEl) return;
+  const el = articleEl;
   const onClick = (e: MouseEvent) => {
     const a = (e.target as HTMLElement).closest("a");
     if (!a) return;
@@ -198,16 +199,16 @@ $effect(() => {
       e.preventDefault();
       const id = decodeURIComponent(href.slice(1));
       const target =
-        articleEl.querySelector(`[id="${CSS.escape(id)}"]`) ??
-        articleEl.querySelector(`[id="${id}"]`);
+        el.querySelector(`[id="${CSS.escape(id)}"]`) ??
+        el.querySelector(`[id="${id}"]`);
       target?.scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (/^https?:\/\//.test(href)) {
       e.preventDefault();
       void openUrl(href);
     }
   };
-  articleEl.addEventListener("click", onClick);
-  return () => articleEl.removeEventListener("click", onClick);
+  el.addEventListener("click", onClick);
+  return () => el.removeEventListener("click", onClick);
 });
 </script>
 

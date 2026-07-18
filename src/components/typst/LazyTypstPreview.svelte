@@ -1,11 +1,9 @@
 <script lang="ts">
   let {
-    value = "",
     filePath = "",
     onToggleFullscreen,
     onInverseSync,
   }: {
-    value?: string;
     filePath?: string;
     onToggleFullscreen?: () => void;
     onInverseSync?: (file: string, line: number) => void;
@@ -33,7 +31,7 @@
 {#if loading}
   <div class="typst-preview-lazy">Chargement…</div>
 {:else if Cmp}
-  <Cmp {value} {filePath} {onToggleFullscreen} {onInverseSync} />
+  <Cmp {filePath} {onToggleFullscreen} {onInverseSync} />
 {/if}
 
 <style>

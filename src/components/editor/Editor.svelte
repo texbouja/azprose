@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers as lineNumbersExt, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
@@ -109,7 +109,7 @@ onMount(() => {
 $effect(() => {
   const line = jumpToLine;
   const col = jumpToCol;
-  const _dv = docVersion;
+  void docVersion;
   if (!view || line == null) return;
   const lineNum = Math.min(line + 1, view.state.doc.lines);
   if (lineNum < 1) return;
@@ -150,6 +150,7 @@ $effect(() => {
   if (view && view.state.doc.toString() !== next) {
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: next },
+      annotations: Transaction.addToHistory.of(false),
     });
   }
 });

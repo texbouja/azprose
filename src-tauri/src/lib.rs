@@ -502,6 +502,7 @@ pub fn run() {
             latex_engine::latex_build,
             latex_engine::latex_find_root,
             latex_engine::check_latexmk,
+            latex_engine::latex_resolve_dirs,
             latex_engine::synctex_forward,
             latex_engine::synctex_inverse,
             latex_engine::latex_init_texmf,

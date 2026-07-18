@@ -69,7 +69,7 @@ $effect(() => {
     role="menu"
     style="position:fixed;left:{pos.left}px;top:{pos.top}px"
   >
-    {#each items as item, i}
+    {#each items as item}
       {#if item === "divider"}
         <div class="mdv-menu__divider" aria-hidden="true" />
       {:else}

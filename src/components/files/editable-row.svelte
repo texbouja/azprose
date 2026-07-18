@@ -48,7 +48,6 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
-let Glyph = $derived(kind === "folder" ? Folder : null);
 let padLeft = $derived(8 + depth * 12 + (kind === "file" ? 4 : 0));
 </script>
 
@@ -64,7 +63,7 @@ let padLeft = $derived(8 + depth * 12 + (kind === "file" ? 4 : 0));
     {/if}
     <span class="mdv-tree__icon">
       {#if kind === "folder"}
-        <Icon icon={Glyph} size={13} strokeWidth={1.5} />
+        <Icon icon={Folder} size={13} strokeWidth={1.5} />
       {:else}
         <FileIcon path={initialValue} size={13} />
       {/if}

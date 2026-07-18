@@ -1057,14 +1057,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               </label>
             </div>
 
-            <p class="mdv-settings__section-title">{t("settings.typstOutputPath")}</p>
-            <input type="text" class="mdv-settings__input"
-              value={typstSettings.current.outputPath}
-              oninput={(e) => debounceInput("typst-output", e.currentTarget.value, (v) => typstSettings.patch({ outputPath: v }))}
-              placeholder="$dir/$name"
-              spellcheck={false} />
-            <p class="mdv-settings__hint">{t("settings.typstOutputPathHint")}</p>
-
             <p class="mdv-settings__section-title">{t("settings.typstLint")}</p>
             <label class="mdv-settings__radio">
               <input type="checkbox"

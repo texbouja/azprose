@@ -14,4 +14,18 @@ export {
   refreshFromPreview,
   liveDiagnostics,
 } from "./diagnostics";
-export { startPreview, stopPreview, scrollPreview, getPreviewTaskId } from "./backend";
+export {
+  startPreview,
+  stopPreview,
+  scrollPreview,
+  updatePreview,
+  scrollToCursor,
+  getPreviewTaskForFile,
+  getPreviewTaskId,
+  registerPreview,
+  unregisterPreview,
+  onShowDocument,
+  onPreviewDispose,
+} from "./backend";
+export { activePreviewCount } from "./preview-task-id.svelte";
+export type { StartPreviewResult } from "./backend";
