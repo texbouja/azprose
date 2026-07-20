@@ -1,7 +1,7 @@
 <script lang="ts">
 import { extFromPath } from "@/lib/editor-languages";
 import { isPdfPath, isImagePath } from "@/lib";
-import { ZoomIn, ZoomOut, Maximize2, BookOpen, Wallpaper, Code2, Pencil, Eye, PdfLogo, FileDown } from "@/lib/icons";
+import { ZoomIn, ZoomOut, Maximize2, BookOpen, Wallpaper, Code2, Pencil, Eye, PdfLogo, FileDown, Table2 } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
@@ -69,6 +69,7 @@ let ext = $derived(extFromPath(activeTab?.path ?? ""));
 let isMd = $derived(ext === "md");
 let isTex = $derived(ext === "tex");
 let isTyp = $derived(ext === "typ");
+let isCsv = $derived(ext === "csv" || ext === "tsv");
 let isMain = $derived(panelId === "main");
 </script>
 
@@ -121,6 +122,10 @@ let isMain = $derived(panelId === "main");
             </button>
             <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onTypstViewPdf?.()}>
               {@html PdfLogo}<span>{t("tabs.viewPdf")}</span>
+            </button>
+          {:else if isCsv}
+            <button type="button" class="tab-actions__btn tab-actions__btn--label" class:is-active={renderMode === "preview"} onclick={() => onSetEditorMode?.("preview")}>
+              <Icon icon={Table2} size={14} strokeWidth={1.8} /><span>Grille</span>
             </button>
           {/if}
         </div>

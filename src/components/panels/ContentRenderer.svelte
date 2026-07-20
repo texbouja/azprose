@@ -12,6 +12,7 @@ import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
 import LazySynctexPdfViewer from "@/components/tex/LazySynctexPdfViewer.svelte";
 import LazyTypstPdfOutput from "@/components/typst/LazyTypstPdfOutput.svelte";
 import LazyTypstPreview from "@/components/typst/LazyTypstPreview.svelte";
+import LazyCsvSpreadsheet from "@/components/csv/LazyCsvSpreadsheet.svelte";
 import type { TypographySettings } from "@/lib/typography";
 import { getTinymistClient } from "@/lib/lsp/tinymist";
 import { getTexlabClient } from "@/lib/lsp/texlab";
@@ -33,6 +34,7 @@ let {
   onJumpToLine,
   buildRev = 0,
   onToggleFullscreen,
+  onSyncToMain,
 }: {
   tab?: Tab | null;
   panelId?: string;
@@ -51,6 +53,7 @@ let {
   onJumpToLine?: (line: number) => void;
   buildRev?: number;
   onToggleFullscreen?: () => void;
+  onSyncToMain?: (source: string) => void;
 } = $props();
 
 // tinymist and texlab start lazily on first .typ/.typ file open
@@ -110,6 +113,8 @@ let {
     value={tab.source}
     filePath={tab.path}
   />
+{:else if (extFromPath(tab.path) === "csv" || extFromPath(tab.path) === "tsv") && panelId !== "main"}
+  <LazyCsvSpreadsheet value={tab.source} filePath={tab.path} onChange={(csv) => onSyncToMain?.(csv)} />
 {:else}
   <Editor
     value={tab.source}

@@ -138,6 +138,7 @@ function startResize(e: PointerEvent) {
       activeTabId={sideActiveTabId}
       flex={String(1 - splitRatio)}
       onSourceChange={onSideSourceChange}
+      onSyncToMain={onSourceChange}
       typo={typo}
       {jumpToLine}
       {jumpToCol}

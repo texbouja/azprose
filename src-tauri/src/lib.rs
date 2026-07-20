@@ -12,9 +12,6 @@ use tauri::{Emitter, Manager};
 #[cfg(target_os = "macos")]
 use tauri::RunEvent;
 
-mod opencode;
-use opencode::OpenCodeWebview;
-
 mod terminal;
 use terminal::TerminalState;
 
@@ -431,8 +428,6 @@ pub fn run() {
             map
         })))
         .manage(OpenProjectWindows(Mutex::new(HashMap::new())))
-        .manage(opencode::OpenCodeServer(Mutex::new(None)))
-        .manage(OpenCodeWebview(Mutex::new(None)))
         .manage(TerminalState::default())
         .manage(LspBridgeState::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -485,12 +480,6 @@ pub fn run() {
             list_project_themes,
             install_project_theme,
             remove_project_theme,
-            opencode::start_opencode_server,
-            opencode::stop_opencode_server,
-            opencode::get_opencode_server_url,
-            opencode::check_opencode_available,
-            opencode::open_opencode_sidebar,
-            opencode::close_opencode_sidebar,
             terminal::terminal_spawn,
             terminal::terminal_write,
             terminal::terminal_resize,

@@ -23,6 +23,7 @@ let {
   buildRev = 0,
   flex = "1",
   onSetEditorMode,
+  onSyncToMain,
   onLatexViewer,
   onLatexBuild,
   onTypstViewer,
@@ -51,6 +52,7 @@ let {
   buildRev?: number;
   flex?: string;
   onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
+  onSyncToMain?: (source: string) => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
   onTypstViewer?: () => void;
@@ -63,7 +65,12 @@ let {
   onViewerFullscreen?: () => void;
 } = $props();
 
+import { extFromPath } from "@/lib/editor-languages";
+
 let activeTab = $derived(tabs.find(t => t.id === activeTabId) ?? null);
+let isCsvPreview = $derived(
+  panel.id === "side" && activeTab != null && (extFromPath(activeTab.path) === "csv" || extFromPath(activeTab.path) === "tsv"),
+);
 let viewportEl = $state<HTMLElement | null>(null);
 
 function handleViewerCommand(cmd: string) {
@@ -93,6 +100,7 @@ function handleViewerFullscreen() {
     </div>
   {/if}
   <div class="panel-viewport" bind:this={viewportEl} style="position:relative;flex:1;min-height:0;display:grid;grid-template-rows:1fr">
+    {#if !isCsvPreview}
     <TabActions
       {activeTab}
       panelId={panel.id}
@@ -109,6 +117,7 @@ function handleViewerFullscreen() {
       onToggleFullscreen={handleViewerFullscreen}
       onCommand={handleViewerCommand}
     />
+    {/if}
     {#each tabs as tab (tab.id)}
       <div style={tab.id === activeTabId ? 'display:grid;grid-template-rows:1fr;min-height:0' : 'display:none'}>
         <ContentRenderer
@@ -122,6 +131,7 @@ function handleViewerFullscreen() {
           {onJumpApplied}
           {vimOn}
           {prosemarkOn}
+          {onSyncToMain}
           {forwardToPage}
           {onInverseSync}
           {onJumpToLine}

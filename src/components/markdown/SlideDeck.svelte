@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { renderMarkdown, resolveLocalImages, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons } from "@/lib/markdown-render";
+import { renderMarkdown, resolveLocalImages, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons } from "@/markdown";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { subscribeMode, type Theme } from "@/lib/theme";
 

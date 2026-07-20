@@ -12,7 +12,6 @@
     PanelTopClose,
     PanelTopOpen,
     Settings,
-    Terminal,
   } from "@/lib/icons";
   import { Button, Icon, Popover } from "@/components/primitives";
   import { language, getT, setLanguage, LANGUAGE_CHOICES } from "@/lib/i18n";
@@ -24,8 +23,6 @@
   let {
     sidebarOpen,
     onToggleSidebar,
-    opencodeOpen,
-    onToggleOpencode,
     rootPath,
     activePath,
     saveStatus,
@@ -45,8 +42,6 @@
   }: {
     sidebarOpen: boolean;
     onToggleSidebar: () => void;
-    opencodeOpen?: boolean;
-    onToggleOpencode?: () => void;
     rootPath: string | null;
     activePath: string | null;
     saveStatus: "idle" | "dirty" | "saving" | "saved";
@@ -131,7 +126,7 @@
 
   <div class="mdv-breadcrumb__actions" data-tauri-drag-region>
 
-    <!-- AFFICHAGE : barre d'outils, console, opencode, plein écran -->
+    <!-- AFFICHAGE : barre d'outils, console, plein écran -->
     <div class="mdv-breadcrumb__display">
       <Button
         data-tooltip={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
@@ -152,18 +147,6 @@
         >
           {#snippet icon()}
             <Icon icon={PanelBottom} size={14} strokeWidth={1.5} />
-          {/snippet}
-        </Button>
-      {/if}
-      {#if onToggleOpencode}
-        <Button
-          data-tooltip={t("breadcrumb.opencode")}
-          aria-label={t("breadcrumb.opencode")}
-          aria-pressed={opencodeOpen}
-          onclick={onToggleOpencode}
-        >
-          {#snippet icon()}
-            <Icon icon={Terminal} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
       {/if}

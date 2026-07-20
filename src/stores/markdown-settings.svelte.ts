@@ -6,6 +6,7 @@ export type HeadingFont = "inherit" | "fira-sans" | "inter" | "system" | "custom
 export type OlType = "decimal" | "lower-alpha" | "lower-roman" | "upper-alpha" | "upper-roman";
 export type BodyFont = "fira-sans" | "inter" | "system" | "custom";
 export type MonoFont = "fira-code" | "jetbrains-mono" | "system";
+export type CsvBodyFont = "fira-sans" | "inter" | "system" | "custom";
 
 // ── ProseMark editing mode ─────────────────────────────────────────────────
 
@@ -135,6 +136,22 @@ export const DEFAULT_PRESENTATION_STYLE: PresentationStyle = {
   h3MarginBottom: 0.3,
 };
 
+// ── CsvStyle ──────────────────────────────────────────────────────────────
+
+export type CsvStyle = {
+  fontFamily: CsvBodyFont;
+  customFontName: string;
+  fontSize: number;
+  lineHeight: number;
+};
+
+const DEFAULT_CSV_STYLE: CsvStyle = {
+  fontFamily: "system",
+  customFontName: "",
+  fontSize: 13,
+  lineHeight: 1.4,
+};
+
 // ── Font resolution helpers ─────────────────────────────────────────────────
 
 export function resolveFontFamily(key: BodyFont, customName?: string): string {
@@ -216,8 +233,19 @@ function createPresentationSettings() {
   };
 }
 
+function createCsvSettings() {
+  const stored = persistedState<CsvStyle>(STORAGE_KEYS.csvStyle, { ...DEFAULT_CSV_STYLE });
+  stored.current = gapFill(stored.current, DEFAULT_CSV_STYLE);
+  return {
+    get current() { return stored.current; },
+    patch(partial: Partial<CsvStyle>) { stored.current = { ...stored.current, ...partial }; },
+    reset() { stored.current = { ...DEFAULT_CSV_STYLE }; },
+  };
+}
+
 // ── Exports ─────────────────────────────────────────────────────────────────
 
 export const proseMarkSettings = createProseMarkSettings();
 export const previewSettings = createPreviewSettings();
 export const presentationSettings = createPresentationSettings();
+export const csvSettings = createCsvSettings();

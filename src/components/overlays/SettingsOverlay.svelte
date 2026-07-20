@@ -8,12 +8,14 @@ import {
   proseMarkSettings,
   previewSettings,
   presentationSettings,
+  csvSettings,
   type ProseMarkStyle,
   type PreviewStyle,
   type PresentationStyle,
   type TextAlign,
   type HeadingFont,
   type OlType,
+  type CsvBodyFont,
 } from "@/stores/markdown-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
@@ -38,8 +40,8 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "latex-general" | "latex-build" | "typst-general" | "typst-build";
-type SectionId = "markdown" | "latex" | "typst";
+type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "typst-general" | "typst-build";
+type SectionId = "markdown" | "csv" | "latex" | "typst";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
   {
@@ -52,6 +54,13 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "presentation",  labelKey: "settings.module.presentation" },
       { id: "mathjax",       labelKey: "settings.module.mathjax" },
       { id: "callouts",      labelKey: "settings.module.callouts" },
+    ],
+  },
+  {
+    id: "csv",
+    labelKey: "settings.section.csv",
+    modules: [
+      { id: "csv-general", labelKey: "settings.module.csvGeneral" },
     ],
   },
   {
@@ -73,12 +82,13 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
 ];
 
 let activeModule = $state<ModuleId>("general");
-let expandedSections = $state(new Set<SectionId>(["markdown", "latex", "typst"]));
+let expandedSections = $state(new Set<SectionId>(["markdown", "csv", "latex", "typst"]));
 
 // Explicit $derived so the template tracks settings reactively.
 let s = $derived(proseMarkSettings.current);
 let pvs = $derived(previewSettings.current);
 let prs = $derived(presentationSettings.current);
+let csvStyle = $derived(csvSettings.current);
 
 // Debounced text input: delays store write so typing stays snappy.
 const _inputTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -111,6 +121,9 @@ let customFontOk = $derived(
 );
 let prsCustomFontOk = $derived(
   prs.fontFamily === "custom" && prs.customFontName.trim() ? checkFontAvailable(prs.customFontName) : null
+);
+let csvCustomFontOk = $derived(
+  csvStyle.fontFamily === "custom" && csvStyle.customFontName.trim() ? checkFontAvailable(csvStyle.customFontName) : null
 );
 
 function toggleSection(id: SectionId) {
@@ -332,6 +345,30 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
         <option value="jetbrains-mono" selected={pvs.monoFont === "jetbrains-mono"}>JetBrains Mono</option>
         <option value="system"         selected={pvs.monoFont === "system"}>{t("settings.fontSystem")}</option>
       </select>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet csvFontSection()}
+  <p class="mdv-settings__section-title">{t("settings.fonts")}</p>
+  <div class="mdv-settings__fonts">
+    <div class="mdv-settings__font-row">
+      <span class="mdv-settings__font-label">{t("settings.fontMain")}</span>
+      <select class="mdv-settings__select" class:mdv-settings__select--inline={csvStyle.fontFamily === "custom"}
+        onchange={(e) => csvSettings.patch({ fontFamily: e.currentTarget.value as CsvBodyFont })}>
+        <option value="fira-sans" selected={csvStyle.fontFamily === "fira-sans"}>Fira Sans</option>
+        <option value="inter"     selected={csvStyle.fontFamily === "inter"}>Inter</option>
+        <option value="system"    selected={csvStyle.fontFamily === "system"}>{t("settings.fontSystem")}</option>
+        <option value="custom"    selected={csvStyle.fontFamily === "custom"}>{t("settings.fontCustom")}</option>
+      </select>
+      {#if csvStyle.fontFamily === "custom"}
+        <input type="text" class="mdv-settings__font-custom-input"
+          style={csvCustomFontOk === false ? "color: var(--color-error)" : ""}
+          placeholder={t("settings.fontPlaceholder")}
+          value={csvStyle.customFontName}
+          oninput={(e) => debounceInput("font-csv", e.currentTarget.value, (v) => csvSettings.patch({ customFontName: v }))}
+          spellcheck={false} />
+      {/if}
     </div>
   </div>
 {/snippet}
@@ -880,6 +917,28 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <p class="mdv-settings__hint">{t("settings.calloutsHint")}</p>
           {/if}
 
+          {#if activeModule === "csv-general"}
+            {@render csvFontSection()}
+
+            <p class="mdv-settings__section-title">{t("settings.typography")}</p>
+            <div class="mdv-settings__sliders">
+              <div class="mdv-settings__slider-row">
+                <span class="mdv-settings__slider-label">{t("settings.fontSize")}</span>
+                <input type="range" class="mdv-settings__range" min="10" max="20" step="1"
+                  value={csvStyle.fontSize}
+                  oninput={(e) => csvSettings.patch({ fontSize: Number(e.currentTarget.value) })} />
+                <span class="mdv-settings__slider-value">{csvStyle.fontSize} px</span>
+              </div>
+              <div class="mdv-settings__slider-row">
+                <span class="mdv-settings__slider-label">{t("settings.lineHeight")}</span>
+                <input type="range" class="mdv-settings__range" min="1.0" max="2.0" step="0.05"
+                  value={csvStyle.lineHeight}
+                  oninput={(e) => csvSettings.patch({ lineHeight: Number(e.currentTarget.value) })} />
+                <span class="mdv-settings__slider-value">{csvStyle.lineHeight.toFixed(2)}</span>
+              </div>
+            </div>
+          {/if}
+
           {#if activeModule === "latex-general"}
             <p class="mdv-settings__section-title">{t("settings.latexEngine")}</p>
             <div class="mdv-settings__radio-group">
@@ -954,7 +1013,7 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                   const rp = getRootPath();
                   if (rp) {
                     const dir = joinPath(joinPath(rp, ".azprose"), "texmf");
-                    const { initTexmf } = await import("@/components/tex/latex-build");
+                    const { initTexmf } = await import("@/latex");
                     await initTexmf(rp);
                     const { invoke } = await import("@tauri-apps/api/core");
                     invoke("open_folder", { path: dir });
@@ -966,7 +1025,7 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                 onclick={async () => {
                   const rp = getRootPath();
                   if (rp) {
-                    const { rehashTexmf } = await import("@/components/tex/latex-build");
+                    const { rehashTexmf } = await import("@/latex");
                     const msg = await rehashTexmf(rp);
                     notifications.setInfo(msg);
                   }
@@ -1139,6 +1198,10 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           </button>
         {:else if activeModule === "callouts"}
           <button type="button" class="mdv-settings__reset" onclick={() => calloutSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "csv-general"}
+          <button type="button" class="mdv-settings__reset" onclick={() => csvSettings.reset()}>
             {t("settings.reset")}
           </button>
         {:else if activeModule === "latex-general" || activeModule === "latex-build"}

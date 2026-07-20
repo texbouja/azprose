@@ -1,5 +1,5 @@
 import type MarkdownIt from "markdown-it";
-import { getFileIndex } from "./vault-index";
+import { getFileIndex } from "@/lib/vault-index";
 
 /**
  * Obsidian-style wikilinks for markdown-it.

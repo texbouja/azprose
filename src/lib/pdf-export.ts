@@ -10,7 +10,7 @@ import {
   resolveLocalImages,
   makeCalloutsCollapsible,
   updateCalloutIcons,
-} from "./markdown-render";
+} from "@/markdown";
 import {
   previewSettings,
   resolveFontFamily,

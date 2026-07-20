@@ -23,7 +23,7 @@ export { loadProjectConfig, saveProjectConfig, configPath } from "./project-conf
 export type { ProjectConfig } from "./project-config";
 export { buildCommands } from "./commands";
 export { filterAndRankCommands } from "./command-search";
-export { isCsvPath } from "./csv";
+export { isCsvPath, parseCsvPreview, type CsvPreview } from "./csv";
 export { displayKey, shortcutLabel } from "./platform";
 export {
   pickFolder,
@@ -36,8 +36,6 @@ export {
   isImagePath,
   isPdfPath,
   isOpenablePath,
-  basename,
-  dirname,
   createFile,
   createFolder,
   renameEntry,
@@ -47,3 +45,4 @@ export {
   type FileEntry,
   type FlatFileEntry,
 } from "./files";
+export { basename, dirname, joinPath } from "./paths-utils";

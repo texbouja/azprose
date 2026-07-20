@@ -24,7 +24,7 @@ import {
   Sun,
   Undo2,
 } from "./icons";
-import { basename, dirname } from "./files";
+import { basename, dirname } from "./paths-utils";
 import { setThemeMode, setTransparency, THEME_CHOICES, THEME_HINTS, type ThemeMode } from "./theme";
 import type { Translate } from "./i18n";
 

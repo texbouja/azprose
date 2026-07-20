@@ -1,6 +1,9 @@
 import { open, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { readDir, readFile, readTextFile, writeTextFile, exists, stat, rename, mkdir, remove } from "@tauri-apps/plugin-fs";
 import { isCsvPath } from "./csv";
+import { basename, dirname, joinPath } from "./paths-utils";
+
+export { basename, dirname, joinPath };
 
 export type FileEntry = {
   name: string;
@@ -142,21 +145,7 @@ export function isOpenablePath(path: string): boolean {
   return TEXT_EXTENSIONS.has(ext) || IMAGE_EXTENSIONS.has(ext) || ext === "pdf";
 }
 
-export function basename(path: string): string {
-  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return i >= 0 ? path.slice(i + 1) : path;
-}
 
-export function dirname(path: string): string {
-  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return i > 0 ? path.slice(0, i) : "/";
-}
-
-export function joinPath(parent: string, child: string): string {
-  const sep = parent.includes("\\") ? "\\" : "/";
-  if (parent.endsWith(sep)) return `${parent}${child}`;
-  return `${parent}${sep}${child}`;
-}
 
 export function relativePath(path: string, rootPath: string | null): string {
   if (!rootPath) return basename(path);

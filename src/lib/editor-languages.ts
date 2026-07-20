@@ -25,6 +25,29 @@ const mathHighlight = syntaxHighlighting(HighlightStyle.define([
   { tag: mathFormulaTag, color: "var(--syntax-string)" },
 ]));
 
+interface CsvState { row: number; inQuote: boolean; delimiter: string; }
+
+function csvParser(delimiter = ","): StreamParser<CsvState> {
+  return {
+    startState: () => ({ row: 0, inQuote: false, delimiter }),
+    token(stream, state) {
+      if (state.inQuote) {
+        if (stream.match('""')) return "escape";
+        if (stream.match('"')) { state.inQuote = false; return "string"; }
+        stream.skipTo('"');
+        if (!stream.eol()) return "string";
+        return "string";
+      }
+      if (stream.match('"')) { state.inQuote = true; return "string"; }
+      if (stream.match(new RegExp(`[${state.delimiter}]`))) return "separator";
+      if (stream.match(/[+-]?\d+(\.\d+)?([eE][+-]?\d+)?/)) return "number";
+      stream.skipTo(state.delimiter) || stream.skipToEnd();
+      return state.row === 0 ? "keyword" : null;
+    },
+    blankLine(state) { state.row++; },
+  };
+}
+
 const typstKeywords = new Set([
   "let", "set", "show", "if", "else", "for", "while", "return",
   "import", "include", "as", "in", "not", "and", "or",
@@ -129,6 +152,10 @@ export function languageFromExt(ext: string): LanguageSupport {
       return new LanguageSupport(StreamLanguage.define(clojure));
     case "typ":
       return new LanguageSupport(StreamLanguage.define(typst));
+    case "csv":
+      return new LanguageSupport(StreamLanguage.define(csvParser(",")));
+    case "tsv":
+      return new LanguageSupport(StreamLanguage.define(csvParser("\t")));
     default:
       return markdown();
   }

@@ -9,13 +9,13 @@ import {
   markTranscludedBlocks,
   makeCalloutsCollapsible,
   updateCalloutIcons,
-} from "@/lib/markdown-render";
+} from "@/markdown";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { previewSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PreviewStyle } from "@/stores/markdown-settings.svelte";
-import { resolveWikilinkPaths } from "@/lib/markdown-it-wikilinks";
+import { resolveWikilinkPaths } from "@/markdown";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { consumeScrollTarget } from "@/stores/scroll-target.svelte";
 import { consumeSyncLine } from "@/stores/sync-line.svelte";

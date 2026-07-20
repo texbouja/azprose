@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "author": "Sadik Boujaida <alijouahri61@gmail.com>",
   "contributors": [
-    "Anthropic Claude <claude@anthropic.com>",
-    "OpenCode <hello@opencode.ai>"
+    "Anthropic Claude <claude@anthropic.com>"
   ],
   "type": "module",
   "scripts": {
@@ -47,6 +46,7 @@
     "@fontsource/fira-sans": "^5.2.7",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@jspreadsheet/formula": "^2.0.2",
     "@lezer/highlight": "^1.2.1",
     "@prosemark/core": "^0.0.9",
     "@prosemark/latex": "^0.0.4",
@@ -64,6 +64,8 @@
     "@xterm/xterm": "^6.0.0",
     "codemirror-lang-latex": "^0.4.1",
     "i18next": "^26.3.0",
+    "jspreadsheet-ce": "^5.0.4",
+    "jsuites": "^6.4.2",
     "lucide-svelte": "^1.0.1",
     "markdown-it": "^14.2.0",
     "markdown-it-footnote": "^4.0.0",

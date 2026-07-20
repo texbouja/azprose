@@ -1,5 +1,5 @@
 import { readFile } from "@tauri-apps/plugin-fs";
-import { getFileIndex } from "./vault-index";
+import { getFileIndex } from "@/lib/vault-index";
 
 /**
  * Pre-processes ![[file]] transclusion syntax before markdown-it rendering.

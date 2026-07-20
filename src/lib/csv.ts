@@ -1,4 +1,4 @@
-const CSV_EXT = /\.csv$/i;
+const CSV_EXT = /\.(csv|tsv)$/i;
 
 export const CSV_PREVIEW_MAX_ROWS = 200;
 export const CSV_PREVIEW_MAX_COLUMNS = 20;

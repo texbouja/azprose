@@ -19,6 +19,7 @@ export const STORAGE_KEYS = {
   slideMode:  "mdview.slides.mode",
   defaultEditorMode: "mdview.default.editor.mode",
   callouts:   "mdview.callouts",
+  csvStyle: "mdview.csv.style",
   latexSettings: "mdview.latex.settings",
   typstSettings: "mdview.typst.settings",
   shortcuts: "mdview.shortcuts",

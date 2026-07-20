@@ -6,10 +6,10 @@ import callouts from "markdown-it-obsidian-callouts";
 import footnote from "markdown-it-footnote";
 import { createHighlighter, type Highlighter } from "shiki";
 import { readFile } from "@tauri-apps/plugin-fs";
-import type { Theme } from "./theme";
-import { wikilinkPlugin } from "./markdown-it-wikilinks";
-import { resolveTransclusions, type TransclusionRange } from "./markdown-transclusion";
-import { ChevronRight as CHEVRON_ICON, Diamond as DIAMOND_ICON } from "./icons";
+import type { Theme } from "@/lib/theme";
+import { wikilinkPlugin } from "./wikilinks";
+import { resolveTransclusions, type TransclusionRange } from "./transclusion";
+import { ChevronRight as CHEVRON_ICON, Diamond as DIAMOND_ICON } from "@/lib/icons";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 
 const THEMES: Record<string, string> = {
