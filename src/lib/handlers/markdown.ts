@@ -82,6 +82,25 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       cleanups.push(() => window.removeEventListener("azprose:wikilink-navigate", onWikilinkNavigate))
     })()
 
+    // PDF rect navigation from preview
+    void (async () => {
+      const onPdfRectNavigate = (e: Event) => {
+        const detail = (e as CustomEvent).detail as { path: string; page?: number; rect?: string }
+        if (!detail.path) return
+        ctx.openFileInTab(detail.path, { silent: true }).catch(() => {})
+        // Tell PdfViewer to scroll to page/rect after the file opens
+        window.dispatchEvent(new CustomEvent("azprose:pdf-scroll-to-rect", { detail }))
+      }
+      window.addEventListener("azprose:pdf-rect-navigate", onPdfRectNavigate)
+      cleanups.push(() => window.removeEventListener("azprose:pdf-rect-navigate", onPdfRectNavigate))
+
+      const onPdfRegionCopied = () => {
+        ctx.notify.setInfo(ctx.t("pdf.regionCopied"))
+      }
+      window.addEventListener("azprose:pdf-region-copied", onPdfRegionCopied)
+      cleanups.push(() => window.removeEventListener("azprose:pdf-region-copied", onPdfRegionCopied))
+    })()
+
     // oxide show-document listener
     void (async () => {
       const { listen } = await import("@tauri-apps/api/event")

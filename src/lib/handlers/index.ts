@@ -4,15 +4,18 @@ export type { HandlerContext, FileHandler }
 
 type HandlerFactory = (ctx: HandlerContext) => FileHandler
 
-const FACTORIES: Record<string, () => Promise<{ createTypstHandler: HandlerFactory } | { createLatexHandler: HandlerFactory } | { createMarkdownHandler: HandlerFactory }>> = {
+const FACTORIES: Record<string, () => Promise<{ createTypstHandler: HandlerFactory } | { createLatexHandler: HandlerFactory } | { createMarkdownHandler: HandlerFactory } | { createCsvHandler: HandlerFactory }>> = {
   typ: () => import("./typst"),
   tex: () => import("./latex"),
   md:  () => import("./markdown"),
+  csv: () => import("./csv"),
+  tsv: () => import("./csv"),
 }
 
 function getFactory(mod: Awaited<ReturnType<NonNullable<typeof FACTORIES[string]>>>, ext: string): HandlerFactory {
   if (ext === "typ") return (mod as { createTypstHandler: HandlerFactory }).createTypstHandler
   if (ext === "tex") return (mod as { createLatexHandler: HandlerFactory }).createLatexHandler
+  if (ext === "csv" || ext === "tsv") return (mod as { createCsvHandler: HandlerFactory }).createCsvHandler
   return (mod as { createMarkdownHandler: HandlerFactory }).createMarkdownHandler
 }
 

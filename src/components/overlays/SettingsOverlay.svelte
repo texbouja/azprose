@@ -25,6 +25,7 @@ import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
 import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
 import { typstSettings } from "@/stores/typst-settings.svelte";
+import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { notifications } from "@/stores/notifications.svelte";
 import { mkdir } from "@tauri-apps/plugin-fs";
@@ -40,10 +41,17 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "typst-general" | "typst-build";
-type SectionId = "markdown" | "csv" | "latex" | "typst";
+type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "typst-general" | "typst-build" | "editor";
+type SectionId = "markdown" | "csv" | "latex" | "typst" | "editor";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
+  {
+    id: "editor",
+    labelKey: "settings.section.editor",
+    modules: [
+      { id: "editor", labelKey: "settings.module.editor" },
+    ],
+  },
   {
     id: "markdown",
     labelKey: "settings.section.markdown",
@@ -81,8 +89,8 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
   },
 ];
 
-let activeModule = $state<ModuleId>("general");
-let expandedSections = $state(new Set<SectionId>(["markdown", "csv", "latex", "typst"]));
+let activeModule = $state<ModuleId>("editor");
+let expandedSections = $state(new Set<SectionId>(["markdown", "csv", "latex", "typst", "editor"]));
 
 // Explicit $derived so the template tracks settings reactively.
 let s = $derived(proseMarkSettings.current);
@@ -124,6 +132,10 @@ let prsCustomFontOk = $derived(
 );
 let csvCustomFontOk = $derived(
   csvStyle.fontFamily === "custom" && csvStyle.customFontName.trim() ? checkFontAvailable(csvStyle.customFontName) : null
+);
+let editorCustomFontOk = $derived(
+  editorSettings.current.fontFamily === "custom" && editorSettings.current.customFontName.trim()
+    ? checkFontAvailable(editorSettings.current.customFontName) : null
 );
 
 function toggleSection(id: SectionId) {
@@ -632,36 +644,47 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
       <div class="mdv-settings__body">
         <nav class="mdv-settings__nav" aria-label={t("settings.navAria")}>
           {#each SECTIONS as section (section.id)}
-            <div
-              class="mdv-settings__nav-section"
-              class:is-open={expandedSections.has(section.id)}
-            >
+            {#if section.modules.length === 1}
               <button
                 type="button"
-                class="mdv-settings__nav-section-header"
-                onclick={() => toggleSection(section.id)}
-                aria-expanded={expandedSections.has(section.id)}
+                class="mdv-settings__nav-item mdv-settings__nav-item--flat"
+                class:is-active={activeModule === section.modules[0].id}
+                onclick={() => (activeModule = section.modules[0].id)}
               >
-                <span class="mdv-settings__nav-chevron">
-                  <Icon icon={ChevronRight} size={10} strokeWidth={2} />
-                </span>
                 {t(section.labelKey)}
               </button>
-              {#if expandedSections.has(section.id)}
-                <div transition:slide={{ duration: 120 }}>
-                  {#each section.modules as mod (mod.id)}
-                    <button
-                      type="button"
-                      class="mdv-settings__nav-item"
-                      class:is-active={activeModule === mod.id}
-                      onclick={() => (activeModule = mod.id)}
-                    >
-                      {t(mod.labelKey)}
-                    </button>
-                  {/each}
-                </div>
-              {/if}
-            </div>
+            {:else}
+              <div
+                class="mdv-settings__nav-section"
+                class:is-open={expandedSections.has(section.id)}
+              >
+                <button
+                  type="button"
+                  class="mdv-settings__nav-section-header"
+                  onclick={() => toggleSection(section.id)}
+                  aria-expanded={expandedSections.has(section.id)}
+                >
+                  <span class="mdv-settings__nav-chevron">
+                    <Icon icon={ChevronRight} size={10} strokeWidth={2} />
+                  </span>
+                  {t(section.labelKey)}
+                </button>
+                {#if expandedSections.has(section.id)}
+                  <div transition:slide={{ duration: 120 }}>
+                    {#each section.modules as mod (mod.id)}
+                      <button
+                        type="button"
+                        class="mdv-settings__nav-item"
+                        class:is-active={activeModule === mod.id}
+                        onclick={() => (activeModule = mod.id)}
+                      >
+                        {t(mod.labelKey)}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
           {/each}
         </nav>
 
@@ -1166,6 +1189,64 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <p class="mdv-settings__hint">{t("settings.typstExtraArgsHint")}</p>
           {/if}
 
+          {#if activeModule === "editor"}
+            {@const es = editorSettings.current}
+
+            <p class="mdv-settings__section-title">{t("settings.editorFont")}</p>
+            <div class="mdv-settings__fonts">
+              <div class="mdv-settings__font-row">
+                <span class="mdv-settings__font-label">{t("settings.editorFontFamily")}</span>
+                <select class="mdv-settings__select" class:mdv-settings__select--inline={es.fontFamily === "custom"}
+                  onchange={(e) => editorSettings.patch({ fontFamily: e.currentTarget.value as EditorFontFamily })}>
+                  <option value="fira-code"      selected={es.fontFamily === "fira-code"}>Fira Code</option>
+                  <option value="jetbrains-mono" selected={es.fontFamily === "jetbrains-mono"}>JetBrains Mono</option>
+                  <option value="source-code-pro" selected={es.fontFamily === "source-code-pro"}>Source Code Pro</option>
+                  <option value="ibm-plex-mono"  selected={es.fontFamily === "ibm-plex-mono"}>IBM Plex Mono</option>
+                  <option value="system"         selected={es.fontFamily === "system"}>{t("settings.fontSystem")}</option>
+                  <option value="custom"         selected={es.fontFamily === "custom"}>{t("settings.fontCustom")}</option>
+                </select>
+                {#if es.fontFamily === "custom"}
+                  <input type="text" class="mdv-settings__font-custom-input"
+                    style={editorCustomFontOk === false ? "color: var(--color-error)" : ""}
+                    placeholder={t("settings.fontPlaceholder")}
+                    value={es.customFontName}
+                    oninput={(e) => debounceInput("font-editor", e.currentTarget.value, (v) => editorSettings.patch({ customFontName: v }))}
+                    spellcheck={false} />
+                {/if}
+              </div>
+            </div>
+
+            <p class="mdv-settings__section-title">{t("settings.editorFontSize")}</p>
+            <div class="mdv-settings__row">
+              <input type="range" min="10" max="24" step="1" value={es.fontSize}
+                oninput={(e) => editorSettings.patch({ fontSize: Number(e.currentTarget.value) })} />
+              <span class="mdv-settings__range-value">{es.fontSize}px</span>
+            </div>
+
+            <p class="mdv-settings__section-title">{t("settings.editorTabSize")}</p>
+            <div class="mdv-settings__row">
+              <input type="range" min="2" max="8" step="1" value={es.tabSize}
+                oninput={(e) => editorSettings.patch({ tabSize: Number(e.currentTarget.value) })} />
+              <span class="mdv-settings__range-value">{es.tabSize}</span>
+            </div>
+
+            <p class="mdv-settings__section-title">{t("settings.editorLineNumbers")}</p>
+            <label class="mdv-settings__toggle">
+              <input type="checkbox" checked={es.lineNumbers}
+                onchange={(e) => editorSettings.patch({ lineNumbers: e.currentTarget.checked })} />
+              <span class="mdv-settings__toggle-slider"></span>
+              <span>{t("settings.editorLineNumbersShow")}</span>
+            </label>
+
+            <p class="mdv-settings__section-title">{t("settings.editorLineWrapping")}</p>
+            <label class="mdv-settings__toggle">
+              <input type="checkbox" checked={es.lineWrapping}
+                onchange={(e) => editorSettings.patch({ lineWrapping: e.currentTarget.checked })} />
+              <span class="mdv-settings__toggle-slider"></span>
+              <span>{t("settings.editorLineWrappingShow")}</span>
+            </label>
+          {/if}
+
         </div>
       </div>
 
@@ -1210,6 +1291,10 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           </button>
         {:else if activeModule === "typst-general" || activeModule === "typst-build"}
           <button type="button" class="mdv-settings__reset" onclick={() => typstSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "editor"}
+          <button type="button" class="mdv-settings__reset" onclick={() => editorSettings.reset()}>
             {t("settings.reset")}
           </button>
         {/if}

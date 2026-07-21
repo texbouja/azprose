@@ -1,15 +1,19 @@
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
 import { Compartment, EditorState, Transaction } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers as lineNumbersExt, highlightActiveLine, drawSelection } from "@codemirror/view";
+import { EditorView, keymap, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { languageFromExt, mdHighlight, buildTheme } from "@/lib/editor-languages";
 import type { LSPClient } from "@codemirror/lsp-client";
 import { setCursorLine } from "@/stores/cursor-line.svelte";
+import {
+  createGeneralCompartments,
+  generalInitialExtensions,
+  wireGeneralEffects,
+} from "@/lib/editor-general.svelte";
 
-/** Convert a raw filesystem path to a file:// URI (LSP protocol requires URIs). */
 function toFileUri(path: string): string {
   return "file://" + encodeURI(path.replace(/\\/g, "/"));
 }
@@ -18,7 +22,6 @@ let {
   value = "",
   onChange,
   language = "md",
-  lineNumbers = true,
   jumpToLine = null as number | null,
   jumpToCol = null as number | null,
   onJumpApplied,
@@ -29,7 +32,6 @@ let {
   value?: string;
   onChange?: (next: string) => void;
   language?: string;
-  lineNumbers?: boolean;
   jumpToLine?: number | null;
   jumpToCol?: number | null;
   onJumpApplied?: () => void;
@@ -41,21 +43,20 @@ let {
 let hostEl: HTMLDivElement;
 let view: EditorView;
 let langCompartment: Compartment;
-let lineNumbersCompartment: Compartment;
 let lspCompartment: Compartment;
+const gc = createGeneralCompartments();
 let docVersion = $state(0);
 let onChangeRef = onChange;
 $effect(() => { onChangeRef = onChange; });
 
 onMount(() => {
   langCompartment = new Compartment();
-  lineNumbersCompartment = new Compartment();
   lspCompartment = new Compartment();
 
   const state = EditorState.create({
     doc: value,
     extensions: [
-      lineNumbersCompartment.of(lineNumbers ? lineNumbersExt() : []),
+      ...generalInitialExtensions(gc),
       history(),
       drawSelection(),
       highlightActiveLine(),
@@ -63,7 +64,6 @@ onMount(() => {
       syntaxHighlighting(mdHighlight, { fallback: true }),
       langCompartment.of(languageFromExt(language)),
       lspCompartment.of(lspClient && filePath ? lspClient.plugin(toFileUri(filePath)) : []),
-      EditorView.lineWrapping,
       search({ top: true }),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
       buildTheme(),
@@ -136,14 +136,7 @@ $effect(() => {
   }
 });
 
-$effect(() => {
-  const on = lineNumbers;
-  if (view && lineNumbersCompartment) {
-    view.dispatch({
-      effects: lineNumbersCompartment.reconfigure(on ? lineNumbersExt() : []),
-    });
-  }
-});
+wireGeneralEffects(gc, () => view);
 
 $effect(() => {
   const next = value;

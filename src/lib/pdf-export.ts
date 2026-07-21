@@ -7,7 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   renderMarkdown,
   ensurePreviewReady,
-  resolveLocalImages,
+  postRenderDom,
   makeCalloutsCollapsible,
   updateCalloutIcons,
 } from "@/markdown";
@@ -137,9 +137,9 @@ async function assembleHtml(
   }
   makeCalloutsCollapsible(tmp);
 
-  // 3. Resolve local images → data URIs
+  // 3. Resolve local images → data URIs, PDF rect embeds, wikilink paths
   if (filePath) {
-    await resolveLocalImages(tmp, filePath);
+    await postRenderDom(tmp, { filePath, rootPath: rootPath ?? undefined });
   }
 
   // 4. Build <base> href from file directory

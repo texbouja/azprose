@@ -58,6 +58,7 @@ let hostEl: HTMLDivElement;
 let view: EditorView;
 let latexCompartment: Compartment;
 let proseStyleCompartment: Compartment;
+let proseLayoutCompartment: Compartment;
 let onChangeRef = onChange;
 $effect(() => { onChangeRef = onChange; });
 
@@ -118,9 +119,18 @@ function buildHeadingHighlight(style: ProseMarkStyle): Extension {
   ]));
 }
 
+function buildProseTypographyTheme(s: ProseMarkStyle) {
+  const pad = "28px 36px 96px";
+  return EditorView.theme({
+    ".cm-scroller": { padding: pad, lineHeight: s.lineHeight },
+    ".cm-content":  { fontSize: s.fontSize + "px", maxWidth: s.maxWidth + "px" },
+  });
+}
+
 onMount(() => {
   latexCompartment = new Compartment();
   proseStyleCompartment = new Compartment();
+  proseLayoutCompartment = new Compartment();
 
   // Inject the global MathJax preamble before any formula widget renders.
   // Because resolved-promise callbacks execute in registration order, queueing
@@ -185,6 +195,7 @@ onMount(() => {
           onChangeRef?.(update.state.doc.toString());
         }
       }),
+      proseLayoutCompartment.of(buildProseTypographyTheme(proseMarkSettings.current)),
       // Placed last so our HighlightStyle appears after ProseMark's in the cascade.
       proseStyleCompartment.of(buildHeadingHighlight(proseMarkSettings.current)),
     ],
@@ -195,9 +206,7 @@ onMount(() => {
 
 onDestroy(() => {
   view?.destroy();
-  // Remove layout/custom CSS style tags so they don't bleed into other editor instances
-  // (e.g., switching from Presentation → Raw would leave presentation font-size applied).
-  document.getElementById("mdv-prose-layout-css")?.remove();
+  // Custom CSS is global in <head> — must clean up explicitly.
   document.getElementById("mdv-prose-custom-css")?.remove();
 });
 
@@ -216,24 +225,12 @@ $effect(() => {
   hostEl.style.setProperty("--h3-mb", `${s.h3MarginBottom}em`);
 });
 
-// Layout CSS via <style> tag — appended to <head> after CodeMirror's own styles,
-// so these base spacing rules sit after ProseMark's theme.
-// Heading font-size is set via buildHeadingHighlight with !important.
+// Typography layout via compartment — scoped by CM's unique theme class.
 $effect(() => {
-  const s = proseMarkSettings.current;
-  const lh = s.lineHeight;
-  const fs = s.fontSize;
-  const mw = s.maxWidth;
-  const pad = "28px 36px 96px";
-  let el = document.getElementById("mdv-prose-layout-css") as HTMLStyleElement | null;
-  if (!el) {
-    el = document.createElement("style");
-    el.id = "mdv-prose-layout-css";
-    document.head.appendChild(el);
-  }
-  el.textContent =
-    `.cm-editor .cm-scroller { padding: ${pad}; line-height: ${lh}; }\n` +
-    `.cm-editor .cm-content  { font-size: ${fs}px; max-width: ${mw}px; }`;
+  if (!view) return;
+  view.dispatch({
+    effects: proseLayoutCompartment.reconfigure(buildProseTypographyTheme(proseMarkSettings.current)),
+  });
 });
 
 // Update heading highlight whenever settings change.

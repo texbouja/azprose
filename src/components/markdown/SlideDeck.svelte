@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { renderMarkdown, resolveLocalImages, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons } from "@/markdown";
+import { renderMarkdown, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons, postRenderDom } from "@/markdown";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { subscribeMode, type Theme } from "@/lib/theme";
 
@@ -13,6 +13,7 @@ import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { slideSession } from "@/stores/slide-session.svelte";
 import { presentationSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PresentationStyle } from "@/stores/markdown-settings.svelte";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
+import { getRootPath } from "@/stores/root-path.svelte";
 
 let {
   value = "",
@@ -31,6 +32,19 @@ let current = $state(0);
 let ready = $state(false);
 let slidesHtml = $state<string[]>([]);
 let pages = $state<string[]>([]);
+let zoom = $state(100);
+
+const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
+
+function zoomIn() {
+  const i = ZOOM_STEPS.indexOf(zoom);
+  zoom = i < 0 ? 100 : ZOOM_STEPS[Math.min(i + 1, ZOOM_STEPS.length - 1)];
+}
+
+function zoomOut() {
+  const i = ZOOM_STEPS.indexOf(zoom);
+  zoom = i < 0 ? 100 : ZOOM_STEPS[Math.max(i - 1, 0)];
+}
 
 let appTheme = $state<Theme>(
   (document.documentElement.getAttribute("data-theme") as Theme) ?? "latte",
@@ -110,7 +124,8 @@ async function hydrate(stage: HTMLElement): Promise<void> {
   const sections = Array.from(stage.querySelectorAll<HTMLElement>(".azp-slide__content"));
   let broken: string[] = [];
   if (filePath) {
-    broken = (await Promise.all(sections.map((s) => resolveLocalImages(s, filePath)))).flat();
+    const results = await Promise.all(sections.map((s) => postRenderDom(s, { filePath, rootPath: getRootPath() ?? undefined })));
+    broken = results.flatMap(r => r.brokenImages);
   }
   await import("mathjax/tex-svg.js");
   const mj = window.MathJax as
@@ -191,11 +206,24 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault(); prev();
   }
 }
+
+// ── Zoom commands from TabActions ───────────────────────────────
+
+$effect(() => {
+  const handler = (e: Event) => {
+    const { cmd } = (e as CustomEvent).detail;
+    if (cmd === "zoom-in") zoomIn();
+    else if (cmd === "zoom-out") zoomOut();
+    else if (cmd === "zoom-reset") zoom = 100;
+  };
+  window.addEventListener("azprose:viewer-command", handler);
+  return () => window.removeEventListener("azprose:viewer-command", handler);
+});
 </script>
 
 <svelte:window onkeydown={onKeyDown} />
 
-<div class="mdv-slidedeck" class:is-fullscreen={fullscreen}>
+<div class="mdv-slidedeck" class:is-fullscreen={fullscreen} style={zoom !== 100 ? `zoom: ${zoom / 100}` : ""}>
   <div class="mdv-slidedeck__stage" bind:this={stageEl}
     style="--slide-aspect: {slideSession.mode === '16:9' ? '16/9' : '4/3'}"
   >

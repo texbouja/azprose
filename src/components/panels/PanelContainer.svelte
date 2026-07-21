@@ -34,6 +34,7 @@ let {
   onToggleFullscreen: _onToggleFullscreen,
   viewerFullscreenOn = false,
   onViewerFullscreen,
+  onTabDoubleClick,
 }: {
   panel: PanelState;
   tabs?: Tab[];
@@ -51,7 +52,7 @@ let {
   onJumpToLine?: (line: number) => void;
   buildRev?: number;
   flex?: string;
-  onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
+  onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
   onSyncToMain?: (source: string) => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
@@ -63,6 +64,7 @@ let {
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
+  onTabDoubleClick?: (id: string) => void;
 } = $props();
 
 import { extFromPath } from "@/lib/editor-languages";
@@ -96,6 +98,7 @@ function handleViewerFullscreen() {
         onSelect={(id) => panel.select(id)}
         onClose={(id) => panel.close(id)}
         onReorder={(from, to) => panel.reorder(from, to)}
+        {onTabDoubleClick}
       />
     </div>
   {/if}

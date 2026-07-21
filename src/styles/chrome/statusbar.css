@@ -63,3 +63,21 @@
   border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
 }
 
+.mdv-statusbar__build {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.mdv-statusbar__spinner {
+  animation: mdv-spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes mdv-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+

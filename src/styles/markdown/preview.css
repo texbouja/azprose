@@ -400,3 +400,49 @@
   background: color-mix(in srgb, var(--surface) 60%, transparent);
   border-radius: 3px;
 }
+
+/* ── PDF rect embed ───────────────────────────────────────────────────────── */
+
+.mdv-prose .pdf-rect-embed, .azp-slide__content .pdf-rect-embed {
+  display: flex;
+  justify-content: center;
+  margin: 1em 0;
+  color: var(--muted);
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.mdv-prose .pdf-rect-link, .azp-slide__content .pdf-rect-link {
+  display: block;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  line-height: 0;
+}
+
+.mdv-prose .pdf-rect-img, .azp-slide__content .pdf-rect-img {
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: box-shadow 0.15s ease;
+}
+
+@media print {
+  .mdv-prose .pdf-rect-img, .azp-slide__content .pdf-rect-img {
+    box-shadow: none;
+  }
+}
+
+.mdv-prose .pdf-rect-img:hover, .azp-slide__content .pdf-rect-img:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+.mdv-prose .pdf-rect-error, .azp-slide__content .pdf-rect-error {
+  color: var(--muted);
+  font-size: 0.85em;
+  font-style: italic;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  border-radius: 3px;
+}

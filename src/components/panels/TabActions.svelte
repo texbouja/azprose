@@ -1,7 +1,7 @@
 <script lang="ts">
 import { extFromPath } from "@/lib/editor-languages";
 import { isPdfPath, isImagePath } from "@/lib";
-import { ZoomIn, ZoomOut, Maximize2, BookOpen, Wallpaper, Code2, Pencil, Eye, PdfLogo, FileDown, Table2 } from "@/lib/icons";
+import { ZoomIn, ZoomOut, Fullscreen, BookOpen, Wallpaper, Code2, Pencil, Eye, PdfLogo, FileDown, Table2, CircleEqual } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
@@ -29,7 +29,7 @@ let {
   panelId?: string;
   viewportEl?: HTMLElement | null;
   renderMode?: RenderMode;
-  onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
+  onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
   onTypstViewer?: () => void;
@@ -43,15 +43,15 @@ let {
 
 let visible = $state(false);
 let toolbarEl = $state<HTMLElement | null>(null);
-let triggerEl = $state<HTMLElement | null>(null);
+let hoverZoneEl = $state<HTMLElement | null>(null);
 
 function show() { visible = true; }
 function hide() { visible = false; }
 
 function clickOutside(e: MouseEvent) {
-  if (!toolbarEl && !triggerEl) return;
+  if (!toolbarEl && !hoverZoneEl) return;
   const target = e.target as Node;
-  if (toolbarEl && !toolbarEl.contains(target) && triggerEl && !triggerEl.contains(target)) hide();
+  if (toolbarEl && !toolbarEl.contains(target) && hoverZoneEl && !hoverZoneEl.contains(target)) hide();
 }
 
 $effect(() => {
@@ -74,20 +74,18 @@ let isMain = $derived(panelId === "main");
 </script>
 
 {#if activeTab}
-  <button
-    type="button"
-    bind:this={triggerEl}
-    class="tab-actions__trigger"
-    class:is-hidden={visible}
-    onmouseenter={show}
-    onclick={show}
-    aria-label="Show actions"
-    title="Show actions"
-  >
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="8" cy="4" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="8" cy="12" r="1.2"/>
-    </svg>
-  </button>
+  {#if isMain}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="tab-actions__hover-zone tab-actions__hover-zone--main" bind:this={hoverZoneEl} onmouseenter={show}></div>
+    <div class="tab-actions__indicator" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="4" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="8" cy="12" r="1.2"/>
+      </svg>
+    </div>
+  {:else}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="tab-actions__hover-zone" bind:this={hoverZoneEl} onmouseenter={show}></div>
+  {/if}
 
   {#if visible}
     {#if isMain}
@@ -133,18 +131,18 @@ let isMain = $derived(panelId === "main");
     {:else}
       <div class="tab-actions tab-actions--side" bind:this={toolbarEl} role="toolbar" aria-label="Tab actions">
         <div class="tab-actions__section tab-actions__left">
-          {#if isMd}
-            <button type="button" class="tab-actions__btn" onclick={() => onToggleRenderMode?.()} aria-label="Presentation" title="Presentation">
-              <Icon icon={renderMode === "presentation" ? BookOpen : Wallpaper} size={16} strokeWidth={1.8} />
-            </button>
-          {:else if isPdfPath(activeTab.path) || isImagePath(activeTab.path) || ext === "html"}
+          {#if isPdfPath(activeTab.path) || isImagePath(activeTab.path) || ext === "html"}
             <span class="tab-actions__title">{activeTab.title}</span>
           {/if}
         </div>
         <div class="tab-actions__section tab-actions__center">
           {#if isImagePath(activeTab.path)}
-            <button class="tab-actions__btn" onclick={() => fire("zoom-out")} aria-label="Zoom out" title="Zoom out">{@html ZoomOut}</button>
-            <button class="tab-actions__btn" onclick={() => fire("zoom-in")} aria-label="Zoom in" title="Zoom in">{@html ZoomIn}</button>
+            <button class="tab-actions__btn" onclick={() => fire("zoom-out")} aria-label="Zoom out" title="Zoom out"><Icon icon={ZoomOut} size={16} strokeWidth={1.8} /></button>
+            <button class="tab-actions__btn" onclick={() => fire("zoom-in")} aria-label="Zoom in" title="Zoom in"><Icon icon={ZoomIn} size={16} strokeWidth={1.8} /></button>
+          {:else if (isMd && renderMode !== "presentation") || isTyp}
+            <button class="tab-actions__btn" onclick={() => fire("zoom-out")} aria-label="Zoom out" title="Zoom out"><Icon icon={ZoomOut} size={16} strokeWidth={1.8} /></button>
+            <button class="tab-actions__btn" onclick={() => fire("zoom-reset")} aria-label="Reset zoom" title="Reset zoom"><Icon icon={CircleEqual} size={16} strokeWidth={1.8} /></button>
+            <button class="tab-actions__btn" onclick={() => fire("zoom-in")} aria-label="Zoom in" title="Zoom in"><Icon icon={ZoomIn} size={16} strokeWidth={1.8} /></button>
           {:else if isMd && renderMode === "presentation"}
             {#each SLIDE_MODES as sm}
               <label class="tab-actions__radio">
@@ -152,11 +150,21 @@ let isMain = $derived(panelId === "main");
                 <span>{sm.label}</span>
               </label>
             {/each}
+            <span class="tab-actions__sep"></span>
+            <button class="tab-actions__btn" onclick={() => fire("zoom-out")} aria-label="Zoom out" title="Zoom out"><Icon icon={ZoomOut} size={16} strokeWidth={1.8} /></button>
+            <button class="tab-actions__btn" onclick={() => fire("zoom-reset")} aria-label="Reset zoom" title="Reset zoom"><Icon icon={CircleEqual} size={16} strokeWidth={1.8} /></button>
+            <button class="tab-actions__btn" onclick={() => fire("zoom-in")} aria-label="Zoom in" title="Zoom in"><Icon icon={ZoomIn} size={16} strokeWidth={1.8} /></button>
           {/if}
         </div>
         <div class="tab-actions__section tab-actions__right">
+          {#if isMd}
+            <button type="button" class="tab-actions__btn" onclick={() => onToggleRenderMode?.()} aria-label="Presentation" title="Presentation">
+              <Icon icon={renderMode === "presentation" ? BookOpen : Wallpaper} size={16} strokeWidth={1.8} />
+            </button>
+            <span class="tab-actions__sep"></span>
+          {/if}
           <button type="button" class="tab-actions__btn" onclick={() => onToggleFullscreen?.()} aria-label="Fullscreen" title="Fullscreen">
-            <Icon icon={Maximize2} size={16} strokeWidth={1.8} />
+            <Icon icon={Fullscreen} size={16} strokeWidth={1.8} />
           </button>
         </div>
       </div>
@@ -165,39 +173,41 @@ let isMain = $derived(panelId === "main");
 {/if}
 
 <style>
-.tab-actions__trigger {
+.tab-actions__hover-zone {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
   z-index: 19;
+  pointer-events: auto;
+}
+.tab-actions__hover-zone--main {
+  left: auto;
+  right: 0;
+  width: 80px;
+}
+.tab-actions__indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 18;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
+  width: 18px;
+  height: 18px;
   color: var(--muted);
-  cursor: pointer;
-  opacity: 0.35;
-  transition: opacity var(--dur-fast) var(--easing), background var(--dur-fast) var(--easing), color var(--dur-fast) var(--easing);
-}
-.tab-actions__trigger:hover {
-  opacity: 0.85;
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
-  color: var(--fg);
-}
-.tab-actions__trigger.is-hidden {
-  display: none;
+  opacity: 0.4;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--easing);
 }
 .tab-actions {
   display: flex;
   align-items: center;
-  height: 32px;
-  padding: 0 8px;
-  gap: 4px;
+  height: 40px;
+  padding: 0 6px;
+  gap: 2px;
   pointer-events: auto;
   position: absolute;
   top: 0;
@@ -205,15 +215,15 @@ let isMain = $derived(panelId === "main");
   font-family: var(--font-ui);
   right: 0;
   z-index: 20;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
 }
 .tab-actions--main {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
   justify-content: flex-end;
 }
 .tab-actions--side {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  justify-content: space-between;
 }
 .tab-actions__group {
   display: flex;
@@ -232,20 +242,19 @@ let isMain = $derived(panelId === "main");
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
-  color: var(--muted);
+  color: var(--fg);
   cursor: pointer;
   flex-shrink: 0;
   transition: background var(--dur-fast) var(--easing), color var(--dur-fast) var(--easing);
 }
 .tab-actions__btn:hover {
-  background: color-mix(in srgb, var(--fg) 12%, transparent);
-  color: var(--fg);
+  background: var(--surface-hover);
 }
 .tab-actions__btn:focus-visible {
   outline: none;
@@ -261,6 +270,9 @@ let isMain = $derived(panelId === "main");
   font-size: 12px;
   font-weight: 500;
   color: var(--fg-muted);
+}
+.tab-actions__btn--label:hover {
+  color: var(--fg);
 }
 .tab-actions__btn--label span {
   line-height: 1;

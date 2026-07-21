@@ -11,6 +11,7 @@ import { theme } from "@/stores/theme.svelte"
 import { listCustomThemes, injectThemeCSS } from "@/lib/custom-themes"
 import { BUILTIN_THEMES } from "@/lib/theme"
 import type { FileOpsManager } from "@/lib/file-operations.svelte"
+import { editorSettings, DEFAULT_EDITOR_SETTINGS } from "@/stores/editor-settings.svelte"
 
 export interface ConfigSyncContext {
   configRoot: string | null
@@ -26,11 +27,21 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   if (!ctx.configRoot) return;
   const cfg: ProjectConfig = {};
 
+  const app: import("@/lib/project-config").ApplicationConfig = {};
+  if (generalSettings.defaultEditorMode !== "prose") app.defaultMode = generalSettings.defaultEditorMode;
+  if (ctx.vimOn) app.vim = true;
+  if (theme.mode !== "latte") app.theme = theme.mode;
+  if (JSON.stringify(ctx.typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) app.typography = ctx.typo;
+  if (Object.keys(app).length) cfg.application = app;
+
+  const es = editorSettings.current;
   const editor: import("@/lib/project-config").EditorConfig = {};
-  if (generalSettings.defaultEditorMode !== "prose") editor.defaultMode = generalSettings.defaultEditorMode;
-  if (ctx.vimOn) editor.vim = true;
-  if (theme.mode !== "latte") editor.theme = theme.mode;
-  if (JSON.stringify(ctx.typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) editor.typography = ctx.typo;
+  if (es.fontFamily !== DEFAULT_EDITOR_SETTINGS.fontFamily) editor.fontFamily = es.fontFamily;
+  if (es.customFontName) editor.customFontName = es.customFontName;
+  if (es.fontSize !== DEFAULT_EDITOR_SETTINGS.fontSize) editor.fontSize = es.fontSize;
+  if (es.tabSize !== DEFAULT_EDITOR_SETTINGS.tabSize) editor.tabSize = es.tabSize;
+  if (!es.lineNumbers) editor.lineNumbers = false;
+  if (!es.lineWrapping) editor.lineWrapping = false;
   if (Object.keys(editor).length) cfg.editor = editor;
 
   const pms = proseMarkSettings.current;
@@ -108,18 +119,30 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   } catch { /* crafted CSS is best-effort */ }
   const { config: cfg, warnings } = await loadProjectConfig(root);
 
-  const ed = cfg.editor;
-  if (ed?.defaultMode != null) generalSettings.defaultEditorMode = ed.defaultMode;
-  if (ed?.vim != null) deps.vimOn.current = ed.vim;
-  if (ed?.typography != null) deps.typography.current = { ...DEFAULT_TYPOGRAPHY, ...ed.typography };
-  if (ed?.theme != null) {
-    theme.setMode(ed.theme);
+  const app = cfg.application;
+  if (app?.defaultMode != null) generalSettings.defaultEditorMode = app.defaultMode;
+  if (app?.vim != null) deps.vimOn.current = app.vim;
+  if (app?.typography != null) deps.typography.current = { ...DEFAULT_TYPOGRAPHY, ...app.typography };
+  if (app?.theme != null) {
+    theme.setMode(app.theme);
   } else {
     const m = theme.mode;
     const ok = m === "system"
       || (BUILTIN_THEMES as readonly string[]).includes(m)
       || crafted.some((c) => c.name === m);
     if (!ok) theme.setMode("latte");
+  }
+
+  const ed = cfg.editor;
+  if (ed != null) {
+    const patch: Record<string, unknown> = {};
+    if (ed.fontFamily != null) patch.fontFamily = ed.fontFamily;
+    if (ed.customFontName != null) patch.customFontName = ed.customFontName;
+    if (ed.fontSize != null) patch.fontSize = ed.fontSize;
+    if (ed.tabSize != null) patch.tabSize = ed.tabSize;
+    if (ed.lineNumbers != null) patch.lineNumbers = ed.lineNumbers;
+    if (ed.lineWrapping != null) patch.lineWrapping = ed.lineWrapping;
+    if (Object.keys(patch).length) editorSettings.patch(patch);
   }
 
   if (cfg.proseMark?.style) proseMarkSettings.patch(cfg.proseMark.style);

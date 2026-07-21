@@ -35,9 +35,13 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
   switch (mode) {
     case "raw":
       ctx.setProsemarkOn(false);
+      { const tab = ctx.pm.main.tabs.find((t: any) => t.path === ctx.activePath);
+        if (tab) ctx.pm.main.setRenderMode(tab.id, "raw"); }
       break;
     case "prose":
       ctx.setProsemarkOn(true);
+      { const tab = ctx.pm.main.tabs.find((t: any) => t.path === ctx.activePath);
+        if (tab) ctx.pm.main.setRenderMode(tab.id, "prose"); }
       break;
     case "preview": {
       if (!isPreviewable) return;

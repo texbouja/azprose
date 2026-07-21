@@ -14,6 +14,7 @@ export class PanelManager {
   side: PanelState;
   layout: LayoutMode = "main";
   splitRatio = 0.55;
+  private savedSplitRatio = 0.55;
 
   constructor(opts?: {
     onSessionChange?: (data: PanelManagerSession) => void;
@@ -23,12 +24,16 @@ export class PanelManager {
     const pm = this;
     this.main = new PanelState("main", {
       onFileOpen: opts?.onFileOpen,
-      onSessionChange: opts?.onSessionChange ? () => opts.onSessionChange!(pm.toJSON()) : undefined,
+      onSessionChange: opts?.onSessionChange
+        ? () => opts.onSessionChange!(pm.toJSON())
+        : undefined,
     });
     this.side = new PanelState("side", {
       onFileOpen: opts?.onFileOpen,
       onError: opts?.onError,
-      onSessionChange: opts?.onSessionChange ? () => opts.onSessionChange!(pm.toJSON()) : undefined,
+      onSessionChange: opts?.onSessionChange
+        ? () => opts.onSessionChange!(pm.toJSON())
+        : undefined,
     });
   }
 
@@ -41,21 +46,54 @@ export class PanelManager {
     this.layout = v ? "main+side" : "main";
   }
 
-  openInMain(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource }): Promise<void> {
+  openInMain(
+    path: string,
+    opts?: {
+      preferDraft?: boolean;
+      silent?: boolean;
+      preview?: boolean;
+      sourceType?: TabSource;
+    },
+  ): Promise<void> {
     return this.main.open(path, opts);
   }
 
-  openInSide(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource }): Promise<void> {
+  openInSide(
+    path: string,
+    opts?: {
+      preferDraft?: boolean;
+      silent?: boolean;
+      preview?: boolean;
+      sourceType?: TabSource;
+    },
+  ): Promise<void> {
     this.side.visible = true;
     this.layout = "main+side";
     return this.side.open(path, opts);
   }
 
+  toggleExpandPanel(panelId: "main" | "side"): number {
+    const expanded =
+      (panelId === "main" && this.splitRatio >= 0.99) ||
+      (panelId === "side" && this.splitRatio <= 0.01);
+    if (expanded) {
+      this.splitRatio = this.savedSplitRatio;
+    } else {
+      this.savedSplitRatio = this.splitRatio;
+      this.splitRatio = panelId === "main" ? 1 : 0;
+    }
+    return this.splitRatio;
+  }
+
   findTabByPath(path: string): { panel: "main" | "side"; tab: Tab } | null {
-    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+    const norm = (p: string) =>
+      p
+        .split("/")
+        .filter((s) => s !== ".")
+        .join("/");
     const target = norm(path);
     for (const panel of [this.main, this.side]) {
-      const tab = panel.tabs.find(t => norm(t.path) === target);
+      const tab = panel.tabs.find((t) => norm(t.path) === target);
       if (tab) return { panel: panel.id as "main" | "side", tab };
     }
     return null;
@@ -80,6 +118,7 @@ export class PanelManager {
     this.side.fromJSON(data.side);
     this.layout = data.layout ?? "main";
     this.splitRatio = data.splitRatio ?? 0.55;
+    this.savedSplitRatio = this.splitRatio;
     this.side.visible = data.layout === "main+side";
   }
 

@@ -1,6 +1,8 @@
 <script lang="ts">
-  let { path, rev = 0, page = null, onPdfClick, onToggleFullscreen }:
-    { path: string; rev?: number; page?: number | null; onPdfClick?: (pageNum: number, x: number, y: number) => void; onToggleFullscreen?: () => void }
+  import type { RectInfo } from "@/pdf/rect-select";
+
+  let { path, rev = 0, page = null, onInverseSync, onRectSelected, onToggleFullscreen }:
+    { path: string; rev?: number; page?: number | null; onInverseSync?: (file: string, line: number) => void; onRectSelected?: (info: RectInfo) => void; onToggleFullscreen?: () => void }
     = $props();
 
   let Cmp = $state<typeof import("./PdfViewer.svelte").default | null>(null);
@@ -22,7 +24,7 @@
 
 {#if Cmp}
   {#key rev}
-    <Cmp {path} rev={rev} {page} {onPdfClick} {onToggleFullscreen} />
+    <Cmp {path} rev={rev} {page} {onInverseSync} {onRectSelected} {onToggleFullscreen} />
   {/key}
 {:else}
   <div class="pdf-shell">

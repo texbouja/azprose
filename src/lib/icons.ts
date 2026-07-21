@@ -4,7 +4,13 @@
 
 export type IconData = string;
 
+export const ArrowBigLeft: IconData = `<path d="M10.793 19.793a.707.707 0 0 0 1.207-.5V16a1 1 0 0 1 1-1h6a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1h-6a1 1 0 0 1-1-1V4.707a.707.707 0 0 0-1.207-.5l-6.94 6.94a1.207 1.207 0 0 0 0 1.707z"/>`;
+export const ArrowBigRight: IconData = `<path d="M13.207 19.793a.707.707 0 0 1-1.207-.5V16a1 1 0 0 0-1-1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h6a1 1 0 0 0 1-1V4.707a.707.707 0 0 1 1.207-.5l6.94 6.94a1.207 1.207 0 0 1 0 1.707z"/>`;
+export const ArrowLeft: IconData = `<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>`;
+export const ArrowRight: IconData = `<path d="m12 5 7 7-7 7"/><path d="M5 12h14"/>`;
 export const BookOpen: IconData = `<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>`;
+export const Expand: IconData = `<path d="m15 15 6 6"/><path d="m15 9 6-6"/><path d="M21 16v5h-5"/><path d="M21 8V3h-5"/><path d="M3 16v5h5"/><path d="m3 21 6-6"/><path d="M3 8V3h5"/><path d="M9 9 3 3"/>`;
+export const Fullscreen: IconData = `<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect width="10" height="8" x="7" y="8" rx="1"/>`;
 export const Check: IconData = `<path d="M20 6 9 17l-5-5"/>`;
 export const ChevronDown: IconData = `<path d="m6 9 6 6 6-6"/>`;
 export const ChevronLeft: IconData = `<path d="m15 18-6-6 6-6"/>`;
@@ -14,6 +20,7 @@ export const ChevronsRight: IconData = `<path d="m6 17 5-5-5-5"/><path d="m13 17
 export const Circle: IconData = `<circle cx="12" cy="12" r="10"/>`;
 export const Columns2: IconData = `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>`;
 export const Diamond: IconData = `<path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>`;
+export const CircleEqual: IconData = `<circle cx="12" cy="12" r="10"/><path d="M7 10h10"/><path d="M7 14h10"/>`;
 export const CircleHelp: IconData = `<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>`;
 export const Cloud: IconData = `<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>`;
 export const Code2: IconData = `<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>`;

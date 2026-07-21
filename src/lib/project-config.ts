@@ -8,14 +8,24 @@ import type { ThemeMode } from "./theme";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import type { LatexSettings } from "@/stores/latex-settings.svelte";
 import type { TypstSettings } from "@/stores/typst-settings.svelte";
+import type { EditorFontFamily } from "@/stores/editor-settings.svelte";
 
 // ── Nested config sections (mirror Settings Overlay hierarchy) ──────────────
 
-export interface EditorConfig {
+export interface ApplicationConfig {
   defaultMode?: DefaultEditorMode | null;
   vim?: boolean | null;
   theme?: ThemeMode | null;
   typography?: TypographySettings | null;
+}
+
+export interface EditorConfig {
+  fontFamily?: EditorFontFamily | null;
+  customFontName?: string | null;
+  fontSize?: number | null;
+  tabSize?: number | null;
+  lineNumbers?: boolean | null;
+  lineWrapping?: boolean | null;
 }
 
 export interface ProseMarkConfig {
@@ -37,6 +47,7 @@ export interface MathConfig {
 }
 
 export interface ProjectConfig {
+  application?: ApplicationConfig;
   editor?: EditorConfig;
   proseMark?: ProseMarkConfig;
   preview?: PreviewConfig;
@@ -51,7 +62,8 @@ export interface ProjectConfig {
 // ── Schema — validates nested sections ──────────────────────────────────────
 
 const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
-  editor: { defaultMode: "string", vim: "boolean", theme: "string", typography: "object" },
+  application: { defaultMode: "string", vim: "boolean", theme: "string", typography: "object" },
+  editor: { fontFamily: "string", customFontName: "string", fontSize: "number", tabSize: "number", lineNumbers: "boolean", lineWrapping: "boolean" },
   proseMark: { style: "object" },
   preview: { style: "object" },
   presentation: { style: "object", slideMode: "string" },
@@ -59,6 +71,7 @@ const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
 };
 
 const CONFIG_SCHEMA: Record<string, string> = {
+  application: "object",
   editor: "object",
   proseMark: "object",
   preview: "object",

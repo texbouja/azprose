@@ -91,6 +91,7 @@ import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svel
 import { latexSettings } from "@/stores/latex-settings.svelte";
 import { typstSettings } from "@/stores/typst-settings.svelte";
 import { theme } from "@/stores/theme.svelte";
+import { editorSettings } from "@/stores/editor-settings.svelte";
 import { createHandlers, type HandlerContext } from "@/lib/handlers";
 import { handleKeydown, type KeyboardDeps } from "@/lib/app-keyboard";
 import {
@@ -226,6 +227,12 @@ let ts = $state(createBuildState());
 let consoleOpen = $state(false);
 let consoleHeight = $state(160);
 
+const buildLabel = $derived(
+  ls.latexBuilding ? "LaTeX…" :
+  ts.exporting ? "Typst…" :
+  null
+);
+
 // POC: LSP frontend test — starts tinymist on mount, logs diagnostics to console
 const consoleDiags = $derived(diagnosticsStore.all);
 const logLines = $derived.by(() => {
@@ -312,6 +319,7 @@ $effect(() => {
   theme.mode;
   latexSettings.current;
   typstSettings.current;
+  editorSettings.current;
   scheduleConfigSync();
 });
 
@@ -801,7 +809,7 @@ const handleJumpToLine = (line: number) => jumpToLineUtil(editorModeCtx, line);
 const handleGutterClick = (line: number) => gutterClickUtil(editorModeCtx, line);
 const handleInverseSync = (file: string, line: number) => inverseSyncUtil(editorModeCtx, file, line);
 const handleConsoleJump = (line: number, col?: number | null) => consoleJumpUtil(editorModeCtx, line, col);
-const handleSetEditorMode = (mode: EditorMode) => setEditorModeUtil(editorModeCtx, mode);
+const handleSetEditorMode = (mode: EditorMode) => { setEditorModeUtil(editorModeCtx, mode); _panelVersion++; };
 const handleToggleSideRenderMode = () => toggleSideRenderModeUtil(editorModeCtx);
 
 const handleToggleConsole = () => {
@@ -815,8 +823,12 @@ const handleToggleConsole = () => {
 };
 
 const handleToggleViewPanel = () => {
-  sideVisible = !sideVisible;
-  pm.sideVisible = sideVisible;
+  if (!sideVisible && sideTabs.length > 0) {
+    sideVisible = true;
+    pm.sideVisible = true;
+  } else {
+    splitRatio = pm.toggleExpandPanel("main");
+  }
 };
 
 const handleTypographyChange = (patch: Partial<TypographySettings>) => {
@@ -983,6 +995,10 @@ let cmds = $derived(
           {sideVisible}
           {splitRatio}
           onSplitRatioChange={(v) => { pm.splitRatio = v; splitRatio = v; }}
+          onTabDoubleClick={(id) => {
+            const panelId = pm.main.tabs.some(t => t.id === id) ? "main" : "side";
+            splitRatio = pm.toggleExpandPanel(panelId);
+          }}
           onSourceChange={(next) => {
             pm.main.setSource(next);
             _panelVersion++;
@@ -1064,6 +1080,7 @@ let cmds = $derived(
     {words}
     {minutes}
     onShowHelp={overlays.showHelp}
+    {buildLabel}
   />
 
   <ContextMenu
@@ -1086,6 +1103,13 @@ let cmds = $derived(
     message={notifications.saveAsToast ?? ""}
     variant="info"
     onDismiss={notifications.dismissSaveAsToast}
+  />
+
+  <Toast
+    open={notifications.infoToast != null && notifications.loadError == null}
+    message={notifications.infoToast ?? ""}
+    variant="info"
+    onDismiss={notifications.dismissInfoToast}
   />
 
   <Toast

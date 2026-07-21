@@ -5,7 +5,7 @@
     Columns2,
 
     Globe,
-    Maximize2,
+    Fullscreen,
     PanelBottom,
     PanelLeftClose,
     PanelLeftOpen,
@@ -169,7 +169,7 @@
           onclick={onToggleFullscreen}
         >
           {#snippet icon()}
-            <Icon icon={Maximize2} size={14} strokeWidth={1.5} />
+            <Icon icon={Fullscreen} size={14} strokeWidth={1.5} />
           {/snippet}
         </Button>
       {/if}

@@ -3,19 +3,18 @@ import { onDestroy } from "svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   renderMarkdown,
-  resolveLocalImages,
   decorateCodeBlocks,
   ensurePreviewReady,
   markTranscludedBlocks,
   makeCalloutsCollapsible,
   updateCalloutIcons,
+  postRenderDom,
 } from "@/markdown";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { previewSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PreviewStyle } from "@/stores/markdown-settings.svelte";
-import { resolveWikilinkPaths } from "@/markdown";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { consumeScrollTarget } from "@/stores/scroll-target.svelte";
 import { consumeSyncLine } from "@/stores/sync-line.svelte";
@@ -32,6 +31,19 @@ let {
 
 let articleEl: HTMLElement | undefined = $state();
 let ready = $state(false);
+let zoom = $state(100);
+
+const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
+
+function zoomIn() {
+  const i = ZOOM_STEPS.indexOf(zoom);
+  zoom = i < 0 ? 100 : ZOOM_STEPS[Math.min(i + 1, ZOOM_STEPS.length - 1)];
+}
+
+function zoomOut() {
+  const i = ZOOM_STEPS.indexOf(zoom);
+  zoom = i < 0 ? 100 : ZOOM_STEPS[Math.max(i - 1, 0)];
+}
 
 function buildPreviewProseCss(s: PreviewStyle): string {
   const head = (n: 1 | 2 | 3) => {
@@ -132,11 +144,9 @@ $effect(() => {
 
     cleanupCode();
     cleanupCode = decorateCodeBlocks(articleEl);
-    const broken = filePath ? await resolveLocalImages(articleEl, filePath) : [];
+    const { brokenImages } = await postRenderDom(articleEl, { filePath, rootPath: getRootPath() ?? undefined });
     await typesetMath(articleEl);
-    const rp = getRootPath();
-    if (rp) await resolveWikilinkPaths(articleEl, rp);
-    if (!cancelled) collectRenderDiagnostics(articleEl, broken);
+    if (!cancelled) collectRenderDiagnostics(articleEl, brokenImages);
 
     // Mark transcluded blocks so double-click opens the original source file
     markTranscludedBlocks(articleEl, result.ranges);
@@ -177,6 +187,20 @@ $effect(() => {
     const href = a.getAttribute("href");
     if (!href) return;
 
+    // PDF rect link: open PDF at page/rect (must check before wikilink since pdf-link has both classes)
+    if (a.classList.contains("pdf-link") || a.classList.contains("pdf-rect-link")) {
+      e.preventDefault();
+      const pdfPath = a.getAttribute("data-pdf-path") || a.getAttribute("data-wikilink-fullpath") || a.getAttribute("data-wikilink-target");
+      const pageNum = Number(a.getAttribute("data-pdf-page"));
+      const rectStr = a.getAttribute("data-pdf-rect");
+      if (pdfPath) {
+        window.dispatchEvent(new CustomEvent("azprose:pdf-rect-navigate", {
+          detail: { path: pdfPath, page: pageNum || undefined, rect: rectStr || undefined },
+        }));
+      }
+      return;
+    }
+
     // Wikilink with resolved full path: open directly
     if (a.classList.contains("wikilink")) {
       const fullpath = a.getAttribute("data-wikilink-fullpath");
@@ -210,9 +234,22 @@ $effect(() => {
   el.addEventListener("click", onClick);
   return () => el.removeEventListener("click", onClick);
 });
+
+// ── Zoom commands from TabActions ───────────────────────────────
+
+$effect(() => {
+  const handler = (e: Event) => {
+    const { cmd } = (e as CustomEvent).detail;
+    if (cmd === "zoom-in") zoomIn();
+    else if (cmd === "zoom-out") zoomOut();
+    else if (cmd === "zoom-reset") zoom = 100;
+  };
+  window.addEventListener("azprose:viewer-command", handler);
+  return () => window.removeEventListener("azprose:viewer-command", handler);
+});
 </script>
 
-<div class="mdv-preview">
+<div class="mdv-preview" style={zoom !== 100 ? `zoom: ${zoom / 100}` : ""}>
   {#if !ready}
     <div class="mdv-preview__loading">chargement…</div>
   {:else if value.trim().length === 0}

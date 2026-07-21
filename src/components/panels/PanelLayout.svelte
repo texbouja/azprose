@@ -37,6 +37,7 @@ let {
   onToggleFullscreen,
   viewerFullscreenOn = false,
   onViewerFullscreen,
+  onTabDoubleClick,
 }: {
   panelManager: PanelManager;
   tabs?: Tab[];
@@ -59,7 +60,7 @@ let {
   onInverseSync?: (file: string, line: number, col?: number) => void;
   onJumpToLine?: (line: number) => void;
   buildRev?: number;
-  onSetEditorMode?: (mode: "raw" | "prose" | "preview" | "presentation") => void;
+  onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
   onTypstViewer?: () => void;
@@ -70,6 +71,7 @@ let {
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
+  onTabDoubleClick?: (id: string) => void;
 } = $props();
 
 let splitResizeState: { startX: number; startRatio: number } | null = null;
@@ -123,6 +125,7 @@ function startResize(e: PointerEvent) {
     {onTypstBuild}
     {onTypstViewPdf}
     {onExportPdf}
+    {onTabDoubleClick}
   />
   {#if sideVisible}
     <div
@@ -152,6 +155,7 @@ function startResize(e: PointerEvent) {
       {onToggleFullscreen}
       {viewerFullscreenOn}
       {onViewerFullscreen}
+      {onTabDoubleClick}
     />
   {/if}
 </div>

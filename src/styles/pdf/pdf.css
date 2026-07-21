@@ -36,12 +36,6 @@
   pointer-events: auto;
 }
 
-/* Hide toolbar + hover zone in viewer fullscreen */
-.is-viewer-fullscreen .pdf-topbar,
-.is-viewer-fullscreen .pdf-hover-zone {
-  display: none !important;
-}
-
 .pdf-topbar__section {
   display: flex;
   align-items: center;
@@ -76,6 +70,12 @@
 .pdf-btn:disabled {
   opacity: 0.3;
   cursor: default;
+}
+
+/* Rotate icon 45° for fit-width button (maximize-2 becomes horizontal) */
+.pdf-icon-rotate-45 {
+  display: inline-flex;
+  transform: rotate(45deg);
 }
 
 /* Page number input */
@@ -283,4 +283,18 @@
   max-width: 80%;
   text-align: center;
   word-break: break-all;
+}
+
+/* ── Rect selection overlay ──────────────────────────────── */
+.pdf-rect-overlay {
+  position: absolute;
+  border: 2px dashed rgba(59, 130, 246, 0.8);
+  background: rgba(59, 130, 246, 0.1);
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+.pdf-rect-overlay.is-done {
+  opacity: 0;
 }

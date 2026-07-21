@@ -20,6 +20,7 @@
   let csvStyle = $derived(csvSettings.current);
 
   let lastFilePath = "";
+  let initGeneration = 0;
 
   $effect(() => {
     const fp = filePath;
@@ -33,12 +34,13 @@
     api = null;
     ready = false;
 
+    const gen = ++initGeneration;
     let cancelled = false;
     tick().then(() => {
       initSpreadsheet(el, v, fp, (csv) => {
         onChange?.(csv);
       }).then((result) => {
-        if (cancelled) { result.destroy(); return; }
+        if (cancelled || initGeneration !== gen) { result.destroy(); return; }
         api = result;
         ready = true;
       });
@@ -50,6 +52,7 @@
       api?.destroy();
       api = null;
       ready = false;
+      lastFilePath = "";
     };
   });
 </script>

@@ -20,12 +20,14 @@ let {
   onSelect,
   onClose,
   onReorder,
+  onTabDoubleClick,
 }: {
   tabs?: Tab[];
   activeTabId?: string | null;
   onSelect?: (id: string) => void;
   onClose?: (id: string) => void;
   onReorder?: (from: number, to: number) => void;
+  onTabDoubleClick?: (id: string) => void;
 } = $props();
 
 let t = $derived(getT($language));
@@ -124,6 +126,7 @@ function endDrag(e: PointerEvent) {
       class="mdv-tab{active ? " is-active" : ""}{dirty ? " is-dirty" : ""}{dragging ? " is-dragging" : ""}{isDragOver ? " is-drag-over" : ""}"
       title={tab.path}
       onpointerdown={(e) => onTabPointerDown(e, tabIndex)}
+      ondblclick={() => onTabDoubleClick?.(tab.id)}
     >
       <button
         type="button"

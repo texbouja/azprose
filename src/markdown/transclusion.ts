@@ -141,6 +141,9 @@ export async function resolveTransclusions(
 
     if (!fileName) continue;
 
+    // PDF files can't be text-included — handled by pdf-rect-embed
+    if (fileName.toLowerCase().endsWith(".pdf")) continue;
+
     // Resolve absolute path — first try relative to current file
     let absTarget = resolveRelative(baseDir, ensureMdExtension(fileName), sep);
     if (!(await fileExists(absTarget)) && rootPath) {

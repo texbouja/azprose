@@ -9,8 +9,6 @@ import LazyProseMark from "@/components/markdown/LazyProseMark.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
-import LazySynctexPdfViewer from "@/components/tex/LazySynctexPdfViewer.svelte";
-import LazyTypstPdfOutput from "@/components/typst/LazyTypstPdfOutput.svelte";
 import LazyTypstPreview from "@/components/typst/LazyTypstPreview.svelte";
 import LazyCsvSpreadsheet from "@/components/csv/LazyCsvSpreadsheet.svelte";
 import type { TypographySettings } from "@/lib/typography";
@@ -23,7 +21,7 @@ let {
   panelId = "main",
   onSourceChange,
   onGutterClick,
-  typo = undefined as TypographySettings | undefined,
+  typo: _typo = undefined as TypographySettings | undefined,
   jumpToLine = null as number | null,
   jumpToCol = null as number | null,
   onJumpApplied,
@@ -62,26 +60,13 @@ let {
 {#if !tab}
   <div class="mdv-empty-state" />
 {:else if isPdfPath(tab.path)}
-  {#if tab.sourceType === "latex"}
-    <LazySynctexPdfViewer
-      path={tab.path}
-      rev={buildRev}
-      {forwardToPage}
-      {onInverseSync}
-      {onToggleFullscreen}
-    />
-  {:else if tab.sourceType === "typst"}
-    <LazyTypstPdfOutput
-      path={tab.path}
-      rev={buildRev}
-      {onToggleFullscreen}
-    />
-  {:else}
-    <LazyPdfViewer
-      path={tab.path}
-      {onToggleFullscreen}
-    />
-  {/if}
+  <LazyPdfViewer
+    path={tab.path}
+    rev={buildRev}
+    page={forwardToPage}
+    {onInverseSync}
+    {onToggleFullscreen}
+  />
 {:else if isImagePath(tab.path)}
   <ImageViewer path={tab.path} />
   {:else if panelId !== "main" && extFromPath(tab.path) === "typ"}
@@ -119,7 +104,6 @@ let {
   <Editor
     value={tab.source}
     language={extFromPath(tab.path)}
-    lineNumbers={typo?.codeLineNumbers !== false}
     onChange={(next) => onSourceChange?.(next)}
     {jumpToLine}
     {jumpToCol}

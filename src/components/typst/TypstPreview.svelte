@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Icon } from "@/components/primitives";
-  import { Maximize2 } from "@/lib/icons";
+  import { Fullscreen } from "@/lib/icons";
   import { startPreview, stopPreview, scrollToCursor, unregisterPreview, onPreviewNotification, onShowDocument, onPreviewDispose } from "@/typst/backend";
 
   let {
@@ -17,6 +17,19 @@
   let error = $state<string | null>(null);
   let myTaskId: string | null = null;
   let iframeReady = $state(false);
+  let zoom = $state(100);
+
+  const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
+
+  function zoomIn() {
+    const i = ZOOM_STEPS.indexOf(zoom);
+    zoom = i < 0 ? 100 : ZOOM_STEPS[Math.min(i + 1, ZOOM_STEPS.length - 1)];
+  }
+
+  function zoomOut() {
+    const i = ZOOM_STEPS.indexOf(zoom);
+    zoom = i < 0 ? 100 : ZOOM_STEPS[Math.max(i - 1, 0)];
+  }
 
   // ── Preview lifecycle ──────────────────────────────────────────
   // startPreview sends didOpen + doStartPreview with --refresh-style on-save.
@@ -121,6 +134,18 @@
       unsubNotif();
     };
   });
+  // ── Zoom commands from TabActions ───────────────────────────────
+
+  $effect(() => {
+    const handler = (e: Event) => {
+      const { cmd } = (e as CustomEvent).detail;
+      if (cmd === "zoom-in") zoomIn();
+      else if (cmd === "zoom-out") zoomOut();
+      else if (cmd === "zoom-reset") zoom = 100;
+    };
+    window.addEventListener("azprose:viewer-command", handler);
+    return () => window.removeEventListener("azprose:viewer-command", handler);
+  });
 </script>
 
 <div class="typst-preview" tabindex="-1">
@@ -131,7 +156,7 @@
         title="Fullscreen"
         onclick={() => onToggleFullscreen?.()}
       >
-        <Icon icon={Maximize2} size={14} strokeWidth={1.6} />
+        <Icon icon={Fullscreen} size={14} strokeWidth={1.6} />
       </button>
     </div>
   </header>
@@ -146,6 +171,7 @@
       title="Typst Preview"
       class="typst-preview__iframe"
       class:typst-preview__iframe--visible={iframeReady}
+      style={zoom !== 100 ? `zoom: ${zoom / 100}` : ""}
       onload={() => { iframeReady = true; }}
     ></iframe>
     {#if !iframeReady}

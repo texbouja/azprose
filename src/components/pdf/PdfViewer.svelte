@@ -8,18 +8,20 @@
     PDFLinkService,
     PDFFindController,
   } from "pdfjs-dist/web/pdf_viewer.mjs";
-  import { readFile } from "@tauri-apps/plugin-fs";
+  import { readFile, exists } from "@tauri-apps/plugin-fs";
+  import { invoke } from "@tauri-apps/api/core";
   import {
     PanelLeftClose,
     PanelLeftOpen,
     ChevronLeft,
     ChevronRight,
-    ChevronsLeft,
-    ChevronsRight,
+    ArrowBigLeft,
+    ArrowBigRight,
+    Maximize2,
     ZoomIn,
     ZoomOut,
-    Maximize2,
-    Shrink,
+    Expand,
+    Fullscreen,
     List,
     Paperclip,
     FileText,
@@ -28,7 +30,8 @@
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-  import { getPdfCache, setPdfCache, updatePdfPage } from "@/lib/pdf-cache";
+  import { getPdfCache, setPdfCache, updatePdfPage, setPdfDoc, deletePdfDoc } from "@/lib/pdf-cache";
+  import { attachRectSelection, type RectInfo } from "@/pdf/rect-select";
 
   let t = $derived(getT($language));
 
@@ -40,8 +43,8 @@
     items: OutlineNode[];
   };
 
-  let { path, rev = 0, page = null, onPdfClick, onToggleFullscreen }:
-    { path: string; rev?: number; page?: number | null; onPdfClick?: (pageNum: number, x: number, y: number) => void; onToggleFullscreen?: () => void }
+  let { path, rev = 0, page = null, onInverseSync, onRectSelected, onToggleFullscreen }:
+    { path: string; rev?: number; page?: number | null; onInverseSync?: (file: string, line: number) => void; onRectSelected?: (info: RectInfo) => void; onToggleFullscreen?: () => void }
     = $props();
 
   // DOM refs
@@ -91,9 +94,18 @@
 
   // Generation counter to discard stale async loadPdf calls
   let loadGen = 0;
+  let loadedDocPath: string | null = null;
+  let pendingScrollPage: number | null = null;
+  let cleanupRect: (() => void) | null = null;
+  let cleanupScrollToRect: (() => void) | null = null;
+  let hasSynctex = $state(false);
+
+  function hasLayout() {
+    return viewportEl && viewportEl.offsetParent !== null;
+  }
 
   function onPdfMouseDown(e: MouseEvent) {
-    if (!(e.ctrlKey || e.metaKey) || !onPdfClick) return;
+    if (!(e.ctrlKey || e.metaKey) || !onInverseSync || !hasSynctex) return;
     const pageEl = (e.target as HTMLElement).closest("[data-page-number]") as HTMLElement | null;
     if (!pageEl) return;
     const page = Number(pageEl.dataset.pageNumber);
@@ -106,7 +118,9 @@
     const [x] = pageView.getPagePoint(cssX, cssY);
     const scale = pageView.viewport.scale;
     const y = cssY / scale;
-    onPdfClick(page, x, y);
+    invoke<{ file: string; line: number }>("synctex_inverse", { pdfPath: path, page, x, y })
+      .then((r) => onInverseSync!(r.file, r.line))
+      .catch((err) => console.error("synctex inverse failed", err));
   }
 
   // Panel state
@@ -131,9 +145,12 @@
     currentPage = 1;
     outline     = [];
     attachments = null;
+    navHistory.length = 0;
+    navIndex = -1;
 
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
     if (loadingTask) { void loadingTask.destroy(); loadingTask = null; pdfDoc = null; }
+    if (loadedDocPath) { deletePdfDoc(loadedDocPath); loadedDocPath = null; }
 
     // Use cached bytes if rev matches (avoids re-read on tab switch-back)
     const cached = getPdfCache(filePath);
@@ -154,6 +171,8 @@
       pdfDoc = await loadingTask.promise;
       if (gen !== loadGen) { void loadingTask.destroy(); loadingTask = null; pdfDoc = null; return; }
 
+      setPdfDoc(filePath, pdfDoc);
+      loadedDocPath = filePath;
       numPages = pdfDoc.numPages;
 
       linkService!.setDocument(pdfDoc, null);
@@ -164,20 +183,25 @@
       await pdfViewer!.pagesPromise;
       if (gen !== loadGen) return;
 
-      // Restore page & scale from cache
+      // Restore page & scale from cache (defer to next frame — container may not have layout yet)
       const entry = getPdfCache(filePath);
-      if (entry && entry.rev === rev) {
-        if (entry.page >= 1 && entry.page <= numPages) {
-          pdfViewer!.currentPageNumber = entry.page;
-          currentPage = entry.page;
-        }
-        if (entry.scale > 0) pdfViewer!.currentScale = entry.scale;
-      }
+      const cachedPage = entry && entry.rev === rev && entry.page >= 1 && entry.page <= numPages ? entry.page : null;
+      const cachedScale = entry && entry.rev === rev && entry.scale > 0 ? entry.scale : null;
+      const scrollTarget = pendingScrollPage && pendingScrollPage >= 1 && pendingScrollPage <= numPages ? pendingScrollPage : null;
+      pendingScrollPage = null;
+      requestAnimationFrame(() => {
+        if (gen !== loadGen || !pdfViewer) return;
+        const page = scrollTarget ?? cachedPage;
+        if (page != null && hasLayout()) { pdfViewer.currentPageNumber = page; currentPage = page; }
+        if (cachedScale != null && hasLayout()) pdfViewer.currentScale = cachedScale;
+        pushHistory(currentPage); // seed history with initial position
+      });
 
       const [rawOutline, rawAtt] = await Promise.all([
         pdfDoc.getOutline(),
         pdfDoc.getAttachments(),
       ]);
+      if (gen !== loadGen) return;
       outline     = (rawOutline ?? []) as OutlineNode[];
       attachments = rawAtt as typeof attachments;
     } catch (e) {
@@ -189,10 +213,37 @@
   }
 
   // — Navigation —
-  function goFirst() { if (pdfViewer && numPages) pdfViewer.currentPageNumber = 1; }
   function goPrev()  { if (pdfViewer && currentPage > 1) pdfViewer.currentPageNumber = currentPage - 1; }
   function goNext()  { if (pdfViewer && currentPage < numPages) pdfViewer.currentPageNumber = currentPage + 1; }
-  function goLast()  { if (pdfViewer && numPages) pdfViewer.currentPageNumber = numPages; }
+
+  // — Navigation history (back/forward through TOC + link clicks) —
+  const navHistory: number[] = [];
+  let navIndex = -1;
+  let navPushing = false; // suppress push while navigating
+
+  function pushHistory(pageNumber: number) {
+    if (navPushing) return;
+    // Truncate forward history when navigating to a new position
+    navHistory.length = navIndex + 1;
+    navHistory.push(pageNumber);
+    navIndex = navHistory.length - 1;
+  }
+
+  function goBack() {
+    if (navIndex <= 0) return;
+    navPushing = true;
+    navIndex--;
+    if (pdfViewer) pdfViewer.currentPageNumber = navHistory[navIndex];
+    navPushing = false;
+  }
+
+  function goForward() {
+    if (navIndex >= navHistory.length - 1) return;
+    navPushing = true;
+    navIndex++;
+    if (pdfViewer) pdfViewer.currentPageNumber = navHistory[navIndex];
+    navPushing = false;
+  }
 
   function commitPageInput() {
     const n = parseInt(pageInput, 10);
@@ -211,7 +262,10 @@
 
   // — TOC navigation —
   async function goToOutlineItem(item: OutlineNode) {
-    if (linkService && item.dest) await linkService.goToDestination(item.dest);
+    if (linkService && item.dest) {
+      pushHistory(currentPage);
+      await linkService.goToDestination(item.dest);
+    }
     panelOpen = false;
   }
 
@@ -237,6 +291,34 @@
     // Inverse synctex: Ctrl+click on PDF pages → jump to source line
     viewportEl.addEventListener("mousedown", onPdfMouseDown);
 
+    // Detect synctex availability (basename.synctex.gz next to PDF)
+    const synctexPath = path.replace(/\.pdf$/i, "") + ".synctex.gz";
+    exists(synctexPath).then((ok) => { hasSynctex = ok; }).catch(() => {});
+
+    // Rect selection: Alt+drag to select region
+    cleanupRect = attachRectSelection(
+      viewportEl,
+      () => pdfViewer,
+      () => path,
+      (info) => onRectSelected?.(info),
+    );
+
+    // Listen for scroll-to-rect requests (from markdown preview wikilink clicks)
+    const onScrollToRect = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { path: string; page?: number; rect?: string }
+      if (!detail.path || detail.path !== path) return
+      if (detail.page && detail.page >= 1) {
+        pushHistory(currentPage);
+        if (pdfViewer && pdfViewer.pagesCount && detail.page <= pdfViewer.pagesCount) {
+          pdfViewer.currentPageNumber = detail.page
+        } else {
+          pendingScrollPage = detail.page
+        }
+      }
+    }
+    window.addEventListener("azprose:pdf-scroll-to-rect", onScrollToRect)
+    cleanupScrollToRect = () => window.removeEventListener("azprose:pdf-scroll-to-rect", onScrollToRect)
+
     // Create hover zone for toolbar reveal (top 40px of pdf-shell)
     if (shellEl) {
       const zone = document.createElement("div");
@@ -260,7 +342,7 @@
 
   // Scroll to page when parent requests it
   $effect(() => {
-    if (page != null && pdfViewer) {
+    if (page != null && pdfViewer && hasLayout()) {
       const p = page;
       if (p >= 1 && pdfViewer.pagesCount && p <= pdfViewer.pagesCount) {
         pdfViewer.currentPageNumber = p;
@@ -271,10 +353,16 @@
   // Load on mount & reload when path changes; rev changes trigger full re-create
   $effect(() => { if (path && pdfViewer) void loadPdf(path); });
 
+  // Re-detect synctex when path changes
+  $effect(() => { exists(path.replace(/\.pdf$/i, "") + ".synctex.gz").then((ok) => { hasSynctex = ok; }).catch(() => {}); });
+
   onDestroy(() => {
     void loadingTask?.destroy();
     if (blobUrl) URL.revokeObjectURL(blobUrl);
+    if (loadedDocPath) { deletePdfDoc(loadedDocPath); loadedDocPath = null; }
     if (viewportEl) viewportEl.removeEventListener("mousedown", onPdfMouseDown);
+    cleanupRect?.();
+    cleanupScrollToRect?.();
     if (hoverZoneEl) {
       hoverZoneEl.removeEventListener("mouseenter", showToolbar);
       hoverZoneEl.remove();
@@ -303,8 +391,8 @@
 
     <!-- Center: navigation -->
     <div class="pdf-topbar__section pdf-topbar__center">
-      <button class="pdf-btn" title={t("pdf.firstPage")}    onclick={goFirst} disabled={!numPages || currentPage <= 1}>
-        <Icon icon={ChevronsLeft}  size={14} strokeWidth={1.6} />
+      <button class="pdf-btn" title={t("pdf.goBack")} onclick={goBack}>
+        <Icon icon={ArrowBigLeft} size={14} strokeWidth={1.6} />
       </button>
       <button class="pdf-btn" title={t("pdf.prevPage")} onclick={goPrev}  disabled={!numPages || currentPage <= 1}>
         <Icon icon={ChevronLeft}   size={14} strokeWidth={1.6} />
@@ -324,8 +412,8 @@
       <button class="pdf-btn" title={t("pdf.nextPage")} onclick={goNext} disabled={!numPages || currentPage >= numPages}>
         <Icon icon={ChevronRight}  size={14} strokeWidth={1.6} />
       </button>
-      <button class="pdf-btn" title={t("pdf.lastPage")} onclick={goLast} disabled={!numPages || currentPage >= numPages}>
-        <Icon icon={ChevronsRight} size={14} strokeWidth={1.6} />
+      <button class="pdf-btn" title={t("pdf.goForward")} onclick={goForward}>
+        <Icon icon={ArrowBigRight} size={14} strokeWidth={1.6} />
       </button>
     </div>
 
@@ -340,14 +428,14 @@
       </button>
       <div class="pdf-vsep"></div>
       <button class="pdf-btn" title={t("pdf.fitWidth")} onclick={fitWidth} disabled={!numPages}>
-        <Icon icon={Maximize2} size={13} strokeWidth={1.6} />
+        <span class="pdf-icon-rotate-45"><Icon icon={Maximize2} size={13} strokeWidth={1.6} /></span>
       </button>
       <button class="pdf-btn" title={t("pdf.fitPage")} onclick={fitPage} disabled={!numPages}>
-        <Icon icon={Shrink}    size={13} strokeWidth={1.6} />
+        <Icon icon={Expand}    size={13} strokeWidth={1.6} />
       </button>
       <div class="pdf-vsep"></div>
       <button class="pdf-btn" title="Fullscreen" onclick={() => onToggleFullscreen?.()}>
-        <Icon icon={Maximize2} size={14} strokeWidth={1.6} />
+        <Icon icon={Fullscreen} size={14} strokeWidth={1.6} />
       </button>
     </div>
   </header>

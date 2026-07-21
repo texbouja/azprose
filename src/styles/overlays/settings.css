@@ -158,6 +158,13 @@
     color var(--dur-fast) var(--easing);
 }
 
+.mdv-settings__nav-item--flat {
+  padding-left: 8px;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
 .mdv-settings__nav-item:hover {
   background: color-mix(in srgb, var(--fg) 6%, transparent);
   color: var(--fg);
