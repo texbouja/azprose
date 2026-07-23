@@ -140,8 +140,8 @@
       </Button>
       {#if onToggleConsole}
         <Button
-          data-tooltip={t("breadcrumb.typstConsole")}
-          aria-label={t("breadcrumb.typstConsole")}
+          data-tooltip={t("command.toggleConsole")}
+          aria-label={t("command.toggleConsole")}
           aria-pressed={consoleOpen}
           onclick={onToggleConsole}
         >

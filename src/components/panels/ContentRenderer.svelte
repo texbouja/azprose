@@ -9,10 +9,8 @@ import LazyProseMark from "@/components/markdown/LazyProseMark.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
-import LazyTypstPreview from "@/components/typst/LazyTypstPreview.svelte";
 import LazyCsvSpreadsheet from "@/components/csv/LazyCsvSpreadsheet.svelte";
 import type { TypographySettings } from "@/lib/typography";
-import { getTinymistClient } from "@/lib/lsp/tinymist";
 import { getTexlabClient } from "@/lib/lsp/texlab";
 import { getMarkdownOxideClient } from "@/lib/lsp/markdown-oxide";
 
@@ -54,7 +52,7 @@ let {
   onSyncToMain?: (source: string) => void;
 } = $props();
 
-// tinymist and texlab start lazily on first .typ/.typ file open
+// texlab and markdown-oxide start lazily on first .tex/.md file open
 </script>
 
 {#if !tab}
@@ -69,12 +67,6 @@ let {
   />
 {:else if isImagePath(tab.path)}
   <ImageViewer path={tab.path} />
-  {:else if panelId !== "main" && extFromPath(tab.path) === "typ"}
-  <LazyTypstPreview
-    filePath={tab.path}
-    {onToggleFullscreen}
-    {onInverseSync}
-  />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}
   <LazySlideDeck
     value={tab.source}
@@ -108,10 +100,9 @@ let {
     {jumpToLine}
     {jumpToCol}
     {onJumpApplied}
-    onGutterClick={extFromPath(tab.path) === "tex" || extFromPath(tab.path) === "typ" ? onGutterClick : undefined}
+    onGutterClick={extFromPath(tab.path) === "tex" ? onGutterClick : undefined}
     lspClient={(() => {
       const ext = extFromPath(tab.path);
-      if (ext === "typ") return getTinymistClient();
       if (ext === "tex") return getTexlabClient();
       if (ext === "md") return getMarkdownOxideClient();
       return null;

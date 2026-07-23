@@ -36,7 +36,7 @@ function draftKey(path: string): string {
 export interface SessionTab {
   path: string;
   title: string;
-  sourceType?: "latex" | "typst";
+  sourceType?: "latex";
   renderMode?: "raw" | "prose" | "preview" | "presentation";
 }
 

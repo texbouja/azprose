@@ -1,4 +1,4 @@
-// Common diagnostics model shared across compile engines (Typst today, LaTeX
+// Common diagnostics model shared across compile engines (LaTeX
 // and others later). A Diagnostic is engine-neutral so the same console panel
 // and editor click-to-jump work for any source, without each engine inventing
 // its own shape.
@@ -12,9 +12,9 @@ export interface Diagnostic {
   line?: number | null;
   /** 1-based column, when known. */
   col?: number | null;
-  /** Extra hint lines (e.g. Typst's "hint:" suggestions). */
+  /** Extra hint lines (e.g. lint "hint:" suggestions). */
   hints?: string[];
-  /** Origin engine, for multi-engine coexistence ("typst" | "latex" | …). */
+  /** Origin engine, for multi-engine coexistence ("latex" | …). */
   source?: string;
 }
 

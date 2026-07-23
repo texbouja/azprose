@@ -1,4 +1,4 @@
-// LSP bridge: spawn a language server (tinymist) via std::process::Command with
+// LSP bridge: spawn a language server via std::process::Command with
 // piped stdin/stdout, and bridge I/O to the webview via Tauri events.
 // This bypasses the tauri-plugin-shell which has a stdout delivery bug.
 

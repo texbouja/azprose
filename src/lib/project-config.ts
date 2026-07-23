@@ -7,7 +7,6 @@ import type { TypographySettings } from "./typography";
 import type { ThemeMode } from "./theme";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import type { LatexSettings } from "@/stores/latex-settings.svelte";
-import type { TypstSettings } from "@/stores/typst-settings.svelte";
 import type { EditorFontFamily } from "@/stores/editor-settings.svelte";
 
 // ── Nested config sections (mirror Settings Overlay hierarchy) ──────────────
@@ -56,7 +55,6 @@ export interface ProjectConfig {
   callouts?: CalloutDef[] | null;
   favorites?: string[] | null;
   latex?: LatexSettings | null;
-  typst?: TypstSettings | null;
 }
 
 // ── Schema — validates nested sections ──────────────────────────────────────
@@ -80,7 +78,6 @@ const CONFIG_SCHEMA: Record<string, string> = {
   callouts: "object",
   favorites: "object",
   latex: "object",
-  typst: "object",
 };
 
 function validateSection(obj: Record<string, unknown>, schema: Record<string, string>): boolean {

@@ -1,5 +1,4 @@
 import type { LatexState } from "@/latex"
-import type { TypstBuildState } from "@/typst"
 import type { PanelManager } from "@/lib/panel-manager"
 
 export interface HandlerContext {
@@ -9,7 +8,6 @@ export interface HandlerContext {
   consoleOpen:    () => boolean
   rootPath:       () => string | null
   sideActivePath: () => string | null
-  getCursorLine:  () => number | null
 
   setConsoleOpen:  (v: boolean) => void
   setConsoleTab:   (tab: "diagnostics" | "terminal" | "log") => void
@@ -18,7 +16,6 @@ export interface HandlerContext {
   setSyncLine:     (line: number) => void
   navPush:         (path: string) => void
 
-  ts: TypstBuildState
   ls: LatexState
 
   pm: PanelManager

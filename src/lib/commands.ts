@@ -32,7 +32,6 @@ export type CommandCategory =
   | "recent"
   | "file"
   | "latex"
-  | "typst"
   | "markdown"
   | "view"
   | "theme"
@@ -80,13 +79,10 @@ export type CommandActions = {
   // pdf export
   exportPdf: () => void;
 
-  // Typst/LaTeX clean
-  typstClean: () => void;
-  typstCleanAll: () => void;
+  // LaTeX clean
   latexCleanAux: () => void;
   latexCleanAuxAndOutput: () => void;
   latexCleanAll: () => void;
-  isTypstActive: boolean;
   isLatexActive: boolean;
 
   // Markdown editor modes
@@ -97,11 +93,6 @@ export type CommandActions = {
   // LaTeX actions
   latexBuild: () => void;
   latexViewPdf: () => void;
-
-  // Typst actions
-  typstBuild: () => void;
-  typstLiveView: () => void;
-  typstViewPdf: () => void;
 
   // View actions
   toggleConsole: () => void;
@@ -137,7 +128,6 @@ export const CATEGORY_ORDER: CommandCategory[] = [
   "recent",
   "file",
   "latex",
-  "typst",
   "markdown",
   "view",
   "theme",
@@ -266,55 +256,6 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         category: "latex" as CommandCategory,
         keywords: ["latex", "clean", "all"],
         action: actions.latexCleanAll,
-      },
-    ] : []),
-    // ── Typst (shown when .typ active) ──────────────────────
-    ...(actions.isTypstActive ? [
-      {
-        id: "typst-live",
-        label: t("command.typstLive"),
-        hint: t("command.typstLiveHint"),
-        icon: Eye,
-        category: "typst" as CommandCategory,
-        keywords: ["typst", "live", "preview", "svg"],
-        action: actions.typstLiveView,
-      },
-      {
-        id: "typst-build",
-        label: t("command.typstBuild"),
-        hint: t("command.typstBuildHint"),
-        shortcut: "⌘⌥B",
-        icon: FileDown,
-        category: "typst" as CommandCategory,
-        keywords: ["typst", "build", "compile", "pdf"],
-        action: actions.typstBuild,
-      },
-      {
-        id: "typst-view-pdf",
-        label: t("command.typstViewPdf"),
-        hint: t("command.typstViewPdfHint"),
-        icon: Eye,
-        category: "typst" as CommandCategory,
-        keywords: ["typst", "view", "pdf", "viewer"],
-        action: actions.typstViewPdf,
-      },
-      {
-        id: "typst-clean",
-        label: t("command.typstClean"),
-        hint: t("command.typstCleanHint"),
-        icon: FileDown,
-        category: "typst" as CommandCategory,
-        keywords: ["typst", "clean", "build", "pdf"],
-        action: actions.typstClean,
-      },
-      {
-        id: "typst-clean-all",
-        label: t("command.typstCleanAll"),
-        hint: t("command.typstCleanAllHint"),
-        icon: FileDown,
-        category: "typst" as CommandCategory,
-        keywords: ["typst", "clean", "all", "pdf"],
-        action: actions.typstCleanAll,
       },
     ] : []),
     // ── Markdown (shown when .md active) ────────────────────

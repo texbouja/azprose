@@ -1,5 +1,5 @@
 // Workspace-level diagnostics bus — the "Problems" feed behind the Diagnostics
-// console. Any subsystem (Typst compile, MathJax, image resolution, crashes…)
+// console. Any subsystem (MathJax, image resolution, crashes…)
 // publishes Diagnostics tagged with a `source`; the console shows the union with
 // per-source badges. Replacing by source keeps each producer independent.
 

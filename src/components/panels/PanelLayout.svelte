@@ -11,7 +11,7 @@ let {
   sideTabs = [] as Tab[],
   sideActiveTabId = null as string | null,
   sideVisible = false,
-  splitRatio = 0.55,
+  splitRatio = 0.45,
   onSplitRatioChange = (_v: number) => {},
   onSourceChange,
   onSideSourceChange,
@@ -29,9 +29,6 @@ let {
   onSetEditorMode,
   onLatexViewer,
   onLatexBuild,
-  onTypstViewer,
-  onTypstBuild,
-  onTypstViewPdf,
   onExportPdf,
   onToggleRenderMode,
   onToggleFullscreen,
@@ -63,9 +60,6 @@ let {
   onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
-  onTypstViewer?: () => void;
-  onTypstBuild?: () => void;
-  onTypstViewPdf?: () => void;
   onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleFullscreen?: () => void;
@@ -121,9 +115,6 @@ function startResize(e: PointerEvent) {
     {onSetEditorMode}
     {onLatexViewer}
     {onLatexBuild}
-    {onTypstViewer}
-    {onTypstBuild}
-    {onTypstViewPdf}
     {onExportPdf}
     {onTabDoubleClick}
   />

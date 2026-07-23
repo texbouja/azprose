@@ -17,9 +17,6 @@ let {
   onSetEditorMode,
   onLatexViewer,
   onLatexBuild,
-  onTypstViewer,
-  onTypstBuild,
-  onTypstViewPdf,
   onExportPdf,
   onToggleRenderMode,
   onToggleFullscreen,
@@ -32,9 +29,6 @@ let {
   onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
-  onTypstViewer?: () => void;
-  onTypstBuild?: () => void;
-  onTypstViewPdf?: () => void;
   onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleFullscreen?: () => void;
@@ -68,7 +62,6 @@ function fire(cmd: string) { onCommand?.(cmd); }
 let ext = $derived(extFromPath(activeTab?.path ?? ""));
 let isMd = $derived(ext === "md");
 let isTex = $derived(ext === "tex");
-let isTyp = $derived(ext === "typ");
 let isCsv = $derived(ext === "csv" || ext === "tsv");
 let isMain = $derived(panelId === "main");
 </script>
@@ -111,16 +104,6 @@ let isMain = $derived(panelId === "main");
             <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onLatexBuild?.()}>
               <Icon icon={FileDown} size={13} strokeWidth={1.8} /><span>{t("tabs.build")}</span>
             </button>
-          {:else if isTyp}
-            <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onTypstViewer?.()}>
-              <Icon icon={Eye} size={14} strokeWidth={1.8} /><span>{t("tabs.liveView")}</span>
-            </button>
-            <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onTypstBuild?.()}>
-              <Icon icon={FileDown} size={13} strokeWidth={1.8} /><span>{t("tabs.buildPdf")}</span>
-            </button>
-            <button type="button" class="tab-actions__btn tab-actions__btn--label" onclick={() => onTypstViewPdf?.()}>
-              {@html PdfLogo}<span>{t("tabs.viewPdf")}</span>
-            </button>
           {:else if isCsv}
             <button type="button" class="tab-actions__btn tab-actions__btn--label" class:is-active={renderMode === "preview"} onclick={() => onSetEditorMode?.("preview")}>
               <Icon icon={Table2} size={14} strokeWidth={1.8} /><span>Grille</span>
@@ -139,7 +122,7 @@ let isMain = $derived(panelId === "main");
           {#if isImagePath(activeTab.path)}
             <button class="tab-actions__btn" onclick={() => fire("zoom-out")} aria-label="Zoom out" title="Zoom out"><Icon icon={ZoomOut} size={16} strokeWidth={1.8} /></button>
             <button class="tab-actions__btn" onclick={() => fire("zoom-in")} aria-label="Zoom in" title="Zoom in"><Icon icon={ZoomIn} size={16} strokeWidth={1.8} /></button>
-          {:else if (isMd && renderMode !== "presentation") || isTyp}
+          {:else if (isMd && renderMode !== "presentation")}
             <button class="tab-actions__btn" onclick={() => fire("zoom-out")} aria-label="Zoom out" title="Zoom out"><Icon icon={ZoomOut} size={16} strokeWidth={1.8} /></button>
             <button class="tab-actions__btn" onclick={() => fire("zoom-reset")} aria-label="Reset zoom" title="Reset zoom"><Icon icon={CircleEqual} size={16} strokeWidth={1.8} /></button>
             <button class="tab-actions__btn" onclick={() => fire("zoom-in")} aria-label="Zoom in" title="Zoom in"><Icon icon={ZoomIn} size={16} strokeWidth={1.8} /></button>

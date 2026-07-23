@@ -7,7 +7,7 @@ import type { PanelManager } from "@/lib/panel-manager";
 export interface SessionRestoreDeps {
   pm: PanelManager
   projectRoot: string | null
-  openFileInTab: (path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" | "typst" }) => Promise<void>
+  openFileInTab: (path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" }) => Promise<void>
   findTabByPath: (path: string) => { id: string; panel: string } | undefined
   setSideVisible: (v: boolean) => void
   setRootPath: (v: string | null) => void

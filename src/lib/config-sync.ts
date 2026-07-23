@@ -4,7 +4,6 @@ import { proseMarkSettings, previewSettings, presentationSettings, DEFAULT_PROSE
 import { slideSettings } from "@/stores/slide-settings.svelte"
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte"
 import { latexSettings } from "@/stores/latex-settings.svelte"
-import { typstSettings } from "@/stores/typst-settings.svelte"
 import { calloutSettings } from "@/stores/callout-settings.svelte"
 import { DEFAULT_TYPOGRAPHY, type TypographySettings } from "@/lib/typography"
 import { theme } from "@/stores/theme.svelte"
@@ -71,13 +70,6 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   const ls = latexSettings.current;
   if (ls.engine !== "pdflatex" || ls.shellEscape || ls.outputDir !== "output" || ls.auxDir !== "auxdir" || ls.maxRuns !== 5 || ls.bibtex !== "auto") {
     cfg.latex = ls;
-  }
-
-  const ts = typstSettings.current;
-  if (ts.formatterMode !== "typstyle" || ts.formatterPrintWidth !== 120 || ts.formatterIndentSize !== 2
-    || ts.exportPdf !== "never" || ts.lintEnabled
-    || !ts.systemFonts || !ts.semanticTokens || ts.typstExtraArgs) {
-    cfg.typst = ts;
   }
 
   cfg.callouts = calloutSettings.current;
@@ -152,7 +144,6 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   if (cfg.math?.preamble != null) mathJaxPreamble.current = cfg.math.preamble;
   if (cfg.math?.packages != null) mathJaxPackages.current = cfg.math.packages;
   if (cfg.latex != null) latexSettings.patch(cfg.latex);
-  if (cfg.typst != null) typstSettings.patch(cfg.typst);
   if (cfg.callouts != null) calloutSettings.load(cfg.callouts);
   if (cfg.favorites != null) deps.fo.favorites.current = cfg.favorites;
 

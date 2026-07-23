@@ -13,7 +13,7 @@ export class PanelManager {
   main: PanelState;
   side: PanelState;
   layout: LayoutMode = "main";
-  splitRatio = 0.55;
+  splitRatio = 0.45;
   private savedSplitRatio = 0.55;
 
   constructor(opts?: {

@@ -2,14 +2,12 @@ import { shortcuts } from "@/stores/shortcuts.svelte"
 import { overlays } from "@/stores/overlays.svelte"
 import { extFromPath } from "@/lib/editor-languages"
 import type { LatexState } from "@/latex"
-import type { TypstBuildState } from "@/typst"
 import type { PanelManager } from "@/lib/panel-manager"
 
 export interface KeyboardDeps {
   activePath: string | null
   source: string
   ls: LatexState
-  ts: TypstBuildState
   pm: PanelManager
   sideVisible: boolean
   setConsoleOpen: (v: boolean) => void
@@ -62,11 +60,6 @@ export function handleKeydown(e: KeyboardEvent, ctx: KeyboardDeps) {
             await ctx.pm.openInSide(ctx.ls.viewerPdfPath, { sourceType: "latex" });
             ctx.setSideVisible(true);
           }
-        })();
-      } else if (ext === "typ") {
-        void (async () => {
-          const typst = await import("@/typst");
-          await typst.build(ctx.ts, ctx.activePath!, ctx.source, ctx.handleSave, () => ctx.setConsoleOpen(true), () => ctx.setConsoleTab("log"), (name: string) => ctx.notify.setInfo(ctx.t("app.savedTo", { name })));
         })();
       }
     }

@@ -18,7 +18,7 @@ export interface ProjectManagementDeps {
   tabs: { path: string; source: string; savedContent: string }[]
   folders: { current: string[]; update: (fn: () => string[]) => void }
   projectRoot: string | null
-  openFileInTab: (path: string, opts?: { silent?: boolean; preferDraft?: boolean; preview?: boolean; sourceType?: "latex" | "typst" }) => Promise<void>
+  openFileInTab: (path: string, opts?: { silent?: boolean; preferDraft?: boolean; preview?: boolean; sourceType?: "latex" }) => Promise<void>
   findTabByPath: (path: string) => { id: string; panel: string } | undefined
   skipCloseConfirm: { current: boolean }
   saveSessionNow: () => void

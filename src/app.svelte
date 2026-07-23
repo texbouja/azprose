@@ -78,18 +78,15 @@ import { setRootPath } from "@/stores/root-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
 import { flushAllCsvCaches } from "@/csv/flush";
-import { getCursorLine } from "@/stores/cursor-line.svelte";
 import { navPush, navBack, navForward, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
 import {
   createLatexState,
   cleanLatexAux, cleanLatexAuxAndOutput, cleanLatexAll,
 } from "@/latex";
-import { createBuildState } from "@/typst/backend";
 import { FileOpsManager } from "@/lib/file-operations.svelte";
 import ConsolePanel from "@/components/console/ConsolePanel.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { latexSettings } from "@/stores/latex-settings.svelte";
-import { typstSettings } from "@/stores/typst-settings.svelte";
 import { theme } from "@/stores/theme.svelte";
 import { editorSettings } from "@/stores/editor-settings.svelte";
 import { createHandlers, type HandlerContext } from "@/lib/handlers";
@@ -223,21 +220,18 @@ let forwardTargetPage = $state<number | null>(null);
 let presentationFs = $state(false);
 let viewerFullscreenOn = $state(false);
 let ls = $state(createLatexState());
-let ts = $state(createBuildState());
 let consoleOpen = $state(false);
 let consoleHeight = $state(160);
 
 const buildLabel = $derived(
   ls.latexBuilding ? "LaTeX…" :
-  ts.exporting ? "Typst…" :
   null
 );
 
-// POC: LSP frontend test — starts tinymist on mount, logs diagnostics to console
+// POC: LSP frontend test — starts language server on mount, logs diagnostics to console
 const consoleDiags = $derived(diagnosticsStore.all);
 const logLines = $derived.by(() => {
   const ext = activePath ? extFromPath(activePath) : "";
-  if (ext === "typ") return logStore.get("typst");
   if (ext === "tex") return logStore.get("latex");
   if (ext === "md") return logStore.get("markdown");
   return [];
@@ -318,12 +312,9 @@ $effect(() => {
   vimOn;
   theme.mode;
   latexSettings.current;
-  typstSettings.current;
   editorSettings.current;
   scheduleConfigSync();
 });
-
-// Typst settings sync and auto-export on type → handled by typst handler
 
 // mtime tracking for external change detection
 let mtimeMap = $state(new Map<string, number>());
@@ -408,7 +399,7 @@ onMount(() => {
   };
   setNavActions({ goBack: navGoBack, goForward: navGoForward });
 
-  // ── File-type handlers (typst, latex, markdown) — lazy-loaded ──
+  // ── File-type handlers (latex, markdown) — lazy-loaded ──
   const handlerCtx: HandlerContext = {
     activePath:     () => activePath,
     source:         () => source,
@@ -416,14 +407,12 @@ onMount(() => {
     consoleOpen:    () => consoleOpen,
     rootPath:       () => rootPath,
     sideActivePath: () => sideActivePath,
-    getCursorLine:  () => getCursorLine(),
     setConsoleOpen: (v) => { consoleOpen = v; },
     setConsoleTab:  (tab) => { consoleTab = tab; },
     setSideVisible: (v) => { sideVisible = v; pm.sideVisible = v; },
     setScrollTarget: (target) => { setScrollTarget(target); },
     setSyncLine:    (line) => { setSyncLine(line); },
     navPush:        (path) => { navPush(path); },
-    ts,
     ls,
     pm,
     openFileInTab: async (path, opts) => { await openFileInTab(path, opts); },
@@ -507,7 +496,7 @@ $effect(() => {
   return () => window.removeEventListener("azprose:jump-to-file", onJumpFile);
 });
 
-async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" | "typst" }) {
+async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" }) {
   if (!isOpenablePath(path)) {
     if (!opts?.silent) {
       notifications.setLoadError({ title: "Format", message: t("app.unsupportedFormat", { name: basename(path) }) });
@@ -624,9 +613,9 @@ $effect(() => {
   return () => { cancelled = true; };
 });
 
-// Side panel source sync → handled by typst + markdown handlers
+// Side panel source sync → handled by markdown handler
 
-// Forward sync: editor cursor → Typst Live View → handled by typst handler
+// Forward sync: editor cursor → preview → handled by handlers
 
 $effect(() => {
   const timer = window.setTimeout(async () => {
@@ -750,7 +739,6 @@ $effect(() => {
     activePath,
     source,
     ls,
-    ts,
     pm,
     sideVisible,
     setConsoleOpen: (v) => { consoleOpen = v; },
@@ -818,7 +806,7 @@ const handleToggleConsole = () => {
     return;
   }
   // Diagnostics only make sense on a .typ, .tex or .md; otherwise open straight to the terminal.
-  if (!activePath || (extFromPath(activePath) !== "typ" && extFromPath(activePath) !== "tex" && extFromPath(activePath) !== "md")) consoleTab = "terminal";
+  if (!activePath || (extFromPath(activePath) !== "tex" && extFromPath(activePath) !== "md")) consoleTab = "terminal";
   consoleOpen = true;
 };
 
@@ -869,10 +857,7 @@ let cmds = $derived(
     oxidJump: () => executeOxideCommand("jump"),
     isMdActive: activePath != null && extFromPath(activePath) === "md",
     exportPdf: handleExportPdf,
-    isTypstActive: activePath != null && extFromPath(activePath) === "typ",
     isLatexActive: activePath != null && extFromPath(activePath) === "tex",
-    typstClean: async () => { if (activePath) { const { cleanBuild } = await import("@/typst/build"); cleanBuild(activePath); } },
-    typstCleanAll: async () => { if (activePath) { const { cleanAll } = await import("@/typst/build"); cleanAll(dirname(activePath)); } },
     latexCleanAux: () => activePath && cleanLatexAux(ls.rootFilePath ?? activePath),
     latexCleanAuxAndOutput: () => activePath && cleanLatexAuxAndOutput(ls.rootFilePath ?? activePath),
     latexCleanAll: async () => {
@@ -896,26 +881,6 @@ let cmds = $derived(
       const { handleLatexBuild } = await import("@/latex");
       if (!ls.viewerPdfPath) await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
       if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); if (!sideVisible) { sideVisible = true; pm.sideVisible = true; } }
-    },
-    typstBuild: async () => {
-      if (!activePath) return;
-      const typst = await import("@/typst");
-      await typst.build(ts, activePath, source, handleSave, () => { consoleOpen = true; }, () => { consoleTab = "log"; }, (name: string) => notifications.setInfo(t("app.savedTo", { name })));
-    },
-    typstLiveView: async () => {
-      if (!activePath) return;
-      await pm.openInSide(activePath, { sourceType: "typst" });
-      const sideTab = pm.side.tabs.find((t: any) => t.path === activePath && t.sourceType === "typst");
-      if (sideTab) { pm.side.setTabSource(sideTab.id, source); _panelVersion++; }
-      if (!sideVisible) { sideVisible = true; pm.sideVisible = true; }
-    },
-    typstViewPdf: async () => {
-      if (!activePath) return;
-      const typst = await import("@/typst");
-      await typst.openViewer(ts, activePath, source, handleSave, () => { consoleOpen = true; }, (pdfPath: string) => {
-        pm.openInSide(pdfPath, { sourceType: "typst" });
-        if (!sideVisible) { sideVisible = true; pm.sideVisible = true; }
-      });
     },
     toggleConsole: handleToggleConsole,
     toggleViewPanel: handleToggleSidebar,
@@ -1025,23 +990,6 @@ let cmds = $derived(
             const { handleLatexBuild } = await import("@/latex");
             await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
             if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); sideVisible = true; }
-          } : undefined}
-          onTypstViewer={activePath && extFromPath(activePath) === "typ" ? async () => {
-            await pm.openInSide(activePath, { sourceType: "typst" });
-            const sideTab = pm.side.tabs.find((t: any) => t.path === activePath && t.sourceType === "typst");
-            if (sideTab) { pm.side.setTabSource(sideTab.id, source); _panelVersion++; }
-            if (!sideVisible) { sideVisible = true; pm.sideVisible = true; }
-          } : undefined}
-          onTypstBuild={activePath && extFromPath(activePath) === "typ" ? async () => {
-            const typst = await import("@/typst");
-            await typst.build(ts, activePath, source, handleSave, () => { consoleOpen = true; }, () => { consoleTab = "log"; }, (name: string) => notifications.setInfo(t("app.savedTo", { name })));
-          } : undefined}
-          onTypstViewPdf={activePath && extFromPath(activePath) === "typ" ? async () => {
-            const typst = await import("@/typst");
-            await typst.openViewer(ts, activePath, source, handleSave, () => { consoleOpen = true; }, (pdfPath: string) => {
-              pm.openInSide(pdfPath, { sourceType: "typst" });
-              if (!sideVisible) { sideVisible = true; pm.sideVisible = true; }
-            });
           } : undefined}
           onExportPdf={activePath && extFromPath(activePath) === "md" ? handleExportPdf : undefined}
           onToggleRenderMode={handleToggleSideRenderMode}

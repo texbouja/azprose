@@ -17,8 +17,12 @@ export interface TauriTransport extends Transport {
   /** Handle server requests not consumed by the filter.
    *  Return a JSON-RPC response string to send back, or null for -32601. */
   onServerRequest(handler: ((req: ServerRequest) => string | null) | null): void;
+  /** Callback fired once when the server completes LSP initialization (initialized notification). */
+  onInitialized(callback: () => void): void;
   /** Send a JSON-RPC request and return a promise with the response. */
   sendRequest(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
+  /** Send a raw JSON-RPC message, bypassing the outFilter. */
+  rawSend(message: string): void;
 }
 
 /**
@@ -39,6 +43,8 @@ export function createTauriTransport(
   let serverReqHandler: ((req: ServerRequest) => string | null) | null = null;
   let initPromise: Promise<void> | null = null;
   let _reqId = 0;
+  let _initializedCallbacks: Array<() => void> = [];
+  let _serverInitialized = false;
 
   // Forward-declare so processBuffer can send responses (e.g. to server requests).
   const self = {
@@ -48,7 +54,9 @@ export function createTauriTransport(
     setFilter(_f: ((raw: string) => boolean) | null) { /* filled below */ },
     setOutFilter(_f: ((raw: string) => boolean) | null) { /* filled below */ },
     onServerRequest(_h: ((req: ServerRequest) => string | null) | null) { /* filled below */ },
+    onInitialized(_cb: () => void) { /* filled below */ },
     sendRequest(_method: string, _params?: unknown, _timeoutMs?: number): Promise<unknown> { return Promise.resolve(null); },
+    rawSend(_message: string) { /* filled below */ },
   };
 
   /** Route a complete JSON-RPC message to the appropriate handler. */
@@ -83,6 +91,18 @@ export function createTauriTransport(
     }
 
     // Notifications and responses pass through to CM6 handlers.
+    // Also detect LSP "initialized" notification — server is ready.
+    try {
+      const m = JSON.parse(raw);
+      if (m.method === "initialized") {
+        if (!_serverInitialized) {
+          _serverInitialized = true;
+          for (const cb of _initializedCallbacks) try { cb(); } catch {}
+          _initializedCallbacks = [];
+        }
+      }
+    } catch { /* not JSON or no method */ }
+
     for (const handler of handlers) {
       try {
         handler(raw);
@@ -145,6 +165,11 @@ export function createTauriTransport(
   self.setFilter = (f) => { filter = f; };
   self.setOutFilter = (f) => { outFilter = f; };
   self.onServerRequest = (h) => { serverReqHandler = h; };
+  self.onInitialized = (callback: () => void) => {
+    if (_serverInitialized) { try { callback(); } catch {} return; }
+    _initializedCallbacks.push(callback);
+  };
+  self.rawSend = (message: string) => { _realSend(message); };
 
   self.sendRequest = (method: string, params?: unknown, timeoutMs = 5000): Promise<unknown> => {
     return new Promise((resolve, reject) => {

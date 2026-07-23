@@ -105,12 +105,7 @@ export async function gutterClick(ctx: EditorModeDeps, line: number) {
       })
       .catch((err: unknown) => ctx.notify.setInfo(`synctex forward failed: ${err}`));
   } else if (ext === "typ") {
-    const { getPreviewTaskForFile, scrollPreview } = await import("@/typst/backend");
-    const taskId = getPreviewTaskForFile(ctx.activePath);
-    if (taskId) {
-      scrollPreview(taskId, { event: "panelScrollTo", filepath: ctx.activePath, line: line - 1, character: 0 })
-        .catch((err: unknown) => ctx.notify.setInfo(`typst forward failed: ${err}`));
-    }
+    // typst support removed
   }
 }
 
@@ -121,7 +116,7 @@ export async function inverseSync(ctx: EditorModeDeps, file: string, line: numbe
     ctx.pm.main.select(found.tab.id);
   } else {
     const ext = ctx.extFromPath(normFile);
-    await ctx.pm.openInMain(normFile, { silent: true, preview: true, sourceType: ext === "typ" ? "typst" : ext === "tex" ? "latex" : undefined });
+    await ctx.pm.openInMain(normFile, { silent: true, preview: true, sourceType: ext === "tex" ? "latex" : undefined });
   }
   ctx.setJumpToLine(line - 1);
   setEditorMode(ctx, "raw");

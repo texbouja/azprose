@@ -3,7 +3,7 @@ import { readMarkdown, writeMarkdown } from "@/lib/files";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation";
-export type TabSource = "latex" | "typst";
+export type TabSource = "latex";
 
 export type Tab = {
   id: string;

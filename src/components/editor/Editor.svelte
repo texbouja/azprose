@@ -7,7 +7,6 @@ import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { languageFromExt, mdHighlight, buildTheme } from "@/lib/editor-languages";
 import type { LSPClient } from "@codemirror/lsp-client";
-import { setCursorLine } from "@/stores/cursor-line.svelte";
 import {
   createGeneralCompartments,
   generalInitialExtensions,
@@ -72,9 +71,7 @@ onMount(() => {
           onChangeRef?.(update.state.doc.toString());
           docVersion++;
         }
-        if (update.selectionSet) {
-          setCursorLine(update.state.doc.lineAt(update.state.selection.main.head).number);
-        }
+
       }),
       onGutterClick ? EditorView.domEventHandlers({
         mousedown: (event, view) => {

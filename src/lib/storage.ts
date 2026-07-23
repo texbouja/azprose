@@ -21,7 +21,6 @@ export const STORAGE_KEYS = {
   callouts:   "mdview.callouts",
   csvStyle: "mdview.csv.style",
   latexSettings: "mdview.latex.settings",
-  typstSettings: "mdview.typst.settings",
   shortcuts: "mdview.shortcuts",
 } as const;
 

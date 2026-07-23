@@ -147,8 +147,6 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
             const normActive = norm(path)
             const sideTab = ctx.pm.side.tabs.find((t: any) => norm(t.path) === normActive)
             if (sideTab) {
-              const cl = ctx.getCursorLine()
-              if (cl != null) ctx.setSyncLine(cl - 1)
               ctx.pm.side.setTabSource(sideTab.id, saved)
               ctx.bumpPanelVersion()
             }

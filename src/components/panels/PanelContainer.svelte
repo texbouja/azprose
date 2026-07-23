@@ -26,9 +26,6 @@ let {
   onSyncToMain,
   onLatexViewer,
   onLatexBuild,
-  onTypstViewer,
-  onTypstBuild,
-  onTypstViewPdf,
   onExportPdf,
   onToggleRenderMode,
   onToggleFullscreen: _onToggleFullscreen,
@@ -56,9 +53,6 @@ let {
   onSyncToMain?: (source: string) => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
-  onTypstViewer?: () => void;
-  onTypstBuild?: () => void;
-  onTypstViewPdf?: () => void;
   onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleFullscreen?: () => void;
@@ -112,9 +106,6 @@ function handleViewerFullscreen() {
       {onSetEditorMode}
       {onLatexViewer}
       {onLatexBuild}
-      {onTypstViewer}
-      {onTypstBuild}
-      {onTypstViewPdf}
       {onExportPdf}
       {onToggleRenderMode}
       onToggleFullscreen={handleViewerFullscreen}

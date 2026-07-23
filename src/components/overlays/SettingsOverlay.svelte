@@ -24,7 +24,6 @@ import { generalSettings } from "@/stores/general-settings.svelte";
 import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
 import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
-import { typstSettings } from "@/stores/typst-settings.svelte";
 import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { notifications } from "@/stores/notifications.svelte";
@@ -41,8 +40,8 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "typst-general" | "typst-build" | "editor";
-type SectionId = "markdown" | "csv" | "latex" | "typst" | "editor";
+type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor";
+type SectionId = "markdown" | "csv" | "latex" | "editor";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
   {
@@ -79,18 +78,10 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "latex-build",   labelKey: "settings.module.latexBuild" },
     ],
   },
-  {
-    id: "typst",
-    labelKey: "settings.section.typst",
-    modules: [
-      { id: "typst-general", labelKey: "settings.module.typstGeneral" },
-      { id: "typst-build",   labelKey: "settings.module.typstBuild" },
-    ],
-  },
 ];
 
 let activeModule = $state<ModuleId>("editor");
-let expandedSections = $state(new Set<SectionId>(["markdown", "csv", "latex", "typst", "editor"]));
+let expandedSections = $state(new Set<SectionId>(["markdown", "csv", "latex", "editor"]));
 
 // Explicit $derived so the template tracks settings reactively.
 let s = $derived(proseMarkSettings.current);
@@ -1058,137 +1049,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             </div>
           {/if}
 
-          {#if activeModule === "typst-general"}
-            <p class="mdv-settings__section-title">{t("settings.typstFormatter")}</p>
-            <div class="mdv-settings__radio-group">
-              <label class="mdv-settings__radio">
-                <input type="radio" name="typst-formatter" value="typstyle"
-                  checked={typstSettings.current.formatterMode === "typstyle"}
-                  onchange={() => typstSettings.patch({ formatterMode: "typstyle" })} />
-                {t("settings.typstFormatterTypstyle")}
-              </label>
-              <label class="mdv-settings__radio">
-                <input type="radio" name="typst-formatter" value="typstfmt"
-                  checked={typstSettings.current.formatterMode === "typstfmt"}
-                  onchange={() => typstSettings.patch({ formatterMode: "typstfmt" })} />
-                {t("settings.typstFormatterTypstfmt")}
-              </label>
-              <label class="mdv-settings__radio">
-                <input type="radio" name="typst-formatter" value="disable"
-                  checked={typstSettings.current.formatterMode === "disable"}
-                  onchange={() => typstSettings.patch({ formatterMode: "disable" })} />
-                {t("settings.typstFormatterDisable")}
-              </label>
-            </div>
-
-            <p class="mdv-settings__section-title">{t("settings.typstPrintWidth")}</p>
-            <input type="number" class="mdv-settings__input"
-              value={typstSettings.current.formatterPrintWidth}
-              min={60} max={200}
-              oninput={(e) => {
-                const v = parseInt(e.currentTarget.value, 10);
-                if (v >= 60 && v <= 200) typstSettings.patch({ formatterPrintWidth: v });
-              }} />
-
-            <p class="mdv-settings__section-title">{t("settings.typstIndentSize")}</p>
-            <input type="number" class="mdv-settings__input"
-              value={typstSettings.current.formatterIndentSize}
-              min={1} max={8}
-              oninput={(e) => {
-                const v = parseInt(e.currentTarget.value, 10);
-                if (v >= 1 && v <= 8) typstSettings.patch({ formatterIndentSize: v });
-              }} />
-
-            <p class="mdv-settings__section-title">{t("settings.typstSemanticTokens")}</p>
-            <label class="mdv-settings__radio">
-              <input type="checkbox"
-                checked={typstSettings.current.semanticTokens}
-                onchange={(e) => typstSettings.patch({ semanticTokens: (e.currentTarget as HTMLInputElement).checked })} />
-              {t("settings.typstSemanticTokensHint")}
-            </label>
-
-            <p class="mdv-settings__section-title">{t("settings.typstSystemFonts")}</p>
-            <label class="mdv-settings__radio">
-              <input type="checkbox"
-                checked={typstSettings.current.systemFonts}
-                onchange={(e) => typstSettings.patch({ systemFonts: (e.currentTarget as HTMLInputElement).checked })} />
-              {t("settings.typstSystemFontsHint")}
-            </label>
-          {/if}
-
-          {#if activeModule === "typst-build"}
-            <p class="mdv-settings__section-title">{t("settings.typstExportPdf")}</p>
-            <div class="mdv-settings__radio-group">
-              <label class="mdv-settings__radio">
-                <input type="radio" name="typst-export" value="never"
-                  checked={typstSettings.current.exportPdf === "never"}
-                  onchange={() => typstSettings.patch({ exportPdf: "never" })} />
-                {t("settings.typstExportPdfNever")}
-              </label>
-              <label class="mdv-settings__radio">
-                <input type="radio" name="typst-export" value="onSave"
-                  checked={typstSettings.current.exportPdf === "onSave"}
-                  onchange={() => typstSettings.patch({ exportPdf: "onSave" })} />
-                {t("settings.typstExportPdfOnSave")}
-              </label>
-              <label class="mdv-settings__radio">
-                <input type="radio" name="typst-export" value="onType"
-                  checked={typstSettings.current.exportPdf === "onType"}
-                  onchange={() => typstSettings.patch({ exportPdf: "onType" })} />
-                {t("settings.typstExportPdfOnType")}
-              </label>
-            </div>
-
-            <p class="mdv-settings__section-title">{t("settings.typstLint")}</p>
-            <label class="mdv-settings__radio">
-              <input type="checkbox"
-                checked={typstSettings.current.lintEnabled}
-                onchange={(e) => typstSettings.patch({ lintEnabled: (e.currentTarget as HTMLInputElement).checked })} />
-              {t("settings.typstLintHint")}
-            </label>
-
-            {#if typstSettings.current.lintEnabled}
-              <p class="mdv-settings__section-title">{t("settings.typstLintWhen")}</p>
-              <div class="mdv-settings__radio-group">
-                <label class="mdv-settings__radio">
-                  <input type="radio" name="typst-lint-when" value="onSave"
-                    checked={typstSettings.current.lintWhen === "onSave"}
-                    onchange={() => typstSettings.patch({ lintWhen: "onSave" })} />
-                  {t("settings.typstLintOnSave")}
-                </label>
-                <label class="mdv-settings__radio">
-                  <input type="radio" name="typst-lint-when" value="onType"
-                    checked={typstSettings.current.lintWhen === "onType"}
-                    onchange={() => typstSettings.patch({ lintWhen: "onType" })} />
-                  {t("settings.typstLintOnType")}
-                </label>
-              </div>
-            {/if}
-
-            <p class="mdv-settings__section-title">{t("settings.typstPackages")}</p>
-            <p class="mdv-settings__hint">{t("settings.typstPackagesHint")}</p>
-            <button type="button" class="mdv-settings__restart"
-              onclick={async () => {
-                const rp = getRootPath();
-                if (rp) {
-                  const dir = joinPath(joinPath(rp, ".azprose"), "typst");
-                  await mkdir(dir, { recursive: true });
-                  const { invoke } = await import("@tauri-apps/api/core");
-                  invoke("open_folder", { path: dir });
-                }
-              }}>
-              {t("settings.typstPackagesOpen")}
-            </button>
-
-            <p class="mdv-settings__section-title">{t("settings.typstExtraArgs")}</p>
-            <input type="text" class="mdv-settings__input"
-              value={typstSettings.current.typstExtraArgs}
-              oninput={(e) => debounceInput("typst-extra", e.currentTarget.value, (v) => typstSettings.patch({ typstExtraArgs: v }))}
-              placeholder="--input key=value"
-              spellcheck={false} />
-            <p class="mdv-settings__hint">{t("settings.typstExtraArgsHint")}</p>
-          {/if}
-
           {#if activeModule === "editor"}
             {@const es = editorSettings.current}
 
@@ -1287,10 +1147,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           </button>
         {:else if activeModule === "latex-general" || activeModule === "latex-build"}
           <button type="button" class="mdv-settings__reset" onclick={() => latexSettings.reset()}>
-            {t("settings.reset")}
-          </button>
-        {:else if activeModule === "typst-general" || activeModule === "typst-build"}
-          <button type="button" class="mdv-settings__reset" onclick={() => typstSettings.reset()}>
             {t("settings.reset")}
           </button>
         {:else if activeModule === "editor"}

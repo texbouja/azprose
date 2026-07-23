@@ -31,7 +31,3 @@ Une syntaxe commune très légère (YAML), permettra de renseigner les métadonn
 MIT
 
 
-Maintenant j'explique mon choix d'architecture.
-- le csv est préviligié pour sa facilité d'inclusion dans des fichiers md|tex|typ. 
-- spreadsheet est un moyen de visualiser, d'éditer et d'enrichir un csv (difficile d'éditer par colonnes dans .csv raw)
-- j'aurai besoin d'un "tableur" pour un traitement basique des données de mes élèves : ID, emails, relevés de notes, classement... les données préparée pourront ensuite être réutilisé dans des rapports md|tex|typ ou directement imprimées comme dans une app spreadsheet classique. 
