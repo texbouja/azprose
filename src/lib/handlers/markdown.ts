@@ -4,6 +4,7 @@ import { extFromPath } from "@/lib/editor-languages"
 export function createMarkdownHandler(context: HandlerContext): FileHandler {
   const ctx = context
   const cleanups: (() => void)[] = []
+  const timers: ReturnType<typeof setTimeout>[] = []
   let proseWarmupDone = false
 
   function setupEffects() {
@@ -17,7 +18,7 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
           lastRoot = root
           if (root) void ensureMoxideConfig(root)
         }
-          setTimeout(tick, 50)
+        timers.push(setTimeout(tick, 50))
       }
       tick()
     })()
@@ -34,7 +35,7 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
             void import("@/components/markdown/ProseMarkEditor.svelte")
           }
         }
-          setTimeout(tick, 50)
+        timers.push(setTimeout(tick, 50))
       }
       tick()
     }
@@ -111,30 +112,7 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       cleanups.push(unlisten)
     })()
 
-    // Side panel source sync for markdown preview/presentation
-    {
-      let lastSource = ctx.source()
-      const tick = () => {
-        const path = ctx.activePath()
-        const src = ctx.source()
-        if (src !== lastSource && path && extFromPath(path) === "md") {
-          lastSource = src
-          const sideTab = ctx.pm.side.tabs.find((t: any) =>
-            t.path === path && (t.renderMode === "preview" || t.renderMode === "presentation"),
-          )
-          if (sideTab && sideTab.source !== src) {
-            ctx.pm.side.tabs = ctx.pm.side.tabs.map((t: any) => t.id === sideTab.id ? { ...t, source: src } : t)
-            ctx.bumpPanelVersion()
-          }
-        } else {
-          lastSource = src
-        }
-          setTimeout(tick, 50)
-      }
-      tick()
-    }
-
-    // Save → side panel sync for markdown
+    // Side panel source sync on save only
     {
       let lastSaved = ctx.savedContent()
       const tick = () => {
@@ -152,13 +130,15 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
             }
           }
         }
-          setTimeout(tick, 50)
+        timers.push(setTimeout(tick, 50))
       }
       tick()
     }
   }
 
   function cleanup() {
+    for (const t of timers) clearTimeout(t)
+    timers.length = 0
     for (const fn of cleanups) fn()
     cleanups.length = 0
   }

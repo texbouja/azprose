@@ -104,8 +104,6 @@ export async function gutterClick(ctx: EditorModeDeps, line: number) {
         }
       })
       .catch((err: unknown) => ctx.notify.setInfo(`synctex forward failed: ${err}`));
-  } else if (ext === "typ") {
-    // typst support removed
   }
 }
 

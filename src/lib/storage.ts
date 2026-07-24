@@ -3,6 +3,7 @@ export const STORAGE_KEYS = {
   transparency: "mdview.transparency",
   sidebarOpen: "mdview.sidebar.open",
   sidebarWidth: "mdview.sidebar.width",
+  sidebarView: "mdview.sidebar.view",
   lastFile: "mdview.lastFile",
   welcomed: "mdview.welcomed",
   lastSeenVersion: "mdview.lastSeenVersion",
@@ -22,6 +23,7 @@ export const STORAGE_KEYS = {
   csvStyle: "mdview.csv.style",
   latexSettings: "mdview.latex.settings",
   shortcuts: "mdview.shortcuts",
+  journalSettings: "mdview.journal",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

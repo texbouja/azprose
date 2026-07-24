@@ -18,7 +18,7 @@
 
 .mdv-sidebar__inner {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   overflow: hidden;
   opacity: 0;
@@ -33,6 +33,22 @@
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
+}
+
+.mdv-sidebar__view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mdv-fsview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .mdv-sidebar__header {

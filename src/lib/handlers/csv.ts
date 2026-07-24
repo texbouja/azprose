@@ -4,6 +4,7 @@ import { extFromPath } from "@/lib/editor-languages"
 export function createCsvHandler(context: HandlerContext): FileHandler {
   const ctx = context
   const cleanups: (() => void)[] = []
+  const timers: ReturnType<typeof setTimeout>[] = []
 
   function setupEffects() {
     // Side panel source sync for CSV/TSV preview
@@ -22,7 +23,7 @@ export function createCsvHandler(context: HandlerContext): FileHandler {
         } else {
           lastSource = src
         }
-        setTimeout(tick, 50)
+        timers.push(setTimeout(tick, 50))
       }
       tick()
     }
@@ -45,13 +46,15 @@ export function createCsvHandler(context: HandlerContext): FileHandler {
             }
           }
         }
-        setTimeout(tick, 50)
+        timers.push(setTimeout(tick, 50))
       }
       tick()
     }
   }
 
   function cleanup() {
+    for (const t of timers) clearTimeout(t)
+    timers.length = 0
     for (const fn of cleanups) fn()
     cleanups.length = 0
   }

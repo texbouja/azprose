@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from "@/lib/icons";
 import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-import { renderMarkdown, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons, postRenderDom } from "@/markdown";
+import { renderMarkdown, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons, stripAutoCalloutTitles, postRenderDom } from "@/markdown";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { subscribeMode, type Theme } from "@/lib/theme";
 
@@ -33,6 +33,55 @@ let ready = $state(false);
 let slidesHtml = $state<string[]>([]);
 let pages = $state<string[]>([]);
 let zoom = $state(100);
+
+// ── Math cache: preserve MathJax SVGs across re-renders ──────────────────
+const mathCache = new Map<string, string>();
+let lastPreamble = "";
+
+function extractMathFromDom(el: HTMLElement): void {
+  for (const node of el.querySelectorAll<HTMLElement>("[data-math-source]")) {
+    const source = node.getAttribute("data-math-source");
+    if (source && node.innerHTML.includes("mjx-container")) {
+      mathCache.set(source, node.outerHTML);
+    }
+  }
+}
+
+function injectCachedMath(dom: HTMLElement): void {
+  for (const node of dom.querySelectorAll<HTMLElement>("[data-math-source]")) {
+    const source = node.getAttribute("data-math-source");
+    if (!source) continue;
+    const cached = mathCache.get(source);
+    if (cached) node.outerHTML = cached;
+  }
+}
+
+// ── Callout state cache ───────────────────────────────────────────────────
+const calloutStateCache = new Map<string, boolean>();
+
+function extractCalloutState(el: HTMLElement): void {
+  calloutStateCache.clear();
+  const counters = new Map<string, number>();
+  for (const d of el.querySelectorAll<HTMLDetailsElement>("details.callout")) {
+    const type = d.dataset.callout ?? "";
+    const idx = counters.get(type) ?? 0;
+    counters.set(type, idx + 1);
+    calloutStateCache.set(`${type}#${idx}`, d.open);
+  }
+}
+
+function restoreCalloutState(el: HTMLElement): void {
+  const counters = new Map<string, number>();
+  for (const d of el.querySelectorAll<HTMLDetailsElement>("details.callout")) {
+    const type = d.dataset.callout ?? "";
+    const idx = counters.get(type) ?? 0;
+    counters.set(type, idx + 1);
+    const key = `${type}#${idx}`;
+    if (calloutStateCache.has(key)) {
+      d.open = calloutStateCache.get(key)!;
+    }
+  }
+}
 
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
 
@@ -93,26 +142,37 @@ $effect(() => {
   const theme = appTheme;
   let cancelled = false;
 
+  // Cache old math SVGs and callout state before re-rendering
+  if (stageEl) {
+    extractMathFromDom(stageEl);
+    extractCalloutState(stageEl);
+  }
+
+  // Track preamble changes
+  const p = mathJaxPreamble.current.trim();
+  if (p !== lastPreamble) {
+    lastPreamble = p;
+    mathCache.clear();
+  }
+
   // Update callout icons from current settings before rendering
   updateCalloutIcons(calloutSettings.current);
 
-  void Promise.all(currentPages.map((t) => renderMarkdown(t, theme))).then(async (results) => {
+  const fp = filePath ?? undefined;
+  const rp = getRootPath() ?? undefined;
+  void Promise.all(currentPages.map((t) => renderMarkdown(t, theme, fp, rp))).then(async (results) => {
     if (cancelled) return;
     slidesHtml = results.map(r => {
       const tmp = document.createElement("div");
       tmp.innerHTML = r.html;
-      for (const el of tmp.querySelectorAll<HTMLElement>(".callout")) {
-        const inner = el.querySelector<HTMLElement>(".callout-title-inner");
-        if (!inner) continue;
-        const type = el.dataset.callout ?? "";
-        const auto = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
-        if (inner.textContent?.trim() === auto) inner.textContent = "";
-      }
+      stripAutoCalloutTitles(tmp);
       makeCalloutsCollapsible(tmp);
+      injectCachedMath(tmp);
       return tmp.innerHTML;
     });
     await Promise.resolve();
     if (!cancelled && stageEl) {
+      restoreCalloutState(stageEl);
       await hydrate(stageEl);
     }
   });

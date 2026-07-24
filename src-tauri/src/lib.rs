@@ -20,6 +20,7 @@ mod latex_engine;
 mod lsp_bridge;
 
 mod mdprinter;
+
 use lsp_bridge::LspBridgeState;
 
 struct PendingOpenFiles(Mutex<Vec<String>>);

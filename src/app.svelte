@@ -43,7 +43,7 @@ import WelcomeOverlay from "@/components/overlays/WelcomeOverlay.svelte";
 import TitleBar from "@/components/chrome/TitleBar.svelte";
 import Breadcrumb from "@/components/chrome/Breadcrumb.svelte";
 import StatusBar from "@/components/chrome/StatusBar.svelte";
-import Sidebar from "@/components/files/sidebar.svelte";
+import SidebarContainer from "@/components/sidebar/sidebar-container.svelte";
 import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
@@ -52,7 +52,7 @@ import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { executeOxideCommand } from "@/lib/lsp/markdown-oxide";
-import { writeMarkdown } from "@/lib/files";
+import { writeText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { saveSession, clearDraft, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
 import {
@@ -567,7 +567,7 @@ const handleSaveAll = async (deps: string[]) => {
   for (const tab of pm.main.tabs) {
     if (tab.source !== tab.savedContent && depSet.has(norm(tab.path))) {
       try {
-        await writeMarkdown(tab.path, tab.source);
+        await writeText(tab.path, tab.source);
         pm.main.tabs = pm.main.tabs.map((t: any) => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
         _panelVersion++;
         if (tab.path !== activePath) clearDraft(tab.path);
@@ -805,7 +805,7 @@ const handleToggleConsole = () => {
     consoleOpen = false;
     return;
   }
-  // Diagnostics only make sense on a .typ, .tex or .md; otherwise open straight to the terminal.
+  // Diagnostics only make sense on .tex or .md; otherwise open straight to the terminal.
   if (!activePath || (extFromPath(activePath) !== "tex" && extFromPath(activePath) !== "md")) consoleTab = "terminal";
   consoleOpen = true;
 };
@@ -920,7 +920,7 @@ let cmds = $derived(
   />
 
   <main class="mdv-shell">
-    <Sidebar
+    <SidebarContainer
       open={sidebarOpen.current}
       {rootPath}
       folders={folders.current}

@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event"
 import { watch } from "@tauri-apps/plugin-fs"
-import { readMarkdown } from "@/lib/files"
+import { readText } from "@/lib/files"
 import { isSupportedTextPath, isImagePath, isPdfPath, getMtime } from "@/lib"
 import type { PanelManager } from "@/lib/panel-manager"
 
@@ -31,7 +31,7 @@ export async function reloadFile(
   deps: ExternalChangeDeps,
   path: string,
 ) {
-  const fresh = await readMarkdown(path);
+  const fresh = await readText(path);
   deps.pm.main.tabs = deps.pm.main.tabs.map((t: any) =>
     t.path === path ? { ...t, source: fresh, savedContent: fresh } : t,
   );

@@ -1,0 +1,233 @@
+/* virtual tree — uses mdv-tree classes from sidebar.css for identical look */
+.mdv-vtree {
+  /* container only — tree items use mdv-tree styles */
+}
+
+/* indent nested levels */
+.mdv-vtree .mdv-tree .mdv-tree {
+  padding-left: 12px;
+}
+
+/* vertical guide line on each nested level */
+.mdv-vtree .mdv-tree .mdv-tree::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: 6px;
+  width: 1px;
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  pointer-events: none;
+}
+
+/* calendar widget */
+.mdv-calendar {
+  padding: 0 8px;
+}
+
+.mdv-calendar__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 8px;
+}
+
+.mdv-calendar__nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--easing),
+    background var(--dur-fast) var(--easing);
+}
+
+.mdv-calendar__nav-btn:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.mdv-calendar__month {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg);
+  text-transform: lowercase;
+  letter-spacing: 0.03em;
+}
+
+.mdv-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.mdv-calendar__row--head {
+  display: contents;
+}
+
+.mdv-calendar__dow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+
+.mdv-calendar__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  transition:
+    background var(--dur-fast) var(--easing),
+    color var(--dur-fast) var(--easing);
+}
+
+.mdv-calendar__day:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.mdv-calendar__day.is-outside {
+  color: var(--muted);
+  opacity: 0.4;
+}
+
+.mdv-calendar__day.is-today {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.mdv-calendar__day.is-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.mdv-calendar__day-num {
+  line-height: 1;
+}
+
+.mdv-calendar__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 1px;
+}
+
+/* journal view */
+.mdv-journal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mdv-journal__tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.mdv-journal__bottom {
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.mdv-journal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--border);
+  min-height: 34px;
+}
+
+.mdv-journal__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+  text-transform: lowercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mdv-journal__quick {
+  display: flex;
+  gap: 4px;
+  padding: 8px 8px 0;
+}
+
+.mdv-journal__quick-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--easing),
+    border-color var(--dur-fast) var(--easing),
+    background var(--dur-fast) var(--easing);
+}
+
+.mdv-journal__quick-btn:hover {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--fg) 20%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+
+.mdv-journal__actions {
+  padding: 8px;
+}
+
+.mdv-journal__create-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--easing),
+    background var(--dur-fast) var(--easing);
+}
+
+.mdv-journal__create-btn:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}

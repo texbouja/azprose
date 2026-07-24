@@ -237,7 +237,9 @@ export async function resolveWikilinkPaths(article: HTMLElement, rootPath: strin
   for (const a of links) {
     const target = a.getAttribute("data-wikilink-target");
     if (!target) continue;
-    const fullPath = index.get(target);
+    // Index keys are basenames without extension — strip ext for lookup
+    const baseName = target.replace(/\.[^.]+$/, "");
+    const fullPath = index.get(baseName) ?? index.get(target);
     if (fullPath) a.setAttribute("data-wikilink-fullpath", fullPath);
   }
 }

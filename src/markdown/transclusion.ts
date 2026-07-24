@@ -1,5 +1,6 @@
-import { readFile } from "@tauri-apps/plugin-fs";
+import { readFile, exists } from "@tauri-apps/plugin-fs";
 import { getFileIndex } from "@/lib/vault-index";
+import { slugify } from "./slugify";
 
 /**
  * Pre-processes ![[file]] transclusion syntax before markdown-it rendering.
@@ -23,28 +24,21 @@ export interface TransclusionRange {
 const TRANSLUDE_RE = /^[ \t]*!\[\[([^\[\]]+?)\]\]/gm;
 const MAX_DEPTH = 10;
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
-    .replace(/ /g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 function dirname(filePath: string): string {
   const last = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
   return last >= 0 ? filePath.slice(0, last) : ".";
 }
 
 function resolveRelative(baseDir: string, target: string, sep: string): string {
-  const parts = (baseDir + sep + target).split(sep).filter(Boolean);
+  const isAbs = baseDir.startsWith(sep);
+  const parts = (baseDir + sep + target).split(sep).filter(s => s !== "");
   const resolved: string[] = [];
   for (const p of parts) {
     if (p === ".") continue;
     if (p === "..") { resolved.pop(); continue; }
     resolved.push(p);
   }
-  return resolved.join(sep);
+  return (isAbs ? sep : "") + resolved.join(sep);
 }
 
 function ensureMdExtension(target: string): string {
@@ -53,8 +47,7 @@ function ensureMdExtension(target: string): string {
 
 async function fileExists(path: string): Promise<boolean> {
   try {
-    await readFile(path, { encoding: "utf-8" as never });
-    return true;
+    return await exists(path);
   } catch {
     return false;
   }
@@ -149,7 +142,9 @@ export async function resolveTransclusions(
     if (!(await fileExists(absTarget)) && rootPath) {
       // Vault fallback: find file by basename
       const index = await getFileIndex(rootPath);
-      const vaultPath = index.get(fileName) ?? index.get(ensureMdExtension(fileName));
+      // Index keys are basenames without extension ("reduc2"), strip ext for lookup
+      const baseName = fileName.replace(/\.[^.]+$/, "");
+      const vaultPath = index.get(baseName) ?? index.get(fileName) ?? index.get(ensureMdExtension(fileName));
       if (vaultPath) {
         absTarget = vaultPath;
       }

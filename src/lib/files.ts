@@ -46,7 +46,6 @@ export const TEXT_EXTENSIONS = new Set([
   "sql",
   "sh", "bash", "zsh",
   "tex", "sty", "cls", "ltx", "bib",
-  "typ",
   "r", "rda",
   "pl", "pm",
   "lua",
@@ -279,11 +278,11 @@ export async function validatePlainTextFile(path: string): Promise<FileValidatio
   return checkBinaryAndSize(path);
 }
 
-export async function readMarkdown(path: string): Promise<string> {
+export async function readText(path: string): Promise<string> {
   return readTextFile(path);
 }
 
-export async function writeMarkdown(path: string, content: string): Promise<void> {
+export async function writeText(path: string, content: string): Promise<void> {
   await writeTextFile(path, content);
 }
 

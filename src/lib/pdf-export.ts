@@ -1,7 +1,8 @@
 // PDF export service — assembles a self-contained HTML document from the
 // markdown render pipeline and sends it to the Rust backend.
-// Chromium opens a visible window with the rendered content and the native
-// print dialog, letting the user fine-tune paper size, margins, etc.
+// Rust selects the best system browser per platform, injects print
+// parameters (Firefox profile prefs, Chrome --app mode), and opens the
+// native print dialog for the user to fine-tune paper size, margins, etc.
 
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -17,7 +18,7 @@ import {
   resolveMonoFont,
 } from "@/stores/markdown-settings.svelte";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
-import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
 import type { Theme } from "./theme";
 
@@ -64,13 +65,22 @@ function buildPrintCss(): string {
 }
 
 function buildMathJaxConfig(): string {
+  const pkgs = mathJaxPackages.current;
+  const loaderBlock = pkgs.length > 0
+    ? `loader: { paths: { mathjax: 'https://cdn.jsdelivr.net/npm/mathjax@4' }, load: [${pkgs.map(p => `'[tex]/${p}'`).join(', ')}] },`
+    : `loader: { paths: { mathjax: 'https://cdn.jsdelivr.net/npm/mathjax@4' } },`;
+  const packagesBlock = pkgs.length > 0
+    ? `packages: { '[+]': [${pkgs.map(p => `'${p}'`).join(', ')}] },`
+    : '';
   return `
     window.MathJax = {
+      ${loaderBlock}
       tex: {
         inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
         displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']],
         processEscapes: true,
         tags: 'ams',
+        ${packagesBlock}
       },
       svg: { fontCache: 'global' },
       startup: { typeset: true },
@@ -161,6 +171,23 @@ async function assembleHtml(
     ? `<div style="position:absolute;left:-9999px" aria-hidden="true">$$${preamble}$$</div>`
     : "";
 
+  // Lifecycle script — waits for MathJax to finish, then opens print dialog
+  const lifecycleScript = `
+<script>
+(function() {
+    function triggerPrint() { window.print(); }
+    if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
+        window.MathJax.startup.promise.then(function() {
+            setTimeout(triggerPrint, 600);
+        }).catch(function() { triggerPrint(); });
+    } else {
+        window.addEventListener('load', function() {
+            setTimeout(triggerPrint, 2000);
+        });
+    }
+})();
+<\/script>`;
+
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -175,14 +202,14 @@ ${printCss}
 <script>
 ${mathjaxConfig}
 </script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async><\/script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js" async><\/script>
 </head>
 <body>
 <div class="mdv-prose">
 ${preambleBlock}
 ${tmp.innerHTML}
 </div>
-<\/script>
+${lifecycleScript}
 </body>
 </html>`;
 }
@@ -190,9 +217,9 @@ ${tmp.innerHTML}
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Export a markdown file to PDF via Chrome --app mode.
- * Opens a minimal Chrome window with the rendered HTML
- * and the native print dialog.
+ * Export a markdown file to PDF via the system browser.
+ * Assembles a self-contained HTML and delegates to the Rust backend
+ * which selects the best browser per platform and injects print params.
  */
 export async function exportMarkdownPdf(
   src: string,

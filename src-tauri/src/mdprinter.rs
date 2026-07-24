@@ -1,45 +1,29 @@
-// mdprinter — Markdown → print/PDF via native browser.
+// mdprinter — Open rendered HTML in the system browser for PDF export.
 //
-// macOS / Windows: the system browser (Safari / Edge) handles MathJax
-// and the native print dialog — no extra flags needed.
+// The HTML is assembled by the TypeScript frontend (pdf-export.ts) and
+// includes MathJax config, lifecycle script, and print CSS.
+// Rust only handles browser selection and launch with print parameters.
 //
-// Linux: WebKitGTK is too limited for complex math. We launch a real
-// browser in --app mode (Chrome → Firefox → xdg-open fallback chain).
+// macOS / Windows: `open` / `cmd /c start` — system browser handles
+// MathJax and the native print dialog natively.
+//
+// Linux: WebKitGTK is too limited for complex math.  We launch a real
+// browser in --app mode (Chrome → Chromium → Firefox → xdg-open fallback chain).
+// Firefox gets a custom profile with print preferences (no headers/footers,
+// scale 100%, backgrounds).
 
 use std::path::Path;
 use std::process::Command;
 use tauri::command;
 
-/// Lifecycle script injected at the end of the HTML document.
-/// Waits for MathJax to finish typesetting, then opens the print dialog.
-const LIFECYCLE_SCRIPT: &str = r#"
-<script>
-(function() {
-    function triggerPrint() { window.print(); }
-    if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
-        window.MathJax.startup.promise.then(function() {
-            setTimeout(triggerPrint, 600);
-        }).catch(function() { triggerPrint(); });
-    } else {
-        window.addEventListener('load', function() {
-            setTimeout(triggerPrint, 2000);
-        });
-    }
-})();
-</script>"#;
-
 #[command]
 pub fn export_markdown_pdf(html: String) -> Result<String, String> {
-    let html_final = format!("{}{}", html, LIFECYCLE_SCRIPT);
-
-    // Write to temp file
     let temp_path = std::env::temp_dir().join("azprose-print.html");
-    std::fs::write(&temp_path, &html_final)
+    std::fs::write(&temp_path, &html)
         .map_err(|e| format!("write temp html: {e}"))?;
 
-    eprintln!("mdprinter: wrote {} ({} bytes)", temp_path.display(), html_final.len());
+    eprintln!("mdprinter: wrote {} ({} bytes)", temp_path.display(), html.len());
 
-    // Platform dispatch
     #[cfg(target_os = "macos")]
     { return launch_macos(&temp_path); }
 
@@ -54,7 +38,7 @@ pub fn export_markdown_pdf(html: String) -> Result<String, String> {
 }
 
 // ── macOS ────────────────────────────────────────────────────────────────────
-// `open` launches Safari (or the user's default browser). WebKit handles
+// `open` launches Safari (or the user's default browser).  WebKit handles
 // MathJax natively and the print dialog is the standard Cocoa one.
 
 #[cfg(target_os = "macos")]
@@ -148,7 +132,6 @@ fn launch_linux(path: &Path) -> Result<String, String> {
 }
 
 fn find_binary(names: &[&str]) -> Option<String> {
-    // Check hardcoded paths first (most reliable)
     let known_paths = [
         "/usr/bin",
         "/usr/local/bin",
@@ -164,7 +147,6 @@ fn find_binary(names: &[&str]) -> Option<String> {
             }
         }
     }
-    // Fall back to `which`
     for name in names {
         if let Ok(out) = Command::new("which").arg(name).output() {
             if out.status.success() {

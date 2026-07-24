@@ -44,18 +44,20 @@ export function createHandlers(ctx: HandlerContext) {
 
   // Reactive watcher: load handler on first file open, cleanup on last file close
   let lastExt = ctx.currentExt()
+  let watcherTimer: ReturnType<typeof setTimeout> | null = null
   const tick = () => {
     const ext = ctx.currentExt()
     if (ext !== lastExt) {
       if (ext && FACTORIES[ext]) void ensureHandler(ext)
       lastExt = ext
     }
-    setTimeout(tick, 50)
+    watcherTimer = setTimeout(tick, 50)
   }
   tick()
 
   return {
     cleanup() {
+      if (watcherTimer) { clearTimeout(watcherTimer); watcherTimer = null }
       for (const ext of Object.keys(loaded)) cleanupHandler(ext)
     },
   }

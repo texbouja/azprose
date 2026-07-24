@@ -1,5 +1,5 @@
 import { basename, isOpenablePath, isPdfPath, isImagePath } from "@/lib";
-import { readMarkdown, writeMarkdown } from "@/lib/files";
+import { readText, writeText } from "@/lib/files";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation";
@@ -95,7 +95,7 @@ export class PanelState {
 
     if (!isPdfPath(normalized) && !isImagePath(normalized)) {
       try {
-        const fileSource = await readMarkdown(normalized);
+        const fileSource = await readText(normalized);
         const draft = opts?.preferDraft ? loadDraft(normalized) : null;
         const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
         this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: content, savedContent: fileSource } : t);
@@ -159,7 +159,7 @@ export class PanelState {
     const tab = this.activeTab;
     if (!tab || tab.source === tab.savedContent) return;
     try {
-      await writeMarkdown(tab.path, tab.source);
+      await writeText(tab.path, tab.source);
       this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
       clearDraft(tab.path);
       this.notify();
@@ -204,7 +204,7 @@ export class PanelState {
     const toRemove: string[] = [];
     for (const tab of this.tabs) {
       try {
-        const fileSource = await readMarkdown(tab.path);
+        const fileSource = await readText(tab.path);
         const draft = preferDraft ? loadDraft(tab.path) : null;
         const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
         this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, source: content, savedContent: fileSource } : t);

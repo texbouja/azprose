@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core"
 export function createLatexHandler(context: HandlerContext): FileHandler {
   const ctx = context
   const cleanups: (() => void)[] = []
+  const timers: ReturnType<typeof setTimeout>[] = []
 
   async function onLatexBuild() {
     const { handleLatexBuild } = await import("@/latex")
@@ -43,7 +44,7 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
           }
           lastExt = ext
         }
-        setTimeout(tick, 50)
+        timers.push(setTimeout(tick, 50))
       }
       tick()
     }
@@ -65,7 +66,7 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
               .catch(() => {})
           }
         }
-        setTimeout(tick, 50)
+        timers.push(setTimeout(tick, 50))
       }
       tick()
     }
@@ -83,13 +84,15 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
             autoBuildIfDepChanged(ctx.ls, path, onLatexBuild)
           }
         }
-        setTimeout(tick, 50)
+        timers.push(setTimeout(tick, 50))
       }
       tick()
     }
   }
 
   function cleanup() {
+    for (const t of timers) clearTimeout(t)
+    timers.length = 0
     for (const fn of cleanups) fn()
     cleanups.length = 0
   }

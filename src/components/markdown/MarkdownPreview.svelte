@@ -8,6 +8,7 @@ import {
   markTranscludedBlocks,
   makeCalloutsCollapsible,
   updateCalloutIcons,
+  stripAutoCalloutTitles,
   postRenderDom,
 } from "@/markdown";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
@@ -116,12 +117,81 @@ async function typesetMath(el: HTMLElement): Promise<void> {
   await mj.typesetPromise?.([el]);
 }
 
+// ── Math cache: preserve MathJax SVGs across re-renders ──────────────────
+// Maps data-math-source → outerHTML (MathJax-rendered <mjx-container>)
+const mathCache = new Map<string, string>();
+let lastPreamble = "";
+
+function extractMathFromDom(el: HTMLElement): void {
+  for (const node of el.querySelectorAll<HTMLElement>("[data-math-source]")) {
+    const source = node.getAttribute("data-math-source");
+    if (source && node.innerHTML.includes("mjx-container")) {
+      mathCache.set(source, node.outerHTML);
+    }
+  }
+}
+
+function injectCachedMath(dom: HTMLElement): void {
+  for (const node of dom.querySelectorAll<HTMLElement>("[data-math-source]")) {
+    const source = node.getAttribute("data-math-source");
+    if (!source) continue;
+    const cached = mathCache.get(source);
+    if (cached) node.outerHTML = cached;
+  }
+}
+
+// ── Callout state cache: preserve open/closed across re-renders ───────────
+const calloutStateCache = new Map<string, boolean>();
+
+function extractCalloutState(el: HTMLElement): void {
+  calloutStateCache.clear();
+  const counters = new Map<string, number>();
+  for (const d of el.querySelectorAll<HTMLDetailsElement>("details.callout")) {
+    const type = d.dataset.callout ?? "";
+    const idx = counters.get(type) ?? 0;
+    counters.set(type, idx + 1);
+    calloutStateCache.set(`${type}#${idx}`, d.open);
+  }
+}
+
+function restoreCalloutState(el: HTMLElement): void {
+  const counters = new Map<string, number>();
+  for (const d of el.querySelectorAll<HTMLDetailsElement>("details.callout")) {
+    const type = d.dataset.callout ?? "";
+    const idx = counters.get(type) ?? 0;
+    counters.set(type, idx + 1);
+    const key = `${type}#${idx}`;
+    if (calloutStateCache.has(key)) {
+      d.open = calloutStateCache.get(key)!;
+    }
+  }
+}
+
+$effect(() => {
+  const p = mathJaxPreamble.current.trim();
+  if (p !== lastPreamble) {
+    lastPreamble = p;
+    mathCache.clear();
+  }
+});
+
 $effect(() => {
   if (!ready) return;
   const src = value;
   const theme = currentTheme;
   let cancelled = false;
   let cleanupCode = () => {};
+
+  // Cache old math SVGs, callout state, and scroll position before re-rendering
+  let scrollPct = 0;
+  if (articleEl) {
+    extractMathFromDom(articleEl);
+    extractCalloutState(articleEl);
+    const scroller = articleEl.closest<HTMLElement>(".mdv-preview");
+    if (scroller && scroller.scrollHeight > scroller.clientHeight) {
+      scrollPct = scroller.scrollTop / (scroller.scrollHeight - scroller.clientHeight);
+    }
+  }
 
   // Update callout icons from current settings before rendering
   updateCalloutIcons(calloutSettings.current);
@@ -132,15 +202,14 @@ $effect(() => {
     // Process callouts immediately before first paint
     const tmp = document.createElement("div");
     tmp.innerHTML = result.html;
-    for (const el of tmp.querySelectorAll<HTMLElement>(".callout")) {
-      const inner = el.querySelector<HTMLElement>(".callout-title-inner");
-      if (!inner) continue;
-      const type = el.dataset.callout ?? "";
-      const auto = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
-      if (inner.textContent?.trim() === auto) inner.textContent = "";
-    }
+    stripAutoCalloutTitles(tmp);
     makeCalloutsCollapsible(tmp);
+
+    // Re-inject cached MathJax SVGs for unchanged formulas
+    injectCachedMath(tmp);
+
     articleEl.innerHTML = tmp.innerHTML;
+    restoreCalloutState(articleEl);
 
     cleanupCode();
     cleanupCode = decorateCodeBlocks(articleEl);
@@ -160,6 +229,14 @@ $effect(() => {
         .replace(/^-|-$/g, "");
       const target = articleEl.querySelector(`#${CSS.escape(id)}`);
       target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (scrollPct > 0) {
+      // Restore scroll position
+      const scroller = articleEl.closest<HTMLElement>(".mdv-preview");
+      if (scroller) {
+        requestAnimationFrame(() => {
+          scroller.scrollTop = scrollPct * (scroller.scrollHeight - scroller.clientHeight);
+        });
+      }
     }
 
     // Scroll to editor cursor position after save

@@ -11,6 +11,7 @@ import { wikilinkPlugin } from "./wikilinks";
 import { resolveTransclusions, type TransclusionRange } from "./transclusion";
 import { ChevronRight as CHEVRON_ICON, Diamond as DIAMOND_ICON } from "@/lib/icons";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
+import { slugify } from "./slugify";
 
 const THEMES: Record<string, string> = {
   latte: "catppuccin-latte",
@@ -90,6 +91,10 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function escapeAttr(s: string): string {
+  return escapeHtml(s).replace(/"/g, "&quot;");
+}
+
 // Math plugin — must run before markdown-it's inline rules (emphasis, escape, etc.)
 // to prevent corruption of LaTeX content containing _, *, ^, etc.
 // Outputs \(...\) for inline math and \[...\] for display math — MathJax's default delimiters.
@@ -128,11 +133,15 @@ function mathPlugin(md: MarkdownIt): void {
     return true;
   });
 
-  md.renderer.rules["math_inline"] = (tokens, idx) =>
-    `\\(${escapeHtml(tokens[idx].content)}\\)`;
+  md.renderer.rules["math_inline"] = (tokens, idx) => {
+    const src = escapeAttr(tokens[idx].content);
+    return `<span class="math-inline" data-math-source="${src}">\\(${escapeHtml(tokens[idx].content)}\\)</span>`;
+  };
 
-  md.renderer.rules["math_display"] = (tokens, idx) =>
-    `<p class="math-block">\\[${escapeHtml(tokens[idx].content)}\\]</p>`;
+  md.renderer.rules["math_display"] = (tokens, idx) => {
+    const src = escapeAttr(tokens[idx].content);
+    return `<p class="math-block" data-math-source="${src}">\\[${escapeHtml(tokens[idx].content)}\\]</p>`;
+  };
 }
 
 // html: true — pass raw HTML blocks through, consistent with ProseMark's htmlBlockExtension.
@@ -176,12 +185,6 @@ md.core.ruler.push("source_lines", (state) => {
 });
 
 // GitHub-style heading anchors.
-const slugify = (text: string): string =>
-  text.toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
-    .replace(/ /g, "-")
-    .replace(/^-|-$/g, "");
-
 md.renderer.rules.heading_open = ((tokens, idx, options, _env, self) => {
   const inline = tokens[idx + 1];
   if (inline?.type === "inline") {
@@ -380,6 +383,21 @@ export function decorateCodeBlocks(root: HTMLElement): () => void {
     cleanups.push(() => btn.removeEventListener("click", onClick));
   });
   return () => cleanups.forEach((fn) => fn());
+}
+
+/**
+ * Post-render: strip auto-generated callout titles.
+ * If the title text matches the default for its type (e.g. "Note" for [!note]),
+ * it is removed so the user only sees manually-titled callouts.
+ */
+export function stripAutoCalloutTitles(container: HTMLElement): void {
+  for (const el of container.querySelectorAll<HTMLElement>(".callout")) {
+    const inner = el.querySelector<HTMLElement>(".callout-title-inner");
+    if (!inner) continue;
+    const type = el.dataset.callout ?? "";
+    const auto = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+    if (inner.textContent?.trim() === auto) inner.textContent = "";
+  }
 }
 
 /**
