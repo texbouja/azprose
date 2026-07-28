@@ -1,30 +1,20 @@
 <script lang="ts">
-import type { IconData } from "@/lib/icons";
-
 let {
   icon,
   size = 16,
-  strokeWidth = 1.75,
+  strokeWidth: _strokeWidth,
   title,
 }: {
-  icon: IconData;
+  icon: string;
   size?: number;
   strokeWidth?: number;
   title?: string;
 } = $props();
 </script>
 
-<svg
-  width={size}
-  height={size}
-  viewBox="0 0 24 24"
-  fill="none"
-  stroke="currentColor"
-  stroke-width={strokeWidth}
-  stroke-linecap="round"
-  stroke-linejoin="round"
+<i
+  class={icon}
+  style="font-size:{size}px"
   aria-label={title}
   aria-hidden={title ? undefined : true}
->
-  {@html icon}
-</svg>
+></i>

@@ -1,19 +1,5 @@
 <script lang="ts">
-  import {
-    Check,
-    ChevronRight,
-    Monitor,
-    Moon,
-    Palette,
-    RotateCcw,
-    Sparkles,
-    Sun,
-    Terminal,
-    Trash2,
-    X,
-  } from "@/lib/icons";
-  import type { IconData } from "@/lib/icons";
-  import { Button, Icon, Popover } from "@/components/primitives";
+  import { Button, Popover } from "@/components/primitives";
   import { language, getT } from "@/lib/i18n";
   import {
     THEME_GROUPS,
@@ -58,19 +44,19 @@
 
   let t = $derived(getT($language));
 
-  const THEME_ICONS: Record<string, IconData> = {
-    system: Monitor,
-    latte: Sun,
-    mono: Sun,
-    "mono-dark": Moon,
-    frappe: Moon,
-    macchiato: Moon,
-    mocha: Moon,
-    "skarline-fleet-dark":   Moon,
-    "skarline-fleet-purple": Moon,
-    "skarline-fleet-light":  Sun,
-    "skarline-xcode-dark":   Moon,
-    "skarline-xcode-light":  Sun,
+  const THEME_ICONS: Record<string, string> = {
+    system: "wxi-monitor",
+    latte: "wxi-sun",
+    mono: "wxi-sun",
+    "mono-dark": "wxi-moon",
+    frappe: "wxi-moon",
+    macchiato: "wxi-moon",
+    mocha: "wxi-moon",
+    "skarline-fleet-dark":   "wxi-moon",
+    "skarline-fleet-purple": "wxi-moon",
+    "skarline-fleet-light":  "wxi-sun",
+    "skarline-xcode-dark":   "wxi-moon",
+    "skarline-xcode-light":  "wxi-sun",
   };
 
   let menuOpen = $state(false);
@@ -102,13 +88,13 @@
   // Crafted = only user-added themes. None are persistent; all are removable.
   let allCraftedThemes = $derived(customThemes.map((ct) => ({ name: ct.name, label: ct.name })));
 
-  function themeIcon(value: string): IconData {
-    if (value === "system") return Monitor;
+  function themeIcon(value: string): string {
+    if (value === "system") return "wxi-monitor";
     const icon = THEME_ICONS[value];
     if (icon) return icon;
     const info = availableThemes.find((t) => t.id === value);
-    if (info) return info.type === "light" ? Sun : Moon;
-    return Moon;
+    if (info) return info.type === "light" ? "wxi-sun" : "wxi-moon";
+    return "wxi-moon";
   }
 
   async function openAddTheme() {
@@ -232,7 +218,7 @@
     onclick={() => menuOpen = !menuOpen}
   >
     {#snippet icon()}
-      <Icon icon={Palette} size={14} strokeWidth={1.5} />
+      <i class="wxi-palette" style="font-size:14px"></i>
     {/snippet}
   </Button>
   <Popover
@@ -254,7 +240,7 @@
             aria-expanded={expanded}
           >
             <span>{t(`theme.group.${group.label}`)}</span>
-            <Icon icon={ChevronRight} size={13} strokeWidth={1.7} />
+            <i class="wxi-chevron-right" style="font-size:13px"></i>
           </button>
           <div class="mdv-menu__group-body">
             <div class="mdv-menu__group-inner">
@@ -277,12 +263,12 @@
                   aria-checked={active}
                 >
                   <span class="mdv-menu__item-icon">
-                    <Icon icon={THEME_ICONS[c.value] || Palette} size={14} strokeWidth={1.5} />
+                    <i class={THEME_ICONS[c.value] || 'wxi-palette'} style="font-size:14px"></i>
                   </span>
                   <span class="mdv-menu__item-label">{c.label}</span>
                   {#if active}
                     <span class="mdv-menu__item-check">
-                      <Icon icon={Check} size={13} strokeWidth={2} />
+                      <i class="wxi-check" style="font-size:13px"></i>
                     </span>
                   {/if}
                 </button>
@@ -317,12 +303,12 @@
                     }}
                   >
                     <span class="mdv-menu__item-icon">
-                      <Icon icon={themeIcon(item.name)} size={14} strokeWidth={1.5} />
+                      <i class={themeIcon(item.name)} style="font-size:14px"></i>
                     </span>
                     <span class="mdv-menu__item-label">{item.label}</span>
                     {#if active}
                       <span class="mdv-menu__item-check">
-                        <Icon icon={Check} size={13} strokeWidth={2} />
+                        <i class="wxi-check" style="font-size:13px"></i>
                       </span>
                     {/if}
                     <button
@@ -331,7 +317,7 @@
                       onclick={(e) => { e.stopPropagation(); handleRemoveTheme(item.name); }}
                       aria-label={t("theme.removeTheme")}
                     >
-                      <Icon icon={Trash2} size={12} strokeWidth={1.5} />
+                      <i class="wxi-trash-2" style="font-size:12px"></i>
                     </button>
                   </div>
                 {/each}
@@ -347,7 +333,7 @@
           onclick={openAddTheme}
         >
           <span>{t("theme.addTheme")}</span>
-          <Icon icon={ChevronRight} size={13} strokeWidth={1.7} />
+          <i class="wxi-chevron-right" style="font-size:13px"></i>
         </button>
       </section>
       {#if addThemeOpen}
@@ -359,7 +345,7 @@
               aria-label={t("app.close")}
               onclick={() => (addThemeOpen = false)}
             >
-              <Icon icon={X} size={14} strokeWidth={1.8} />
+              <i class="wxi-x" style="font-size:14px"></i>
             </button>
             <!-- svelte-ignore a11y_autofocus -->
             <input
@@ -415,7 +401,7 @@
               {theme.opacity >= 100 ? t("title.off") : `${100 - theme.opacity}%`} /{" "}
               {t(`writing.font.${typography.markdownFontSize}`)}
             </span>
-            <Icon icon={ChevronRight} size={13} strokeWidth={1.7} />
+            <i class="wxi-chevron-right" style="font-size:13px"></i>
           </button>
         </div>
         <div class="mdv-menu__group-body">
@@ -425,7 +411,7 @@
               class:is-active={theme.transparent}
             >
               <span class="mdv-menu__slider-icon" aria-hidden="true">
-                <Icon icon={Sparkles} size={14} strokeWidth={1.5} />
+                <i class="wxi-sparkles" style="font-size:14px"></i>
               </span>
               <span class="mdv-menu__slider-label">{t("title.transparency")}</span>
               <span class="mdv-menu__slider-value" aria-hidden="true">
@@ -488,7 +474,7 @@
               class="mdv-menu__reset-row"
               onclick={onResetTypography}
             >
-              <Icon icon={RotateCcw} size={13} strokeWidth={1.6} />
+              <i class="wxi-rotate-ccw" style="font-size:13px"></i>
               <span>{t("typo.reset")}</span>
             </button>
           </div>
@@ -506,7 +492,7 @@
           aria-checked={vimOn}
         >
           <span class="mdv-menu__item-icon">
-            <Icon icon={Terminal} size={14} strokeWidth={1.5} />
+            <i class="wxi-terminal" style="font-size:14px"></i>
           </span>
           <span class="mdv-menu__item-label">{t("title.vimMode")}</span>
           <span class="mdv-menu__switch" class:is-on={vimOn} aria-hidden="true"></span>

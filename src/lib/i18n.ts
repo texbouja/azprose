@@ -4,17 +4,13 @@ import { STORAGE_KEYS } from "./storage";
 
 import enJSON from "@/locales/en.json";
 import frJSON from "@/locales/fr.json";
-import deJSON from "@/locales/de.json";
-import esJSON from "@/locales/es.json";
 
-export type Language = "en" | "es" | "fr" | "de";
+export type Language = "en" | "fr";
 export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
 export const LANGUAGE_CHOICES: Array<{ value: Language; label: string; nativeLabel: string }> = [
   { value: "en", label: "English", nativeLabel: "English" },
-  { value: "es", label: "Spanish", nativeLabel: "Español" },
   { value: "fr", label: "French", nativeLabel: "Français" },
-  { value: "de", label: "German", nativeLabel: "Deutsch" },
 ];
 
 const LANGUAGE_VALUES = new Set<Language>(LANGUAGE_CHOICES.map(({ value }) => value));
@@ -24,9 +20,7 @@ void i18n.init({
   fallbackLng: "en",
   lng: "en",
   resources: {
-    de: { translation: deJSON },
     en: { translation: enJSON },
-    es: { translation: esJSON },
     fr: { translation: frJSON },
   },
   interpolation: {

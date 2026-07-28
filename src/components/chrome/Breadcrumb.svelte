@@ -1,28 +1,15 @@
 <script lang="ts">
-  import {
-    Check,
-    ChevronRight,
-    Columns2,
-
-    Globe,
-    Fullscreen,
-    PanelBottom,
-    PanelLeftClose,
-    PanelLeftOpen,
-    PanelTopClose,
-    PanelTopOpen,
-    Settings,
-  } from "@/lib/icons";
-  import { Button, Icon, Popover } from "@/components/primitives";
-  import { language, getT, setLanguage, LANGUAGE_CHOICES } from "@/lib/i18n";
+  import { Button } from "@/components/primitives";
+  import { language, getT } from "@/lib/i18n";
   import { shortcutLabel } from "@/lib";
   import type { TypographySettings } from "@/lib/typography";
+  import FileTree from "@/components/files/file-tree.svelte";
   import ThemeButton from "./ThemeButton.svelte";
   import exciteUrl from "@/assets/mascot/az-excite.svg";
+  import opencodeDarkSvg from "@/assets/opencode-logo-dark.svg";
+  import opencodeLightSvg from "@/assets/opencode-logo-light.svg";
 
   let {
-    sidebarOpen,
-    onToggleSidebar,
     rootPath,
     activePath,
     saveStatus,
@@ -39,9 +26,11 @@
     onToggleConsole,
     viewPanelOpen,
     onToggleViewPanel,
+    onOpenCode,
+    onOpenSvarCalendar,
+    onOpenPalette,
+    onSelectFile,
   }: {
-    sidebarOpen: boolean;
-    onToggleSidebar: () => void;
     rootPath: string | null;
     activePath: string | null;
     saveStatus: "idle" | "dirty" | "saving" | "saved";
@@ -58,20 +47,64 @@
     onToggleConsole?: () => void;
     viewPanelOpen?: boolean;
     onToggleViewPanel?: () => void;
+    onOpenCode?: () => void;
+    onOpenSvarCalendar?: () => void;
+    onOpenPalette?: () => void;
+    onSelectFile?: (path: string) => void;
   } = $props();
 
   let t = $derived(getT($language));
 
-  let langMenuOpen = $state(false);
-  let langAnchorEl: HTMLDivElement | null = null;
+  let themeIsDark = $state(true);
+
+  $effect(() => {
+    function sync() {
+      const cs = getComputedStyle(document.documentElement).getPropertyValue("color-scheme").trim();
+      themeIsDark = cs !== "light";
+    }
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  });
+
+  let opencodeLogo = $derived(themeIsDark ? opencodeDarkSvg : opencodeLightSvg);
 
   const MAX_SEGMENTS = 4;
 
-  function pathSegments(path: string): string[] {
-    const parts = path.split(/[\\/]/).filter(Boolean);
-    if (parts.length <= MAX_SEGMENTS) return parts;
-    return ["…", ...parts.slice(-MAX_SEGMENTS)];
-  }
+  /* ── segment data ── */
+
+  type SegmentInfo = {
+    label: string;
+    parentDir: string;
+    isEllipsis?: boolean;
+  };
+
+  let path = $derived(activePath ?? rootPath);
+
+  let segmentData = $derived.by((): SegmentInfo[] => {
+    if (!path) return [];
+    const root = rootPath || "";
+    let rel: string;
+    if (root && path.startsWith(root)) {
+      rel = path.slice(root.length).replace(/^\//, "");
+    } else {
+      rel = path;
+    }
+    const parts = rel.split(/[\\/]/).filter(Boolean);
+    if (parts.length === 0) return [];
+
+    const all: SegmentInfo[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const parentDir = i === 0
+        ? root
+        : root + "/" + parts.slice(0, i).join("/");
+      all.push({ label: parts[i], parentDir });
+    }
+
+    if (all.length <= MAX_SEGMENTS) return all;
+    return [{ label: "…", parentDir: "", isEllipsis: true }, ...all.slice(-MAX_SEGMENTS)];
+  });
 
   function statusLabel(status: "idle" | "dirty" | "saving" | "saved"): string {
     switch (status) {
@@ -82,32 +115,72 @@
     }
   }
 
-  let path = $derived(activePath ?? rootPath);
-  let segments = $derived(path ? pathSegments(path) : []);
   let label = $derived(statusLabel(saveStatus));
+
+  /* ── dropdown state ── */
+
+  let openIdx = $state<number | null>(null);
+  let ddTop = $state(0);
+  let ddLeft = $state(0);
+  let ddWidth = $state(280);
+
+  function onSegmentClick(i: number, seg: SegmentInfo, el: HTMLElement) {
+    if (seg.isEllipsis || !onSelectFile) return;
+    if (openIdx === i) { openIdx = null; return; }
+
+    const rect = el.getBoundingClientRect();
+    ddTop = rect.bottom + 4;
+    ddLeft = rect.left;
+    ddWidth = Math.max(220, rect.width);
+    openIdx = i;
+  }
+
+  function closeDropdown() { openIdx = null; }
+
+  function handleSelectFile(p: string) {
+    openIdx = null;
+    onSelectFile?.(p);
+  }
+
+  /* click-outside + Escape */
+  $effect(() => {
+    if (openIdx === null) return;
+
+    function onDocMouseDown(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (target.closest?.(".mdv-bc-dropdown")) return;
+      if (target.closest?.(".mdv-breadcrumb__seg")) return;
+      closeDropdown();
+    }
+    function onDocKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") closeDropdown();
+    }
+
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("keydown", onDocKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("keydown", onDocKeyDown);
+    };
+  });
 </script>
 
 <div class="mdv-breadcrumb" data-tauri-drag-region>
-  <Button
-    data-tooltip={shortcutLabel(sidebarOpen ? t("breadcrumb.hideSidebarShortcut") : t("breadcrumb.showSidebarShortcut"))}
-    aria-label={sidebarOpen ? t("breadcrumb.hideSidebar") : t("breadcrumb.showSidebar")}
-    onclick={onToggleSidebar}
-  >
-    {#snippet icon()}
-      <Icon icon={sidebarOpen ? PanelLeftClose : PanelLeftOpen} size={14} strokeWidth={1.5} />
-    {/snippet}
-  </Button>
-
   <nav class="mdv-breadcrumb__path" aria-label={t("breadcrumb.path")} data-tauri-drag-region>
-    {#if segments.length === 0}
+    {#if segmentData.length === 0}
       <span class="mdv-breadcrumb__placeholder">{t("breadcrumb.noFile")}</span>
     {:else}
-      {#each segments as seg, i}
+      {#each segmentData as seg, i (seg.label + i)}
         <span class="mdv-breadcrumb__seg-row">
           {#if i > 0}
-            <Icon icon={ChevronRight} size={11} strokeWidth={1.5} title={t("breadcrumb.separator")} />
+            <i class="wxi-chevron-right" style="font-size:11px" title={t("breadcrumb.separator")}></i>
           {/if}
-          <span class="mdv-breadcrumb__seg" class:is-leaf={i === segments.length - 1}>{seg}</span>
+          <button
+            type="button"
+            class="mdv-breadcrumb__seg{!seg.isEllipsis && onSelectFile ? ' is-interactive' : ''}{i === segmentData.length - 1 ? ' is-leaf' : ''}"
+            disabled={!!seg.isEllipsis}
+            onclick={(e) => onSegmentClick(i, seg, e.currentTarget as HTMLElement)}
+          >{seg.label}</button>
         </span>
       {/each}
     {/if}
@@ -125,8 +198,6 @@
   </div>
 
   <div class="mdv-breadcrumb__actions" data-tauri-drag-region>
-
-    <!-- AFFICHAGE : barre d'outils, console, plein écran -->
     <div class="mdv-breadcrumb__display">
       <Button
         data-tooltip={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
@@ -135,7 +206,7 @@
         onclick={onToggleTitlebar}
       >
         {#snippet icon()}
-          <Icon icon={titlebarVisible ? PanelTopClose : PanelTopOpen} size={14} strokeWidth={1.5} />
+          <i class={titlebarVisible ? 'wxi-panel-top-close' : 'wxi-panel-top-open'} style="font-size:14px"></i>
         {/snippet}
       </Button>
       {#if onToggleConsole}
@@ -146,7 +217,7 @@
           onclick={onToggleConsole}
         >
           {#snippet icon()}
-            <Icon icon={PanelBottom} size={14} strokeWidth={1.5} />
+            <i class="wxi-panel-bottom" style="font-size:14px"></i>
           {/snippet}
         </Button>
       {/if}
@@ -158,7 +229,7 @@
           onclick={onToggleViewPanel}
         >
           {#snippet icon()}
-            <Icon icon={Columns2} size={14} strokeWidth={1.5} />
+            <i class="wxi-columns-2" style="font-size:14px"></i>
           {/snippet}
         </Button>
       {/if}
@@ -169,14 +240,51 @@
           onclick={onToggleFullscreen}
         >
           {#snippet icon()}
-            <Icon icon={Fullscreen} size={14} strokeWidth={1.5} />
+            <i class="wxi-fullscreen" style="font-size:14px"></i>
           {/snippet}
         </Button>
       {/if}
     </div>
 
-    <!-- SETTINGS : thème, langue, réglages -->
+    {#if onOpenCode || onOpenSvarCalendar}
+      <div class="mdv-breadcrumb__tools">
+        {#if onOpenCode}
+          <Button
+            data-tooltip={t("breadcrumb.openCode")}
+            aria-label={t("breadcrumb.openCode")}
+            onclick={onOpenCode}
+          >
+            {#snippet icon()}
+              <img src={opencodeLogo} alt="" aria-hidden width={14} height={14} draggable={false} class="mdv-breadcrumb__opencode" />
+            {/snippet}
+          </Button>
+        {/if}
+        {#if onOpenSvarCalendar}
+          <Button
+            data-tooltip={t("breadcrumb.svarCalendar")}
+            aria-label={t("breadcrumb.svarCalendar")}
+            onclick={onOpenSvarCalendar}
+          >
+            {#snippet icon()}
+              <i class="wxi-calendar-clock" style="font-size:14px"></i>
+            {/snippet}
+          </Button>
+        {/if}
+      </div>
+    {/if}
+
     <div class="mdv-breadcrumb__settings">
+      {#if onOpenPalette}
+        <Button
+          data-tooltip={shortcutLabel(t("breadcrumb.commandPalette"))}
+          aria-label={t("breadcrumb.commandPalette")}
+          onclick={onOpenPalette}
+        >
+          {#snippet icon()}
+            <i class="wxi-terminal" style="font-size:14px"></i>
+          {/snippet}
+        </Button>
+      {/if}
       <ThemeButton
         {vimOn}
         {onToggleVim}
@@ -184,49 +292,6 @@
         {onTypographyChange}
         {onResetTypography}
       />
-      <div class="mdv-lang-wrap" bind:this={langAnchorEl}>
-        <button
-          type="button"
-          class="mdv-lang-trigger"
-          data-tooltip={t("title.language")}
-          aria-label={t("title.language")}
-          aria-haspopup="menu"
-          aria-expanded={langMenuOpen}
-          onclick={() => langMenuOpen = !langMenuOpen}
-        >
-          <Icon icon={Globe} size={14} strokeWidth={1.5} />
-          <span class="mdv-lang-trigger__code">{$language.toUpperCase()}</span>
-        </button>
-        <Popover
-          open={langMenuOpen}
-          onClose={() => langMenuOpen = false}
-          anchorRef={{ current: langAnchorEl }}
-        >
-          <div class="mdv-menu">
-            {#each LANGUAGE_CHOICES as choice}
-              {@const active = $language === choice.value}
-              <button
-                type="button"
-                class="mdv-menu__item"
-                class:is-active={active}
-                onclick={() => {
-                  setLanguage(choice.value);
-                  langMenuOpen = false;
-                }}
-                role="menuitemradio"
-                aria-checked={active}
-              >
-                <span class="mdv-menu__item-label">{choice.nativeLabel}</span>
-                {#if active}
-                  <span class="mdv-menu__item-check">
-                    <Icon icon={Check} size={13} strokeWidth={2} />
-                  </span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        </Popover>
-      </div>
       {#if onOpenSettings}
         <Button
           data-tooltip={t("breadcrumb.settings")}
@@ -234,52 +299,143 @@
           onclick={onOpenSettings}
         >
           {#snippet icon()}
-            <Icon icon={Settings} size={14} strokeWidth={1.5} />
+            <i class="wxi-settings" style="font-size:14px"></i>
           {/snippet}
         </Button>
       {/if}
     </div>
-
   </div>
 </div>
 
+<!-- fixed dropdown with FileTree — escapes overflow:hidden breadcrumb -->
+{#if openIdx !== null}
+  {@const seg = segmentData[openIdx]}
+  <div
+    class="mdv-bc-dropdown"
+    style="top:{ddTop}px; left:{ddLeft}px; width:{ddWidth}px"
+    role="menu"
+  >
+    <FileTree
+      rootPath={seg.parentDir}
+      {activePath}
+      onSelect={handleSelectFile}
+    />
+  </div>
+{/if}
+
 <style>
-  .mdv-lang-wrap {
+  .mdv-breadcrumb__opencode {
+    display: block;
+    object-fit: contain;
+  }
+
+  /* ── interactive segments ── */
+
+  .mdv-breadcrumb__seg-row {
     position: relative;
   }
 
-  .mdv-lang-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: 22px;
-    padding: 0 5px;
+  .mdv-breadcrumb__seg {
+    appearance: none;
     border: none;
-    border-radius: 5px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    background: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    border-radius: 4px;
     transition:
-      background var(--dur-fast) var(--easing),
-      color var(--dur-fast) var(--easing);
+      color var(--dur-base) var(--easing),
+      background var(--dur-fast) var(--easing);
   }
 
-  .mdv-lang-trigger:hover {
-    background: var(--surface-hover);
+  .mdv-breadcrumb__seg.is-interactive {
+    cursor: pointer;
+  }
+
+  .mdv-breadcrumb__seg.is-interactive:hover {
     color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
   }
 
-  .mdv-lang-trigger:focus-visible {
-    outline: none;
-    box-shadow: inset 0 0 0 1.5px var(--accent);
+  .mdv-breadcrumb__seg.is-leaf {
+    color: var(--fg);
+    font-weight: 500;
   }
 
-  .mdv-lang-trigger__code {
-    line-height: 1;
+  .mdv-breadcrumb__seg:disabled {
+    cursor: default;
+    opacity: 1;
+  }
+
+  .mdv-breadcrumb__seg:disabled:hover {
+    background: none;
+  }
+
+  /* ── fixed dropdown ── */
+
+  .mdv-bc-dropdown {
+    position: fixed;
+    z-index: 200;
+    max-height: 360px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted) 30%, transparent) transparent;
+    padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, white 4%, transparent) inset,
+      0 10px 28px rgba(var(--shadow-color), 0.22),
+      0 2px 8px rgba(var(--shadow-color), 0.08);
+    animation: mdv-pop-in 140ms var(--easing);
+  }
+
+  .mdv-bc-dropdown::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .mdv-bc-dropdown::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--muted) 28%, transparent);
+    border-radius: 999px;
+  }
+
+  /* tighten tree rows inside dropdown */
+  .mdv-bc-dropdown :global(.mdv-tree__row) {
+    padding: 3px 10px 3px 6px;
+    font-size: 12px;
+  }
+
+  .mdv-bc-dropdown :global(.mdv-tree__row--file) {
+    padding: 3px 10px 3px 6px;
+  }
+
+  .mdv-bc-dropdown :global(.mdv-tree__loading),
+  .mdv-bc-dropdown :global(.mdv-tree__empty) {
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .mdv-bc-dropdown :global(.mdv-tree__error) {
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .mdv-bc-dropdown :global(.mdv-tree__error-art) {
+    display: none;
+  }
+
+  @keyframes mdv-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 </style>

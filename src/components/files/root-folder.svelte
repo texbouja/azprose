@@ -1,6 +1,4 @@
 <script lang="ts">
-import { ChevronRight, Folder, FolderOpen, X } from "@/lib/icons";
-import Icon from "@/components/primitives/Icon.svelte";
 import { basename, type FileEntry } from "@/lib";
 import { getT, language } from "@/lib/i18n";
 import FileTree from "./file-tree.svelte";
@@ -99,10 +97,10 @@ function onDrop(e: DragEvent) {
   >
     <button type="button" class="mdv-rootfolder__toggle" onclick={() => open = !open} title={path}>
       <span class="mdv-tree__chevron{open ? ' is-open' : ''}">
-        <Icon icon={ChevronRight} size={12} strokeWidth={2} />
+        <i class="wxi-chevron-right" style="font-size:12px"></i>
       </span>
       <span class="mdv-tree__icon">
-        <Icon icon={open ? FolderOpen : Folder} size={13} strokeWidth={1.5} />
+        <i class={open ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
       </span>
       <span class="mdv-rootfolder__label">
         <span class="mdv-rootfolder__name">{name}</span>
@@ -120,7 +118,7 @@ function onDrop(e: DragEvent) {
         data-tooltip={closeLabel}
         aria-label={closeLabel}
       >
-        <Icon icon={X} size={12} strokeWidth={2} />
+        <i class="wxi-x" style="font-size:12px"></i>
       </button>
     {/if}
   </div>

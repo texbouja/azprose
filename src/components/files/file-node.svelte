@@ -1,6 +1,5 @@
 <script lang="ts">
-import { Check, FilePlus2, Star } from "@/lib/icons";
-import Icon from "@/components/primitives/Icon.svelte";
+
 import FileIcon from "./FileIcon.svelte";
 import { DRAG_MIME } from "./folder-node.svelte";
 import type { FileEntry } from "@/lib";
@@ -103,7 +102,7 @@ function handleDblClick() {
         onToggleStage(entry.path);
       }}
     >
-      <Icon icon={staged ? Check : FilePlus2} size={11} strokeWidth={1.8} />
+      <i class={staged ? 'wxi-check' : 'wxi-file-plus-2'} style="font-size:11px"></i>
     </button>
   {/if}
   {#if onToggleFavorite}
@@ -118,7 +117,7 @@ function handleDblClick() {
         onToggleFavorite(entry.path);
       }}
     >
-      <Icon icon={Star} size={11} strokeWidth={1.8} />
+      <i class="wxi-star" style="font-size:11px"></i>
     </button>
   {/if}
 </li>

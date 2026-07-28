@@ -1,29 +1,4 @@
-import type { IconData } from "./icons";
-import {
-  BookOpen,
-  CircleHelp,
-  Code2,
-  Columns2,
-  Download,
-  Eye,
-  FileDown,
-  FilePlus2,
-  FileText,
-  FolderPlus,
-  Info,
-  Monitor,
-  Moon,
-  PanelBottom,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pencil,
-  Save,
-  Settings,
-  Sparkles,
-  Star,
-  Sun,
-  Undo2,
-} from "./icons";
+
 import { basename, dirname } from "./paths-utils";
 import { setThemeMode, setTransparency, THEME_CHOICES, THEME_HINTS, type ThemeMode } from "./theme";
 import type { Translate } from "./i18n";
@@ -34,7 +9,10 @@ export type CommandCategory =
   | "latex"
   | "markdown"
   | "view"
+  | "colles"
+  | "opencode"
   | "theme"
+  | "maintenance"
   | "help";
 
 export type Command = {
@@ -42,7 +20,7 @@ export type Command = {
   label: string;
   hint?: string;
   shortcut?: string;
-  icon?: IconData;
+  icon?: string;
   category?: CommandCategory;
   keywords?: string[];
   action: () => void | Promise<void>;
@@ -99,24 +77,43 @@ export type CommandActions = {
   toggleViewPanel: () => void;
   toggleTitlebar: () => void;
   openSettings: () => void;
+
+  // Colles
+  showColles: () => void;
+  openColloscopeGrid: () => void;
+  openCalendarEditor: () => void;
+  openElevesSpreadsheet: () => void;
+  importElevesList: () => void;
+
+  // OpenCode
+  showOpenCode: () => void;
+
+  // Journal
+  openJournalCalendar: () => void;
+
+  // SVAR Calendar (comparison)
+  openSvarCalendar: () => void;
+
+  // Maintenance
+  clearCalendarCache: () => void;
 };
 
-const THEME_ICONS: Record<string, IconData> = {
-  system: Monitor,
-  latte: Sun,
-  mono: Sun,
-  "mono-dark": Moon,
-  frappe: Moon,
-  macchiato: Moon,
-  mocha: Moon,
-  "skarline-fleet-dark":   Moon,
-  "skarline-fleet-purple": Moon,
-  "skarline-fleet-light":  Sun,
-  "skarline-xcode-dark":   Moon,
-  "skarline-xcode-light":  Sun,
+const THEME_ICONS: Record<string, string> = {
+  system: "wxi-monitor",
+  latte: "wxi-sun",
+  mono: "wxi-sun",
+  "mono-dark": "wxi-moon",
+  frappe: "wxi-moon",
+  macchiato: "wxi-moon",
+  mocha: "wxi-moon",
+  "skarline-fleet-dark":   "wxi-moon",
+  "skarline-fleet-purple": "wxi-moon",
+  "skarline-fleet-light":  "wxi-sun",
+  "skarline-xcode-dark":   "wxi-moon",
+  "skarline-xcode-light":  "wxi-sun",
 };
 
-const THEME_COMMANDS: Array<{ mode: ThemeMode; label: string; hint: string; icon: IconData }> =
+const THEME_COMMANDS: Array<{ mode: ThemeMode; label: string; hint: string; icon: string }> =
   THEME_CHOICES.map((theme) => ({
     mode: theme.value,
     label: theme.label,
@@ -130,7 +127,10 @@ export const CATEGORY_ORDER: CommandCategory[] = [
   "latex",
   "markdown",
   "view",
+  "colles",
+  "opencode",
   "theme",
+  "maintenance",
   "help",
 ];
 
@@ -149,7 +149,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: `recent-${path}`,
       label: basename(path),
       hint: t("command.recentHint", { dir: dirname(path) }),
-      icon: FileText,
+      icon: "wxi-file-text",
       category: "recent",
       keywords: ["recent", "history", "open", "file"],
       action: () => actions.openRecent(path),
@@ -165,7 +165,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("command.openProject"),
       hint: t("command.openProjectHint"),
       shortcut: "⌘⇧O",
-      icon: FolderPlus,
+      icon: "wxi-folder-plus",
       category: "file",
       keywords: ["folder", "workspace", "library", "notes", "project"],
       action: actions.openFolder,
@@ -175,7 +175,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("app.newFile"),
       hint: t("command.newFileHint"),
       shortcut: "⌘N",
-      icon: FilePlus2,
+      icon: "wxi-file-plus2",
       category: "file",
       keywords: ["new", "blank", "draft", "untitled"],
       action: actions.newFile,
@@ -185,7 +185,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("command.save"),
       hint: actions.hasActivePath ? t("command.saveHintReady") : t("command.saveHintEmpty"),
       shortcut: "⌘S",
-      icon: Save,
+      icon: "wxi-save",
       category: "file",
       keywords: ["save", "write", "disk"],
       action: actions.save,
@@ -195,7 +195,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("command.undoFileOp"),
       hint: t("command.undoFileOpHint"),
       shortcut: "⌘⌥Z",
-      icon: Undo2,
+      icon: "wxi-undo2",
       category: "file",
       keywords: ["undo", "move", "rename", "file action"],
       action: actions.undoFileOp,
@@ -204,7 +204,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "toggle-favorite",
       label: t("command.toggleFavorite"),
       hint: actions.currentFilePath ? t("command.toggleFavoriteHint") : t("command.toggleFavoriteHintEmpty"),
-      icon: Star,
+      icon: "wxi-star",
       category: "file",
       keywords: ["favorite", "star", "bookmark", "pin"],
       action: actions.toggleFavorite,
@@ -216,7 +216,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         label: t("command.latexBuild"),
         hint: t("command.latexBuildHint"),
         shortcut: "⌘⌥B",
-        icon: FileDown,
+        icon: "wxi-file-down",
         category: "latex" as CommandCategory,
         keywords: ["latex", "build", "compile", "pdf"],
         action: actions.latexBuild,
@@ -225,7 +225,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         id: "latex-view-pdf",
         label: t("command.latexViewPdf"),
         hint: t("command.latexViewPdfHint"),
-        icon: Eye,
+        icon: "wxi-eye",
         category: "latex" as CommandCategory,
         keywords: ["latex", "view", "pdf", "viewer"],
         action: actions.latexViewPdf,
@@ -234,7 +234,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         id: "latex-clean-aux",
         label: t("command.latexCleanAux"),
         hint: t("command.latexCleanAuxHint"),
-        icon: FileDown,
+        icon: "wxi-file-down",
         category: "latex" as CommandCategory,
         keywords: ["latex", "clean", "aux", "auxiliary"],
         action: actions.latexCleanAux,
@@ -243,7 +243,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         id: "latex-clean-aux-and-output",
         label: t("command.latexCleanAuxAndOutput"),
         hint: t("command.latexCleanAuxAndOutputHint"),
-        icon: FileDown,
+        icon: "wxi-file-down",
         category: "latex" as CommandCategory,
         keywords: ["latex", "clean", "aux", "output", "pdf"],
         action: actions.latexCleanAuxAndOutput,
@@ -252,7 +252,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         id: "latex-clean-all",
         label: t("command.latexCleanAll"),
         hint: t("command.latexCleanAllHint"),
-        icon: FileDown,
+        icon: "wxi-file-down",
         category: "latex" as CommandCategory,
         keywords: ["latex", "clean", "all"],
         action: actions.latexCleanAll,
@@ -265,7 +265,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         label: t("command.mdRaw"),
         hint: t("command.mdRawHint"),
         shortcut: "⌘1",
-        icon: Code2,
+        icon: "wxi-code2",
         category: "markdown" as CommandCategory,
         keywords: ["markdown", "raw", "code", "editor mode"],
         action: () => actions.setEditorMode("raw"),
@@ -275,7 +275,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         label: t("command.mdProse"),
         hint: t("command.mdProseHint"),
         shortcut: "⌘2",
-        icon: Pencil,
+        icon: "wxi-pencil",
         category: "markdown" as CommandCategory,
         keywords: ["markdown", "prose", "writing", "editor mode"],
         action: () => actions.setEditorMode("prose"),
@@ -285,7 +285,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         label: t("command.mdPreview"),
         hint: t("command.mdPreviewHint"),
         shortcut: "⌘3",
-        icon: Eye,
+        icon: "wxi-eye",
         category: "markdown" as CommandCategory,
         keywords: ["markdown", "preview", "view", "editor mode"],
         action: () => actions.setEditorMode("preview"),
@@ -294,7 +294,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         id: "md-presentation",
         label: t("command.mdPresentation"),
         hint: t("command.mdPresentationHint"),
-        icon: BookOpen,
+        icon: "wxi-book-open",
         category: "markdown" as CommandCategory,
         keywords: ["markdown", "presentation", "slides", "fullscreen"],
         action: actions.startPresentation,
@@ -304,7 +304,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         label: t("command.exportPdf"),
         hint: t("command.exportPdfHint"),
         shortcut: "⌘P",
-        icon: FileDown,
+        icon: "wxi-file-down",
         category: "markdown" as CommandCategory,
         keywords: ["pdf", "export", "print", "download"],
         action: actions.exportPdf,
@@ -316,7 +316,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: actions.sidebarOpen ? t("command.hideSidebar") : t("command.showSidebar"),
       hint: t("command.sidebarHint"),
       shortcut: "⌘B",
-      icon: actions.sidebarOpen ? PanelLeftClose : PanelLeftOpen,
+      icon: actions.sidebarOpen ? "wxi-panel-left-close" : "wxi-panel-left-open",
       category: "view",
       keywords: ["sidebar", "explorer", "tree", "files"],
       action: actions.toggleSidebar,
@@ -326,7 +326,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("command.toggleConsole"),
       hint: t("command.toggleConsoleHint"),
       shortcut: "⌘⇧C",
-      icon: PanelBottom,
+      icon: "wxi-panel-bottom",
       category: "view",
       keywords: ["console", "log", "terminal", "diagnostics"],
       action: actions.toggleConsole,
@@ -336,7 +336,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("command.toggleViewPanel"),
       hint: t("command.toggleViewPanelHint"),
       shortcut: "⌘\\",
-      icon: Columns2,
+      icon: "wxi-columns2",
       category: "view",
       keywords: ["panel", "side", "split", "view", "preview"],
       action: actions.toggleViewPanel,
@@ -345,7 +345,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "toggle-titlebar",
       label: actions.sidebarOpen ? t("command.hideTitlebar") : t("command.showTitlebar"),
       hint: t("command.toggleTitlebarHint"),
-      icon: PanelLeftClose,
+      icon: "wxi-panel-left-close",
       category: "view",
       keywords: ["titlebar", "toolbar", "breadcrumb", "toggle"],
       action: actions.toggleTitlebar,
@@ -355,7 +355,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("command.fullscreen"),
       hint: t("command.fullscreenHint"),
       shortcut: "⌃⌘F",
-      icon: Monitor,
+      icon: "wxi-monitor",
       category: "view",
       keywords: ["fullscreen", "window", "native"],
       action: actions.toggleFullscreen,
@@ -365,7 +365,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("command.openSettings"),
       hint: t("command.openSettingsHint"),
       shortcut: "⌘,",
-      icon: Settings,
+      icon: "wxi-settings",
       category: "view",
       keywords: ["settings", "preferences", "config", "options"],
       action: actions.openSettings,
@@ -375,7 +375,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "oxid-today",
       label: "Open today's daily note",
       hint: "markdown-oxide",
-      icon: Sun,
+      icon: "wxi-sun",
       category: "view",
       keywords: ["daily", "note", "today", "journal", "diary"],
       action: actions.oxidToday,
@@ -384,7 +384,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "oxid-yesterday",
       label: "Open yesterday's daily note",
       hint: "markdown-oxide",
-      icon: Sun,
+      icon: "wxi-sun",
       category: "view",
       keywords: ["daily", "note", "yesterday", "journal"],
       action: actions.oxidYesterday,
@@ -393,7 +393,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "oxid-tomorrow",
       label: "Open tomorrow's daily note",
       hint: "markdown-oxide",
-      icon: Sun,
+      icon: "wxi-sun",
       category: "view",
       keywords: ["daily", "note", "tomorrow", "journal"],
       action: actions.oxidTomorrow,
@@ -402,10 +402,76 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "oxid-jump",
       label: "Jump to daily note…",
       hint: "markdown-oxide",
-      icon: Sparkles,
+      icon: "wxi-sparkles",
       category: "view",
       keywords: ["daily", "note", "jump", "date", "calendar", "navigate"],
       action: actions.oxidJump,
+    },
+    {
+      id: "open-journal-calendar",
+      label: "Open journal calendar",
+      hint: "journal",
+      icon: "wxi-calendar",
+      category: "view",
+      keywords: ["journal", "calendar", "daily", "note", "schedule", "events"],
+      action: actions.openJournalCalendar,
+    },
+    {
+      id: "open-svar-calendar",
+      label: t("command.svarCalendar"),
+      hint: "SVAR",
+      icon: "wxi-calendar-clock",
+      category: "view",
+      keywords: ["svar", "calendar", "event", "schedule", "comparison"],
+      action: actions.openSvarCalendar,
+    },
+    // ── Colles ──────────────────────────────────────────────
+    {
+      id: "colloscope-grid",
+      label: t("command.colloscopeGrid"),
+      hint: t("sidebar.colles"),
+      icon: "wxi-table2",
+      category: "colles",
+      keywords: ["colles", "colloscope", "schedule", "grid"],
+      action: actions.openColloscopeGrid,
+    },
+    {
+      id: "calendar-editor",
+      label: t("command.calendarEditor"),
+      hint: "colles",
+      icon: "wxi-table2",
+      category: "colles",
+      keywords: ["colles", "calendar", "schedule", "event"],
+      action: actions.openCalendarEditor,
+    },
+    {
+      id: "eleves-list",
+      label: t("command.elevesSpreadsheet"),
+      hint: "colles",
+      icon: "wxi-table2",
+      category: "colles",
+      keywords: ["colles", "eleves", "students", "spreadsheet"],
+      action: actions.openElevesSpreadsheet,
+    },
+    {
+      id: "import-eleves",
+      label: t("command.importEleves"),
+      hint: "colles",
+      icon: "wxi-table2",
+      category: "colles",
+      keywords: ["colles", "eleves", "students", "import", "csv"],
+      action: actions.importElevesList,
+    },
+    // ── OpenCode ────────────────────────────────────────────
+    {
+      id: "show-opencode",
+      label: t("command.showOpenCode"),
+      hint: t("command.showOpenCodeHint"),
+      shortcut: "⌃⇧O",
+      icon: "wxi-sparkles",
+      category: "opencode",
+      keywords: ["opencode", "ai", "assistant", "terminal", "agent"],
+      action: actions.showOpenCode,
     },
     // ── Themes ──────────────────────────────────────────────
     ...THEME_COMMANDS.map(
@@ -423,7 +489,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "transparency-on",
       label: t("command.transparencyOn"),
       hint: t("command.transparencyOnHint"),
-      icon: Sparkles,
+      icon: "wxi-sparkles",
       category: "theme",
       keywords: ["transparency", "vibrancy", "opacity", "glass"],
       action: () => setTransparency(74),
@@ -432,10 +498,20 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "transparency-off",
       label: t("command.transparencyOff"),
       hint: t("command.transparencyOffHint"),
-      icon: Sparkles,
+      icon: "wxi-sparkles",
       category: "theme",
       keywords: ["transparency", "solid", "opacity", "background"],
       action: () => setTransparency(100),
+    },
+    // ── Maintenance ─────────────────────────────────────
+    {
+      id: "clear-calendar-cache",
+      label: t("command.clearCalendarCache"),
+      hint: t("command.clearCalendarCacheHint"),
+      icon: "wxi-trash",
+      category: "maintenance",
+      keywords: ["maintenance", "cache", "calendar", "events", "clear", "reset", "wipe"],
+      action: actions.clearCalendarCache,
     },
     // ── Help ────────────────────────────────────────────────
     {
@@ -443,7 +519,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       label: t("command.showHelp"),
       hint: t("command.showHelpHint"),
       shortcut: "⌘/",
-      icon: CircleHelp,
+      icon: "wxi-circle-help",
       category: "help",
       keywords: ["help", "how to", "shortcuts", "manual"],
       action: actions.showHelp,
@@ -452,7 +528,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "demo",
       label: t("command.demo"),
       hint: t("command.demoHint"),
-      icon: FileText,
+      icon: "wxi-file-text",
       category: "help",
       keywords: ["demo", "welcome", "sample", "onboarding doc"],
       action: actions.loadDemo,
@@ -461,7 +537,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "tutorial",
       label: t("command.tutorial"),
       hint: t("command.tutorialHint"),
-      icon: Sparkles,
+      icon: "wxi-sparkles",
       category: "help",
       keywords: ["tutorial", "welcome", "quickstart", "onboarding"],
       action: actions.showWelcome,
@@ -470,7 +546,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "check-updates",
       label: t("command.checkUpdates"),
       hint: t("command.checkUpdatesHint"),
-      icon: Download,
+      icon: "wxi-download",
       category: "help",
       keywords: ["update", "download", "version", "release"],
       action: actions.checkForUpdates,
@@ -479,7 +555,7 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       id: "about",
       label: t("command.about"),
       hint: t("command.aboutHint"),
-      icon: Info,
+      icon: "wxi-info",
       category: "help",
       keywords: ["about", "version", "license", "github"],
       action: actions.showAbout,

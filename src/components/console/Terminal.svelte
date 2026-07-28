@@ -1,20 +1,22 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { invoke, Channel } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { Terminal } from "@xterm/xterm";
-  import { FitAddon } from "@xterm/addon-fit";
-  import "@xterm/xterm/css/xterm.css";
+  import { Terminal, FitAddon, init } from "ghostty-web";
   import { readXtermTheme } from "@/lib/terminal-theme";
 
   let {
     id = "main",
     cwd = null as string | null,
     active = true,
+    env = null as Record<string, string> | null,
+    onExit,
   }: {
     id?: string;
     cwd?: string | null;
     active?: boolean;
+    env?: Record<string, string> | null;
+    onExit?: () => void;
   } = $props();
 
   let hostEl: HTMLDivElement;
@@ -22,7 +24,6 @@
   let fit: FitAddon | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let themeObserver: MutationObserver | null = null;
-  let unlistenOutput: UnlistenFn | null = null;
   let unlistenExit: UnlistenFn | null = null;
   let exited = $state(false);
 
@@ -46,72 +47,100 @@
     if (active && term) requestAnimationFrame(doFit);
   });
 
-  onMount(() => {
-    const mono = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() || "monospace";
-    term = new Terminal({
-      fontFamily: mono,
-      fontSize: 13,
-      cursorBlink: true,
-      theme: readXtermTheme(),
-    });
-    fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(hostEl);
-    doFit();
-
-    // Follow theme changes (hover preview + click commit).
-    themeObserver = new MutationObserver(() => applyTheme());
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
-    });
-
-    term.onData((data) => {
-      if (!exited) void invoke("terminal_write", { id, data });
-    });
-
-    void (async () => {
-      unlistenOutput = await listen<{ id: string; data: string }>("terminal://output", (e) => {
-        if (e.payload.id === id) term?.write(e.payload.data);
+  async function spawnShell() {
+    if (!term) return;
+    const onData = new Channel();
+    onData.onmessage = (bytes: unknown) => {
+      term?.write(bytes as Uint8Array);
+    };
+    try {
+      await invoke("terminal_spawn", {
+        id,
+        cwd,
+        rows: term.rows,
+        cols: term.cols,
+        env,
+        onData,
       });
+      term.focus();
+    } catch (err) {
+      term.write(`\x1b[31m${err}\x1b[0m\r\n`);
+    }
+  }
+
+  async function restart() {
+    await invoke("terminal_kill", { id });
+    exited = false;
+    if (term) {
+      term.clear();
+    }
+    await spawnShell();
+  }
+
+  onMount(() => {
+    void (async () => {
+      await init();
+
+      const mono = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() || "monospace";
+      term = new Terminal({
+        fontFamily: mono,
+        fontSize: 13,
+        cursorBlink: true,
+        theme: readXtermTheme(),
+      });
+      fit = new FitAddon();
+      term.loadAddon(fit);
+      term.open(hostEl);
+      doFit();
+
+      themeObserver = new MutationObserver(() => applyTheme());
+      themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      });
+
+      term.onData((data) => {
+        if (!exited) void invoke("terminal_write", { id, data });
+      });
+
       unlistenExit = await listen<string>("terminal://exit", (e) => {
         if (e.payload === id) {
           exited = true;
           term?.write("\r\n\x1b[2m[process exited]\x1b[0m\r\n");
+          onExit?.();
         }
       });
 
-      try {
-        await invoke("terminal_spawn", {
-          id,
-          cwd,
-          rows: term?.rows ?? 24,
-          cols: term?.cols ?? 80,
-        });
-        term?.focus();
-      } catch (err) {
-        term?.write(`\x1b[31m${err}\x1b[0m\r\n`);
-      }
-    })();
+      await spawnShell();
 
-    resizeObserver = new ResizeObserver(() => doFit());
-    resizeObserver.observe(hostEl);
+      resizeObserver = new ResizeObserver(() => doFit());
+      resizeObserver.observe(hostEl);
+    })();
   });
 
   onDestroy(() => {
     resizeObserver?.disconnect();
     themeObserver?.disconnect();
-    unlistenOutput?.();
     unlistenExit?.();
     void invoke("terminal_kill", { id });
     term?.dispose();
   });
 </script>
 
-<div class="terminal" bind:this={hostEl}></div>
+<div class="terminal" class:is-exited={exited} bind:this={hostEl}>
+  {#if exited}
+    <div class="terminal__overlay">
+      <button type="button" class="terminal__restart" onclick={restart}>
+        <i class="wxi-rotate-ccw" style="font-size:14px"></i>
+        Restart shell
+      </button>
+    </div>
+  {/if}
+</div>
 
 <style>
   .terminal {
+    position: relative;
     width: 100%;
     height: 100%;
     padding: 4px 6px;
@@ -120,12 +149,44 @@
     overflow: hidden;
   }
 
-  /* xterm internals fill the host */
-  .terminal :global(.xterm) {
-    height: 100%;
+  .terminal :global(canvas) {
+    display: block;
   }
 
-  .terminal :global(.xterm-viewport) {
-    overflow-y: auto;
+  .terminal__overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bg, #1e1e1e) 60%, transparent);
+    backdrop-filter: blur(2px);
+    z-index: 10;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .terminal__restart {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border: 1px solid var(--border, #333);
+    border-radius: 6px;
+    background: var(--surface, #2a2a2a);
+    color: var(--fg, #ccc);
+    font-family: var(--font-ui, sans-serif);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .terminal__restart:hover {
+    background: var(--surface-hover, #363636);
+    border-color: var(--accent, #5b9bd5);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>

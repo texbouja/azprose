@@ -9,7 +9,6 @@ export default defineConfig(async () => ({
     svelte({
       onwarn(_warning, _defaultHandler) {},
       include: [/\.svelte$/],
-      exclude: [/node_modules\/(?!phosphor-svelte).*/],
     }),
   ],
 
@@ -29,10 +28,6 @@ export default defineConfig(async () => ({
         },
       },
     },
-  },
-
-  optimizeDeps: {
-    exclude: ["phosphor-svelte"],
   },
 
   clearScreen: false,

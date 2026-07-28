@@ -9,9 +9,11 @@ import { readFile } from "@tauri-apps/plugin-fs";
 import type { Theme } from "@/lib/theme";
 import { wikilinkPlugin } from "./wikilinks";
 import { resolveTransclusions, type TransclusionRange } from "./transclusion";
-import { ChevronRight as CHEVRON_ICON, Diamond as DIAMOND_ICON } from "@/lib/icons";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import { slugify } from "./slugify";
+
+const CHEVRON_ICON = `<path d="m9 18 6-6-6-6"/>`;
+const DIAMOND_ICON = `<path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>`;
 
 const THEMES: Record<string, string> = {
   latte: "catppuccin-latte",
@@ -172,6 +174,72 @@ const calloutOptions = { icons: {} as Record<string, string> };
 md.use(callouts, calloutOptions);
 
 md.use(footnote);
+
+// Colle code blocks — parse YAML-like key: value and render as structured card
+md.renderer.rules.fence = ((tokens, idx, _options, _env, _self) => {
+  const token = tokens[idx];
+  const info = token.info.trim();
+  if (info === "colle") {
+    return renderColleBlock(token.content);
+  }
+  // Default Shiki highlight
+  if (!highlighter) return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
+  const lang = info.split(/\s+/)[0] || "text";
+  const loaded = highlighter.getLoadedLanguages() as readonly string[];
+  const language = loaded.includes(lang) ? lang : "text";
+  try {
+    return highlighter.codeToHtml(token.content, { lang: language, theme: activeShikiTheme });
+  } catch {
+    return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
+  }
+}) as RenderRule;
+
+function renderColleBlock(content: string): string {
+  const fields: Record<string, string> = {};
+  for (const line of content.split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon < 1) continue;
+    const key = line.slice(0, colon).trim();
+    const val = line.slice(colon + 1).trim();
+    if (key && key !== "note") fields[key] = val;
+  }
+
+  const noteLines: string[] = [];
+  let inNote = false;
+  for (const line of content.split("\n")) {
+    if (line.trim() === "note:") { inNote = true; continue; }
+    if (inNote && line.startsWith("- ")) {
+      noteLines.push(line.slice(2).trim());
+    } else if (inNote && line.trim() && !line.startsWith("-")) {
+      inNote = false;
+    }
+  }
+
+  const matiere = fields.matiere ?? "";
+  const matiereClass = matiere ? `colle-card--${matiere.toLowerCase().replace(/[^a-z]/g, "")}` : "";
+
+  let html = `<div class="colle-card ${matiereClass}">`;
+  html += `<div class="colle-card__header">`;
+  if (matiere) html += `<span class="colle-card__matiere">${escapeHtml(matiere)}</span>`;
+  if (fields.horaire) html += `<span class="colle-card__horaire">${escapeHtml(fields.horaire)}</span>`;
+  html += `</div>`;
+  html += `<div class="colle-card__body">`;
+  if (fields.eleve) html += `<div class="colle-card__field"><span class="colle-card__label">Élève</span><span class="colle-card__value">${escapeHtml(fields.eleve)}</span></div>`;
+  if (fields.groupe) html += `<div class="colle-card__field"><span class="colle-card__label">Groupe</span><span class="colle-card__value">${escapeHtml(fields.groupe)}</span></div>`;
+  if (fields.classe) html += `<div class="colle-card__field"><span class="colle-card__label">Classe</span><span class="colle-card__value">${escapeHtml(fields.classe)}</span></div>`;
+  if (fields.colleur) html += `<div class="colle-card__field"><span class="colle-card__label">Colleur</span><span class="colle-card__value">${escapeHtml(fields.colleur)}</span></div>`;
+  if (fields.salle) html += `<div class="colle-card__field"><span class="colle-card__label">Salle</span><span class="colle-card__value">${escapeHtml(fields.salle)}</span></div>`;
+  html += `</div>`;
+  if (noteLines.some(n => n)) {
+    html += `<div class="colle-card__notes">`;
+    for (const n of noteLines) {
+      html += `<div class="colle-card__note">${escapeHtml(n)}</div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
 
 // Stamp block tokens with source line range for potential editor↔preview sync.
 md.core.ruler.push("source_lines", (state) => {

@@ -1,6 +1,4 @@
 <script lang="ts">
-import { ChevronRight, Folder } from "@/lib/icons";
-import Icon from "@/components/primitives/Icon.svelte";
 import FileIcon from "./FileIcon.svelte";
 
 let {
@@ -58,12 +56,12 @@ let padLeft = $derived(8 + depth * 12 + (kind === "file" ? 4 : 0));
   >
     {#if kind === "folder"}
       <span class="mdv-tree__chevron" aria-hidden="true">
-        <Icon icon={ChevronRight} size={12} strokeWidth={2} />
+        <i class="wxi-chevron-right" style="font-size:12px"></i>
       </span>
     {/if}
     <span class="mdv-tree__icon">
       {#if kind === "folder"}
-        <Icon icon={Folder} size={13} strokeWidth={1.5} />
+        <i class="wxi-folder" style="font-size:13px"></i>
       {:else}
         <FileIcon path={initialValue} size={13} />
       {/if}

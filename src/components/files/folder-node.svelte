@@ -3,8 +3,6 @@ export const DRAG_MIME = "application/x-azprose-path";
 </script>
 
 <script lang="ts">
-import { ChevronRight, Folder, FolderOpen } from "@/lib/icons";
-import Icon from "@/components/primitives/Icon.svelte";
 import { type FileEntry } from "@/lib";
 import FileTree from "./file-tree.svelte";
 import type { NewEntry } from "./file-tree.svelte";
@@ -136,10 +134,10 @@ function onCtx(e: MouseEvent) {
     title={entry.name}
   >
     <span class="mdv-tree__chevron{open ? ' is-open' : ''}">
-      <Icon icon={ChevronRight} size={12} strokeWidth={2} />
+      <i class="wxi-chevron-right" style="font-size:12px"></i>
     </span>
     <span class="mdv-tree__icon">
-      <Icon icon={open ? FolderOpen : Folder} size={13} strokeWidth={1.5} />
+      <i class={open ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
     </span>
     <span class="mdv-tree__name">{entry.name}</span>
   </button>

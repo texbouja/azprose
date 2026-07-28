@@ -1,6 +1,5 @@
 <script lang="ts">
-import { ChevronLeft, ChevronRight, FolderOpen, Sparkles } from "@/lib/icons";
-import { Button, Icon, Kbd, Overlay, Shortcut } from "@/components/primitives";
+import { Button, Kbd, Overlay, Shortcut } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import logoUrl from "@/assets/mascot/az-logo.svg";
@@ -87,16 +86,16 @@ $effect(() => {
 </script>
 
 {#snippet chevronLeftIcon()}
-  <Icon icon={ChevronLeft} size={14} strokeWidth={1.75} />
+  <i class="wxi-chevron-left" style="font-size:14px"></i>
 {/snippet}
 {#snippet sparklesIcon()}
-  <Icon icon={Sparkles} size={14} strokeWidth={1.75} />
+  <i class="wxi-sparkles" style="font-size:14px"></i>
 {/snippet}
 {#snippet folderOpenIcon()}
-  <Icon icon={FolderOpen} size={14} strokeWidth={1.75} />
+  <i class="wxi-folder-open" style="font-size:14px"></i>
 {/snippet}
 {#snippet chevronRightIcon()}
-  <Icon icon={ChevronRight} size={14} strokeWidth={1.75} />
+  <i class="wxi-chevron-right" style="font-size:14px"></i>
 {/snippet}
 
 <Overlay {open} {onClose} ariaLabel={t("welcome.ariaLabel")} variant="modal">

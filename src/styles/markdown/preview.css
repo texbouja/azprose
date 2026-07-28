@@ -446,3 +446,84 @@
   background: color-mix(in srgb, var(--surface) 60%, transparent);
   border-radius: 3px;
 }
+
+/* ── Colle cards ──────────────────────────────────────────────────────── */
+
+.mdv-prose .colle-card, .azp-slide__content .colle-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  background: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mdv-prose .colle-card__header, .azp-slide__content .colle-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.mdv-prose .colle-card__matiere, .azp-slide__content .colle-card__matiere {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.mdv-prose .colle-card__horaire, .azp-slide__content .colle-card__horaire {
+  font-size: 12px;
+  color: var(--fg-muted);
+  padding: 2px 8px;
+  background: var(--bg);
+  border-radius: 4px;
+}
+
+.mdv-prose .colle-card__body, .azp-slide__content .colle-card__body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 16px;
+}
+
+.mdv-prose .colle-card__field, .azp-slide__content .colle-card__field {
+  display: flex;
+  gap: 6px;
+}
+
+.mdv-prose .colle-card__label, .azp-slide__content .colle-card__label {
+  color: var(--fg-muted);
+  font-size: 11px;
+  min-width: 50px;
+}
+
+.mdv-prose .colle-card__value, .azp-slide__content .colle-card__value {
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.mdv-prose .colle-card__notes, .azp-slide__content .colle-card__notes {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mdv-prose .colle-card__note, .azp-slide__content .colle-card__note {
+  font-size: 12px;
+  color: var(--fg-muted);
+  font-style: italic;
+  min-height: 1.2em;
+}
+
+/* Colle card border colors by matière */
+.mdv-prose .colle-card--mathmatiques, .azp-slide__content .colle-card--mathmatiques { border-left-color: #4a90d9; }
+.mdv-prose .colle-card--physique, .azp-slide__content .colle-card--physique { border-left-color: #e6a94c; }
+.mdv-prose .colle-card--franais, .azp-slide__content .colle-card--franais { border-left-color: #72b886; }
+.mdv-prose .colle-card--anglais, .azp-slide__content .colle-card--anglais { border-left-color: #b496e6; }
+.mdv-prose .colle-card--tradculturearabe, .azp-slide__content .colle-card--tradculturearabe { border-left-color: #e06464; }
+.mdv-prose .colle-card--tpchimie, .azp-slide__content .colle-card--tpchimie { border-left-color: #6b9eeb; }

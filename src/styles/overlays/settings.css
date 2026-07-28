@@ -59,44 +59,6 @@
   gap: 2px;
 }
 
-/* ── top-level nav item (e.g. Général — not foldable) ─ */
-.mdv-settings__nav-toplevel {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--easing),
-    color var(--dur-fast) var(--easing);
-}
-
-.mdv-settings__nav-toplevel:hover {
-  color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 5%, transparent);
-}
-
-.mdv-settings__nav-toplevel.is-active {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-}
-
-.mdv-settings__nav-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 4px;
-}
-
 /* ── nav sections (foldable groups) ───────────────── */
 .mdv-settings__nav-section {
   display: flex;
@@ -219,29 +181,6 @@
   flex-shrink: 0;
 }
 
-.mdv-settings__select {
-  flex: 1;
-  padding: 5px 24px 5px 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  cursor: pointer;
-  outline: none;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
-  transition: border-color var(--dur-fast) var(--easing);
-}
-
-.mdv-settings__select:focus {
-  border-color: var(--accent);
-}
-
 /* ── package grid ──────────────────────────────────── */
 .mdv-settings__pkg-grid {
   display: grid;
@@ -250,81 +189,13 @@
   flex-shrink: 0;
 }
 
-.mdv-settings__pkg-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--fg);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mdv-settings__pkg-item input[type="checkbox"] {
-  flex-shrink: 0;
-  width: 12px;
-  height: 12px;
-  cursor: pointer;
-  accent-color: var(--accent);
-}
-
-/* ── CSS textarea ──────────────────────────────────── */
-.mdv-settings__css-editor {
-  flex: 1;
-  min-height: 120px;
-  width: 100%;
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--bg) 60%, var(--surface));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.65;
-  resize: none;
-  overflow-y: auto;
-  outline: none;
-  tab-size: 2;
-  transition: border-color var(--dur-fast) var(--easing);
-}
-
-.mdv-settings__css-editor:focus {
-  border-color: var(--accent);
-}
-
+/* ── hint text ─────────────────────────────────────── */
 .mdv-settings__hint {
   margin: 0;
   font-size: 11px;
   color: var(--fg-muted, color-mix(in srgb, var(--fg) 55%, transparent));
   font-style: italic;
   flex-shrink: 0;
-}
-
-/* ── radio group (slide theme) ──────────────────────── */
-.mdv-settings__radio-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-}
-
-.mdv-settings__radio {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--fg);
-  cursor: pointer;
-}
-
-.mdv-settings__radio input[type="radio"] {
-  flex-shrink: 0;
-  width: 13px;
-  height: 13px;
-  cursor: pointer;
-  accent-color: var(--accent);
 }
 
 /* ── sliders ────────────────────────────────────────── */
@@ -349,36 +220,6 @@
   flex-shrink: 0;
 }
 
-.mdv-settings__range {
-  flex: 1;
-  height: 3px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--border);
-  border-radius: 2px;
-  outline: none;
-  cursor: pointer;
-}
-
-.mdv-settings__range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--accent);
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(var(--shadow-color), 0.2);
-  transition: transform var(--dur-fast) var(--easing);
-}
-
-.mdv-settings__range::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-}
-
-.mdv-settings__range:focus::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
 .mdv-settings__slider-value {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -386,6 +227,22 @@
   width: 50px;
   text-align: right;
   flex-shrink: 0;
+}
+
+.mdv-settings__range-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── row layout ────────────────────────────────────── */
+.mdv-settings__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* ── footer ────────────────────────────────────────── */
@@ -436,29 +293,6 @@
 
 .mdv-settings__restart:hover {
   opacity: 0.85;
-}
-
-/* ── custom font text input ────────────────────────── */
-.mdv-settings__font-custom-input {
-  flex: 1;
-  padding: 5px 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  outline: none;
-  transition: border-color var(--dur-fast) var(--easing);
-}
-
-.mdv-settings__font-custom-input:focus {
-  border-color: var(--accent);
-}
-
-.mdv-settings__font-custom-input::placeholder {
-  color: var(--muted);
-  font-style: italic;
 }
 
 /* ── headings grid ─────────────────────────────────── */
@@ -520,33 +354,6 @@
   color: var(--accent);
 }
 
-/* ── compact number input ──────────────────────────── */
-.mdv-settings__number-input {
-  width: 100%;
-  padding: 4px 6px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-align: right;
-  outline: none;
-  transition: border-color var(--dur-fast) var(--easing);
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-.mdv-settings__number-input::-webkit-inner-spin-button,
-.mdv-settings__number-input::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.mdv-settings__number-input:focus {
-  border-color: var(--accent);
-}
-
 /* ── alignment button group ────────────────────────── */
 .mdv-settings__align-group {
   display: flex;
@@ -579,43 +386,6 @@
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   border-color: var(--accent);
   color: var(--accent);
-}
-
-/* ── standalone input (used in settings sections) ────── */
-.mdv-settings__input {
-  padding: 5px 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color var(--dur-fast) var(--easing);
-}
-.mdv-settings__input:focus {
-  border-color: var(--accent);
-}
-
-/* ── small select (used in heading rows) ───────────── */
-.mdv-settings__select--sm {
-  padding-top: 4px;
-  padding-bottom: 4px;
-  font-size: 10px;
-}
-
-/* ── inline select — shrinks to fixed width when a custom input follows ── */
-.mdv-settings__select--inline {
-  flex: 0 0 auto;
-  min-width: 130px;
-}
-
-/* ── auto-width select — natural width, no flex stretch ── */
-.mdv-settings__select--auto {
-  flex: 0 0 auto;
-  width: auto;
 }
 
 /* ── ordered list rows ─────────────────────────────── */
@@ -707,22 +477,6 @@
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--muted);
-}
-
-.mdv-settings__callout-input {
-  flex: 1;
-  padding: 5px 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  outline: none;
-  transition: border-color var(--dur-fast) var(--easing);
-}
-.mdv-settings__callout-input:focus {
-  border-color: var(--accent);
 }
 
 .mdv-settings__callout-colors {

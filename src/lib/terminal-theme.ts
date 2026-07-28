@@ -2,7 +2,7 @@
 // (set by the active Shiki-derived theme). Used at boot and on every theme
 // change (hover preview + click commit) so the terminal follows the UI live.
 
-import type { ITheme } from "@xterm/xterm";
+import type { ITheme } from "ghostty-web";
 
 function cssVar(name: string, fallback: string): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();

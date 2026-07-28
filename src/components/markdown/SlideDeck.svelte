@@ -1,7 +1,5 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
-import { ChevronLeft, ChevronRight } from "@/lib/icons";
-import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import { renderMarkdown, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons, stripAutoCalloutTitles, postRenderDom } from "@/markdown";
@@ -313,7 +311,7 @@ $effect(() => {
       onclick={prev}
       aria-label={t("slideDeck.prev")}
     >
-      <Icon icon={ChevronLeft} size={16} strokeWidth={1.8} />
+      <i class="wxi-chevron-left" style="font-size:16px"></i>
     </button>
     <span class="mdv-slidedeck__counter">
       <input
@@ -334,7 +332,7 @@ $effect(() => {
       onclick={next}
       aria-label={t("slideDeck.next")}
     >
-      <Icon icon={ChevronRight} size={16} strokeWidth={1.8} />
+      <i class="wxi-chevron-right" style="font-size:16px"></i>
     </button>
   </div>
 </div>

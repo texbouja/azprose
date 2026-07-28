@@ -1,0 +1,271 @@
+/**
+ * SVAR UI theme — maps --wx-* CSS variables to AZprose app variables.
+ *
+ * Replaces WillowDark wrappers. Defines vars on :root so they cascade
+ * everywhere, including Portal-mounted popups (Combo, Select, etc.).
+ */
+
+:root {
+  /* ── Base colors ────────────────────────────────────────── */
+  --wx-color-primary: var(--accent, #89b4fa);
+  --wx-color-primary-selected: color-mix(in srgb, var(--accent, #89b4fa) 30%, transparent);
+  --wx-color-primary-font: var(--bg, #1e1e2e);
+  --wx-color-secondary: transparent;
+  --wx-color-secondary-hover: color-mix(in srgb, var(--accent, #89b4fa) 12%, transparent);
+  --wx-color-secondary-font: var(--accent, #89b4fa);
+  --wx-color-secondary-font-hover: var(--accent, #89b4fa);
+  --wx-color-secondary-border: var(--accent, #89b4fa);
+  --wx-color-secondary-border-disabled: var(--fg-muted, #a6adc8);
+
+  --wx-color-success: #a6e3a1;
+  --wx-color-warning: #f9e2af;
+  --wx-color-info: var(--accent, #89b4fa);
+  --wx-color-danger: #f38ba8;
+  --wx-color-disabled: var(--border, #45475a);
+  --wx-color-disabled-alt: color-mix(in srgb, var(--fg, #cdd6f4) 15%, var(--bg, #1e1e2e));
+
+  --wx-color-font: var(--fg, #cdd6f4);
+  --wx-color-font-alt: var(--fg-muted, #a6adc8);
+  --wx-color-font-disabled: var(--fg-muted, #a6adc8);
+  --wx-color-link: var(--accent, #89b4fa);
+
+  --wx-background: var(--bg, #1e1e2e);
+  --wx-background-alt: var(--surface, #2a2a3c);
+  --wx-background-hover: color-mix(in srgb, var(--fg, #cdd6f4) 8%, var(--bg, #1e1e2e));
+
+  /* ── Font ───────────────────────────────────────────────── */
+  --wx-font-family: var(--font-ui, system-ui);
+  --wx-font-size: 13px;
+  --wx-line-height: 20px;
+  --wx-font-size-md: 13px;
+  --wx-line-height-md: 22px;
+  --wx-font-size-hd: 15px;
+  --wx-line-height-hd: 26px;
+  --wx-font-size-sm: 11px;
+  --wx-line-height-sm: 16px;
+  --wx-font-weight: 400;
+  --wx-font-weight-md: 600;
+  --wx-font-weight-b: 700;
+
+  /* ── Icons ──────────────────────────────────────────────── */
+  --wx-icon-color: var(--fg-muted, #a6adc8);
+  --wx-icon-size: var(--wx-line-height);
+  --wx-icon-border-radius: 2px;
+
+  /* ── Border & radius ────────────────────────────────────── */
+  --wx-border: 1px solid var(--border, #45475a);
+  --wx-border-radius: 4px;
+  --wx-radius-major: 8px;
+  --wx-border-light: 1px solid var(--border, #45475a);
+  --wx-border-medium: 1px solid var(--border, #45475a);
+
+  --wx-shadow-light: 0 4px 20px color-mix(in srgb, #000 20%, transparent);
+  --wx-shadow-medium: none;
+  --wx-box-shadow: 0 4px 48px color-mix(in srgb, #000 18%, transparent);
+  --wx-box-shadow-strong: 0 4px 48px color-mix(in srgb, #000 18%, transparent),
+    0 4px 8px color-mix(in srgb, #000 12%, transparent);
+
+  --wx-padding: 8px;
+
+  /* ── Field ──────────────────────────────────────────────── */
+  --wx-field-gutter: 14px;
+  --wx-field-width: 400px;
+
+  /* ── Input ──────────────────────────────────────────────── */
+  --wx-input-font-family: var(--font-ui, system-ui);
+  --wx-input-font-size: 12px;
+  --wx-input-line-height: 20px;
+  --wx-input-font-weight: 400;
+  --wx-input-text-align: left;
+  --wx-input-font-color: var(--fg, #cdd6f4);
+  --wx-input-background: var(--bg, #1e1e2e);
+  --wx-input-background-disabled: var(--border, #45475a);
+  --wx-input-placeholder-color: var(--fg-muted, #a6adc8);
+  --wx-input-border: 1px solid var(--border, #45475a);
+  --wx-input-border-focus: 1px solid var(--accent, #89b4fa);
+  --wx-input-border-disabled: 1px solid var(--border, #45475a);
+  --wx-input-border-radius: 4px;
+  --wx-input-height: 28px;
+  --wx-input-width: 100%;
+  --wx-input-padding: 4px 8px;
+  --wx-input-icon-indent: 6px;
+  --wx-input-icon-color: var(--fg-muted, #a6adc8);
+  --wx-input-icon-size: 14px;
+
+  /* ── MultiCombo tags ────────────────────────────────────── */
+  --wx-multicombo-tag-gap: 3px;
+  --wx-multicombo-tag-border: none;
+  --wx-multicombo-tag-border-radius: var(--wx-input-border-radius);
+  --wx-multicombo-tag-pading: 2px 8px;
+  --wx-multicombo-tag-background: var(--surface, #2a2a3c);
+
+  /* ── Checkbox & radio ───────────────────────────────────── */
+  --wx-checkbox-height: var(--wx-line-height);
+  --wx-checkbox-size: var(--wx-checkbox-height);
+  --wx-checkbox-border-width: 2px;
+  --wx-checkbox-border-color: var(--fg-muted, #a6adc8);
+  --wx-checkbox-border-color-disabled: var(--border, #45475a);
+  --wx-checkbox-border-radius: var(--wx-input-border-radius);
+  --wx-checkbox-font-family: var(--font-ui, system-ui);
+  --wx-checkbox-font-size: 12px;
+  --wx-checkbox-line-height: var(--wx-line-height);
+  --wx-checkbox-font-weight: 400;
+  --wx-checkbox-font-color: var(--fg, #cdd6f4);
+
+  /* ── Switch ─────────────────────────────────────────────── */
+  --wx-switch-primary: var(--accent, #89b4fa);
+  --wx-switch-background: var(--border, #45475a);
+  --wx-switch-width: 48px;
+  --wx-switch-height: 24px;
+  --wx-switch-border-width: 0px;
+  --wx-switch-border-color: transparent;
+  --wx-switch-border-color-disabled: transparent;
+  --wx-switch-thumb-offset: 1px;
+  --wx-switch-thumb-border: none;
+  --wx-switch-thumb-border-disabled: 1px solid rgba(255, 255, 255, 0.7);
+  --wx-switch-thumb-background: var(--fg, #cdd6f4);
+  --wx-switch-thumb-background-disabled: var(--border, #45475a);
+  --wx-switch-thumb-shadow: none;
+
+  /* ── Label ──────────────────────────────────────────────── */
+  --wx-label-width: 100px;
+  --wx-label-margin: 0 0 4px;
+  --wx-label-padding: 0;
+  --wx-label-font-family: var(--font-ui, system-ui);
+  --wx-label-font-size: 12px;
+  --wx-label-line-height: var(--wx-line-height);
+  --wx-label-font-weight: 500;
+  --wx-label-font-color: var(--fg-muted, #a6adc8);
+
+  /* ── Button ─────────────────────────────────────────────── */
+  --wx-button-font-family: var(--font-ui, system-ui);
+  --wx-button-font-size: 12px;
+  --wx-button-line-height: var(--wx-line-height);
+  --wx-button-font-weight: 600;
+  --wx-button-text-transform: none;
+  --wx-button-background: var(--surface, #2a2a3c);
+  --wx-button-font-color: var(--fg, #cdd6f4);
+  --wx-button-danger-font-color: #fff;
+  --wx-button-border: 1px solid var(--border, #45475a);
+  --wx-button-border-radius: 4px;
+  --wx-button-height: 28px;
+  --wx-button-padding: 4px 12px;
+  --wx-button-icon-indent: 5px;
+  --wx-button-icon-size: 16px;
+
+  --wx-button-pressed: color-mix(in srgb, var(--fg, #cdd6f4) 10%, var(--surface, #2a2a3c));
+  --wx-button-danger-pressed: #c44040;
+  --wx-button-primary-pressed: color-mix(in srgb, var(--accent, #89b4fa) 80%, black);
+  --wx-button-box-shadow: none;
+  --wx-button-primary-box-shadow: none;
+
+  /* ── Segmented ──────────────────────────────────────────── */
+  --wx-segmented-background: var(--surface, #2a2a3c);
+  --wx-segmented-background-hover: color-mix(in srgb, var(--fg, #cdd6f4) 8%, var(--surface, #2a2a3c));
+  --wx-segmented-border: 1px solid var(--border, #45475a);
+  --wx-segmented-border-radius: 6px;
+  --wx-segmented-padding: 0px;
+
+  /* ── Popup / dropdown ───────────────────────────────────── */
+  --wx-popup-z-index: 1001;
+  --wx-popup-background: var(--surface, #2a2a3c);
+  --wx-popup-shadow: 0 4px 20px color-mix(in srgb, #000 30%, transparent);
+  --wx-popup-border: 1px solid var(--border, #45475a);
+  --wx-popup-border-radius: 6px;
+
+  /* ── Slider ─────────────────────────────────────────────── */
+  --wx-slider-height: 14px;
+  --wx-slider-primary: var(--accent, #89b4fa);
+  --wx-slider-background: var(--surface, #2a2a3c);
+  --wx-slider-track-height: 4px;
+  --wx-slider-track-border-radius: 2px;
+  --wx-slider-thumb-size: var(--wx-slider-height);
+  --wx-slider-thumb-border: none;
+  --wx-slider-thumb-border-disabled: 1px solid var(--border, #45475a);
+  --wx-slider-thumb-shadow: none;
+  --wx-slider-label-margin: 0 0 5px;
+  --wx-slider-label-font-family: var(--font-ui, system-ui);
+  --wx-slider-label-font-size: 12px;
+  --wx-slider-label-line-height: var(--wx-line-height);
+  --wx-slider-label-font-weight: 600;
+  --wx-slider-label-font-color: var(--fg, #cdd6f4);
+
+  /* ── Tabs ───────────────────────────────────────────────── */
+  --wx-tabs-background: var(--bg, #1e1e2e);
+  --wx-tabs-background-hover: transparent;
+  --wx-tabs-hover-border: var(--fg-muted, #a6adc8);
+  --wx-tabs-border-width: 1px;
+  --wx-tabs-border-radius: var(--wx-border-radius);
+  --wx-tabs-divider-width: 1px;
+  --wx-tabs-divider-height: 60%;
+  --wx-tabs-divider-color: transparent;
+  --wx-tabs-cell-min-width: 100px;
+  --wx-tabs-active-background: transparent;
+  --wx-tabs-active-color: var(--accent, #89b4fa);
+  --wx-tabs-active-border: var(--accent, #89b4fa);
+
+  /* ── Modal ──────────────────────────────────────────────── */
+  --wx-modal-z-index: 1000;
+  --wx-modal-background: var(--surface, #2a2a3c);
+  --wx-modal-shadow: var(--wx-shadow-medium);
+  --wx-modal-border: 1px solid var(--border, #45475a);
+  --wx-modal-border-radius: var(--wx-border-radius);
+  --wx-modal-width: 280px;
+  --wx-modal-padding: 16px 20px;
+  --wx-modal-gutter: 14px;
+  --wx-modal-backdrop: rgba(108, 114, 131, 0.2);
+  --wx-modal-header-font-family: var(--font-ui, system-ui);
+  --wx-modal-header-font-size: 15px;
+  --wx-modal-header-line-height: 26px;
+  --wx-modal-header-font-weight: 700;
+  --wx-modal-header-font-color: var(--fg, #cdd6f4);
+
+  /* ── Notice ─────────────────────────────────────────────── */
+  --wx-notice-z-index: 1010;
+  --wx-notice-background: var(--surface, #2a2a3c);
+  --wx-notice-shadow: var(--wx-shadow-medium);
+  --wx-notice-border: none;
+  --wx-notice-border-radius: 0 var(--wx-border-radius) var(--wx-border-radius) 0;
+  --wx-notice-margin: 6px 12px;
+  --wx-notice-font-family: var(--font-ui, system-ui);
+  --wx-notice-font-size: 13px;
+  --wx-notice-line-height: 20px;
+  --wx-notice-font-weight: 400;
+  --wx-notice-font-color: var(--fg, #cdd6f4);
+  --wx-notice-padding: 14px;
+  --wx-notice-width: 240px;
+  --wx-notice-icon-size: 14px;
+  --wx-notice-icon-color: var(--fg-muted, #a6adc8);
+  --wx-notice-type-border-width: 4px;
+  --wx-notice-type-border-color: var(--fg-muted, #a6adc8);
+  --wx-notice-type-font-color: var(--fg, #cdd6f4);
+  --wx-notice-type-icon-color: var(--fg-muted, #a6adc8);
+  --wx-notice-type-background-opacity: 0;
+  --wx-notice-type-close-hover-opacity: 1;
+
+  /* ── Calendar ───────────────────────────────────────────── */
+  --wx-calendar-padding: 16px;
+  --wx-calendar-cell-size: 32px;
+  --wx-calendar-gap: 4px;
+  --wx-calendar-line-gap: 4px;
+  --wx-calendar-border-radius: var(--wx-border-radius);
+  --wx-calendar-font-family: var(--font-ui, system-ui);
+  --wx-calendar-font-size: 13px;
+  --wx-calendar-line-height: 20px;
+  --wx-calendar-font-weight: 400;
+  --wx-calendar-font-color: var(--fg, #cdd6f4);
+  --wx-calendar-icon-color: var(--fg-muted, #a6adc8);
+  --wx-calendar-icon-size: 14px;
+  --wx-calendar-header-font-size: 13px;
+  --wx-calendar-header-line-height: 20px;
+  --wx-calendar-header-font-weight: 600;
+  --wx-calendar-controls-font-family: var(--font-ui, system-ui);
+  --wx-calendar-controls-font-size: 13px;
+  --wx-calendar-controls-line-height: 20px;
+  --wx-calendar-controls-font-weight: 400;
+  --wx-calendar-controls-font-color: var(--fg, #cdd6f4);
+
+  --wx-calendar-grid-color: var(--border, #45475a);
+  --wx-calendar-weekend-background: color-mix(in srgb, var(--fg, #cdd6f4) 4%, var(--bg, #1e1e2e));
+  --wx-calendar-y-scale-width: 56px;
+}

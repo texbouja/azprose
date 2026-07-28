@@ -10,6 +10,12 @@ import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
 import LazyCsvSpreadsheet from "@/components/csv/LazyCsvSpreadsheet.svelte";
+import LazyColloscopePanel from "@/components/colles/LazyColloscopePanel.svelte";
+import LazyCalendarPanel from "@/components/colles/LazyCalendarPanel.svelte";
+import LazyElevesPanel from "@/components/colles/LazyElevesPanel.svelte";
+import LazyOpenCodePanel from "@/components/opencode/LazyOpenCodePanel.svelte";
+import LazyJournalCalendarPanel from "@/components/sidebar/LazyJournalCalendarPanel.svelte";
+import LazySvarCalendarPanel from "@/components/colles/LazySvarCalendarPanel.svelte";
 import type { TypographySettings } from "@/lib/typography";
 import { getTexlabClient } from "@/lib/lsp/texlab";
 import { getMarkdownOxideClient } from "@/lib/lsp/markdown-oxide";
@@ -57,6 +63,18 @@ let {
 
 {#if !tab}
   <div class="mdv-empty-state" />
+{:else if tab.kind === "custom" && tab.panelId === "colloscope"}
+  <LazyColloscopePanel />
+{:else if tab.kind === "custom" && tab.panelId === "calendar-editor"}
+  <LazyCalendarPanel />
+{:else if tab.kind === "custom" && tab.panelId === "eleves"}
+  <LazyElevesPanel />
+{:else if tab.kind === "custom" && tab.panelId === "opencode"}
+  <LazyOpenCodePanel />
+{:else if tab.kind === "custom" && tab.panelId === "journal-calendar"}
+  <LazyJournalCalendarPanel />
+{:else if tab.kind === "custom" && tab.panelId === "svar-calendar"}
+  <LazySvarCalendarPanel />
 {:else if isPdfPath(tab.path)}
   <LazyPdfViewer
     path={tab.path}

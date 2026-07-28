@@ -1,6 +1,5 @@
 <script lang="ts">
-import { FolderOpen, Layers3 } from "@/lib/icons";
-import { Button, Icon } from "@/components/primitives";
+import { Button } from "@/components/primitives";
 import { language, getT } from "@/lib/i18n";
 import { getProjectsList, removeProject, type ProjectEntry } from "@/lib/projects-list";
 import { onMount } from "svelte";
@@ -51,7 +50,7 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
 
 <div class="mdv-project-selector">
   {#snippet projectsIcon()}
-    <Icon icon={Layers3} size={13} strokeWidth={1.5} />
+    <i class="wxi-layers-3" style="font-size:13px"></i>
   {/snippet}
   <Button
     data-tooltip={t("sidebar.openProject")}
@@ -78,7 +77,7 @@ async function handleRemove(p: ProjectEntry, e: MouseEvent) {
             onclick={() => handleOpen(p)}
             onkeydown={(e) => { if (e.key === "Enter") handleOpen(p); }}
           >
-            <Icon icon={FolderOpen} size={13} strokeWidth={1.5} />
+            <i class="wxi-folder-open" style="font-size:13px"></i>
             <span class="mdv-project-selector__name">{p.name}</span>
               <button
               type="button"

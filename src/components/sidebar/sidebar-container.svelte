@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { FileEntry } from "@/lib";
 import type { NewEntry } from "@/components/files/file-tree.svelte";
-import ActivityBar from "@/components/sidebar/activity-bar.svelte";
+
 import FsView from "@/components/files/fs-view.svelte";
 import JournalView from "@/components/sidebar/journal-view.svelte";
 import { sidebarView } from "@/stores/sidebar-view.svelte";
@@ -37,6 +37,7 @@ let {
   onSubmitNew,
   onCancelNew,
   treeVersion = 0,
+  onOpenCalendar,
 }: {
   open: boolean;
   rootPath: string | null;
@@ -68,6 +69,7 @@ let {
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
   treeVersion?: number;
+  onOpenCalendar?: () => void;
 } = $props();
 
 let dragging = $state(false);
@@ -107,7 +109,6 @@ function stopResize(e: PointerEvent) {
   aria-hidden={!open}
 >
   <div class="mdv-sidebar__inner" style="width:{width}px">
-    <ActivityBar onToggle={() => !open && onWidthChange(width)} />
     <div class="mdv-sidebar__view">
       {#if sidebarView.current === "files"}
         <FsView
@@ -140,7 +141,7 @@ function stopResize(e: PointerEvent) {
           {treeVersion}
         />
       {:else if sidebarView.current === "journal"}
-        <JournalView {rootPath} {activePath} {onSelectFile} {treeVersion} />
+        <JournalView {rootPath} {activePath} {onSelectFile} {treeVersion} {onOpenCalendar} />
       {/if}
     </div>
   </div>

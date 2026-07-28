@@ -4,6 +4,20 @@
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/500.css";
 
+/* Document fonts (Fira Sans + Fira Code) — loaded on demand via preview/export */
+@import "@fontsource/fira-sans/400.css";
+@import "@fontsource/fira-sans/500.css";
+@import "@fontsource/fira-sans/600.css";
+@import "@fontsource/fira-sans/700.css";
+@import "@fontsource/fira-code/400.css";
+@import "@fontsource/fira-code/500.css";
+
+/* SVAR icon system — Lucide SVGs via CSS masks (replaces wx-icons CDN) */
+@import "./wxi-lucide.css";
+
+/* SVAR UI theme — --wx-* variables on :root (replaces WillowDark wrappers) */
+@import "./svar-theme.css";
+
 
 @import "./tokens.css";
 @import "./markdown/slides.css";
@@ -141,6 +155,7 @@ button:focus-visible {
 body.mdv-print .mdv-titlebar,
 body.mdv-print .mdv-breadcrumb,
 body.mdv-print .mdv-statusbar,
+body.mdv-print .mdv-activity-bar,
 body.mdv-print .mdv-sidebar,
 body.mdv-print .mdv-tabs,
 body.mdv-print .mdv-toast,

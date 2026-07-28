@@ -1,6 +1,5 @@
 <script lang="ts">
-import { Download, FileText, Layers3, Palette, Sparkles, Table2, X } from "@/lib/icons";
-import { Button, Icon, Kbd, Overlay, Shortcut } from "@/components/primitives";
+import { Button, Kbd, Overlay, Shortcut } from "@/components/primitives";
 import { shortcutLabel } from "@/lib";
 import { language, getT } from "@/lib/i18n";
 import writeUrl from "@/assets/mascot/az-write.svg";
@@ -21,10 +20,10 @@ let t = $derived(getT($language));
 let checking = $state(false);
 
 let features = $derived([
-  { icon: FileText, title: t("help.feature.markdown.title"), body: t("help.feature.markdown.body") },
-  { icon: Layers3, title: t("help.feature.context.title"), body: t("help.feature.context.body") },
-  { icon: Table2, title: t("help.feature.csv.title"), body: t("help.feature.csv.body") },
-  { icon: Palette, title: t("help.feature.themes.title"), body: t("help.feature.themes.body") },
+  { icon: "wxi-file-text", title: t("help.feature.markdown.title"), body: t("help.feature.markdown.body") },
+  { icon: "wxi-layers-3", title: t("help.feature.context.title"), body: t("help.feature.context.body") },
+  { icon: "wxi-columns-2", title: t("help.feature.csv.title"), body: t("help.feature.csv.body") },
+  { icon: "wxi-palette", title: t("help.feature.themes.title"), body: t("help.feature.themes.body") },
 ]);
 
 type Row = { keys: string; label: string };
@@ -99,7 +98,7 @@ $effect(() => {
 </script>
 
 {#snippet helpCloseIcon()}
-  <Icon icon={X} size={14} strokeWidth={1.5} />
+  <i class="wxi-x" style="font-size:14px"></i>
 {/snippet}
 
 <Overlay {open} {onClose} ariaLabel={t("help.aria")} variant="modal">
@@ -134,7 +133,7 @@ $effect(() => {
         {#each features as feature}
           <article class="mdv-help__feature">
             <span class="mdv-help__feature-icon" aria-hidden="true">
-              <Icon icon={feature.icon} size={14} strokeWidth={1.6} />
+              <i class={feature.icon} style="font-size:14px"></i>
             </span>
             <span class="mdv-help__feature-title">{feature.title}</span>
             <span class="mdv-help__feature-body">{feature.body}</span>
@@ -188,7 +187,7 @@ $effect(() => {
           onclick={() => void handleCheck()}
           disabled={checking}
         >
-          <Icon icon={Download} size={11} strokeWidth={1.75} />
+          <i class="wxi-download" style="font-size:11px"></i>
           {checking ? "checking…" : t("command.checkUpdates")}
         </button>
       {/if}
@@ -198,7 +197,7 @@ $effect(() => {
           class="mdv-help__action"
           onclick={() => { onClose(); onReplayTutorial(); }}
         >
-          <Icon icon={Sparkles} size={11} strokeWidth={1.75} />
+          <i class="wxi-sparkles" style="font-size:11px"></i>
           {t("help.replay")}
         </button>
       {/if}

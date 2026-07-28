@@ -1,0 +1,782 @@
+<script lang="ts">
+  import {
+    Calendar,
+    Editor,
+    CalendarPanel,
+    ContextMenu,
+    getMenuOptions,
+    getEditorItems,
+    type CalendarInstanceApi,
+    type CalendarEvent,
+  } from "@svar-ui/svelte-calendar";
+  import { Locale } from "@svar-ui/svelte-core";
+  import { fr } from "@svar-ui/calendar-locales";
+  import { fr as frCore } from "@svar-ui/core-locales";
+  import { colloscope } from "@/stores/colloscope.svelte";
+  import { expandRrule, migrateRecurrence } from "@/calendar/recurrence";
+  import RecurrenceEditor from "@/components/colles/RecurrenceEditor.svelte";
+  import PersonCombo from "@/components/colles/PersonCombo.svelte";
+  import PriorityEditor from "@/components/colles/PriorityEditor.svelte";
+  import CalendarIdEditor from "@/components/colles/CalendarIdEditor.svelte";
+  import { getCalendarStore } from "@/stores/calendar-store.svelte";
+  import { computeDate, computeEndDate, materiaColor } from "@/lib/colles-events";
+  import { CALENDARS } from "@/lib/calendar-categories";
+  import type { CalendarEventData } from "@/lib/calendar-types";
+  import { notifications } from "@/stores/notifications.svelte";
+  import { confirm } from "@tauri-apps/plugin-dialog";
+
+  const words = { ...fr, ...frCore };
+  const store = getCalendarStore();
+  const RFC_DAY_MAP = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
+  let api: CalendarInstanceApi | null = $state(null);
+
+  // ── Read the currently-selected event's start date from the Calendar's
+  //    internal reactive editorData. This is the source of truth — the
+  //    select-event handler is unreliable for timing. ──
+  let eventStartDate = $state<Date | null>(null);
+
+  $effect(() => {
+    if (!api) return;
+    const { editorData } = api.getReactiveState();
+    // editorData is an IPublicWritable (Svelte store) — subscribe manually
+    const unsub = editorData.subscribe((ed: any) => {
+      const d = ed?.start;
+      eventStartDate = d instanceof Date ? d : d ? new Date(d) : null;
+    });
+    return unsub;
+  });
+
+  // ── Editor items: defaults + calendar + location + priority + recurrence + persons
+  //    eventStartDate is passed through to RecurrenceEditor via {...editor} spread ──
+  const editorItems = $derived([
+    ...getEditorItems(),
+    { comp: CalendarIdEditor as any, key: "calendarId", label: "Calendrier" },
+    { comp: "text", key: "location", label: "Lieu" },
+    { comp: PriorityEditor as any, key: "priority", label: "Priorité" },
+    { comp: RecurrenceEditor as any, key: "rrule", label: "Récurrence", eventStartDate },
+    { comp: PersonCombo as any, key: "persons", label: "Assigné à" },
+  ]);
+
+  // ── Colles events (read-only, computed from colloscope) ──
+  //    Skip events already in the store (exported as recurring) to prevent duplicates.
+  const colleEvents = $derived.by<CalendarEvent[]>(() => {
+    void colloscope.state.semaines;
+    void colloscope.state.creneaux;
+    void colloscope.state.selectedClasse;
+    void colloscope.state.selectedColleur;
+
+    // Set of exported colle event base IDs (stored events with "colle-" prefix)
+    const exportedIds = new Set(
+      store.events
+        .filter(e => String(e.id).startsWith("colle-"))
+        .map(e => String(e.id)),
+    );
+
+    const result: CalendarEvent[] = [];
+    const semaines = colloscope.state.semaines;
+    const creneaux = colloscope.creneauxFiltered;
+    let evIdx = 0;
+
+    for (const c of creneaux) {
+      for (let i = 0; i < semaines.length; i++) {
+        const groupe = colloscope.getGroupe(c.id, i);
+        if (!groupe) continue;
+
+        const flatId = `colle-${c.id}-${i}-${evIdx}`;
+        // Skip if this creneau has been exported as a recurring event
+        if (exportedIds.has(`colle-${c.id}`)) {
+          evIdx++;
+          continue;
+        }
+
+        const start = computeDate(semaines[i].date, c.jour, c.horaire);
+        const end = computeEndDate(start, c.horaire);
+
+        result.push({
+          id: flatId,
+          text: `${c.matiere} — ${groupe}`,
+          start,
+          end,
+          color: materiaColor(c.matiere),
+          calendarId: "devoirs",
+          location: c.salle || undefined,
+        });
+        evIdx++;
+      }
+    }
+    return result;
+  });
+
+  // ── Expand recurring user events for the visible range ────
+  const expandedUserEvents = $derived.by<CalendarEvent[]>(() => {
+    const rangeStart = new Date();
+    rangeStart.setMonth(rangeStart.getMonth() - 6);
+    const rangeEnd = new Date();
+    rangeEnd.setMonth(rangeEnd.getMonth() + 12);
+
+    const result: CalendarEvent[] = [];
+
+    for (const ev of store.events) {
+      // Guard: some events may arrive from SVAR before start/end are resolved
+      if (!(ev.start instanceof Date) || !(ev.end instanceof Date)) continue;
+
+      if (ev.rrule) {
+        const occurrences = expandRrule(ev.rrule, ev.start, rangeStart, rangeEnd, ev.exdates);
+        const duration = ev.end.getTime() - ev.start.getTime();
+        for (let i = 0; i < occurrences.length; i++) {
+          const d = occurrences[i];
+          const end = new Date(d.getTime() + duration);
+          result.push({
+            ...ev,
+            id: `${ev.id}__${d.getTime()}`,
+            start: d,
+            end,
+          });
+        }
+      } else {
+        result.push(ev);
+      }
+    }
+    return result;
+  });
+
+  // ── Combined events (colles + user) ─────────────────────
+  const events = $derived<CalendarEvent[]>([...colleEvents, ...expandedUserEvents]);
+
+  // ── Calendar groups for filtering (semantic categories) ──
+  const calendars = $derived(CALENDARS.map((c) => ({
+    id: c.id,
+    label: c.label,
+    css: c.css,
+    active: c.active,
+  })));
+
+  // ── Context menu ──────────────────────────────────────────
+  const menuOptions = [
+    ...getMenuOptions(),
+    { id: "delete-this", text: "Supprimer cette occurrence", icon: "wxi-delete" },
+    { id: "delete-future", text: "Supprimer cette occurrence et les suivantes", icon: "wxi-delete" },
+    { id: "delete-all", text: "Tout supprimer", icon: "wxi-delete" },
+  ];
+
+  /** Show/hide delete items based on whether the event is recurring. */
+  function menuFilter(item: any, event: any): boolean {
+    if (!event) return true;
+    const isRecurring = !!event.rrule;
+    if (item.id === "delete-event") return !isRecurring;
+    if (item.id === "delete-this" || item.id === "delete-future" || item.id === "delete-all")
+      return isRecurring;
+    return true;
+  }
+
+  async function handleContextMenu({ action, context }: { action: any; context: any }) {
+    if (!action || !context) return;
+    const bid = baseId(String(context.id));
+    const existing = store.events.find((e) => e.id === bid);
+
+    if (!existing) {
+      // Event is a read-only colle from colloscope (not in calendar store)
+      if (context.id?.startsWith("colle-")) {
+        notifications.setInfo("Créneau colloscope en lecture seule. Utilisez « Exporter vers calendrier » pour le modifier.");
+      }
+      return;
+    }
+
+    if (action.id === "delete-this") {
+      // Add this occurrence's date to exdates
+      const occDate = context.start instanceof Date ? context.start : new Date(context.start);
+      const isoDay = occDate.toISOString().slice(0, 10);
+      const exdates = [...(existing.exdates || []), isoDay];
+      store.events = store.events.map((e) => (e.id === bid ? { ...e, exdates } : e));
+      notifications.setInfo("Occurrence supprimée");
+    } else if (action.id === "delete-future") {
+      if (!await confirm("Supprimer cette occurrence et toutes les suivantes ?", { kind: "warning" })) return;
+      // Set UNTIL on the rrule to the day before this occurrence
+      const occDate = context.start instanceof Date ? context.start : new Date(context.start);
+      const until = new Date(occDate);
+      until.setDate(until.getDate() - 1);
+      until.setHours(23, 59, 59);
+      const untilStr = until.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+      const newRrule = existing.rrule
+        ? existing.rrule.replace(/;?UNTIL=[^;]*/, "") + `;UNTIL=${untilStr}`
+        : null;
+      if (newRrule) {
+        store.events = store.events.map((e) =>
+          e.id === bid ? { ...e, rrule: newRrule } : e,
+        );
+        notifications.setInfo("Occurrences futures supprimées");
+      }
+    } else if (action.id === "delete-all") {
+      if (!await confirm("Supprimer complètement cet événement récurrent ?", { kind: "warning" })) return;
+      store.events = store.events.filter((e) => e.id !== bid);
+      notifications.setInfo("Événement supprimé");
+    } else if (action.id === "delete-event") {
+      // Non-recurring delete: SVAR's menuAction already called api.exec("delete-event")
+      // which removes it from the Calendar UI. We just clean up the store.
+      store.events = store.events.filter((e) => e.id !== bid);
+    }
+  }
+
+  // ── Event handlers: update store on Calendar mutations ────
+
+  /** Strip recurrence expansion suffix: "evt__1706123456789" → "evt", "evt__r3" → "evt", "evt" → "evt" */
+  function baseId(id: string): string {
+    return id.replace(/__\d+$/, "").replace(/__r\d+$/, "");
+  }
+
+  function onAddEvent({ event }: { event: CalendarEvent }) {
+    if (!(event.start instanceof Date) || !(event.end instanceof Date)) return;
+    const data: CalendarEventData = {
+      id: String(event.id),
+      text: event.text || "",
+      start: event.start,
+      end: event.end,
+      color: event.color,
+      calendarId: event.calendarId || "perso",
+      persons: event.persons,
+      rrule: event.rrule,
+      allDay: event.allDay,
+      location: event.location,
+      priority: event.priority,
+    };
+    store.events = [...store.events, data];
+  }
+
+  function onUpdateEvent({ id, event }: { id: string; event: CalendarEvent }) {
+    const bid = baseId(id);
+    const existing = store.events.find((e) => e.id === bid);
+    if (!existing) return;
+
+    const data: CalendarEventData = { ...existing };
+
+    // ── The Calendar emits two kinds of updates:
+    //   1. Drag — sends ONLY { start, end }, no metadata fields
+    //   2. Editor — sends ALL fields (start, end, text, rrule, …)
+    //
+    //   Problem: when the user toggles recurrence ON in the Editor,
+    //   the Calendar internally adjusts `start` to the next BYDAY
+    //   occurrence BEFORE emitting the update.  We expand rrules
+    //   externally, so we must preserve the original start in that case.
+    //
+    //   But when the user simply changes the date-time pickers,
+    //   we MUST accept the new start/end. ──
+    const hasMetadata =
+      "text" in event || "rrule" in event || "location" in event ||
+      "priority" in event || "persons" in event || "calendarId" in event;
+
+    const rruleChanged = "rrule" in event && event.rrule !== existing.rrule;
+    const startChanged = event.start instanceof Date && existing.start instanceof Date
+      && event.start.getTime() !== existing.start.getTime();
+
+    if (!hasMetadata) {
+      // ── Drag: accept new start/end ──
+      data.start = event.start;
+      data.end = event.end;
+
+      // If the event has a WEEKLY rrule, update BYDAY to match the new day
+      if (data.rrule && event.start instanceof Date && data.rrule.includes("FREQ=WEEKLY")) {
+        const newDay = RFC_DAY_MAP[event.start.getDay()];
+        if (newDay) {
+          data.rrule = data.rrule.replace(/BYDAY=[A-Z,]+/, `BYDAY=${newDay}`);
+        }
+      }
+    } else if (rruleChanged && startChanged) {
+      // ── Recurring toggle: Calendar shifted start as side effect → preserve original ──
+      // (data.start already = existing.start from the spread above)
+    } else {
+      // ── Editor change (date picker, text, etc.): accept new start/end ──
+      if (startChanged) {
+        data.start = event.start;
+        data.end = event.end;
+
+        // Sync BYDAY with new day for WEEKLY rrules (same as drag)
+        if (data.rrule && event.start instanceof Date && data.rrule.includes("FREQ=WEEKLY")) {
+          const newDay = RFC_DAY_MAP[event.start.getDay()];
+          if (newDay) {
+            data.rrule = data.rrule.replace(/BYDAY=[A-Z,]+/, `BYDAY=${newDay}`);
+          }
+        }
+      }
+    }
+
+    // Forward metadata fields
+    if ("text" in event && event.text !== undefined) data.text = event.text as string;
+    if ("color" in event && event.color !== undefined) data.color = event.color as string;
+    if ("calendarId" in event && event.calendarId !== undefined) {
+      data.calendarId = event.calendarId;
+    }
+    if ("location" in event && event.location !== undefined) {
+      data.location = event.location;
+    }
+    if ("priority" in event && event.priority !== undefined) {
+      data.priority = event.priority;
+    }
+    if ("persons" in event && event.persons !== undefined) {
+      data.persons = event.persons;
+    }
+    if ("rrule" in event && event.rrule !== undefined) {
+      data.rrule = event.rrule;
+    }
+    if ("allDay" in event && event.allDay !== undefined) {
+      data.allDay = event.allDay;
+    }
+
+    store.events = store.events.map((e) => (e.id === bid ? data : e));
+
+    // ── When we preserved original start/end above, the Calendar's internal
+    //    event still has the shifted start.  Reset it so the visual display
+    //    matches our store. ──
+    if (rruleChanged && startChanged && api) {
+      api.exec("update-event", { id: bid, event: { start: existing.start, end: existing.end } } as any);
+    }
+  }
+
+  function onDeleteEvent({ id }: { id: string }) {
+    const bid = baseId(id);
+    store.events = store.events.filter((e) => e.id !== bid);
+  }
+
+  function onSelectEvent(_args: { event: CalendarEvent | null }) {
+    // Start date is now read reactively from api.getReactiveState().editorData
+    // via the $effect above — no need to handle it here.
+  }
+
+  function init(a: CalendarInstanceApi) {
+    api = a;
+    a.on("add-event", onAddEvent as any);
+    a.on("update-event", onUpdateEvent as any);
+    a.on("delete-event", onDeleteEvent as any);
+    a.on("select-event", onSelectEvent as any);
+  }
+
+  // ── Public API for external importers (e.g. ColloscopePanel) ──
+  export function importEvents(newEvents: CalendarEventData[]) {
+    const existingIds = new Set(store.events.map((e) => e.id));
+    const toAdd = newEvents.filter((e) => !existingIds.has(e.id)).map(migrateRecurrence);
+    if (toAdd.length === 0) return 0;
+    store.events = [...store.events, ...toAdd];
+    return toAdd.length;
+  }
+
+  // ── CSS classes for calendar colour + priority/location on event rectangles ──
+  const calendarClassMap = Object.fromEntries(CALENDARS.map((c) => [c.id, c.css]));
+
+  function eventCss(ctx: any): string {
+    const parts: string[] = [];
+    const ev = ctx?.event ?? ctx?.data;
+    if (!ev) return "";
+
+    // Calendar colour class (e.g. "cal-cours", "cal-td", etc.)
+    const calId = ev.calendarId;
+    if (calId && calendarClassMap[calId]) {
+      parts.push(calendarClassMap[calId]);
+    }
+
+    const prio = ev.priority;
+    if (prio === "high") parts.push("ev-priority-high");
+    else if (prio === "low") parts.push("ev-priority-low");
+
+    const loc = ev.location;
+    if (loc) parts.push("ev-has-location");
+
+    return parts.join(" ");
+  }
+</script>
+
+<div class="svar-calendar-panel">
+    <Locale {words}>
+      <ContextMenu {api} options={menuOptions} filter={menuFilter} onclick={handleContextMenu}>
+        <Calendar
+          {events}
+          view="week"
+          views={[
+            {
+              id: "day",
+              sections: { timeGrid: { yScale: { startHour: 8, endHour: 22 } } },
+            },
+            {
+              id: "week",
+              sections: { timeGrid: { yScale: { startHour: 8, endHour: 22 } } },
+            },
+            "month",
+          ]}
+          {init}
+          {eventCss}
+          cellCss={(ctx) => {
+            if (ctx.date) {
+              const d = ctx.date.getDay();
+              if (d === 0 || d === 6) return "wx-weekend";
+            }
+            return "";
+          }}
+        >
+          <CalendarPanel {calendars} accessor="calendarId" />
+        </Calendar>
+        {#if api}
+          <Editor {api} items={editorItems} />
+        {/if}
+      </ContextMenu>
+    </Locale>
+</div>
+
+<style>
+  .svar-calendar-panel {
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Prevent selection bleeding during drag ──────────── */
+  .svar-calendar-panel :global(::selection) {
+    background: transparent;
+  }
+
+  .svar-calendar-panel :global(.wx-box-event),
+  .svar-calendar-panel :global(.wx-bar-event) {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Hide drag stub when not actively dragging */
+  .svar-calendar-panel :global(.wx-drag-stub:not([style*="display: block"])) {
+    display: none !important;
+  }
+
+  /* ── Navigation toolbar ──────────────────────────────── */
+  .svar-calendar-panel :global(.wx-navigation) {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 12px;
+    font-family: var(--font-ui, system-ui);
+    gap: 8px;
+  }
+
+  .svar-calendar-panel :global(.wx-navigation button),
+  .svar-calendar-panel :global(.wx-navigation .wx-button) {
+    background: var(--surface);
+    color: var(--fg-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: var(--font-ui, system-ui);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .svar-calendar-panel :global(.wx-navigation button:hover),
+  .svar-calendar-panel :global(.wx-navigation .wx-button:hover) {
+    background: color-mix(in srgb, var(--fg) 8%, var(--surface));
+    color: var(--fg);
+  }
+
+  .svar-calendar-panel :global(.wx-navigation .wx-button-active),
+  .svar-calendar-panel :global(.wx-navigation button.wx-button-active) {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+
+  /* ── Title text ──────────────────────────────────────── */
+  .svar-calendar-panel :global(.wx-navigation .wx-nav-title) {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--fg);
+    font-family: var(--font-ui, system-ui);
+  }
+
+  /* ── Time grid cells ─────────────────────────────────── */
+  .svar-calendar-panel :global(.wx-grid-cell) {
+    border-color: var(--border);
+  }
+
+  .svar-calendar-panel :global(.wx-grid-line) {
+    border-color: var(--border);
+  }
+
+  .svar-calendar-panel :global(.wx-now-line) {
+    background: var(--accent);
+  }
+
+  .svar-calendar-panel :global(.wx-now-dot) {
+    background: var(--accent);
+  }
+
+  /* ── Time scale labels ───────────────────────────────── */
+  .svar-calendar-panel :global(.wx-y-scale .wx-y-label) {
+    color: var(--fg-muted);
+    font-family: var(--font-ui, system-ui);
+    font-size: 11px;
+  }
+
+  /* ── Box events (month view) ─────────────────────────── */
+  .svar-calendar-panel :global(.wx-box-event) {
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: var(--font-ui, system-ui);
+    font-size: 12px;
+    line-height: 1.3;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 10%, transparent);
+  }
+
+  .svar-calendar-panel :global(.wx-box-event:hover) {
+    opacity: 0.85;
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--fg) 15%, transparent);
+  }
+
+  /* ── Bar events (week/day all-day bar) ───────────────── */
+  .svar-calendar-panel :global(.wx-bar-event) {
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: var(--font-ui, system-ui);
+    font-size: 12px;
+  }
+
+  /* ── Month grid ──────────────────────────────────────── */
+  .svar-calendar-panel :global(.wx-month-grid) {
+    border-color: var(--border);
+  }
+
+  .svar-calendar-panel :global(.wx-month-label) {
+    color: var(--fg-muted);
+    font-family: var(--font-ui, system-ui);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 0;
+    background: var(--surface);
+    border-color: var(--border);
+  }
+
+  .svar-calendar-panel :global(.wx-month-day) {
+    border-color: var(--border);
+  }
+
+  .svar-calendar-panel :global(.wx-today .wx-month-day-label) {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── Editor sidebar ──────────────────────────────────── */
+  .svar-calendar-panel :global(.wx-editor) {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 12px;
+    font-family: var(--font-ui, system-ui);
+    overflow-y: auto;
+  }
+
+  .svar-calendar-panel :global(.wx-editor label) {
+    color: var(--fg-muted);
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .svar-calendar-panel :global(.wx-editor input),
+  .svar-calendar-panel :global(.wx-editor textarea) {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: var(--font-ui, system-ui);
+    font-size: 13px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .svar-calendar-panel :global(.wx-editor input:focus),
+  .svar-calendar-panel :global(.wx-editor textarea:focus) {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  .svar-calendar-panel :global(.wx-editor .wx-button) {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-family: var(--font-ui, system-ui);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .svar-calendar-panel :global(.wx-editor .wx-button:hover) {
+    opacity: 0.85;
+  }
+
+  /* ── Context menu ────────────────────────────────────── */
+  .svar-calendar-panel :global(.wx-context-menu) {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--fg) 15%, transparent);
+    padding: 4px;
+    font-family: var(--font-ui, system-ui);
+    font-size: 13px;
+  }
+
+  .svar-calendar-panel :global(.wx-context-menu-item) {
+    color: var(--fg);
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+
+  .svar-calendar-panel :global(.wx-context-menu-item:hover) {
+    background: color-mix(in srgb, var(--fg) 8%, var(--surface));
+  }
+
+  /* ── CalendarPanel (sidebar groups) ──────────────────── */
+  .svar-calendar-panel :global(.wx-calendar-panel) {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 12px;
+    font-family: var(--font-ui, system-ui);
+    font-size: 13px;
+  }
+
+  .svar-calendar-panel :global(.wx-calendar-name) {
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--fg);
+    font-size: 12px;
+  }
+
+  /* ── Calendar category colors (theme-adaptive via --syntax-***) ── */
+  .svar-calendar-panel :global(.cal-cours.wx-calendar-name) {
+    background: color-mix(in srgb, var(--syntax-keyword) 20%, var(--surface));
+    color: var(--syntax-keyword);
+  }
+
+  .svar-calendar-panel :global(.cal-cours.wx-calendar-name:hover) {
+    background: color-mix(in srgb, var(--syntax-keyword) 30%, var(--surface));
+  }
+
+  .svar-calendar-panel :global(.cal-td.wx-calendar-name) {
+    background: color-mix(in srgb, var(--syntax-number) 20%, var(--surface));
+    color: var(--syntax-number);
+  }
+
+  .svar-calendar-panel :global(.cal-td.wx-calendar-name:hover) {
+    background: color-mix(in srgb, var(--syntax-number) 30%, var(--surface));
+  }
+
+  .svar-calendar-panel :global(.cal-devoirs.wx-calendar-name) {
+    background: color-mix(in srgb, var(--syntax-string) 20%, var(--surface));
+    color: var(--syntax-string);
+  }
+
+  .svar-calendar-panel :global(.cal-devoirs.wx-calendar-name:hover) {
+    background: color-mix(in srgb, var(--syntax-string) 30%, var(--surface));
+  }
+
+  .svar-calendar-panel :global(.cal-perso.wx-calendar-name) {
+    background: color-mix(in srgb, var(--syntax-constant) 20%, var(--surface));
+    color: var(--syntax-constant);
+  }
+
+  .svar-calendar-panel :global(.cal-perso.wx-calendar-name:hover) {
+    background: color-mix(in srgb, var(--syntax-constant) 30%, var(--surface));
+  }
+
+  /* ── Event calendar colours (applied via eventCss callback) ── */
+  .svar-calendar-panel :global(.wx-box-event.cal-cours),
+  .svar-calendar-panel :global(.wx-bar-event.cal-cours) {
+    background-color: color-mix(in srgb, var(--syntax-keyword) 70%, var(--surface));
+    color: var(--fg);
+  }
+
+  .svar-calendar-panel :global(.wx-box-event.cal-td),
+  .svar-calendar-panel :global(.wx-bar-event.cal-td) {
+    background-color: color-mix(in srgb, var(--syntax-number) 70%, var(--surface));
+    color: var(--fg);
+  }
+
+  .svar-calendar-panel :global(.wx-box-event.cal-devoirs),
+  .svar-calendar-panel :global(.wx-bar-event.cal-devoirs) {
+    background-color: color-mix(in srgb, var(--syntax-string) 70%, var(--surface));
+    color: var(--fg);
+  }
+
+  .svar-calendar-panel :global(.wx-box-event.cal-perso),
+  .svar-calendar-panel :global(.wx-bar-event.cal-perso) {
+    background-color: color-mix(in srgb, var(--syntax-constant) 70%, var(--surface));
+    color: var(--fg);
+  }
+
+  /* ── Event priority indicators via eventCss ──────────── */
+  .svar-calendar-panel :global(.ev-priority-high) {
+    border-left: 3px solid var(--color-error, #f38ba8) !important;
+  }
+
+  .svar-calendar-panel :global(.ev-priority-low) {
+    opacity: 0.7;
+  }
+
+  .svar-calendar-panel :global(.ev-has-location::after) {
+    content: " \1F4CD";
+    font-size: 10px;
+  }
+
+  /* ── Tooltip ─────────────────────────────────────────── */
+  .svar-calendar-panel :global(.wx-calendar-tooltip) {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 12%, transparent);
+    font-family: var(--font-ui, system-ui);
+    font-size: 12px;
+    color: var(--fg);
+  }
+
+  /* ── All-day section ─────────────────────────────────── */
+  .svar-calendar-panel :global(.wx-bar-section) {
+    border-color: var(--border);
+  }
+
+  .svar-calendar-panel :global(.wx-bar-title) {
+    color: var(--fg-muted);
+    font-family: var(--font-ui, system-ui);
+    font-size: 11px;
+  }
+
+  /* ── Layout fixes ────────────────────────────────────── */
+  .svar-calendar-panel :global(.wx-calendar) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .svar-calendar-panel :global(.wx-calendar-main) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* ContextMenu wraps children in <span data-menu-ignore>.
+     Must be a proper flex child or height chain breaks. */
+  .svar-calendar-panel :global([data-menu-ignore]) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .svar-calendar-panel :global(.wx-calendar-sidebar) {
+    flex-shrink: 0;
+  }
+</style>

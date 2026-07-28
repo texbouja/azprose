@@ -1,6 +1,4 @@
 <script lang="ts">
-import { ChevronRight, Folder, FolderOpen, FileText } from "@/lib/icons";
-import { Icon } from "@/components/primitives";
 import { joinPath } from "@/lib";
 
 let {
@@ -137,10 +135,10 @@ $effect(() => {
             onclick={() => toggleFolder(year.path)}
           >
             <span class="mdv-tree__chevron{open[year.path] ? ' is-open' : ''}">
-              <Icon icon={ChevronRight} size={12} strokeWidth={2} />
+              <i class="wxi-chevron-right" style="font-size:12px"></i>
             </span>
             <span class="mdv-tree__icon">
-              <Icon icon={open[year.path] ? FolderOpen : Folder} size={13} strokeWidth={1.5} />
+              <i class={open[year.path] ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
             </span>
             <span class="mdv-tree__name">{year.label}</span>
           </button>
@@ -154,10 +152,10 @@ $effect(() => {
                     onclick={() => toggleFolder(month.path)}
                   >
                     <span class="mdv-tree__chevron{open[month.path] ? ' is-open' : ''}">
-                      <Icon icon={ChevronRight} size={12} strokeWidth={2} />
+                      <i class="wxi-chevron-right" style="font-size:12px"></i>
                     </span>
                     <span class="mdv-tree__icon">
-                      <Icon icon={open[month.path] ? FolderOpen : Folder} size={13} strokeWidth={1.5} />
+                      <i class={open[month.path] ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
                     </span>
                     <span class="mdv-tree__name">{month.label}</span>
                   </button>
@@ -172,7 +170,7 @@ $effect(() => {
                             onclick={() => onSelect(file.path)}
                           >
                             <span class="mdv-tree__icon">
-                              <Icon icon={FileText} size={13} strokeWidth={1.5} />
+                              <i class="wxi-file-text" style="font-size:13px"></i>
                             </span>
                             <span class="mdv-tree__name">{file.name}</span>
                           </button>

@@ -1,6 +1,4 @@
 <script lang="ts">
-import { Icon } from "@/components/primitives";
-import { X } from "@/lib/icons";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 
@@ -146,7 +144,7 @@ function endDrag(e: PointerEvent) {
         onpointerdown={(e) => e.stopPropagation()}
         onclick={() => onClose?.(tab.id)}
       >
-        <Icon icon={X} size={13} strokeWidth={1.8} />
+        <i class="wxi-x" style="font-size:13px"></i>
       </button>
     </div>
   {/each}

@@ -67,6 +67,7 @@ let activeTab = $derived(tabs.find(t => t.id === activeTabId) ?? null);
 let isCsvPreview = $derived(
   panel.id === "side" && activeTab != null && (extFromPath(activeTab.path) === "csv" || extFromPath(activeTab.path) === "tsv"),
 );
+let isCustomTab = $derived(activeTab?.kind === "custom");
 let viewportEl = $state<HTMLElement | null>(null);
 
 function handleViewerCommand(cmd: string) {
@@ -97,7 +98,7 @@ function handleViewerFullscreen() {
     </div>
   {/if}
   <div class="panel-viewport" bind:this={viewportEl} style="position:relative;flex:1;min-height:0;display:grid;grid-template-rows:1fr">
-    {#if !isCsvPreview}
+    {#if !isCsvPreview && !isCustomTab}
     <TabActions
       {activeTab}
       panelId={panel.id}

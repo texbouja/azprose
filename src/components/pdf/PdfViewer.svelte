@@ -10,23 +10,7 @@
   } from "pdfjs-dist/web/pdf_viewer.mjs";
   import { readFile, exists } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
-  import {
-    PanelLeftClose,
-    PanelLeftOpen,
-    ChevronLeft,
-    ChevronRight,
-    ArrowBigLeft,
-    ArrowBigRight,
-    Maximize2,
-    ZoomIn,
-    ZoomOut,
-    Expand,
-    Fullscreen,
-    List,
-    Paperclip,
-    FileText,
-  } from "@/lib/icons";
-  import { Icon } from "@/components/primitives";
+  // icons migrated to wxi-lucide.css
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -382,9 +366,9 @@
         onclick={() => (panelOpen = !panelOpen)}
       >
         {#if panelOpen}
-          <Icon icon={PanelLeftClose} size={14} strokeWidth={1.6} />
+          <i class="wxi-panel-left-close" style="font-size:14px"></i>
         {:else}
-          <Icon icon={PanelLeftOpen} size={14} strokeWidth={1.6} />
+          <i class="wxi-panel-left-open" style="font-size:14px"></i>
         {/if}
       </button>
     </div>
@@ -392,10 +376,10 @@
     <!-- Center: navigation -->
     <div class="pdf-topbar__section pdf-topbar__center">
       <button class="pdf-btn" title={t("pdf.goBack")} onclick={goBack}>
-        <Icon icon={ArrowBigLeft} size={14} strokeWidth={1.6} />
+        <i class="wxi-arrow-big-left" style="font-size:14px"></i>
       </button>
       <button class="pdf-btn" title={t("pdf.prevPage")} onclick={goPrev}  disabled={!numPages || currentPage <= 1}>
-        <Icon icon={ChevronLeft}   size={14} strokeWidth={1.6} />
+        <i class="wxi-chevron-left" style="font-size:14px"></i>
       </button>
       <input
         bind:this={pageInputEl}
@@ -410,32 +394,32 @@
       />
       <span class="pdf-page-sep">/ {numPages || "—"}</span>
       <button class="pdf-btn" title={t("pdf.nextPage")} onclick={goNext} disabled={!numPages || currentPage >= numPages}>
-        <Icon icon={ChevronRight}  size={14} strokeWidth={1.6} />
+        <i class="wxi-chevron-right" style="font-size:14px"></i>
       </button>
       <button class="pdf-btn" title={t("pdf.goForward")} onclick={goForward}>
-        <Icon icon={ArrowBigRight} size={14} strokeWidth={1.6} />
+        <i class="wxi-arrow-big-right" style="font-size:14px"></i>
       </button>
     </div>
 
     <!-- Right: zoom + fit -->
     <div class="pdf-topbar__section pdf-topbar__right">
       <button class="pdf-btn" title={t("pdf.zoomOut")} onclick={zoomOut} disabled={!numPages}>
-        <Icon icon={ZoomOut} size={14} strokeWidth={1.6} />
+        <i class="wxi-zoom-out" style="font-size:14px"></i>
       </button>
       <span class="pdf-scale-chip">{numPages ? scaleLabel : "—"}</span>
       <button class="pdf-btn" title={t("pdf.zoomIn")} onclick={zoomIn} disabled={!numPages}>
-        <Icon icon={ZoomIn}  size={14} strokeWidth={1.6} />
+        <i class="wxi-zoom-in" style="font-size:14px"></i>
       </button>
       <div class="pdf-vsep"></div>
       <button class="pdf-btn" title={t("pdf.fitWidth")} onclick={fitWidth} disabled={!numPages}>
-        <span class="pdf-icon-rotate-45"><Icon icon={Maximize2} size={13} strokeWidth={1.6} /></span>
+        <span class="pdf-icon-rotate-45"><i class="wxi-maximize-2" style="font-size:13px"></i></span>
       </button>
       <button class="pdf-btn" title={t("pdf.fitPage")} onclick={fitPage} disabled={!numPages}>
-        <Icon icon={Expand}    size={13} strokeWidth={1.6} />
+        <i class="wxi-expand" style="font-size:13px"></i>
       </button>
       <div class="pdf-vsep"></div>
       <button class="pdf-btn" title="Fullscreen" onclick={() => onToggleFullscreen?.()}>
-        <Icon icon={Fullscreen} size={14} strokeWidth={1.6} />
+        <i class="wxi-fullscreen" style="font-size:14px"></i>
       </button>
     </div>
   </header>
@@ -449,7 +433,7 @@
           class:is-active={panelTab === "toc"}
           onclick={() => (panelTab = "toc")}
         >
-          <Icon icon={List} size={12} strokeWidth={1.6} />
+          <i class="wxi-list" style="font-size:12px"></i>
           {t("pdf.contents")}
         </button>
         <button
@@ -457,7 +441,7 @@
           class:is-active={panelTab === "attachments"}
           onclick={() => (panelTab = "attachments")}
         >
-          <Icon icon={Paperclip} size={12} strokeWidth={1.6} />
+          <i class="wxi-paperclip" style="font-size:12px"></i>
           {t("pdf.attachments")}
         </button>
       </nav>
@@ -513,7 +497,7 @@
   {/if}
   {#if errorMsg}
     <div class="pdf-overlay pdf-error-overlay">
-      <Icon icon={FileText} size={32} strokeWidth={1.5} />
+      <i class="wxi-file-text" style="font-size:32px"></i>
       <p>{t("pdf.couldNotOpen")}</p>
       <code>{errorMsg}</code>
     </div>

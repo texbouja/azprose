@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { Diagnostic } from "@/lib/diagnostics";
   import Terminal from "./Terminal.svelte";
-  import { Icon } from "@/components/primitives";
-  import { Trash2 } from "@/lib/icons";
+  import { tick } from "svelte";
 
   let {
     diagnostics = [] as Diagnostic[],
@@ -31,14 +30,24 @@
   // Mount the terminal lazily (first time its tab is shown) and keep it alive
   // afterwards so the shell survives tab switches.
   let terminalStarted = $state(false);
+  let terminalExited = $state(false);
   $effect(() => {
     if (activeTab === "terminal") terminalStarted = true;
   });
+
+  // Kill the running shell and spawn a fresh one (unmount → remount).
+  async function restartTerminal() {
+    terminalStarted = false;
+    terminalExited = false;
+    await tick();
+    terminalStarted = true;
+  }
 
   // Explicit "close terminal": unmounting the Terminal triggers its onDestroy →
   // terminal_kill (PTY closed). Re-selecting the Terminal tab spawns a fresh shell.
   function killTerminal() {
     terminalStarted = false;
+    terminalExited = false;
   }
 
   let dragStartY = 0;
@@ -125,15 +134,27 @@
       </button>
     </div>
     {#if activeTab === "terminal" && terminalStarted}
-      <button
-        type="button"
-        class="diag-console__kill"
-        title="Fermer le terminal"
-        aria-label="Fermer le terminal"
-        onclick={killTerminal}
-      >
-        <Icon icon={Trash2} size={13} strokeWidth={1.6} />
-      </button>
+      {#if terminalExited}
+        <button
+          type="button"
+          class="diag-console__restart"
+          title="Redémarrer le shell"
+          aria-label="Redémarrer le shell"
+          onclick={restartTerminal}
+        >
+          <i class="wxi-rotate-ccw" style="font-size:13px"></i>
+        </button>
+      {:else}
+        <button
+          type="button"
+          class="diag-console__kill"
+          title="Fermer le terminal"
+          aria-label="Fermer le terminal"
+          onclick={killTerminal}
+        >
+          <i class="wxi-trash-2" style="font-size:13px"></i>
+        </button>
+      {/if}
     {/if}
     <button
       type="button"
@@ -181,7 +202,7 @@
     </div>
     {#if terminalStarted}
       <div class="diag-console__pane diag-console__pane--term" class:is-hidden={activeTab !== "terminal"}>
-        <Terminal id="main" cwd={terminalCwd} active={activeTab === "terminal"} />
+        <Terminal id="main" cwd={terminalCwd} active={activeTab === "terminal"} onExit={() => { terminalExited = true; }} />
       </div>
     {/if}
     <div class="diag-console__pane" class:is-hidden={activeTab !== "log"}>
@@ -325,6 +346,26 @@
 
   .diag-console__kill:hover {
     color: var(--color-error, #b91c1c);
+    background: var(--surface-hover);
+  }
+
+  .diag-console__restart {
+    width: 28px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    color: var(--color-success, #40a02b);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: color var(--dur-fast, 0.1s), background var(--dur-fast, 0.1s);
+  }
+
+  .diag-console__restart:hover {
+    color: var(--accent, #2563eb);
     background: var(--surface-hover);
   }
 

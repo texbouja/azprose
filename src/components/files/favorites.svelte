@@ -1,6 +1,4 @@
 <script lang="ts">
-import { ChevronRight, Star } from "@/lib/icons";
-import Icon from "@/components/primitives/Icon.svelte";
 import FileIcon from "./FileIcon.svelte";
 import { basename, type FileEntry } from "@/lib";
 
@@ -38,10 +36,10 @@ const DRAG_MIME = "application/x-azprose-path";
   <div class="mdv-rootfolder__header">
     <button type="button" class="mdv-rootfolder__toggle" onclick={() => open = !open}>
       <span class="mdv-tree__chevron{open ? ' is-open' : ''}">
-        <Icon icon={ChevronRight} size={12} strokeWidth={2} />
+        <i class="wxi-chevron-right" style="font-size:12px"></i>
       </span>
       <span class="mdv-tree__icon mdv-favorites__star">
-        <Icon icon={Star} size={13} strokeWidth={1.5} />
+        <i class="wxi-star" style="font-size:13px"></i>
       </span>
       <span class="mdv-rootfolder__name">{title}</span>
     </button>
@@ -127,7 +125,7 @@ const DRAG_MIME = "application/x-azprose-path";
                 onToggleFavorite(path);
               }}
             >
-              <Icon icon={Star} size={11} strokeWidth={1.8} />
+              <i class="wxi-star" style="font-size:11px"></i>
             </button>
           </li>
         {/each}

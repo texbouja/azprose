@@ -4,6 +4,7 @@ import { isCsvPath } from "./csv";
 import { basename, dirname, joinPath } from "./paths-utils";
 
 export { basename, dirname, joinPath };
+export { readFile } from "@tauri-apps/plugin-fs";
 
 export type FileEntry = {
   name: string;
@@ -64,6 +65,20 @@ export const TEXT_EXTENSIONS = new Set([
 ]);
 
 const ALL_TEXT_EXTENSIONS = [...TEXT_EXTENSIONS].sort();
+
+export async function pickXlsx(): Promise<string | null> {
+  const result = await open({
+    multiple: false,
+    title: "importer colloscope",
+    filters: [
+      { name: "Colloscope", extensions: ["xlsx", "csv"] },
+      { name: "Excel", extensions: ["xlsx"] },
+      { name: "CSV", extensions: ["csv"] },
+    ],
+  });
+  if (typeof result === "string") return result;
+  return null;
+}
 
 export async function pickAnyFile(): Promise<string | null> {
   const result = await open({

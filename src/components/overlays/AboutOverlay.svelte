@@ -1,8 +1,7 @@
 <script lang="ts">
-import { Download, FileText, FolderOpen, Globe, Palette, Star, Workflow, X } from "@/lib/icons";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, Icon, Overlay } from "@/components/primitives";
+import { Button, Overlay } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import mascotUrl from "@/assets/mascot/az-excite.svg";
@@ -23,11 +22,11 @@ const REPO_URL = "https://github.com/azprose/azprose";
 const SITE_URL = "https://azprose.app";
 
 const FEATURES = [
-  { icon: FileText, label: "about.feature.markdown", detail: "about.feature.markdownDetail" },
-  { icon: Palette, label: "about.feature.math", detail: "about.feature.mathDetail" },
-  { icon: FolderOpen, label: "about.feature.projects", detail: "about.feature.projectsDetail" },
-  { icon: Workflow, label: "about.feature.latex", detail: "about.feature.latexDetail" },
-  { icon: Download, label: "about.feature.pdf", detail: "about.feature.pdfDetail" },
+  { icon: "wxi-file-text", label: "about.feature.markdown", detail: "about.feature.markdownDetail" },
+  { icon: "wxi-palette", label: "about.feature.math", detail: "about.feature.mathDetail" },
+  { icon: "wxi-folder-open", label: "about.feature.projects", detail: "about.feature.projectsDetail" },
+  { icon: "wxi-workflow", label: "about.feature.latex", detail: "about.feature.latexDetail" },
+  { icon: "wxi-download", label: "about.feature.pdf", detail: "about.feature.pdfDetail" },
 ];
 
 let cachedVersion: string | null = null;
@@ -70,7 +69,7 @@ const handleOpen = async (url: string) => {
 </script>
 
 {#snippet aboutCloseIcon()}
-  <Icon icon={X} size={14} strokeWidth={1.5} />
+  <i class="wxi-x" style="font-size:14px"></i>
 {/snippet}
 
 <Overlay {open} {onClose} ariaLabel={t("about.ariaLabel")} variant="modal">
@@ -108,7 +107,7 @@ const handleOpen = async (url: string) => {
         onclick={() => void handleCheck()}
         disabled={checking}
       >
-        <Icon icon={Download} size={12} strokeWidth={1.5} />
+        <i class="wxi-download" style="font-size:12px"></i>
         {checking ? t("about.checking") : t("about.checkForUpdates")}
       </button>
     {/if}
@@ -119,7 +118,7 @@ const handleOpen = async (url: string) => {
     <div class="mdv-about__features" aria-label={t("about.featuresAria")}>
       {#each FEATURES as feature}
         <div class="mdv-about__feature">
-          <Icon icon={feature.icon} size={13} strokeWidth={1.6} />
+          <i class={feature.icon} style="font-size:13px"></i>
           <span class="mdv-about__feature-label">{t(feature.label)}</span>
           <span class="mdv-about__feature-detail">{t(feature.detail)}</span>
         </div>
@@ -132,7 +131,7 @@ const handleOpen = async (url: string) => {
         class="mdv-about__link mdv-about__link--star"
         onclick={() => void handleOpen(REPO_URL)}
       >
-        <Icon icon={Star} size={13} strokeWidth={1.5} />
+        <i class="wxi-star" style="font-size:13px"></i>
         {t("about.starOnGithub")}
       </button>
       <button
@@ -140,7 +139,7 @@ const handleOpen = async (url: string) => {
         class="mdv-about__link"
         onclick={() => void handleOpen(SITE_URL)}
       >
-        <Icon icon={Globe} size={13} strokeWidth={1.5} />
+        <i class="wxi-globe" style="font-size:13px"></i>
         {t("about.site")}
       </button>
     </div>

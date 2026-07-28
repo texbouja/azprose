@@ -1,6 +1,5 @@
 <script lang="ts">
-import { X } from "@/lib/icons";
-import { Button, Icon } from "@/components/primitives";
+import { Button } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import sadUrl from "@/assets/mascot/az-sad.svg";
@@ -66,7 +65,7 @@ let art = $derived(variant === "info" ? exciteUrl : sadUrl);
 </script>
 
 {#snippet dismissIcon()}
-  <Icon icon={X} size={11} strokeWidth={1.5} />
+  <i class="wxi-x" style="font-size:11px"></i>
 {/snippet}
 
 {#if open}

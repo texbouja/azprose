@@ -1,6 +1,5 @@
 <script lang="ts">
-import { Copy, FilePlus2, FolderInput, FolderPlus, Search, Trash2, X } from "@/lib/icons";
-import { Button, Icon } from "@/components/primitives";
+import { Button } from "@/components/primitives";
 import { language, getT } from "@/lib/i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { dirname, type FileEntry } from "@/lib";
@@ -163,7 +162,7 @@ function onHeaderMouseDown(e: MouseEvent) {
     <div class="mdv-sidebar__header-actions">
       {#if folders.length > 0}
         {#snippet searchBtnIcon()}
-          <Icon icon={Search} size={12} strokeWidth={1.5} />
+          <i class="wxi-search" style="font-size:12px"></i>
         {/snippet}
         <Button
           data-tooltip={searchOpen ? t("sidebar.closeSearchShortcut") : t("sidebar.searchFolder")}
@@ -173,7 +172,7 @@ function onHeaderMouseDown(e: MouseEvent) {
           icon={searchBtnIcon}
         />
         {#snippet newFileIcon()}
-          <Icon icon={FilePlus2} size={13} strokeWidth={1.5} />
+          <i class="wxi-file-plus-2" style="font-size:13px"></i>
         {/snippet}
         <Button
           data-tooltip={t("menu.newFile")}
@@ -182,7 +181,7 @@ function onHeaderMouseDown(e: MouseEvent) {
           icon={newFileIcon}
         />
         {#snippet newFolderIcon()}
-          <Icon icon={FolderPlus} size={13} strokeWidth={1.5} />
+          <i class="wxi-folder-plus" style="font-size:13px"></i>
         {/snippet}
         <Button
           data-tooltip={t("menu.newFolder")}
@@ -192,7 +191,7 @@ function onHeaderMouseDown(e: MouseEvent) {
         />
       {/if}
       {#snippet addWorkspaceFolderIcon()}
-        <Icon icon={FolderInput} size={13} strokeWidth={1.5} />
+        <i class="wxi-folder-input" style="font-size:13px"></i>
       {/snippet}
       <Button
         data-tooltip={t("sidebar.addFolder")}
@@ -208,7 +207,7 @@ function onHeaderMouseDown(e: MouseEvent) {
       aria-hidden={!searchOpen}
     >
       <span class="mdv-sidebar__search-icon" aria-hidden="true">
-        <Icon icon={Search} size={12} strokeWidth={1.5} />
+        <i class="wxi-search" style="font-size:12px"></i>
       </span>
       <input
         bind:this={searchInputRef}
@@ -228,7 +227,7 @@ function onHeaderMouseDown(e: MouseEvent) {
         onclick={closeSearch}
         tabindex={searchOpen ? 0 : -1}
       >
-        <Icon icon={X} size={11} strokeWidth={2} />
+        <i class="wxi-x" style="font-size:11px"></i>
       </button>
     </div>
   {/if}
@@ -347,10 +346,10 @@ function onHeaderMouseDown(e: MouseEvent) {
   </footer>
   {#if rootPath && stagedPaths.length > 0}
     {#snippet copyContextIcon()}
-      <Icon icon={Copy} size={12} strokeWidth={1.6} />
+      <i class="wxi-copy" style="font-size:12px"></i>
     {/snippet}
     {#snippet clearContextIcon()}
-      <Icon icon={Trash2} size={12} strokeWidth={1.6} />
+      <i class="wxi-trash-2" style="font-size:12px"></i>
     {/snippet}
     <footer class="mdv-context-tray">
       <div class="mdv-context-tray__meta">

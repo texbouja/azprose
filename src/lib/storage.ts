@@ -24,6 +24,7 @@ export const STORAGE_KEYS = {
   latexSettings: "mdview.latex.settings",
   shortcuts: "mdview.shortcuts",
   journalSettings: "mdview.journal",
+  userProfile: "mdview.user.profile",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

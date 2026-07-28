@@ -21,6 +21,8 @@ mod lsp_bridge;
 
 mod mdprinter;
 
+mod colles;
+
 use lsp_bridge::LspBridgeState;
 
 struct PendingOpenFiles(Mutex<Vec<String>>);
@@ -396,6 +398,23 @@ fn read_project_session(root: String) -> Result<Option<String>, String> {
     fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
 }
 
+// ── Calendar (.azprose/calendar/events.ics) ───────────────
+
+#[tauri::command]
+fn read_calendar(root: String) -> Result<Option<String>, String> {
+    let path = Path::new(&root).join(".azprose/calendar/events.ics");
+    if !path.exists() {
+        return Ok(None);
+    }
+    fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_calendar(root: String, content: String) -> Result<(), String> {
+    let path = Path::new(&root).join(".azprose/calendar/events.ics");
+    atomic_write(&path, &content)
+}
+
 #[tauri::command]
 fn write_project_session(root: String, content: String) -> Result<(), String> {
     let path = Path::new(&root).join(".azprose/session.json");
@@ -471,10 +490,15 @@ pub fn run() {
             set_external_change_alerts,
             reveal_in_file_manager,
             mdprinter::export_markdown_pdf,
+            colles::parse_colloscope_xlsx,
+            colles::parse_colloscope_csv,
+            colles::parse_eleves_csv,
             read_project_config,
             write_project_config,
             read_project_session,
             write_project_session,
+            read_calendar,
+            write_calendar,
             get_projects_list,
             add_project,
             remove_project,

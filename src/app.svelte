@@ -44,6 +44,7 @@ import TitleBar from "@/components/chrome/TitleBar.svelte";
 import Breadcrumb from "@/components/chrome/Breadcrumb.svelte";
 import StatusBar from "@/components/chrome/StatusBar.svelte";
 import SidebarContainer from "@/components/sidebar/sidebar-container.svelte";
+import ActivityBar from "@/components/sidebar/activity-bar.svelte";
 import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
@@ -52,7 +53,7 @@ import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { executeOxideCommand } from "@/lib/lsp/markdown-oxide";
-import { writeText } from "@/lib/files";
+import { writeText, pickXlsx } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { saveSession, clearDraft, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
 import {
@@ -75,9 +76,14 @@ import {
 import { generalSettings } from "@/stores/general-settings.svelte";
 import { proseMarkSettings, previewSettings, presentationSettings } from "@/stores/markdown-settings.svelte";
 import { setRootPath } from "@/stores/root-path.svelte";
+import { setActivePath } from "@/stores/active-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
 import { flushAllCsvCaches } from "@/csv/flush";
+import { colloscope } from "@/stores/colloscope.svelte";
+import { eleves } from "@/stores/eleves.svelte";
+import { fiches } from "@/stores/fiches.svelte";
+import { getCalendarStore } from "@/stores/calendar-store.svelte";
 import { navPush, navBack, navForward, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
 import {
   createLatexState,
@@ -162,6 +168,23 @@ $effect(() => { setSessionScope(rootPath); });
 
 // Keep the rootPath store in sync for preview components (wikilink resolution).
 $effect(() => { setRootPath(rootPath); });
+
+// Keep the activePath store in sync for opencode panel (file context).
+$effect(() => { setActivePath(activePath); });
+
+// Wire colles stores to rootPath and load on vault open.
+$effect(() => {
+  const rp = rootPath;
+  colloscope.setRootPath(rp);
+  eleves.setRootPath(rp);
+  fiches.setRootPath(rp);
+  if (rp) {
+    colloscope.load();
+    eleves.load();
+    fiches.load();
+    getCalendarStore().load(rp);
+  }
+});
 
 // Ensure .moxide.toml exists at project root before markdown-oxide spawns.
 // Handled by markdown handler after lazy load.
@@ -886,6 +909,52 @@ let cmds = $derived(
     toggleViewPanel: handleToggleSidebar,
     toggleTitlebar: handleToggleTitlebar,
     openSettings: () => overlays.openSettings("general"),
+    showColles: () => {
+      pm.openCustomInSide("colloscope", "Colloscope");
+    },
+    openColloscopeGrid: () => {
+      pm.openCustomInSide("colloscope", "Colloscope");
+    },
+    openCalendarEditor: () => {
+      pm.openCustomInSide("calendar-editor", "Calendrier");
+    },
+    openElevesSpreadsheet: () => {
+      pm.openCustomInSide("eleves", "Élèves");
+    },
+    importElevesList: async () => {
+      pm.openCustomInSide("eleves", "Élèves");
+      const path = await pickXlsx();
+      if (!path) return;
+      try {
+        const parsed: any = await invoke("parse_eleves_csv", { path });
+        const parsedEleves = parsed.eleves.map((e: any, i: number) => ({
+          id: `eleve-${i}`,
+          nom: e.nom,
+          prenom: e.prenom,
+          classe: e.classe,
+          groupe: e.groupe,
+          email: e.email ?? "",
+        }));
+        eleves.importEleves(parsedEleves);
+        await eleves.save();
+      } catch (e) {
+        console.error("[eleves] import error:", e);
+      }
+    },
+    showOpenCode: () => {
+      pm.openCustomInSide("opencode", "OpenCode");
+    },
+    openJournalCalendar: () => {
+      pm.openCustomInSide("journal-calendar", "Journal");
+    },
+    openSvarCalendar: () => {
+      pm.openCustomInSide("svar-calendar", "Calendar");
+    },
+    clearCalendarCache: async () => {
+      if (!await confirm(t("command.clearCalendarCacheConfirm"), { kind: "warning" })) return;
+      getCalendarStore().clearAll();
+      notifications.setInfo(t("command.clearCalendarCacheDone"));
+    },
   }, t),
 );
 </script>
@@ -899,8 +968,6 @@ let cmds = $derived(
   />
 
   <Breadcrumb
-    sidebarOpen={sidebarOpen.current}
-    onToggleSidebar={handleToggleSidebar}
     {rootPath}
     {activePath}
     {saveStatus}
@@ -917,9 +984,14 @@ let cmds = $derived(
     onToggleConsole={handleToggleConsole}
     viewPanelOpen={sideVisible}
     onToggleViewPanel={handleToggleViewPanel}
+    onOpenCode={() => pm.openCustomInSide("opencode", "OpenCode")}
+    onOpenSvarCalendar={() => pm.openCustomInSide("svar-calendar", "Calendar")}
+    onOpenPalette={() => overlays.setPaletteOpen(true)}
+    onSelectFile={fo.selectFile}
   />
 
   <main class="mdv-shell">
+    <ActivityBar isOpen={sidebarOpen.current} onToggle={handleToggleSidebar} />
     <SidebarContainer
       open={sidebarOpen.current}
       {rootPath}
@@ -946,6 +1018,7 @@ let cmds = $derived(
       onMove={fo.move}
       onOpenProject={handleOpenProjectByPath}
       onProjectFromFolder={handleInitProject}
+      onOpenCalendar={() => pm.openCustomInSide("svar-calendar", "Calendar")}
     />
 
     <div class="mdv-workspace">

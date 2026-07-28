@@ -1,11 +1,8 @@
 <script lang="ts">
-import type { IconData } from "@/lib/icons";
-import Icon from "@/components/primitives/Icon.svelte";
-
 export type ContextMenuItem =
   | {
       label: string;
-      icon?: IconData;
+      icon?: string;
       onSelect: () => void;
       disabled?: boolean;
       hint?: string;
@@ -86,7 +83,7 @@ $effect(() => {
         >
           <span class="mdv-menu__item-icon">
             {#if item.icon}
-              <Icon icon={item.icon} size={13} strokeWidth={1.5} />
+              <i class={item.icon} style="font-size:13px"></i>
             {:else}
               <span aria-hidden="true" />
             {/if}

@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { CircleHelp } from "@/lib/icons";
-  import { Button, Icon } from "@/components/primitives";
+  import { Button } from "@/components/primitives";
   import { shortcutLabel } from "@/lib";
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
@@ -62,7 +61,7 @@
       onclick={onShowHelp}
     >
       {#snippet icon()}
-        <Icon icon={CircleHelp} size={12} strokeWidth={1.5} />
+        <i class="wxi-circle-help" style="font-size:12px"></i>
       {/snippet}
     </Button>
   </div>

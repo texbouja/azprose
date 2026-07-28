@@ -1,6 +1,4 @@
 <script lang="ts">
-import { FileText } from "@/lib/icons";
-import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import inspectUrl from "@/assets/mascot/az-inspect.svg";
@@ -23,7 +21,7 @@ let { active }: { active: boolean } = $props();
         class="mdv-drop__art"
       />
       <div class="mdv-drop__icon-row">
-        <Icon icon={FileText} size={16} strokeWidth={1.5} />
+        <i class="wxi-file-text" style="font-size:16px"></i>
         <span>{t("drop.message")}</span>
       </div>
       <span class="mdv-drop__hint">{t("drop.hint")}</span>

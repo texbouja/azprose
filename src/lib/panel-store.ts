@@ -4,6 +4,7 @@ import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation";
 export type TabSource = "latex";
+export type TabKind = "file" | "custom";
 
 export type Tab = {
   id: string;
@@ -14,10 +15,12 @@ export type Tab = {
   preview?: boolean;
   renderMode?: RenderMode;
   sourceType?: TabSource;
+  kind?: TabKind;
+  panelId?: string;
 };
 
 export type PanelSessionData = {
-  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource }[];
+  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string }[];
   activePath: string | null;
 };
 
@@ -113,11 +116,24 @@ export class PanelState {
     this.notify();
   }
 
+  openCustom(panelId: string, title: string): void {
+    const existing = this.tabs.find(t => t.kind === "custom" && t.panelId === panelId);
+    if (existing) {
+      this.activeTabId = existing.id;
+      this.notify();
+      return;
+    }
+    const id = crypto.randomUUID();
+    this.tabs = [...this.tabs, { id, title, path: `custom://${panelId}`, source: "", savedContent: "", kind: "custom", panelId }];
+    this.activeTabId = id;
+    this.notify();
+  }
+
   close(tabId: string): void {
     const idx = this.tabs.findIndex(t => t.id === tabId);
     if (idx === -1) return;
     const tab = this.tabs[idx];
-    if (!isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+    if (tab.kind !== "custom" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
       saveDraft(tab.path, tab.source);
     }
     this.tabs = this.tabs.filter(t => t.id !== tabId);
@@ -157,7 +173,7 @@ export class PanelState {
 
   async save(): Promise<void> {
     const tab = this.activeTab;
-    if (!tab || tab.source === tab.savedContent) return;
+    if (!tab || tab.kind === "custom" || tab.source === tab.savedContent) return;
     try {
       await writeText(tab.path, tab.source);
       this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
@@ -171,7 +187,7 @@ export class PanelState {
 
   saveDrafts(): void {
     for (const tab of this.tabs) {
-      if (!isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+      if (tab.kind !== "custom" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
         saveDraft(tab.path, tab.source);
       }
     }
@@ -179,21 +195,30 @@ export class PanelState {
 
   toJSON(): PanelSessionData {
     return {
-      tabs: this.tabs.map(t => ({ path: t.path, title: t.title, renderMode: t.renderMode, sourceType: t.sourceType })),
+      tabs: this.tabs.map(t => ({
+        path: t.path,
+        title: t.title,
+        renderMode: t.renderMode,
+        sourceType: t.sourceType,
+        kind: t.kind,
+        panelId: t.panelId,
+      })),
       activePath: this.activePath,
     };
   }
 
   fromJSON(data: PanelSessionData): void {
-    this.tabs = data.tabs.map(t => ({
-      id: crypto.randomUUID(),
-      path: t.path,
-      title: t.title,
-      source: "",
-      savedContent: "",
-      renderMode: t.renderMode,
-      sourceType: t.sourceType,
-    }));
+    this.tabs = data.tabs
+      .filter(t => t.kind !== "custom")
+      .map(t => ({
+        id: crypto.randomUUID(),
+        path: t.path,
+        title: t.title,
+        source: "",
+        savedContent: "",
+        renderMode: t.renderMode,
+        sourceType: t.sourceType,
+      }));
     if (data.activePath) {
       const tab = this.tabs.find(t => t.path === data.activePath);
       this.activeTabId = tab?.id ?? this.tabs[0]?.id ?? null;
@@ -203,6 +228,7 @@ export class PanelState {
   async restoreContent(preferDraft?: boolean): Promise<void> {
     const toRemove: string[] = [];
     for (const tab of this.tabs) {
+      if (tab.kind === "custom") continue;
       try {
         const fileSource = await readText(tab.path);
         const draft = preferDraft ? loadDraft(tab.path) : null;

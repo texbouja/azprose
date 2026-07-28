@@ -72,6 +72,16 @@ export class PanelManager {
     return this.side.open(path, opts);
   }
 
+  openCustomInMain(panelId: string, title: string): void {
+    this.main.openCustom(panelId, title);
+  }
+
+  openCustomInSide(panelId: string, title: string): void {
+    this.side.visible = true;
+    this.layout = "main+side";
+    this.side.openCustom(panelId, title);
+  }
+
   toggleExpandPanel(panelId: "main" | "side"): number {
     const expanded =
       (panelId === "main" && this.splitRatio >= 0.99) ||
@@ -94,6 +104,14 @@ export class PanelManager {
     const target = norm(path);
     for (const panel of [this.main, this.side]) {
       const tab = panel.tabs.find((t) => norm(t.path) === target);
+      if (tab) return { panel: panel.id as "main" | "side", tab };
+    }
+    return null;
+  }
+
+  findCustomTab(panelId: string): { panel: "main" | "side"; tab: Tab } | null {
+    for (const panel of [this.main, this.side]) {
+      const tab = panel.tabs.find((t) => t.kind === "custom" && t.panelId === panelId);
       if (tab) return { panel: panel.id as "main" | "side", tab };
     }
     return null;

@@ -2,19 +2,22 @@
 import { journalSettings } from "@/stores/journal-settings.svelte";
 import { createJournalState } from "@/stores/journal-store.svelte";
 import { joinPath } from "@/lib/files";
-import CalendarWidget from "./calendar-widget.svelte";
+import JournalCalendar from "./journal-calendar.svelte";
 import VirtualTree from "./virtual-tree.svelte";
+
 
 let {
   rootPath,
   activePath,
   onSelectFile,
   treeVersion = 0,
+  onOpenCalendar,
 }: {
   rootPath: string | null;
   activePath: string | null;
   onSelectFile: (path: string) => void;
   treeVersion?: number;
+  onOpenCalendar?: () => void;
 } = $props();
 
 const journal = createJournalState();
@@ -28,7 +31,6 @@ $effect(() => {
   void rootPath;
   void folder;
   journal.state.selectedDate = null;
-  journal.state.viewedMonth = { year: new Date().getFullYear(), month: new Date().getMonth() };
   journal.scanForNotes(rootPath, folder);
 });
 
@@ -55,6 +57,7 @@ async function handleSelectDate(date: string) {
     scrollToNote = p;
   }
 }
+
 </script>
 
 <div class="mdv-journal">
@@ -71,13 +74,76 @@ async function handleSelectDate(date: string) {
   </div>
 
   <div class="mdv-journal__bottom">
-    <CalendarWidget
-      viewedMonth={journal.state.viewedMonth}
-      noteDates={journal.state.noteDates}
-      selectedDate={journal.state.selectedDate}
-      onPrevMonth={() => journal.prevMonth()}
-      onNextMonth={() => journal.nextMonth()}
-      onSelectDate={handleSelectDate}
-    />
+    <div class="mdv-journal__bottom-header">
+      <span class="mdv-journal__bottom-title">Calendar</span>
+      {#if onOpenCalendar}
+        <button class="mdv-journal__edit-btn" onclick={onOpenCalendar} title="Open full calendar">
+          <i class="wxi-pencil" style="font-size:12px"></i>
+        </button>
+      {/if}
+    </div>
+    <div class="mdv-journal__calendar">
+      <JournalCalendar
+        onSelectDate={handleSelectDate}
+      />
+    </div>
   </div>
 </div>
+
+<style>
+  .mdv-journal {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+  .mdv-journal__tree {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .mdv-journal__bottom {
+    flex-shrink: 0;
+    height: 260px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+  }
+  .mdv-journal__bottom-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px 0;
+    flex-shrink: 0;
+  }
+  .mdv-journal__bottom-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .mdv-journal__calendar {
+    flex: 1;
+    min-height: 0;
+  }
+  .mdv-journal__edit-btn {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--fg-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .mdv-journal__edit-btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+</style>

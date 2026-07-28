@@ -1,7 +1,5 @@
 <script lang="ts">
 import { readFile } from "@tauri-apps/plugin-fs";
-import { ZoomIn, ZoomOut, Maximize2, Image as ImageIcon } from "@/lib/icons";
-import { Icon } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 
@@ -96,12 +94,12 @@ function zoomLabel(): string {
   <div class="img-viewport" bind:this={viewportEl}>
     {#if loading}
       <div class="img-overlay">
-        <Icon icon={ImageIcon} size={28} strokeWidth={1.2} />
+        <i class="wxi-image" style="font-size:28px"></i>
         <span class="img-loading-text">{t("image.loading")}</span>
       </div>
     {:else if error}
       <div class="img-overlay img-error-overlay">
-        <Icon icon={ImageIcon} size={28} strokeWidth={1.2} />
+        <i class="wxi-image" style="font-size:28px"></i>
         <p>{t("image.cannotLoad")}</p>
         <code>{error}</code>
       </div>
@@ -126,7 +124,7 @@ function zoomLabel(): string {
       onclick={zoomIn}
       disabled={!blobUrl}
     >
-      <Icon icon={ZoomIn} size={14} strokeWidth={1.5} />
+      <i class="wxi-zoom-in" style="font-size:14px"></i>
     </button>
     <span class="img-scale-label">{zoomLabel()}</span>
     <button
@@ -137,7 +135,7 @@ function zoomLabel(): string {
       onclick={zoomOut}
       disabled={!blobUrl}
     >
-      <Icon icon={ZoomOut} size={14} strokeWidth={1.5} />
+      <i class="wxi-zoom-out" style="font-size:14px"></i>
     </button>
     <hr class="img-toolbar-sep" />
     <button
@@ -148,7 +146,7 @@ function zoomLabel(): string {
       onclick={resetFit}
       disabled={!blobUrl}
     >
-      <Icon icon={Maximize2} size={13} strokeWidth={1.5} />
+      <i class="wxi-maximize-2" style="font-size:13px"></i>
     </button>
     {#if naturalW && naturalH}
       <hr class="img-toolbar-sep" />

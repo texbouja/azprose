@@ -5,13 +5,11 @@ import { contextMenu } from "@/stores/context-menu.svelte";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { IS_MAC } from "@/lib/platform";
-import { FilePlus2, FolderPlus, Pencil, Copy, Trash2, FileText, FolderOpen, Star } from "@/lib/icons";
-import type { IconData } from "@/lib/icons";
 
 type ContextMenuItem =
   | {
       label: string;
-      icon?: IconData;
+      icon?: string;
       onSelect: () => void;
       disabled?: boolean;
       hint?: string;
@@ -178,46 +176,46 @@ export class FileOpsManager {
     this.contextMenuItems = [
       {
         label: t("menu.newFile"),
-        icon: FilePlus2,
+        icon: "wxi-file-plus2",
         onSelect: () => { this.newEntry = { parent: parentDir, kind: "file" }; },
       },
       {
         label: t("menu.newFolder"),
-        icon: FolderPlus,
+        icon: "wxi-folder-plus",
         onSelect: () => { this.newEntry = { parent: parentDir, kind: "folder" }; },
       },
       "divider",
       ...(entry.isDir ? [{
         label: IS_MAC ? t("menu.revealFinder") : t("menu.revealExplorer"),
-        icon: FolderOpen,
+        icon: "wxi-folder-open",
         onSelect: () => { openPath(entry.path); },
       }] as ContextMenuItem[] : []),
       ...(!entry.isDir ? [{
         label: t("menu.openDefault"),
-        icon: FileText,
+        icon: "wxi-file-text",
         onSelect: () => this.deps.onOpenFile(entry.path),
       },
       {
         label: this.favorites.current.includes(entry.path) ? t("sidebar.unfavorite") : t("sidebar.favorite"),
-        icon: Star,
+        icon: "wxi-star",
         onSelect: () => this.toggleFavorite(entry.path),
       }] as ContextMenuItem[] : []),
       ...(!isRoot ? [{
         label: t("menu.rename"),
-        icon: Pencil,
+        icon: "wxi-pencil",
         onSelect: () => { this.editingPath = entry.path; },
       },
       "divider",
       {
         label: entry.isDir ? t("menu.deleteFolder") : t("menu.delete"),
-        icon: Trash2,
+        icon: "wxi-trash2",
         destructive: true,
         onSelect: () => void this.delete(entry),
       }] as ContextMenuItem[] : []),
       ...(isRoot ? ["divider" as const] : []),
       {
         label: t("menu.copyPath"),
-        icon: Copy,
+        icon: "wxi-copy",
         onSelect: () => void navigator.clipboard.writeText(entry.path),
       },
     ];
