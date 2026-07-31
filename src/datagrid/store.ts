@@ -70,3 +70,25 @@ export async function datagridRename(id: string, name: string): Promise<void> {
   const root = requireRoot();
   return invoke("datagrid_rename", { root, id, name });
 }
+
+/**
+ * Find the datagrid derived from a given spreadsheet (live bridge).
+ * Returns null when the spreadsheet has no linked grid.
+ */
+export async function datagridFindBySource(
+  spreadsheetId: string,
+): Promise<DatagridMeta | null> {
+  const root = requireRoot();
+  return invoke("datagrid_find_by_source", { root, spreadsheetId });
+}
+
+/**
+ * Re-sync a linked datagrid from its source spreadsheet content.
+ * Returns the re-synced grid id, or null when no grid is linked.
+ */
+export async function datagridSyncFromSpreadsheet(
+  spreadsheetId: string,
+): Promise<string | null> {
+  const root = requireRoot();
+  return invoke("datagrid_sync_from_spreadsheet", { root, spreadsheetId });
+}

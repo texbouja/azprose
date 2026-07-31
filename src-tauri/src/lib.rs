@@ -525,6 +525,8 @@ pub fn run() {
             datagrid_db::datagrid_get,
             datagrid_db::datagrid_save,
             datagrid_db::datagrid_create_from_spreadsheet,
+            datagrid_db::datagrid_find_by_source,
+            datagrid_db::datagrid_sync_from_spreadsheet,
             datagrid_db::datagrid_delete,
             datagrid_db::datagrid_rename,
         ])

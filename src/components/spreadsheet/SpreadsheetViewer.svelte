@@ -12,6 +12,7 @@
     spreadsheetSaveAll,
   } from "@/spreadsheet/store";
   import type { ColumnDef, SpreadsheetViewState } from "@/spreadsheet/types";
+  import { datagridFindBySource, datagridSyncFromSpreadsheet } from "@/datagrid/store";
 
   let {
     spreadsheetId = "",
@@ -89,6 +90,51 @@
 
   // Debounce timer
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ── Live bridge to a linked SVAR datagrid ──────────────────────────────
+  // When this spreadsheet is the source of a datagrid (source_spreadsheet_id),
+  // cell edits are mirrored into that grid so both representations stay in
+  // sync. The grid is found once per spreadsheet open; re-sync happens AFTER
+  // the SQLite cell save (in doSaveCells) so the bridge never reads a stale
+  // spreadsheet snapshot.
+  let linkedGridId: string | null = null;
+
+  $effect(() => {
+    const id = spreadsheetId;
+    if (!id) {
+      linkedGridId = null;
+      return;
+    }
+    let cancelled = false;
+    datagridFindBySource(id)
+      .then((meta) => {
+        if (cancelled) return;
+        linkedGridId = meta?.id ?? null;
+        if (linkedGridId) {
+          console.log(`[spreadsheet] live bridge: grid "${linkedGridId}" follows this sheet`);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) console.warn("[spreadsheet] bridge lookup failed:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  async function syncLinkedGrid() {
+    if (!linkedGridId) return;
+    try {
+      const gridId = await datagridSyncFromSpreadsheet(spreadsheetId);
+      if (gridId) {
+        window.dispatchEvent(new CustomEvent("azprose:datagrid-synced", {
+          detail: { spreadsheetId, gridId },
+        }));
+      }
+    } catch (err) {
+      console.warn("[spreadsheet] live bridge sync failed:", err);
+    }
+  }
 
   // ── Load ────────────────────────────────────────────────────────────────
 
@@ -236,6 +282,9 @@
       const stylesJson = captureStyles(sheet);
       viewState = { ...viewState, styles: stylesJson };
       await spreadsheetSaveState(spreadsheetId, viewState);
+      // Live bridge: mirror the now-persisted snapshot into the linked
+      // datagrid (after the save so we never read a stale sheet).
+      await syncLinkedGrid();
     } catch (err) {
       console.error("Failed to save cells:", err);
     }

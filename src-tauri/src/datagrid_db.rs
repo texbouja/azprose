@@ -419,6 +419,122 @@ pub fn datagrid_delete(state: State<'_, Db>, root: String, id: String) -> Result
     })
 }
 
+/// Find the datagrid derived from a given spreadsheet (live bridge).
+/// Returns None when the spreadsheet has no linked grid.
+#[tauri::command]
+pub fn datagrid_find_by_source(
+    state: State<'_, Db>,
+    root: String,
+    spreadsheet_id: String,
+) -> Result<Option<DatagridMeta>, String> {
+    with_db(&state, &root, |conn| {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, created_at, updated_at, source_spreadsheet_id
+                 FROM datagrids WHERE source_spreadsheet_id = ?1
+                 ORDER BY updated_at DESC LIMIT 1",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map(params![spreadsheet_id], |row| {
+                Ok(DatagridMeta {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    created_at: row.get(2)?,
+                    updated_at: row.get(3)?,
+                    source_spreadsheet_id: row.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        match rows.next() {
+            Some(Ok(meta)) => Ok(Some(meta)),
+            Some(Err(e)) => Err(e.to_string()),
+            None => Ok(None),
+        }
+    })
+}
+
+/// Re-sync a linked datagrid from its source spreadsheet (live bridge).
+///
+/// Rebuilds columns + rows from the current spreadsheet content and updates
+/// `updated_at`. The `source_spreadsheet_id` link itself is preserved (it is
+/// the identity of the bridge). No-op when the spreadsheet has no linked grid.
+#[tauri::command]
+pub fn datagrid_sync_from_spreadsheet(
+    state: State<'_, Db>,
+    root: String,
+    spreadsheet_id: String,
+) -> Result<Option<String>, String> {
+    with_db(&state, &root, |conn| {
+        let grid_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM datagrids WHERE source_spreadsheet_id = ?1
+                 ORDER BY updated_at DESC LIMIT 1",
+                params![spreadsheet_id],
+                |r| r.get(0),
+            )
+            .ok();
+
+        let Some(grid_id) = grid_id else {
+            return Ok(None);
+        };
+
+        let (grid_columns, grid_rows) = build_grid_from_spreadsheet(&spreadsheet_id, conn)?;
+
+        let now = crate::db::now_iso();
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        {
+            tx.execute(
+                "UPDATE datagrids SET updated_at = ?2 WHERE id = ?1",
+                params![grid_id, now],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute(
+                "DELETE FROM datagrid_columns WHERE grid_id = ?1",
+                params![grid_id],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute(
+                "DELETE FROM datagrid_rows WHERE grid_id = ?1",
+                params![grid_id],
+            )
+            .map_err(|e| e.to_string())?;
+            {
+                let mut col_stmt = tx
+                    .prepare(
+                        "INSERT INTO datagrid_columns
+                         (id, grid_id, col_index, title, col_type, width, options, hidden)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    )
+                    .map_err(|e| e.to_string())?;
+                for (i, col) in grid_columns.iter().enumerate() {
+                    col_stmt
+                        .execute(params![
+                            col.id, grid_id, i as i64, col.title, col.col_type,
+                            col.width, col.options, 0_i64,
+                        ])
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            {
+                let mut row_stmt = tx
+                    .prepare(
+                        "INSERT INTO datagrid_rows (id, grid_id, row_index, data)
+                         VALUES (?1, ?2, ?3, ?4)",
+                    )
+                    .map_err(|e| e.to_string())?;
+                for (i, row) in grid_rows.iter().enumerate() {
+                    row_stmt
+                        .execute(params![row.id, grid_id, i as i64, row.data])
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(Some(grid_id))
+    })
+}
+
 /// Rename a datagrid.
 #[tauri::command]
 pub fn datagrid_rename(
@@ -668,6 +784,62 @@ mod tests {
         )
         .unwrap();
 
+        let link: Option<String> = conn
+            .query_row(
+                "SELECT source_spreadsheet_id FROM datagrids WHERE id = 'g1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(link.as_deref(), Some("s1"));
+    }
+
+    /// Re-sync rebuilds grid columns + rows from the current spreadsheet
+    /// content and keeps the source link.
+    #[test]
+    fn sync_from_spreadsheet_rebuilds_grid() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V1).unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V4).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;",
+        )
+        .unwrap();
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO spreadsheets (id, name, imported_at, updated_at)
+             VALUES ('s1', 'S', ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spreadsheet_columns (spreadsheet_id, col_index, title, width, type)
+             VALUES ('s1', 0, 'Nom', 150, 'text'), ('s1', 1, 'Note', 100, 'number')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value)
+             VALUES ('s1', 0, 0, 'Alice'), ('s1', 0, 1, '15'),
+                    ('s1', 1, 0, 'Bob'),   ('s1', 1, 1, '17')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO datagrids (id, name, created_at, updated_at, source_spreadsheet_id)
+             VALUES ('g1', 'G', ?1, ?1, 's1')",
+            params![now],
+        )
+        .unwrap();
+
+        // Simulate the live bridge: spreadsheet content changed → re-sync.
+        // We call the shared rebuild path the command uses.
+        let (cols, rows) = build_grid_from_spreadsheet("s1", &mut conn).unwrap();
+        assert_eq!(cols.len(), 2);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].data, r#"{"c0":"Alice","c1":"15"}"#);
+
+        // The link survives the rebuild (identity of the bridge).
         let link: Option<String> = conn
             .query_row(
                 "SELECT source_spreadsheet_id FROM datagrids WHERE id = 'g1'",
