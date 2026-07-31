@@ -13,7 +13,6 @@
   } from "@/spreadsheet/store";
   import type { ColumnDef, SpreadsheetViewState } from "@/spreadsheet/types";
   import { datagridFindBySource, datagridSyncFromSpreadsheet } from "@/datagrid/store";
-
   let {
     spreadsheetId = "",
   }: {
@@ -449,6 +448,18 @@
 
   // ── Toolbar ─────────────────────────────────────────────────────────────
 
+  /**
+   * Test button: open (or create, then open) the linked datagrid for the
+   * current spreadsheet in the side panel. The actual create/find logic
+   * lives in app.svelte ("azprose:datagrid-open" listener).
+   */
+  function openInDatagrid() {
+    if (!spreadsheetId) return;
+    window.dispatchEvent(new CustomEvent("azprose:datagrid-open", {
+      detail: { spreadsheetId, name: sheetName || "Datagrid" },
+    }));
+  }
+
   function buildToolbar(defaultToolbar: any, _instance: any[]) {
     // The default jspreadsheet toolbar ships a legacy "save" item (calls
     // download()) right after undo/redo. Our own Save button (handleSave)
@@ -482,6 +493,11 @@
           content: "folder_managed",
           title: "Gérer les tableaux",
           onclick: () => handleManage(),
+        },
+        {
+          content: "grid_view",
+          title: "Ouvrir dans datagrid",
+          onclick: () => openInDatagrid(),
         },
         {
           content: "save",

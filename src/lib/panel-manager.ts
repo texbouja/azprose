@@ -121,6 +121,32 @@ export class PanelManager {
     return null;
   }
 
+  /** Open (or activate) a datagrid tab in the side panel. */
+  openDatagridInSide(datagridId: string, title: string): void {
+    const existing = this.findDatagridTab(datagridId);
+    if (existing) {
+      const panel = existing.panel === "main" ? this.main : this.side;
+      panel.select(existing.tab.id);
+      if (existing.panel === "side") {
+        this.side.visible = true;
+        this.layout = "main+side";
+      }
+      return;
+    }
+    this.side.visible = true;
+    this.layout = "main+side";
+    this.side.openDatagrid(datagridId, title);
+  }
+
+  /** Check if a datagrid is already open in either panel and return the tab info. */
+  findDatagridTab(datagridId: string): { panel: "main" | "side"; tab: Tab } | null {
+    for (const panel of [this.main, this.side]) {
+      const tab = panel.tabs.find(t => t.kind === "datagrid" && t.datagridId === datagridId);
+      if (tab) return { panel: panel.id as "main" | "side", tab };
+    }
+    return null;
+  }
+
   /** Open the spreadsheet panel without loading any sheet (create mode). */
   openEmptySpreadsheetPanel(): void {
     this.side.visible = true;

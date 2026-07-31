@@ -14,6 +14,7 @@ import LazyOpenCodePanel from "@/components/opencode/LazyOpenCodePanel.svelte";
 import LazyJournalCalendarPanel from "@/components/sidebar/LazyJournalCalendarPanel.svelte";
 import LazySvarCalendarPanel from "@/components/calendar/LazySvarCalendarPanel.svelte";
 import LazySpreadsheetViewer from "@/components/spreadsheet/LazySpreadsheetViewer.svelte";
+import LazyDatagridViewer from "@/components/datagrid/LazyDatagridViewer.svelte";
 
 import type { TypographySettings } from "@/lib/typography";
 import { getTexlabClient } from "@/lib/lsp/texlab";
@@ -104,6 +105,10 @@ let {
 {:else if tab.kind === "spreadsheet"}
   <LazySpreadsheetViewer
     spreadsheetId={tab.spreadsheetId}
+  />
+{:else if tab.kind === "datagrid"}
+  <LazyDatagridViewer
+    datagridId={tab.datagridId}
   />
 {:else}
   <Editor

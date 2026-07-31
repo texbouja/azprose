@@ -597,6 +597,33 @@ $effect(() => {
   return () => window.removeEventListener("azprose:spreadsheet-set-id", handler);
 });
 
+// Spreadsheet "open in datagrid" (test button) — find the linked grid, or
+// create one from the spreadsheet snapshot, then open it in the side panel.
+$effect(() => {
+  const handler = async (e: Event) => {
+    const { spreadsheetId, name } = (e as CustomEvent<{ spreadsheetId: string; name: string }>).detail;
+    try {
+      const { datagridFindBySource, datagridCreateFromSpreadsheet } = await import("@/datagrid/store");
+      let gridId: string | null = null;
+      const meta = await datagridFindBySource(spreadsheetId);
+      if (meta) {
+        gridId = meta.id;
+      } else {
+        gridId = await datagridCreateFromSpreadsheet(
+          `dg-${spreadsheetId}`,
+          name || "Datagrid",
+          spreadsheetId,
+        );
+      }
+      pm.openDatagridInSide(gridId, name || "Datagrid");
+    } catch (err) {
+      console.error("[spreadsheet] failed to open datagrid:", err);
+    }
+  };
+  window.addEventListener("azprose:datagrid-open", handler);
+  return () => window.removeEventListener("azprose:datagrid-open", handler);
+});
+
 async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" }) {
   if (!isOpenablePath(path)) {
     if (!opts?.silent) {

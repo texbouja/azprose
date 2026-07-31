@@ -4,7 +4,7 @@ import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation";
 export type TabSource = "latex";
-export type TabKind = "file" | "custom" | "spreadsheet";
+export type TabKind = "file" | "custom" | "spreadsheet" | "datagrid";
 
 export type Tab = {
   id: string;
@@ -18,10 +18,11 @@ export type Tab = {
   kind?: TabKind;
   panelId?: string;
   spreadsheetId?: string;
+  datagridId?: string;
 };
 
 export type PanelSessionData = {
-  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string }[];
+  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string; datagridId?: string }[];
   activePath: string | null;
 };
 
@@ -183,6 +184,25 @@ export class PanelState {
     this.notify();
   }
 
+  openDatagrid(datagridId: string, title: string): void {
+    const existing = this.tabs.find(t => t.kind === "datagrid" && t.datagridId === datagridId);
+    if (existing) {
+      this.activeTabId = existing.id;
+      this.notify();
+      return;
+    }
+    const id = crypto.randomUUID();
+    this.tabs = [...this.tabs, {
+      id, title,
+      path: `datagrid://${datagridId}`,
+      source: "", savedContent: "",
+      kind: "datagrid",
+      datagridId,
+    }];
+    this.activeTabId = id;
+    this.notify();
+  }
+
   close(tabId: string): void {
     const idx = this.tabs.findIndex(t => t.id === tabId);
     if (idx === -1) return;
@@ -262,6 +282,7 @@ export class PanelState {
         kind: t.kind,
         panelId: t.panelId,
         spreadsheetId: t.spreadsheetId,
+        datagridId: t.datagridId,
       })),
       activePath: this.activePath,
     };
@@ -271,10 +292,14 @@ export class PanelState {
     this.tabs = data.tabs
       .filter(t => t.kind !== "custom")
       .map(t => {
-        // Reconstruct spreadsheetId from path if not stored directly
+        // Reconstruct spreadsheetId / datagridId from path if not stored directly
         let spreadsheetId = t.spreadsheetId;
         if (!spreadsheetId && t.path.startsWith("spreadsheet://")) {
           spreadsheetId = t.path.slice("spreadsheet://".length);
+        }
+        let datagridId = t.datagridId;
+        if (!datagridId && t.path.startsWith("datagrid://")) {
+          datagridId = t.path.slice("datagrid://".length);
         }
         return {
           id: crypto.randomUUID(),
@@ -286,6 +311,7 @@ export class PanelState {
           sourceType: t.sourceType,
           kind: t.kind as any as TabKind | undefined,
           spreadsheetId,
+          datagridId,
         } as Tab;
       });
     if (data.activePath) {
@@ -297,7 +323,7 @@ export class PanelState {
   async restoreContent(preferDraft?: boolean): Promise<void> {
     const toRemove: string[] = [];
     for (const tab of this.tabs) {
-      if (tab.kind === "custom" || tab.kind === "spreadsheet") continue;
+      if (tab.kind === "custom" || tab.kind === "spreadsheet" || tab.kind === "datagrid") continue;
       try {
         const fileSource = await readText(tab.path);
         const draft = preferDraft ? loadDraft(tab.path) : null;
