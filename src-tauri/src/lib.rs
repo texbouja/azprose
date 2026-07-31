@@ -21,8 +21,12 @@ mod lsp_bridge;
 
 mod mdprinter;
 
+mod fonts;
+
 mod spreadsheet_db;
-use spreadsheet_db::SpreadsheetDb;
+mod calendar_db;
+mod db;
+use db::Db;
 
 use lsp_bridge::LspBridgeState;
 
@@ -434,7 +438,7 @@ pub fn run() {
         .manage(OpenProjectWindows(Mutex::new(HashMap::new())))
         .manage(TerminalState::default())
         .manage(LspBridgeState::default())
-        .manage(SpreadsheetDb(Mutex::new(None)))
+        .manage(Db(Mutex::new(None)))
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let mut project_dir = None;
             for arg in args.iter().skip(1) {
@@ -501,6 +505,7 @@ pub fn run() {
             latex_engine::synctex_inverse,
             latex_engine::latex_init_texmf,
             latex_engine::latex_rehash_texmf,
+            fonts::list_system_fonts,
             spreadsheet_db::spreadsheet_create,
             spreadsheet_db::spreadsheet_delete,
             spreadsheet_db::spreadsheet_export_csv,
@@ -511,6 +516,10 @@ pub fn run() {
             spreadsheet_db::spreadsheet_save_all,
             spreadsheet_db::spreadsheet_save_cells,
             spreadsheet_db::spreadsheet_save_state,
+            calendar_db::calendar_events_get,
+            calendar_db::calendar_events_save,
+            calendar_db::calendar_events_delete,
+            calendar_db::calendar_events_clear,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

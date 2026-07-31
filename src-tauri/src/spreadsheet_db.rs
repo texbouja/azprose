@@ -1,112 +1,13 @@
 // ── Spreadsheet SQLite backend ─────────────────────────────────────────────
-// Single database: `{root}/.azprose/data.db`
 // Tables: spreadsheets, spreadsheet_columns, spreadsheet_cells, spreadsheet_state
+// Connection + migrations are shared via `crate::db`.
 
-use rusqlite::{params, Connection};
+use crate::db::{Db, with_db};
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use std::sync::Mutex;
 use tauri::State;
-
-// ── Schema and migration ───────────────────────────────────────────────────
-
-const SCHEMA_V1: &str = "
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-
-CREATE TABLE IF NOT EXISTS spreadsheets (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    original_path TEXT,
-    lazy_type TEXT,
-    lazy_source TEXT,
-    lazy_config TEXT,
-    imported_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS spreadsheet_columns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    spreadsheet_id TEXT NOT NULL REFERENCES spreadsheets(id) ON DELETE CASCADE,
-    col_index INTEGER NOT NULL,
-    title TEXT NOT NULL DEFAULT '',
-    width INTEGER DEFAULT 120,
-    type TEXT DEFAULT 'text',
-    options TEXT,
-    UNIQUE(spreadsheet_id, col_index)
-);
-
-CREATE TABLE IF NOT EXISTS spreadsheet_cells (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    spreadsheet_id TEXT NOT NULL REFERENCES spreadsheets(id) ON DELETE CASCADE,
-    row_index INTEGER NOT NULL,
-    col_index INTEGER NOT NULL,
-    value TEXT DEFAULT '',
-    style TEXT DEFAULT '',
-    UNIQUE(spreadsheet_id, row_index, col_index)
-);
-
-CREATE TABLE IF NOT EXISTS spreadsheet_state (
-    spreadsheet_id TEXT PRIMARY KEY REFERENCES spreadsheets(id) ON DELETE CASCADE,
-    hidden_columns TEXT DEFAULT '[]',
-    hidden_rows TEXT DEFAULT '[]',
-    frozen_columns INTEGER DEFAULT 0,
-    frozen_rows INTEGER DEFAULT 0,
-    sort_column INTEGER,
-    sort_order TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_cells_lookup ON spreadsheet_cells(spreadsheet_id, row_index, col_index);
-CREATE INDEX IF NOT EXISTS idx_columns_order ON spreadsheet_columns(spreadsheet_id, col_index);
-";
-
-const LATEST_VERSION: i32 = 2;
-
-fn init_db(conn: &Connection) -> Result<(), String> {
-    let version: i32 = conn
-        .pragma_query_value(None, "user_version", |r| r.get(0))
-        .unwrap_or(0);
-
-    if version < 1 {
-        conn.execute_batch(SCHEMA_V1).map_err(|e| e.to_string())?;
-        conn.pragma_update(None, "user_version", &LATEST_VERSION)
-            .map_err(|e| e.to_string())?;
-    } else if version < 2 {
-        conn.execute_batch(
-            "ALTER TABLE spreadsheet_state ADD COLUMN styles TEXT DEFAULT '{}';"
-        ).map_err(|e| e.to_string())?;
-        conn.pragma_update(None, "user_version", &2)
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-// ── State + with_db helper ─────────────────────────────────────────────────
-
-pub struct SpreadsheetDb(pub Mutex<Option<(String, Connection)>>);
-
-fn with_db<F, R>(state: &State<SpreadsheetDb>, root: &str, f: F) -> Result<R, String>
-where
-    F: FnOnce(&mut Connection) -> Result<R, String>,
-{
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    let needs_init = match &*guard {
-        Some((r, _)) => r != root,
-        None => true,
-    };
-    if needs_init {
-        let db_path = Path::new(root).join(".azprose/data.db");
-        if let Some(parent) = db_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
-        init_db(&conn)?;
-        *guard = Some((root.to_string(), conn));
-    }
-    let (_, conn) = guard.as_mut().unwrap();
-    f(conn)
-}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -205,7 +106,7 @@ pub struct CellChange {
 /// Frontend passes a UUID (via `crypto.randomUUID()`), name, columns JSON, and data JSON.
 #[tauri::command]
 pub fn spreadsheet_create(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
     id: String,
     name: String,
@@ -270,7 +171,7 @@ pub fn spreadsheet_create(
 /// Get full spreadsheet data for display.
 #[tauri::command]
 pub fn spreadsheet_get(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
     id: String,
 ) -> Result<SpreadsheetData, String> {
@@ -370,7 +271,7 @@ pub fn spreadsheet_get(
 /// List all spreadsheets (metadata only).
 #[tauri::command]
 pub fn spreadsheet_list(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
 ) -> Result<Vec<SpreadsheetMeta>, String> {
     with_db(&state, &root, |conn| {
@@ -398,7 +299,7 @@ pub fn spreadsheet_list(
 /// Rename a spreadsheet.
 #[tauri::command]
 pub fn spreadsheet_rename(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
     id: String,
     name: String,
@@ -417,7 +318,7 @@ pub fn spreadsheet_rename(
 /// Delete a spreadsheet and all associated data.
 #[tauri::command]
 pub fn spreadsheet_delete(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
     id: String,
 ) -> Result<(), String> {
@@ -438,7 +339,7 @@ pub fn spreadsheet_delete(
 /// Save incremental cell changes (debounced from frontend).
 #[tauri::command]
 pub fn spreadsheet_save_cells(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
     id: String,
     changes: String,
@@ -475,7 +376,7 @@ pub fn spreadsheet_save_cells(
 /// Save view state (hidden columns/rows, frozen, sort).
 #[tauri::command]
 pub fn spreadsheet_save_state(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
     id: String,
     view_state: String,
@@ -513,7 +414,7 @@ pub fn spreadsheet_save_state(
 /// Full save on tab close: replaces all cells, columns, and state.
 #[tauri::command]
 pub fn spreadsheet_save_all(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
     id: String,
     columns: String,
@@ -598,7 +499,7 @@ pub fn spreadsheet_save_all(
 /// first user spreadsheet interaction doesn't trigger a slow full init).
 #[tauri::command]
 pub fn spreadsheet_init_db(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
 ) -> Result<(), String> {
     with_db(&state, &root, |_conn| Ok(()))
@@ -607,7 +508,7 @@ pub fn spreadsheet_init_db(
 /// Export spreadsheet to CSV at given path.
 #[tauri::command]
 pub fn spreadsheet_export_csv(
-    state: State<'_, SpreadsheetDb>,
+    state: State<'_, Db>,
     root: String,
     id: String,
     path: String,

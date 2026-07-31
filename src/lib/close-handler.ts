@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { isImagePath, isPdfPath } from "@/lib";
+import { getCalendarStore } from "@/stores/calendar-store.svelte";
 
 export interface CloseHandlerDeps {
   tabs: { path: string; source: string; savedContent: string }[]
@@ -31,6 +32,7 @@ export function setupCloseHandler(ctx: CloseHandlerDeps) {
       }
       ctx.saveAllDirtyDrafts();
       ctx.flushSessionMirror();
+      await getCalendarStore().flush();
       if (ctx.isProjectWindow) {
         await invoke("unregister_project_window", { label: ctx.myLabel });
       }
