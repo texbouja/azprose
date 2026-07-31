@@ -3,9 +3,10 @@
 // All structured storage shares this connection + migration chain:
 //   - v1/v2: spreadsheet tables (spreadsheets, spreadsheet_columns,
 //            spreadsheet_cells, spreadsheet_state)
-//   - v3+:   calendar tables (calendar_events)
-// Modules métier (spreadsheet_db, calendar_db, ...) only define their own
-// tables + commands and go through `db::with_db`.
+//   - v3:    calendar tables (calendar_events)
+//   - v4:    datagrid tables (datagrids, datagrid_columns, datagrid_rows)
+// Modules métier (spreadsheet_db, calendar_db, datagrid_db, ...) only define
+// their own tables + commands and go through `db::with_db`.
 
 use rusqlite::Connection;
 use std::fs;
@@ -18,7 +19,7 @@ use tauri::State;
 // migrations ALTER it (e.g. `styles` column added at v2). Do not backport
 // new columns into SCHEMA_V1 or the ALTER will fail on fresh databases.
 
-const SCHEMA_V1: &str = "
+pub(crate) const SCHEMA_V1: &str = "
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
@@ -82,6 +83,44 @@ CREATE TABLE IF NOT EXISTS calendar_events (
 );
 ";
 
+// v4 — SVAR datagrids.
+// datagrids            : table metadata (id/name/dates)
+// datagrid_columns     : typed column definitions (SVAR editor types, options)
+// datagrid_rows        : each row = a JSON `{colId: value}` DataHash blob
+//                        (mirrors SVAR's IRow shape, same pattern as the
+//                        calendar_events.data JSONB field)
+pub(crate) const SCHEMA_V4: &str = "
+CREATE TABLE IF NOT EXISTS datagrids (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS datagrid_columns (
+    id       TEXT PRIMARY KEY,
+    grid_id  TEXT NOT NULL REFERENCES datagrids(id) ON DELETE CASCADE,
+    col_index INTEGER NOT NULL,
+    title    TEXT NOT NULL DEFAULT '',
+    col_type TEXT DEFAULT 'text',
+    width    INTEGER DEFAULT 120,
+    options  TEXT,
+    hidden   INTEGER DEFAULT 0,
+    UNIQUE(grid_id, col_index)
+);
+
+CREATE TABLE IF NOT EXISTS datagrid_rows (
+    id       TEXT PRIMARY KEY,
+    grid_id  TEXT NOT NULL REFERENCES datagrids(id) ON DELETE CASCADE,
+    row_index INTEGER NOT NULL,
+    data     TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(grid_id, row_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_grid_columns ON datagrid_columns(grid_id, col_index);
+CREATE INDEX IF NOT EXISTS idx_grid_rows ON datagrid_rows(grid_id, row_index);
+";
+
 fn init_db(conn: &Connection) -> Result<(), String> {
     let mut version: i32 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
@@ -101,6 +140,10 @@ fn init_db(conn: &Connection) -> Result<(), String> {
         conn.execute_batch(SCHEMA_V3).map_err(|e| e.to_string())?;
         version = 3;
     }
+    if version < 4 {
+        conn.execute_batch(SCHEMA_V4).map_err(|e| e.to_string())?;
+        version = 4;
+    }
 
     if version > 0 {
         conn.pragma_update(None, "user_version", &version)
@@ -112,6 +155,12 @@ fn init_db(conn: &Connection) -> Result<(), String> {
 // ── State + with_db helper ─────────────────────────────────────────────────
 
 pub struct Db(pub Mutex<Option<(String, Connection)>>);
+
+/// Current timestamp in RFC 3339 (UTC) — shared by all module backends
+/// for `created_at` / `updated_at` columns.
+pub fn now_iso() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
 
 pub fn with_db<F, R>(state: &State<Db>, root: &str, f: F) -> Result<R, String>
 where

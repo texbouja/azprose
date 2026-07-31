@@ -25,6 +25,7 @@ mod fonts;
 
 mod spreadsheet_db;
 mod calendar_db;
+mod datagrid_db;
 mod db;
 use db::Db;
 
@@ -520,6 +521,12 @@ pub fn run() {
             calendar_db::calendar_events_save,
             calendar_db::calendar_events_delete,
             calendar_db::calendar_events_clear,
+            datagrid_db::datagrid_list,
+            datagrid_db::datagrid_get,
+            datagrid_db::datagrid_save,
+            datagrid_db::datagrid_create_from_spreadsheet,
+            datagrid_db::datagrid_delete,
+            datagrid_db::datagrid_rename,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]
