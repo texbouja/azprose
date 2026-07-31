@@ -347,7 +347,7 @@ fn build_grid_from_spreadsheet(
 pub fn datagrid_create_from_spreadsheet(
     state: State<'_, Db>,
     root: String,
-    grid_id: String,
+    id: String,
     grid_name: String,
     spreadsheet_id: String,
 ) -> Result<String, String> {
@@ -362,7 +362,7 @@ pub fn datagrid_create_from_spreadsheet(
             tx.execute(
                 "INSERT INTO datagrids (id, name, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?3)",
-                params![grid_id, grid_name, now],
+                params![id, grid_name, now],
             )
             .map_err(|e| e.to_string())?;
             {
@@ -376,7 +376,7 @@ pub fn datagrid_create_from_spreadsheet(
                 for (i, col) in grid_columns.iter().enumerate() {
                     col_stmt
                         .execute(params![
-                            col.id, grid_id, i as i64, col.title, col.col_type,
+                            col.id, id, i as i64, col.title, col.col_type,
                             col.width, col.options, 0_i64,
                         ])
                         .map_err(|e| e.to_string())?;
@@ -391,13 +391,13 @@ pub fn datagrid_create_from_spreadsheet(
                     .map_err(|e| e.to_string())?;
                 for (i, row) in grid_rows.iter().enumerate() {
                     row_stmt
-                        .execute(params![row.id, grid_id, i as i64, row.data])
+                        .execute(params![row.id, id, i as i64, row.data])
                         .map_err(|e| e.to_string())?;
                 }
             }
         }
         tx.commit().map_err(|e| e.to_string())?;
-        Ok(grid_id)
+        Ok(id)
     })
 }
 
