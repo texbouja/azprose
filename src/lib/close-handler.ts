@@ -2,7 +2,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { isImagePath, isPdfPath } from "@/lib";
-import { flushAllCsvCaches } from "@/csv/flush";
 
 export interface CloseHandlerDeps {
   tabs: { path: string; source: string; savedContent: string }[]
@@ -39,7 +38,6 @@ export function setupCloseHandler(ctx: CloseHandlerDeps) {
       // Never trap the window on an unexpected error during the close decision.
     }
     closing = true;
-    await flushAllCsvCaches();
     await win_.destroy();
   });
 }

@@ -8,12 +8,18 @@
  *   - configToRrule() — migration from old RecurrenceConfig format
  */
 
-import { RRule } from "rrule";
+import { RRule, Weekday } from "rrule";
+import type { ByWeekday, WeekdayStr } from "rrule";
 
 // ── Expansion ──────────────────────────────────────────────
 
 /**
  * Expand an RRULE string into concrete Dates within [rangeStart, rangeEnd].
+ *
+ * Uses the rrule library's constructor API (not `fromString`) to preserve the
+ * Date object's local time, then post-fixes the hour/minute/second to match
+ * `dtstart`.  This eliminates the ±1h drift that occurs when the rrule
+ * library's internal UTC math crosses a DST boundary.
  *
  * @param rruleStr  RFC 5545 RRULE string (without DTSTART prefix)
  * @param dtstart   Event start date (used as RRULE's DTSTART)
@@ -30,21 +36,80 @@ export function expandRrule(
   exdates?: string[],
 ): Date[] {
   try {
-    const rule = RRule.fromString(`DTSTART:${toICalUtc(dtstart)}\nRRULE:${rruleStr}`);
+    const parts = parseRruleParts(rruleStr);
 
-    // rrule lib uses `between()` for range queries — but it requires `inc=true`
-    // to include boundary matches. We use a slightly wider window to be safe,
-    // then filter.
+    const freq = (parts.FREQ || "WEEKLY").toUpperCase();
+    const interval = parts.INTERVAL ? parseInt(parts.INTERVAL, 10) : 1;
+
+    /**
+     * Parse BYDAY values that may include an ordinal prefix (e.g. "2MO", "-1FR").
+     * Returns an array of rrule ByWeekday values.
+     */
+    const byweekday = parseByDay(parts.BYDAY);
+
+    /** Parse optional UNTIL into a Date */
+    const until = parts.UNTIL ? parseUntilDate(parts.UNTIL) ?? undefined : undefined;
+    const count = parts.COUNT ? parseInt(parts.COUNT, 10) : undefined;
+
+    // ── rrule convention: pass "UTC-disguised" dates ──────────────
+    // rrule treats all Date objects as UTC internally.  To make it
+    // preserve the *local* wall-clock hour across DST transitions, we
+    // encode the local time components into a UTC-based Date object.
+    //   local 08:00 CET  →  Date.UTC(2024, 1, 5, 8, 0, 0)
+    // Then rrule's UTC arithmetic keeps the hour at 8 forever.
+    // After expansion we reverse the disguise via getUTC*() getters.
+
+    /** Build a Date whose UTC components match dtstart's local components */
+    function toUtcDisguised(d: Date): Date {
+      return new Date(Date.UTC(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+        d.getHours(),
+        d.getMinutes(),
+        d.getSeconds(),
+      ));
+    }
+
+    /** Reverse: build a local Date from a rrule result's UTC components */
+    function fromUtcDisguised(d: Date): Date {
+      return new Date(
+        d.getUTCFullYear(),
+        d.getUTCMonth(),
+        d.getUTCDate(),
+        d.getUTCHours(),
+        d.getUTCMinutes(),
+        d.getUTCSeconds(),
+      );
+    }
+
+    const disguisedDtstart = toUtcDisguised(dtstart);
+    const disguisedUntil = until ? toUtcDisguised(until) : undefined;
+
+    // Build RRule — dtstart and until are in "UTC-disguised" form
+    const rule = new RRule({
+      freq: ({ DAILY: 3, WEEKLY: 2, MONTHLY: 1, YEARLY: 0 } as Record<string, number>)[freq] ?? 2,
+      interval,
+      dtstart: disguisedDtstart,
+      ...(byweekday.length > 0 ? { byweekday } : {}),
+      ...(disguisedUntil !== undefined ? { until: disguisedUntil } : {}),
+      ...(count !== undefined ? { count } : {}),
+    });
+
+    // Slightly widen the range so we don't miss exact-boundary matches
     const before = new Date(rangeEnd);
     before.setDate(before.getDate() + 1);
 
-    const occurrences = rule.between(rangeStart, before, true);
-
-    if (!exdates || exdates.length === 0) return occurrences;
+    // Get occurrences and reverse the UTC-disguise
+    const occurrences = rule.between(rangeStart, before, true).map(fromUtcDisguised);
 
     // Filter out excluded dates
-    const exSet = new Set(exdates.map((d) => normalizeDateKey(d)));
-    return occurrences.filter((d) => !exSet.has(normalizeDateKey(d)));
+    if (exdates && exdates.length > 0) {
+      const exSet = new Set(exdates.map((d) => normalizeDateKey(d)));
+      return occurrences.filter((d) => !exSet.has(normalizeDateKey(d)));
+    }
+
+    return occurrences;
   } catch {
     // Invalid RRULE — return empty rather than crash
     return [];
@@ -139,23 +204,6 @@ export function configToRrule(config: LegacyRecurrenceConfig): string {
 // ── Helpers ───────────────────────────────────────────────
 
 /**
- * Format a Date as iCal UTC timestamp: "YYYYMMDDTHHMMSSZ"
- */
-function toICalUtc(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    d.getUTCFullYear().toString() +
-    pad(d.getUTCMonth() + 1) +
-    pad(d.getUTCDate()) +
-    "T" +
-    pad(d.getUTCHours()) +
-    pad(d.getUTCMinutes()) +
-    pad(d.getUTCSeconds()) +
-    "Z"
-  );
-}
-
-/**
  * Parse RRULE string into key-value parts.
  * "FREQ=WEEKLY;BYDAY=MO,WE" → { FREQ: "WEEKLY", BYDAY: "MO,WE" }
  */
@@ -166,6 +214,28 @@ function parseRruleParts(rruleStr: string): Record<string, string> {
       return [k.toUpperCase(), v.join("=")];
     }),
   );
+}
+
+/**
+ * Parse a BYDAY value (e.g. "MO,2WE,-1FR") into an array of rrule ByWeekday
+ * values, handling optional ordinal prefixes.
+ */
+function parseByDay(byDayRaw: string | undefined): ByWeekday[] {
+  if (!byDayRaw) return [];
+  return byDayRaw
+    .split(",")
+    .filter(Boolean)
+    .map((d: string): ByWeekday => {
+      const m = d.match(/^(-?\d+)?([A-Z]{2})$/);
+      if (!m) return d as WeekdayStr;
+      const nth: string | undefined = m[1];
+      const dayCode: string = m[2];
+      const wkday: Weekday = Weekday.fromStr(dayCode as WeekdayStr);
+      if (nth !== undefined) {
+        return wkday.nth(parseInt(nth, 10));
+      }
+      return wkday;
+    });
 }
 
 /**

@@ -6,24 +6,25 @@
     ContextMenu,
     getMenuOptions,
     getEditorItems,
+    getToolbarItems,
     type CalendarInstanceApi,
     type CalendarEvent,
   } from "@svar-ui/svelte-calendar";
   import { Locale } from "@svar-ui/svelte-core";
   import { fr } from "@svar-ui/calendar-locales";
   import { fr as frCore } from "@svar-ui/core-locales";
-  import { colloscope } from "@/stores/colloscope.svelte";
   import { expandRrule, migrateRecurrence } from "@/calendar/recurrence";
-  import RecurrenceEditor from "@/components/colles/RecurrenceEditor.svelte";
-  import PersonCombo from "@/components/colles/PersonCombo.svelte";
-  import PriorityEditor from "@/components/colles/PriorityEditor.svelte";
-  import CalendarIdEditor from "@/components/colles/CalendarIdEditor.svelte";
+  import RecurrenceEditor from "@/components/calendar/RecurrenceEditor.svelte";
+  import PersonCombo from "@/components/calendar/PersonCombo.svelte";
+  import PriorityEditor from "@/components/calendar/PriorityEditor.svelte";
+  import CalendarIdEditor from "@/components/calendar/CalendarIdEditor.svelte";
   import { getCalendarStore } from "@/stores/calendar-store.svelte";
-  import { computeDate, computeEndDate, materiaColor } from "@/lib/colles-events";
+
   import { CALENDARS } from "@/lib/calendar-categories";
   import type { CalendarEventData } from "@/lib/calendar-types";
   import { notifications } from "@/stores/notifications.svelte";
   import { confirm } from "@tauri-apps/plugin-dialog";
+  import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
 
   const words = { ...fr, ...frCore };
   const store = getCalendarStore();
@@ -58,58 +59,8 @@
     { comp: PersonCombo as any, key: "persons", label: "Assigné à" },
   ]);
 
-  // ── Colles events (read-only, computed from colloscope) ──
-  //    Skip events already in the store (exported as recurring) to prevent duplicates.
-  const colleEvents = $derived.by<CalendarEvent[]>(() => {
-    void colloscope.state.semaines;
-    void colloscope.state.creneaux;
-    void colloscope.state.selectedClasse;
-    void colloscope.state.selectedColleur;
-
-    // Set of exported colle event base IDs (stored events with "colle-" prefix)
-    const exportedIds = new Set(
-      store.events
-        .filter(e => String(e.id).startsWith("colle-"))
-        .map(e => String(e.id)),
-    );
-
-    const result: CalendarEvent[] = [];
-    const semaines = colloscope.state.semaines;
-    const creneaux = colloscope.creneauxFiltered;
-    let evIdx = 0;
-
-    for (const c of creneaux) {
-      for (let i = 0; i < semaines.length; i++) {
-        const groupe = colloscope.getGroupe(c.id, i);
-        if (!groupe) continue;
-
-        const flatId = `colle-${c.id}-${i}-${evIdx}`;
-        // Skip if this creneau has been exported as a recurring event
-        if (exportedIds.has(`colle-${c.id}`)) {
-          evIdx++;
-          continue;
-        }
-
-        const start = computeDate(semaines[i].date, c.jour, c.horaire);
-        const end = computeEndDate(start, c.horaire);
-
-        result.push({
-          id: flatId,
-          text: `${c.matiere} — ${groupe}`,
-          start,
-          end,
-          color: materiaColor(c.matiere),
-          calendarId: "devoirs",
-          location: c.salle || undefined,
-        });
-        evIdx++;
-      }
-    }
-    return result;
-  });
-
-  // ── Expand recurring user events for the visible range ────
-  const expandedUserEvents = $derived.by<CalendarEvent[]>(() => {
+  // ── Expand recurring events for the visible range ────────
+  const expandedEvents = $derived.by<CalendarEvent[]>(() => {
     const rangeStart = new Date();
     rangeStart.setMonth(rangeStart.getMonth() - 6);
     const rangeEnd = new Date();
@@ -141,8 +92,28 @@
     return result;
   });
 
-  // ── Combined events (colles + user) ─────────────────────
-  const events = $derived<CalendarEvent[]>([...colleEvents, ...expandedUserEvents]);
+  // ── Events ──────────────────────────────────────────────
+  const events = $derived<CalendarEvent[]>(expandedEvents);
+
+  // ── Toolbar items: default + import/export buttons ──────
+  const toolbarItems = $derived([
+    ...getToolbarItems(),
+    { comp: "spacer" },
+    {
+      id: "export-cal",
+      comp: "button",
+      icon: "wxi-file-up",
+      text: "Exporter",
+      handler: () => exportCalendar(),
+    },
+    {
+      id: "import-cal",
+      comp: "button",
+      icon: "wxi-file-down",
+      text: "Importer",
+      handler: () => importCalendar(),
+    },
+  ]);
 
   // ── Calendar groups for filtering (semantic categories) ──
   const calendars = $derived(CALENDARS.map((c) => ({
@@ -173,15 +144,25 @@
   async function handleContextMenu({ action, context }: { action: any; context: any }) {
     if (!action || !context) return;
     const bid = baseId(String(context.id));
-    const existing = store.events.find((e) => e.id === bid);
 
-    if (!existing) {
-      // Event is a read-only colle from colloscope (not in calendar store)
-      if (context.id?.startsWith("colle-")) {
-        notifications.setInfo("Créneau colloscope en lecture seule. Utilisez « Exporter vers calendrier » pour le modifier.");
-      }
-      return;
+    // Auto-convert: if the event is not in the store but is a colle event,
+    // create a non-recurring copy in the store so the user can act on it.
+    let existing = store.events.find((e) => e.id === bid);
+    if (!existing && context.id?.startsWith("colle-") && context.start && bid === String(context.id)) {
+      const newEvent: CalendarEventData = {
+        id: bid,
+        text: context.text || "",
+        start: context.start instanceof Date ? context.start : new Date(context.start),
+        end: context.end instanceof Date ? context.end : new Date(context.end),
+        color: context.color,
+        calendarId: context.calendarId || "devoirs",
+        location: context.location,
+      };
+      store.events = [...store.events, newEvent];
+      existing = store.events.find((e) => e.id === bid);
     }
+
+    if (!existing) return;
 
     if (action.id === "delete-this") {
       // Add this occurrence's date to exdates
@@ -387,9 +368,10 @@
 <div class="svar-calendar-panel">
     <Locale {words}>
       <ContextMenu {api} options={menuOptions} filter={menuFilter} onclick={handleContextMenu}>
-        <Calendar
-          {events}
-          view="week"
+          <Calendar
+            {events}
+            toolbar={{ items: toolbarItems }}
+            view="week"
           views={[
             {
               id: "day",

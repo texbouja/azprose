@@ -1,9 +1,6 @@
 /**
  * Calendar store — reactive event state with localStorage persistence.
  *
- * Holds user-created calendar events. Persists to localStorage
- * for inter-session survival.
- *
  * Events use rrule strings (RFC 5545) for recurrence.
  * Legacy `recurrence` fields are auto-migrated on import.
  */
@@ -68,13 +65,15 @@ export function getCalendarStore() {
       saveToStorage(userEvents);
     },
 
-    /** Clear all calendar events and remove from localStorage. */
+    /**
+     * Clear all calendar events from memory + localStorage.
+     */
     clearAll() {
       userEvents = [];
       localStorage.removeItem(STORAGE_KEY);
     },
 
-    /** Load from disk — no-op (localStorage is loaded at module init). */
+    /** Load from disk — no-op (localStorage is persisted at module init). */
     async load(_rootPath: string) {
       // No-op: localStorage persistence is handled at module level.
     },

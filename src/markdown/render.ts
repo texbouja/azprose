@@ -12,6 +12,14 @@ import { resolveTransclusions, type TransclusionRange } from "./transclusion";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import { slugify } from "./slugify";
 
+// ── HTML escape utilities ────────────────────────────────
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+export function escapeAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 const CHEVRON_ICON = `<path d="m9 18 6-6-6-6"/>`;
 const DIAMOND_ICON = `<path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>`;
 
@@ -89,13 +97,7 @@ async function ensureLangsLoaded(h: Highlighter, langs: string[]): Promise<void>
   toLoad.forEach((l) => loadedLangs.add(l));
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function escapeAttr(s: string): string {
-  return escapeHtml(s).replace(/"/g, "&quot;");
-}
+// escapeHtml, escapeAttr defined inline above
 
 // Math plugin — must run before markdown-it's inline rules (emphasis, escape, etc.)
 // to prevent corruption of LaTeX content containing _, *, ^, etc.
@@ -175,16 +177,11 @@ md.use(callouts, calloutOptions);
 
 md.use(footnote);
 
-// Colle code blocks — parse YAML-like key: value and render as structured card
+// Fenced code blocks — Shiki highlighting
 md.renderer.rules.fence = ((tokens, idx, _options, _env, _self) => {
   const token = tokens[idx];
-  const info = token.info.trim();
-  if (info === "colle") {
-    return renderColleBlock(token.content);
-  }
-  // Default Shiki highlight
   if (!highlighter) return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
-  const lang = info.split(/\s+/)[0] || "text";
+  const lang = (token.info.trim().split(/\s+/)[0]) || "text";
   const loaded = highlighter.getLoadedLanguages() as readonly string[];
   const language = loaded.includes(lang) ? lang : "text";
   try {
@@ -194,59 +191,14 @@ md.renderer.rules.fence = ((tokens, idx, _options, _env, _self) => {
   }
 }) as RenderRule;
 
-function renderColleBlock(content: string): string {
-  const fields: Record<string, string> = {};
-  for (const line of content.split("\n")) {
-    const colon = line.indexOf(":");
-    if (colon < 1) continue;
-    const key = line.slice(0, colon).trim();
-    const val = line.slice(colon + 1).trim();
-    if (key && key !== "note") fields[key] = val;
-  }
-
-  const noteLines: string[] = [];
-  let inNote = false;
-  for (const line of content.split("\n")) {
-    if (line.trim() === "note:") { inNote = true; continue; }
-    if (inNote && line.startsWith("- ")) {
-      noteLines.push(line.slice(2).trim());
-    } else if (inNote && line.trim() && !line.startsWith("-")) {
-      inNote = false;
-    }
-  }
-
-  const matiere = fields.matiere ?? "";
-  const matiereClass = matiere ? `colle-card--${matiere.toLowerCase().replace(/[^a-z]/g, "")}` : "";
-
-  let html = `<div class="colle-card ${matiereClass}">`;
-  html += `<div class="colle-card__header">`;
-  if (matiere) html += `<span class="colle-card__matiere">${escapeHtml(matiere)}</span>`;
-  if (fields.horaire) html += `<span class="colle-card__horaire">${escapeHtml(fields.horaire)}</span>`;
-  html += `</div>`;
-  html += `<div class="colle-card__body">`;
-  if (fields.eleve) html += `<div class="colle-card__field"><span class="colle-card__label">Élève</span><span class="colle-card__value">${escapeHtml(fields.eleve)}</span></div>`;
-  if (fields.groupe) html += `<div class="colle-card__field"><span class="colle-card__label">Groupe</span><span class="colle-card__value">${escapeHtml(fields.groupe)}</span></div>`;
-  if (fields.classe) html += `<div class="colle-card__field"><span class="colle-card__label">Classe</span><span class="colle-card__value">${escapeHtml(fields.classe)}</span></div>`;
-  if (fields.colleur) html += `<div class="colle-card__field"><span class="colle-card__label">Colleur</span><span class="colle-card__value">${escapeHtml(fields.colleur)}</span></div>`;
-  if (fields.salle) html += `<div class="colle-card__field"><span class="colle-card__label">Salle</span><span class="colle-card__value">${escapeHtml(fields.salle)}</span></div>`;
-  html += `</div>`;
-  if (noteLines.some(n => n)) {
-    html += `<div class="colle-card__notes">`;
-    for (const n of noteLines) {
-      html += `<div class="colle-card__note">${escapeHtml(n)}</div>`;
-    }
-    html += `</div>`;
-  }
-  html += `</div>`;
-  return html;
-}
-
 // Stamp block tokens with source line range for potential editor↔preview sync.
+// `fmOffset` (front matter line count) is injected via `state.env` by `renderMarkdown`.
 md.core.ruler.push("source_lines", (state) => {
+  const fmOffset: number = (state.env as any).fmOffset ?? 0;
   for (const token of state.tokens) {
     if (token.map && token.nesting !== -1) {
-      token.attrSet("data-sline", String(token.map[0]));
-      token.attrSet("data-eline", String(token.map[1]));
+      token.attrSet("data-sline", String(token.map[0] + fmOffset));
+      token.attrSet("data-eline", String(token.map[1] + fmOffset));
     }
   }
   return true;
@@ -273,11 +225,13 @@ const FM_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 interface FrontMatter {
   meta: Record<string, string>;
   body: string;
+  /** Number of lines the front matter occupies in the original source (0 if none). */
+  fmLineCount: number;
 }
 
 function parseFrontMatter(src: string): FrontMatter {
   const m = FM_RE.exec(src);
-  if (!m) return { meta: {}, body: src };
+  if (!m) return { meta: {}, body: src, fmLineCount: 0 };
 
   const meta: Record<string, string> = {};
   for (const line of m[1].split(/\r?\n/)) {
@@ -288,7 +242,11 @@ function parseFrontMatter(src: string): FrontMatter {
     const raw = line.slice(colon + 1).trim();
     meta[key] = raw.replace(/^["']|["']$/g, "");
   }
-  return { meta, body: src.slice(m[0].length) };
+  // Count lines consumed by the front matter block so that data-sline
+  // values (relative to the body) can be shifted back to absolute
+  // positions in the original source.
+  const fmLineCount = (m[0].match(/\r?\n/g) || []).length;
+  return { meta, body: src.slice(m[0].length), fmLineCount };
 }
 
 function renderFrontMatterHeader(meta: Record<string, string>): string {
@@ -328,7 +286,7 @@ export async function renderMarkdown(
   filePath?: string,
   rootPath?: string,
 ): Promise<RenderResult> {
-  const { meta, body } = parseFrontMatter(src);
+  const { meta, body, fmLineCount } = parseFrontMatter(src);
   let content = body;
   const ranges: TransclusionRange[] = [];
 
@@ -347,7 +305,7 @@ export async function renderMarkdown(
     activeShikiTheme = "github-light";
   }
   await ensureLangsLoaded(h, extractLangs(content));
-  const html = renderFrontMatterHeader(meta) + md.render(content);
+  const html = renderFrontMatterHeader(meta) + md.render(content, { fmOffset: fmLineCount });
   return { html, ranges };
 }
 

@@ -15,6 +15,7 @@ export type Tab = {
 let {
   tabs = [] as Tab[],
   activeTabId = null as string | null,
+  panelId = "main",
   onSelect,
   onClose,
   onReorder,
@@ -22,6 +23,7 @@ let {
 }: {
   tabs?: Tab[];
   activeTabId?: string | null;
+  panelId?: string;
   onSelect?: (id: string) => void;
   onClose?: (id: string) => void;
   onReorder?: (from: number, to: number) => void;
@@ -114,7 +116,7 @@ function endDrag(e: PointerEvent) {
 >
   {#each tabs as tab, tabIndex}
     {@const active = tab.id === activeTabId}
-    {@const dirty = tab.source !== tab.savedContent}
+    {@const dirty = panelId === "main" && tab.source !== tab.savedContent}
     {@const dragging = dragFromIndex === tabIndex}
     {@const isDragOver = dragOverIndex === tabIndex && dragFromIndex !== null && dragFromIndex !== tabIndex}
     <!-- svelte-ignore a11y_no_static_element_interactions -->

@@ -1,0 +1,410 @@
+/**
+ * Thème SVAR DataGrid — habillage spreadsheet complet.
+ *
+ * Styles globaux pour toutes les grilles SVAR (ElevesPanel, ColloscopeGrid, etc.)
+ * Utilise les variables CSS de l'application pour compatibilité clair/sombre.
+ *
+ * Préfixe : .wx-grid (conteneur racine du DataGrid SVAR).
+ */
+
+/* ── Conteneur ────────────────────────────────────────── */
+.wx-grid {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: var(--font-preview, var(--font-ui));
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Header ───────────────────────────────────────────── */
+.wx-grid-header {
+  background: var(--surface);
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+  color: var(--fg-muted);
+  user-select: none;
+}
+
+.wx-grid-header-cell {
+  padding: 6px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  transition: background 0.12s;
+  position: relative;
+}
+
+.wx-grid-header-cell:last-child {
+  border-right: none;
+}
+
+.wx-grid-header-cell:hover {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+/* ── Sort indicators ──────────────────────────────────── */
+.wx-grid-header-cell[sort]::after {
+  content: " ↕";
+  opacity: 0.3;
+  font-size: 9px;
+}
+
+.wx-grid-header-cell[sort="asc"]::after {
+  content: " ↑";
+  opacity: 0.8;
+  color: var(--accent);
+}
+
+.wx-grid-header-cell[sort="desc"]::after {
+  content: " ↓";
+  opacity: 0.8;
+  color: var(--accent);
+}
+
+/* ── Column resize handle ─────────────────────────────── */
+.wx-grid-col-resize {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.wx-grid-col-resize:hover,
+.wx-grid-col-resize--active {
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+/* ── Frozen columns (split) ───────────────────────────── */
+.wx-grid-cell--frozen {
+  position: sticky;
+  z-index: 2;
+  background: var(--bg);
+  border-right: 2px solid var(--border);
+}
+
+.wx-grid-header-cell--frozen {
+  z-index: 3;
+  background: var(--surface);
+}
+
+/* ── Rows ─────────────────────────────────────────────── */
+.wx-grid-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  transition: background 0.08s;
+}
+
+.wx-grid-row:nth-child(even) {
+  background: color-mix(in srgb, var(--fg) 2%, var(--bg));
+}
+
+.wx-grid-row:hover {
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+
+.wx-grid-row--selected {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg)) !important;
+  border-left: 3px solid var(--accent);
+}
+
+/* ── Cells ────────────────────────────────────────────── */
+.wx-grid-cell {
+  padding: 4px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-right: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-grid-cell:last-child {
+  border-right: none;
+}
+
+/* Numeric alignment */
+.wx-grid-cell[data-type="number"] {
+  text-align: right;
+}
+
+/* Date alignment */
+.wx-grid-cell[data-type="date"] {
+  text-align: center;
+}
+
+/* ├── Édition ─────────────────────────────────────────── */
+.wx-grid-cell--editing {
+  padding: 0;
+}
+
+.wx-grid-cell--editing input,
+.wx-grid-cell--editing select,
+.wx-grid-cell--editing textarea {
+  width: 100%;
+  height: 100%;
+  padding: 4px 8px;
+  border: none;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-preview, var(--font-ui));
+  font-size: 12px;
+  border-radius: 0;
+}
+
+.wx-grid-cell--editing select {
+  cursor: pointer;
+}
+
+/* Focus keyboard */
+.wx-grid-cell--focus {
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+
+/* ── Filters ──────────────────────────────────────────── */
+.wx-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.wx-filter-btn {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 4px;
+  border-radius: 3px;
+  transition: background 0.12s;
+}
+
+.wx-filter-btn:hover {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.wx-filter-popup {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  padding: 8px;
+  min-width: 180px;
+  font-family: var(--font-preview, var(--font-ui));
+  font-size: 12px;
+  color: var(--fg);
+  z-index: 100;
+}
+
+.wx-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.wx-filter-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* ── Dropdown combo (editors) ─────────────────────────── */
+.wx-combo {
+  position: relative;
+}
+
+.wx-combo-popup {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100;
+  font-family: var(--font-preview, var(--font-ui));
+  font-size: 12px;
+}
+
+.wx-combo-item {
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+
+.wx-combo-item:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.wx-combo-item--selected {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  font-weight: 500;
+}
+
+/* ── Drag handle ──────────────────────────────────────── */
+.wx-grid-drag {
+  cursor: grab;
+  opacity: 0.5;
+  transition: opacity 0.12s;
+}
+
+.wx-grid-drag:hover {
+  opacity: 1;
+}
+
+.wx-grid-drag--ghost {
+  opacity: 0.3;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* ── Footer ───────────────────────────────────────────── */
+.wx-grid-footer {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* ── Toolbar ──────────────────────────────────────────── */
+.wx-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.wx-toolbar-btn {
+  background: none;
+  border: none;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: var(--font-preview, var(--font-ui));
+  font-size: 11px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.wx-toolbar-btn:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+
+.wx-toolbar-btn--active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+/* ── Tooltip ──────────────────────────────────────────── */
+.wx-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  padding: 4px 8px;
+  font-family: var(--font-preview, var(--font-ui));
+  font-size: 11px;
+  color: var(--fg);
+  z-index: 200;
+  pointer-events: none;
+}
+
+/* ── Context menu ─────────────────────────────────────── */
+.wx-context-menu {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  padding: 4px 0;
+  min-width: 150px;
+  z-index: 300;
+  font-family: var(--font-preview, var(--font-ui));
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.wx-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+
+.wx-context-menu-item:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.wx-context-menu-item--disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.wx-context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 8px;
+}
+
+/* ── Scrollbar ────────────────────────────────────────── */
+.wx-grid ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.wx-grid ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wx-grid ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg-muted) 30%, transparent);
+  border-radius: 4px;
+}
+
+.wx-grid ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--fg-muted) 50%, transparent);
+}
+
+/* ── Overlay (empty state) ────────────────────────────── */
+.wx-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--fg-muted);
+  font-style: italic;
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+/* ── Grouped headers ──────────────────────────────────── */
+.wx-grid-header-cell[colspan] {
+  text-align: center;
+  cursor: pointer;
+}
+
+.wx-grid-header-cell[colspan]::before {
+  content: "▾ ";
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+.wx-grid-header-cell[colspan]:not(.collapsed)::before {
+  content: "▾ ";
+}
+
+.wx-grid-header-cell[colspan].collapsed::before {
+  content: "▸ ";
+}

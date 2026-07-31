@@ -4,7 +4,7 @@ import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation";
 export type TabSource = "latex";
-export type TabKind = "file" | "custom";
+export type TabKind = "file" | "custom" | "spreadsheet";
 
 export type Tab = {
   id: string;
@@ -17,10 +17,11 @@ export type Tab = {
   sourceType?: TabSource;
   kind?: TabKind;
   panelId?: string;
+  spreadsheetId?: string;
 };
 
 export type PanelSessionData = {
-  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string }[];
+  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string }[];
   activePath: string | null;
 };
 
@@ -129,6 +130,59 @@ export class PanelState {
     this.notify();
   }
 
+  openSpreadsheet(spreadsheetId: string, title: string): void {
+    const existing = this.tabs.find(t => t.kind === "spreadsheet" && t.spreadsheetId === spreadsheetId);
+    if (existing) {
+      this.activeTabId = existing.id;
+      this.notify();
+      return;
+    }
+    const id = crypto.randomUUID();
+    this.tabs = [...this.tabs, {
+      id, title,
+      path: `spreadsheet://${spreadsheetId}`,
+      source: "", savedContent: "",
+      kind: "spreadsheet",
+      spreadsheetId,
+    }];
+    this.activeTabId = id;
+    this.notify();
+  }
+
+  /**
+   * Open a spreadsheet tab without a spreadsheetId (create mode).
+   * The tab will show the create/import UI until upgraded with a real ID. */
+  openEmptySpreadsheet(title: string): void {
+    // Reuse existing "create" tab if one exists
+    const existing = this.tabs.find(t => t.kind === "spreadsheet" && !t.spreadsheetId);
+    if (existing) {
+      this.activeTabId = existing.id;
+      this.notify();
+      return;
+    }
+    const id = crypto.randomUUID();
+    this.tabs = [...this.tabs, {
+      id, title,
+      path: "spreadsheet://new",
+      source: "", savedContent: "",
+      kind: "spreadsheet",
+      // no spreadsheetId — SpreadsheetViewer shows the create UI
+    }];
+    this.activeTabId = id;
+    this.notify();
+  }
+
+  /** Upgrade a "create" tab (no spreadsheetId) with a real ID. */
+  upgradeSpreadsheetTab(id: string, title: string): void {
+    const idx = this.tabs.findIndex(t => t.kind === "spreadsheet" && !t.spreadsheetId);
+    if (idx === -1) return;
+    const tab = this.tabs[idx];
+    this.tabs = this.tabs.map(t =>
+      t.id === tab.id ? { ...t, spreadsheetId: id, title } : t
+    );
+    this.notify();
+  }
+
   close(tabId: string): void {
     const idx = this.tabs.findIndex(t => t.id === tabId);
     if (idx === -1) return;
@@ -193,6 +247,11 @@ export class PanelState {
     }
   }
 
+  setTabTitle(tabId: string, title: string): void {
+    this.tabs = this.tabs.map(t => t.id === tabId ? { ...t, title } : t);
+    this.notify();
+  }
+
   toJSON(): PanelSessionData {
     return {
       tabs: this.tabs.map(t => ({
@@ -202,6 +261,7 @@ export class PanelState {
         sourceType: t.sourceType,
         kind: t.kind,
         panelId: t.panelId,
+        spreadsheetId: t.spreadsheetId,
       })),
       activePath: this.activePath,
     };
@@ -210,15 +270,24 @@ export class PanelState {
   fromJSON(data: PanelSessionData): void {
     this.tabs = data.tabs
       .filter(t => t.kind !== "custom")
-      .map(t => ({
-        id: crypto.randomUUID(),
-        path: t.path,
-        title: t.title,
-        source: "",
-        savedContent: "",
-        renderMode: t.renderMode,
-        sourceType: t.sourceType,
-      }));
+      .map(t => {
+        // Reconstruct spreadsheetId from path if not stored directly
+        let spreadsheetId = t.spreadsheetId;
+        if (!spreadsheetId && t.path.startsWith("spreadsheet://")) {
+          spreadsheetId = t.path.slice("spreadsheet://".length);
+        }
+        return {
+          id: crypto.randomUUID(),
+          path: t.path,
+          title: t.title,
+          source: "",
+          savedContent: "",
+          renderMode: t.renderMode,
+          sourceType: t.sourceType,
+          kind: t.kind as any as TabKind | undefined,
+          spreadsheetId,
+        } as Tab;
+      });
     if (data.activePath) {
       const tab = this.tabs.find(t => t.path === data.activePath);
       this.activeTabId = tab?.id ?? this.tabs[0]?.id ?? null;
@@ -228,7 +297,7 @@ export class PanelState {
   async restoreContent(preferDraft?: boolean): Promise<void> {
     const toRemove: string[] = [];
     for (const tab of this.tabs) {
-      if (tab.kind === "custom") continue;
+      if (tab.kind === "custom" || tab.kind === "spreadsheet") continue;
       try {
         const fileSource = await readText(tab.path);
         const draft = preferDraft ? loadDraft(tab.path) : null;

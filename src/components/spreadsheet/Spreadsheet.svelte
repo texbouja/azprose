@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { tick, onDestroy } from "svelte";
+  import { tick, onMount, onDestroy } from "svelte";
   import jspreadsheet from "jspreadsheet-ce";
   import "jsuites/dist/jsuites.css";
   import "jspreadsheet-ce/dist/jspreadsheet.css";
+  import { csvSettings } from "@/stores/markdown-settings.svelte";
 
   export type JspreadsheetInstance = ReturnType<typeof jspreadsheet>[number];
 
@@ -11,20 +12,33 @@
     columns = [],
     worksheetOptions = {},
     onchange,
-    onSave,
+    onsave,
     contextMenu,
     toolbar,
+    onReady,
+    onBeforeDestroy,
     class: className = "",
   }: {
     data: (string | number | boolean)[][];
     columns: Record<string, any>[];
     worksheetOptions?: Record<string, any>;
     onchange?: (colIndex: number, rowIndex: number, value: any, oldValue: any) => void;
-    onSave?: () => void;
+    /** Fires on Ctrl+S / toolbar Save button click. */
+    onsave?: () => void;
     contextMenu?: (sheet: any, col: string | number | null, row: string | number | null, evt: any, items: any[], role: string) => any[];
-    toolbar?: (defaultToolbar: any, instance: JspreadsheetInstance[]) => any;
+    toolbar?: ((defaultToolbar: any, instance: JspreadsheetInstance[]) => any) | false;
+    /** Fires when jspreadsheet instance is ready. */
+    onReady?: () => void;
+    /** Fires BEFORE jspreadsheet is destroyed (onDestroy lifecycle).
+     *  Use this to flush pending saves while the API is still valid. */
+    onBeforeDestroy?: () => void;
     class?: string;
   } = $props();
+
+  // Legacy CSV-style typography settings (font size + line height) still
+  // drive the data area; the font FAMILY follows the app-wide preview fonts
+  // (--font-preview) set in "Polices de l'affichage" (Settings → Apparence).
+  let csvStyle = $derived(csvSettings.current);
 
   let el: HTMLDivElement;
   let api: JspreadsheetInstance[] | null = null;
@@ -42,33 +56,45 @@
 
     await tick();
 
-    api = jspreadsheet(el, {
-      worksheets: [
-        {
-          data,
-          columns,
-          csvHeaders: false,
-          filters: true,
-          ...worksheetOptions,
+    try {
+      api = jspreadsheet(el, {
+        worksheets: [
+          {
+            data,
+            columns,
+            csvHeaders: false,
+            // CE features like search, wordWrap, freezeColumns come from worksheetOptions (caller-controlled)
+            ...worksheetOptions,
+          },
+        ],
+        contextMenu: contextMenu
+          ? (sheet: any, col: string | number | null, row: string | number | null, evt: any, items: any[], role: string) => {
+              return contextMenu(sheet, col, row, evt, items, role);
+            }
+          : defaultContextMenu,
+        toolbar: toolbar === false
+          ? false
+          : toolbar
+            ? (defaultToolbar: any) => toolbar(defaultToolbar, api!)
+            : (defaultToolbar: any) => defaultToolbarConfig(defaultToolbar, api!),
+        onchange: (_sheet: any, _cell: any, colIndex: string | number, rowIndex: string | number, value: any, oldValue: any) => {
+          onchange?.(Number(colIndex), Number(rowIndex), value, oldValue);
         },
-      ],
-      contextMenu: contextMenu
-        ? (sheet: any, col: string | number | null, row: string | number | null, evt: any, items: any[], role: string) => {
-            return contextMenu(sheet, col, row, evt, items, role);
-          }
-        : defaultContextMenu,
-      toolbar: toolbar
-        ? (defaultToolbar: any) => toolbar(defaultToolbar, api!)
-        : (defaultToolbar: any) => defaultToolbarConfig(defaultToolbar, api!),
-      onchange: (_sheet: any, _cell: any, colIndex: string | number, rowIndex: string | number, value: any, oldValue: any) => {
-        onchange?.(Number(colIndex), Number(rowIndex), value, oldValue);
-      },
-    });
+        onsave: () => {
+          onsave?.();
+        },
+      });
+    } catch (err) {
+      console.error("[Spreadsheet] jspreadsheet init failed:", err);
+      ready = false;
+      return;
+    }
 
     ready = true;
 
-    setupFillHighlight();
-    setupAutoFit();
+    try { setupFillHighlight(); } catch (e) { console.warn("[Spreadsheet] fill highlight error:", e); }
+    try { setupAutoFit(); } catch (e) { console.warn("[Spreadsheet] autofit error:", e); }
+    onReady?.();
   }
 
   function defaultContextMenu(sheet: any, col: string | number | null, row: string | number | null, _evt: any, items: any[], role: string) {
@@ -79,6 +105,36 @@
     if (role === "header" && colIdx != null) {
       const selected = sheet.getSelectedColumns() as number[];
       const indices = selected.length > 1 && selected.includes(colIdx) ? selected : [colIdx];
+
+      // Insert columns
+      items.push({
+        title: "Insert column left",
+        onclick: () => { sheet.insertColumn(1, colIdx, true); },
+      });
+      items.push({
+        title: "Insert column right",
+        onclick: () => { sheet.insertColumn(1, colIdx, false); },
+      });
+
+      // Delete columns
+      items.push({
+        title: indices.length > 1 ? "Delete columns" : "Delete column",
+        onclick: () => { sheet.deleteColumn(Math.min(...indices), indices.length); },
+      });
+
+      items.push({ type: "line" });
+
+      // Show all columns (if any hidden)
+      items.push({
+        title: "Show all columns",
+        onclick: () => {
+          const totalCols = sheet.getConfig()?.columns?.length ?? sheet.getData(false, false)[0]?.length ?? 0;
+          // showColumn with each previously-hidden column index
+          for (let c = 0; c < totalCols; c++) sheet.showColumn(c);
+        },
+      });
+
+      // Hide columns
       items.push({
         title: indices.length > 1 ? "Hide columns" : "Hide column",
         onclick: () => { sheet.hideColumn(indices); },
@@ -86,6 +142,35 @@
     } else if (rowIdx != null) {
       const selected = sheet.getSelectedRows() as number[];
       const indices = selected.length > 1 && selected.includes(rowIdx) ? selected : [rowIdx];
+
+      // Insert rows
+      items.push({
+        title: "Insert row above",
+        onclick: () => { sheet.insertRow(1, rowIdx, true); },
+      });
+      items.push({
+        title: "Insert row below",
+        onclick: () => { sheet.insertRow(1, rowIdx, false); },
+      });
+
+      // Delete rows
+      items.push({
+        title: indices.length > 1 ? "Delete rows" : "Delete row",
+        onclick: () => { sheet.deleteRow(Math.min(...indices), indices.length); },
+      });
+
+      items.push({ type: "line" });
+
+      // Show all rows (if any hidden)
+      items.push({
+        title: "Show all rows",
+        onclick: () => {
+          const totalRows = sheet.getData(false, false).length;
+          for (let r = 0; r < totalRows; r++) sheet.showRow(r);
+        },
+      });
+
+      // Hide rows
       items.push({
         title: indices.length > 1 ? "Hide rows" : "Hide row",
         onclick: () => { sheet.hideRow(indices); },
@@ -94,31 +179,17 @@
     return items;
   }
 
-  function defaultToolbarConfig(defaultToolbar: any, instance: JspreadsheetInstance[]) {
-    const items = defaultToolbar.items.map((item: any) => {
-      if (item.content === "save" && onSave) {
-        return { ...item, title: "Save", onclick: () => { onSave(); } };
-      }
-      return item;
-    });
-
+  function defaultToolbarConfig(defaultToolbar: any, _instance: JspreadsheetInstance[]) {
+    // Drop the font-family select: cell fonts follow the app-wide preview
+    // fonts (--font-preview), so a per-cell font picker only adds friction.
+    const items = (defaultToolbar.items || []).filter(
+      (item: any) =>
+        !(item.type === "select" && Array.isArray(item.options) && item.options.includes("Verdana")),
+    );
     return {
       ...defaultToolbar,
       title: false,
-      items: [
-        ...items,
-        { type: "divisor" },
-        {
-          content: "visibility",
-          title: "Show all",
-          onclick: () => {
-            const sheet = instance[0];
-            if (!sheet) return;
-            sheet.showColumn(Array.from({ length: sheet.headers.length }, (_: any, i: number) => i));
-            sheet.showRow(Array.from({ length: sheet.rows.length }, (_: any, i: number) => i));
-          },
-        },
-      ],
+      items,
     };
   }
 
@@ -199,19 +270,24 @@
     });
   }
 
-  $effect(() => {
-    void data;
-    void columns;
+  onMount(() => {
     init();
   });
 
   onDestroy(() => {
+    // Give the parent a chance to flush pending saves while the API is valid
+    onBeforeDestroy?.();
     try { jspreadsheet.destroy(el as any, true); } catch {}
     api = null;
   });
 </script>
 
-<div class="spreadsheet{className ? ` ${className}` : ""}" class:spreadsheet--ready={ready}>
+<div
+  class="spreadsheet{className ? ` ${className}` : ""}"
+  class:spreadsheet--ready={ready}
+  style:--csv-font-size="{csvStyle.fontSize}px"
+  style:--csv-line-height={csvStyle.lineHeight}
+>
   <div bind:this={el} class="spreadsheet__grid"></div>
 </div>
 
@@ -219,12 +295,12 @@
   .spreadsheet {
     height: 100%;
     overflow: hidden;
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
   }
 
   .spreadsheet__grid {
     height: 100%;
-    overflow: auto;
+    overflow: hidden;
   }
 
   /* ── Spreadsheet base ── */
@@ -233,23 +309,26 @@
     outline: none;
     background: var(--bg);
     color: var(--fg);
+    /* Must inherit height so child flex (jss_container height:100%) resolves */
+    height: 100%;
+  }
+
+  /* ── Container: flex column so toolbar never scrolls with grid ── */
+  .spreadsheet :global(.jss_container) {
+    display: flex !important;
+    flex-direction: column;
+    height: 100%;
   }
 
   .spreadsheet :global(.jss_toolbar) {
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    flex-shrink: 0;
   }
 
   .spreadsheet :global(.jss_content) {
+    flex: 1;
+    overflow: auto;
     background: var(--bg);
     scrollbar-color: var(--muted) transparent;
-  }
-
-  /* ── suppress search bar (ActionBar duplicate) ── */
-  .spreadsheet :global(.jss_toolbar .jsearch),
-  .spreadsheet :global(.jss_search) {
-    display: none !important;
   }
 
   /* ── toolbar container ── */
@@ -261,7 +340,7 @@
     border-bottom: 1px solid var(--border);
     padding: 0;
     margin: 0;
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
     color: var(--fg-muted);
   }
@@ -272,7 +351,7 @@
     background: var(--surface);
     padding: 1px 2px;
     gap: 0;
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
     color: var(--fg-muted);
   }
@@ -288,11 +367,27 @@
     background-color: color-mix(in srgb, var(--fg) 10%, transparent) !important;
   }
 
-  /* ── Material Icons in toolbar ── */
+  /* ── Material Icons in toolbar ──
+     jsuites ships line-height: 24px on a 24x24 block box, which centers
+     classic Material Icons but not Material Symbols (different vertical
+     metrics): glyphs float to the top of the box and misalign with the
+     flex-centered separators and the picker triangle indicators. Center
+     button/header glyphs with flexbox instead.
+     NOTE: the descendant rule also covers dropdown-content icons
+     (align/border picker options), which must keep their color. */
   .spreadsheet :global(.jtoolbar .jtoolbar-item i) {
     color: var(--fg-muted);
     font-size: 16px;
     line-height: 1;
+  }
+
+  .spreadsheet :global(.jtoolbar .jtoolbar-item > i),
+  .spreadsheet :global(.jtoolbar .jpicker-header > i) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
   }
 
   .spreadsheet :global(.jtoolbar .jtoolbar-item:hover i) {
@@ -304,15 +399,21 @@
     pointer-events: none;
   }
 
-  /* ── toolbar divisor ── */
+  /* ── toolbar divisor ──
+     jsuites ships a chunky 2px x 18px block; render a thin hairline
+     instead (same fine-stroke look as the breadcrumb separators). */
   .spreadsheet :global(.jtoolbar .jtoolbar-divisor) {
+    width: 1px;
+    height: 16px;
+    margin: 0 6px;
+    border-radius: 1px;
     background-color: var(--border);
   }
 
   /* ── toolbar label ── */
   .spreadsheet :global(.jtoolbar .jtoolbar-label) {
     color: var(--fg-muted);
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
   }
 
@@ -322,7 +423,7 @@
     color: var(--fg-muted);
     border: 1px solid var(--border);
     border-radius: 3px;
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
     height: 20px;
     padding: 0 4px;
@@ -345,7 +446,7 @@
     color: var(--fg);
     border: 1px solid var(--border);
     border-radius: 3px;
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
     height: 20px;
     padding: 0 4px;
@@ -362,7 +463,7 @@
     color: var(--fg-muted);
     border: 1px solid var(--border);
     border-radius: 3px;
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
   }
 
@@ -382,7 +483,7 @@
     color: var(--fg);
     border: 1px solid var(--border);
     border-radius: 3px;
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
   }
 
@@ -401,8 +502,9 @@
     background-color: var(--bg);
     border-color: var(--border);
     color: var(--fg);
-    font-family: var(--font-ui);
-    font-size: 12px;
+    font-family: var(--font-preview, var(--font-ui));
+    font-size: var(--csv-font-size, 12px);
+    line-height: var(--csv-line-height, 1.4);
   }
 
   /* header row */
@@ -410,7 +512,7 @@
     background-color: var(--surface);
     color: var(--fg-muted);
     border-color: var(--border);
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
     font-weight: 500;
     text-transform: none;
@@ -428,8 +530,8 @@
     background-color: var(--bg);
     color: var(--fg);
     border-color: var(--border);
-    font-family: var(--font-ui);
-    font-size: 12px;
+    font-family: var(--font-preview, var(--font-ui));
+    font-size: var(--csv-font-size, 12px);
   }
 
   /* row hover */
@@ -449,7 +551,7 @@
     background-color: var(--surface);
     color: var(--muted);
     border-color: var(--border);
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
     text-align: right;
     padding-right: 8px;
@@ -481,8 +583,9 @@
   .spreadsheet :global(.editor) {
     background: var(--bg);
     color: var(--fg);
-    font-family: var(--font-ui);
-    font-size: 12px;
+    font-family: var(--font-preview, var(--font-ui));
+    font-size: var(--csv-font-size, 12px);
+    line-height: var(--csv-line-height, 1.4);
     border: 2px solid var(--accent);
     outline: none;
   }
@@ -492,7 +595,7 @@
     background: var(--surface);
     color: var(--fg);
     border: 1px solid var(--border);
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 12px;
     box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 12%, transparent);
   }
@@ -512,7 +615,7 @@
     background: var(--bg);
     color: var(--fg);
     border: 1px solid var(--border);
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 11px;
     padding: 2px 4px;
     border-radius: 2px;
@@ -547,7 +650,7 @@
     background: var(--surface);
     color: var(--fg);
     border: 1px solid var(--border);
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 12px;
     box-shadow: 0 6px 18px color-mix(in srgb, var(--fg) 18%, transparent);
   }
@@ -561,7 +664,7 @@
   .spreadsheet :global(.jss_page) {
     background: var(--bg);
     color: var(--muted);
-    font-family: var(--font-ui);
+    font-family: var(--font-preview, var(--font-ui));
     font-size: 13px;
   }
 </style>

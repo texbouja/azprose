@@ -28,6 +28,7 @@
     onToggleViewPanel,
     onOpenCode,
     onOpenSvarCalendar,
+    onOpenSpreadsheet,
     onOpenPalette,
     onSelectFile,
   }: {
@@ -49,6 +50,7 @@
     onToggleViewPanel?: () => void;
     onOpenCode?: () => void;
     onOpenSvarCalendar?: () => void;
+    onOpenSpreadsheet?: () => void;
     onOpenPalette?: () => void;
     onSelectFile?: (path: string) => void;
   } = $props();
@@ -246,7 +248,7 @@
       {/if}
     </div>
 
-    {#if onOpenCode || onOpenSvarCalendar}
+    {#if onOpenCode || onOpenSvarCalendar || onOpenSpreadsheet}
       <div class="mdv-breadcrumb__tools">
         {#if onOpenCode}
           <Button
@@ -256,6 +258,17 @@
           >
             {#snippet icon()}
               <img src={opencodeLogo} alt="" aria-hidden width={14} height={14} draggable={false} class="mdv-breadcrumb__opencode" />
+            {/snippet}
+          </Button>
+        {/if}
+        {#if onOpenSpreadsheet}
+          <Button
+            data-tooltip={t("breadcrumb.spreadsheet")}
+            aria-label={t("breadcrumb.spreadsheet")}
+            onclick={onOpenSpreadsheet}
+          >
+            {#snippet icon()}
+              <i class="wxi-table" style="font-size:14px"></i>
             {/snippet}
           </Button>
         {/if}
@@ -373,6 +386,9 @@
 
   /* ── fixed dropdown ── */
 
+  /* FileTree mounts here in the topbar, outside .mdv-sidebar — rebind
+     --font-ui (and inherit font-family) so the tree uses the sidebar font
+     (Ubuntu Condensed) instead of the main UI font. */
   .mdv-bc-dropdown {
     position: fixed;
     z-index: 200;
@@ -390,6 +406,8 @@
       0 10px 28px rgba(var(--shadow-color), 0.22),
       0 2px 8px rgba(var(--shadow-color), 0.08);
     animation: mdv-pop-in 140ms var(--easing);
+    --font-ui: var(--font-sidebar);
+    font-family: var(--font-sidebar);
   }
 
   .mdv-bc-dropdown::-webkit-scrollbar {

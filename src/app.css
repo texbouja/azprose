@@ -24,6 +24,7 @@
 @import "pdfjs-dist/web/pdf_viewer.css";
 @import "./styles/pdf/pdf.css";
 @import "./styles/markdown/preview.css";
+@import "./styles/grid-theme.css";
 
 /* shell layout */
 .mdv-app {

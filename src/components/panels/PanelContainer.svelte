@@ -23,7 +23,6 @@ let {
   buildRev = 0,
   flex = "1",
   onSetEditorMode,
-  onSyncToMain,
   onLatexViewer,
   onLatexBuild,
   onExportPdf,
@@ -50,7 +49,6 @@ let {
   buildRev?: number;
   flex?: string;
   onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
-  onSyncToMain?: (source: string) => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
   onExportPdf?: () => void;
@@ -68,6 +66,7 @@ let isCsvPreview = $derived(
   panel.id === "side" && activeTab != null && (extFromPath(activeTab.path) === "csv" || extFromPath(activeTab.path) === "tsv"),
 );
 let isCustomTab = $derived(activeTab?.kind === "custom");
+let isSpreadsheetTab = $derived(activeTab?.kind === "spreadsheet");
 let viewportEl = $state<HTMLElement | null>(null);
 
 function handleViewerCommand(cmd: string) {
@@ -90,6 +89,7 @@ function handleViewerFullscreen() {
       <TabsBar
         {tabs}
         {activeTabId}
+        panelId={panel.id}
         onSelect={(id) => panel.select(id)}
         onClose={(id) => panel.close(id)}
         onReorder={(from, to) => panel.reorder(from, to)}
@@ -98,7 +98,7 @@ function handleViewerFullscreen() {
     </div>
   {/if}
   <div class="panel-viewport" bind:this={viewportEl} style="position:relative;flex:1;min-height:0;display:grid;grid-template-rows:1fr">
-    {#if !isCsvPreview && !isCustomTab}
+    {#if !isCsvPreview && !isCustomTab && !isSpreadsheetTab}
     <TabActions
       {activeTab}
       panelId={panel.id}
@@ -126,7 +126,6 @@ function handleViewerFullscreen() {
           {onJumpApplied}
           {vimOn}
           {prosemarkOn}
-          {onSyncToMain}
           {forwardToPage}
           {onInverseSync}
           {onJumpToLine}

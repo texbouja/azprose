@@ -11,9 +11,7 @@
   import { fr } from "@svar-ui/calendar-locales";
   import { fr as frCore } from "@svar-ui/core-locales";
   import { Locale } from "@svar-ui/svelte-core";
-  import { colloscope } from "@/stores/colloscope.svelte";
-  import { MATIERE_COLORS } from "@/types/colles";
-  import { createJournalState } from "@/stores/journal-store.svelte";
+  import { journal } from "@/stores/journal-store.svelte";
   import { journalSettings } from "@/stores/journal-settings.svelte";
   import { getRootPath } from "@/stores/root-path.svelte";
 
@@ -21,69 +19,12 @@
 
   let api: CalendarInstanceApi | null = $state(null);
 
-  const journal = createJournalState();
   const folder = $derived(journalSettings.current.journalFolder);
 
   $effect(() => {
     const rp = getRootPath();
     const f = folder;
     journal.scanForNotes(rp, f);
-  });
-
-  // ── Helpers ──────────────────────────────────────────────
-  function materiaColor(matiere: string): string {
-    return MATIERE_COLORS[matiere] ?? "#666";
-  }
-
-  const JOUR_TO_WEEKDAY: Record<string, number> = {
-    Lundi: 1, Mardi: 2, Mercredi: 3, Jeudi: 4, Vendredi: 5, Samedi: 6,
-  };
-
-  function computeDate(semaineDate: string, jour: string, horaire: string): Date {
-    const base = new Date(semaineDate + "T00:00:00");
-    base.setDate(base.getDate() + (JOUR_TO_WEEKDAY[jour] ?? 1) - 1);
-    const match = horaire.match(/(\d{1,2})h/);
-    if (match) base.setHours(parseInt(match[1], 10), 0, 0);
-    return base;
-  }
-
-  function computeEndDate(date: Date, horaire: string): Date {
-    const end = new Date(date);
-    const match = horaire.match(/[-–]\s*(\d{1,2})h/);
-    if (match) {
-      end.setHours(parseInt(match[1], 10), 0, 0);
-    } else {
-      end.setHours(end.getHours() + 1);
-    }
-    return end;
-  }
-
-  // ── Colles events ────────────────────────────────────────
-  const colleEvents = $derived.by<CalendarEvent[]>(() => {
-    void colloscope.state.semaines;
-    void colloscope.state.creneaux;
-    void colloscope.state.assignations;
-
-    const result: CalendarEvent[] = [];
-    for (const c of colloscope.state.creneaux) {
-      for (let i = 0; i < colloscope.state.semaines.length; i++) {
-        const groupe = colloscope.getGroupe(c.id, i);
-        if (!groupe) continue;
-
-        const start = computeDate(colloscope.state.semaines[i].date, c.jour, c.horaire);
-        const end = computeEndDate(start, c.horaire);
-
-        result.push({
-          id: `colle-${c.id}-${i}`,
-          text: `${c.matiere} — ${groupe}`,
-          start,
-          end,
-          color: materiaColor(c.matiere),
-          calendarId: "colles",
-        });
-      }
-    }
-    return result;
   });
 
   // ── Journal note events ──────────────────────────────────
@@ -105,11 +46,10 @@
   });
 
   // ── Combined events ──────────────────────────────────────
-  const events = $derived<CalendarEvent[]>([...colleEvents, ...noteEvents]);
+  const events = $derived<CalendarEvent[]>(noteEvents);
 
   // ── Calendar groups ──────────────────────────────────────
   const calendars = $derived([
-    { id: "colles", label: "Colles", css: "cal-colles", active: true },
     { id: "notes", label: "Notes", css: "cal-notes", active: true },
   ]);
 
@@ -134,6 +74,14 @@
   function init(a: CalendarInstanceApi) {
     api = a;
     a.on("select-event", handleEventClick as any);
+    // Intercept navigate-to: clicking an empty date cell creates/opens a daily note
+    a.intercept("navigate-to", (ctx: any) => {
+      if ("view" in ctx && ctx.view === "day" && "date" in ctx && ctx.date) {
+        const d: Date = ctx.date;
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        window.dispatchEvent(new CustomEvent("azprose:journal-date-click", { detail: { date: dateStr } }));
+      }
+    });
   }
 </script>
 

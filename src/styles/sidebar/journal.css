@@ -54,7 +54,7 @@
 }
 
 .mdv-calendar__month {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   color: var(--fg);
   text-transform: lowercase;
@@ -76,7 +76,7 @@
   align-items: center;
   justify-content: center;
   height: 24px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 10px;
   color: var(--muted);
   text-transform: lowercase;
@@ -94,7 +94,7 @@
   background: transparent;
   color: var(--fg);
   cursor: pointer;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   transition:
     background var(--dur-fast) var(--easing),
@@ -165,7 +165,7 @@
 .mdv-journal__title {
   flex: 1;
   min-width: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--fg);
@@ -190,7 +190,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 10.5px;
   cursor: pointer;
   transition:
@@ -219,7 +219,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--accent);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   cursor: pointer;
   transition:

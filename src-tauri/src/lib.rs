@@ -21,7 +21,8 @@ mod lsp_bridge;
 
 mod mdprinter;
 
-mod colles;
+mod spreadsheet_db;
+use spreadsheet_db::SpreadsheetDb;
 
 use lsp_bridge::LspBridgeState;
 
@@ -398,23 +399,6 @@ fn read_project_session(root: String) -> Result<Option<String>, String> {
     fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
 }
 
-// ── Calendar (.azprose/calendar/events.ics) ───────────────
-
-#[tauri::command]
-fn read_calendar(root: String) -> Result<Option<String>, String> {
-    let path = Path::new(&root).join(".azprose/calendar/events.ics");
-    if !path.exists() {
-        return Ok(None);
-    }
-    fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn write_calendar(root: String, content: String) -> Result<(), String> {
-    let path = Path::new(&root).join(".azprose/calendar/events.ics");
-    atomic_write(&path, &content)
-}
-
 #[tauri::command]
 fn write_project_session(root: String, content: String) -> Result<(), String> {
     let path = Path::new(&root).join(".azprose/session.json");
@@ -450,6 +434,7 @@ pub fn run() {
         .manage(OpenProjectWindows(Mutex::new(HashMap::new())))
         .manage(TerminalState::default())
         .manage(LspBridgeState::default())
+        .manage(SpreadsheetDb(Mutex::new(None)))
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let mut project_dir = None;
             for arg in args.iter().skip(1) {
@@ -490,15 +475,10 @@ pub fn run() {
             set_external_change_alerts,
             reveal_in_file_manager,
             mdprinter::export_markdown_pdf,
-            colles::parse_colloscope_xlsx,
-            colles::parse_colloscope_csv,
-            colles::parse_eleves_csv,
             read_project_config,
             write_project_config,
             read_project_session,
             write_project_session,
-            read_calendar,
-            write_calendar,
             get_projects_list,
             add_project,
             remove_project,
@@ -521,6 +501,16 @@ pub fn run() {
             latex_engine::synctex_inverse,
             latex_engine::latex_init_texmf,
             latex_engine::latex_rehash_texmf,
+            spreadsheet_db::spreadsheet_create,
+            spreadsheet_db::spreadsheet_delete,
+            spreadsheet_db::spreadsheet_export_csv,
+            spreadsheet_db::spreadsheet_get,
+            spreadsheet_db::spreadsheet_init_db,
+            spreadsheet_db::spreadsheet_list,
+            spreadsheet_db::spreadsheet_rename,
+            spreadsheet_db::spreadsheet_save_all,
+            spreadsheet_db::spreadsheet_save_cells,
+            spreadsheet_db::spreadsheet_save_state,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

@@ -14,24 +14,22 @@ import {
   type TextAlign,
   type HeadingFont,
   type OlType,
-  type CsvBodyFont,
 } from "@/stores/markdown-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
-import { generalSettings } from "@/stores/general-settings.svelte";
+import { generalSettings, UI_SCALE_OPTIONS, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT_PRESETS, PREVIEW_FONT_PRESETS, PREVIEW_MONO_FONT_PRESETS, FONT_HINTING_OPTIONS } from "@/stores/general-settings.svelte";
+import { theme } from "@/stores/theme.svelte";
+import { THEME_GROUPS, type ThemeMode } from "@/lib";
 import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
 import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
 import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { notifications } from "@/stores/notifications.svelte";
-import { pickXlsx, readFile, joinPath } from "@/lib/files";
-import { colloscope } from "@/stores/colloscope.svelte";
-import DatePicker from "@/components/primitives/DatePicker.svelte";
+import { joinPath } from "@/lib/files";
 import { userProfile, type UserRole } from "@/stores/user-profile.svelte";
-import CollesImportDialog from "@/components/colles/CollesImportDialog.svelte";
-import { parseExcelFile, type ParsedExcelData } from "@svar-ui/excel-import-store";
+import { exportCalendar, importCalendar, clearCalendar } from "@/lib/calendar-persistence";
 
 let t = $derived(getT($language));
 
@@ -43,7 +41,7 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "colles" | "profile";
+type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance";
 type SectionId = "markdown" | "general" | "latex";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
@@ -52,9 +50,10 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
     labelKey: "settings.section.general",
     modules: [
       { id: "editor", labelKey: "settings.module.editor" },
+      { id: "appearance", labelKey: "settings.module.appearance" },
       { id: "profile", labelKey: "settings.module.profile" },
       { id: "csv-general", labelKey: "settings.module.csvGeneral" },
-      { id: "colles", labelKey: "settings.module.colles" },
+      { id: "calendar", labelKey: "settings.module.calendar" },
     ],
   },
   {
@@ -184,26 +183,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
   { value: "custom",     labelKey: "settings.headingFont.custom" },
 ];
 
-let showCollesImportDialog = $state(false);
-let importData = $state<ParsedExcelData | null>(null);
-
-async function startCollesImport() {
-  const path = await pickXlsx();
-  if (!path) return;
-  try {
-    const bytes = await readFile(path);
-    const ext = path.split(".").pop()?.toLowerCase() ?? "xlsx";
-    const mime = ext === "csv" ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    const fileName = path.split("/").pop() ?? "file";
-    const blob = new Blob([bytes], { type: mime });
-    const file = new File([blob], fileName, { type: mime });
-    importData = await parseExcelFile(file);
-    showCollesImportDialog = true;
-  } catch (e) {
-    console.error("[colles] parse error:", e);
-    notifications.setInfo("Erreur de lecture du fichier");
-  }
-}
 </script>
 
 {#snippet headingRow(
@@ -242,6 +221,8 @@ async function startCollesImport() {
         options={[
           {id: "fira-sans", label: "Fira Sans"},
           {id: "inter", label: "Inter"},
+          {id: "ubuntu", label: "Ubuntu"},
+          {id: "ubuntu-condensed", label: "Ubuntu Condensed"},
           {id: "system", label: t("settings.fontSystem")},
           {id: "custom", label: t("settings.fontCustom")},
         ]}
@@ -262,6 +243,7 @@ async function startCollesImport() {
         options={[
           {id: "fira-code", label: "Fira Code"},
           {id: "jetbrains-mono", label: "JetBrains Mono"},
+          {id: "ubuntu-mono", label: "Ubuntu Mono"},
           {id: "system", label: t("settings.fontSystem")},
         ]}
         onchange={(ev) => proseMarkSettings.patch({ monoFont: ev.value as ProseMarkStyle["monoFont"] })}
@@ -280,6 +262,8 @@ async function startCollesImport() {
         options={[
           {id: "fira-sans", label: "Fira Sans"},
           {id: "inter", label: "Inter"},
+          {id: "ubuntu", label: "Ubuntu"},
+          {id: "ubuntu-condensed", label: "Ubuntu Condensed"},
           {id: "system", label: t("settings.fontSystem")},
           {id: "custom", label: t("settings.fontCustom")},
         ]}
@@ -300,6 +284,7 @@ async function startCollesImport() {
         options={[
           {id: "fira-code", label: "Fira Code"},
           {id: "jetbrains-mono", label: "JetBrains Mono"},
+          {id: "ubuntu-mono", label: "Ubuntu Mono"},
           {id: "system", label: t("settings.fontSystem")},
         ]}
         onchange={(ev) => presentationSettings.patch({ monoFont: ev.value as PresentationStyle["monoFont"] })}
@@ -318,6 +303,8 @@ async function startCollesImport() {
         options={[
           {id: "fira-sans", label: "Fira Sans"},
           {id: "inter", label: "Inter"},
+          {id: "ubuntu", label: "Ubuntu"},
+          {id: "ubuntu-condensed", label: "Ubuntu Condensed"},
           {id: "system", label: t("settings.fontSystem")},
           {id: "custom", label: t("settings.fontCustom")},
         ]}
@@ -338,36 +325,11 @@ async function startCollesImport() {
         options={[
           {id: "fira-code", label: "Fira Code"},
           {id: "jetbrains-mono", label: "JetBrains Mono"},
+          {id: "ubuntu-mono", label: "Ubuntu Mono"},
           {id: "system", label: t("settings.fontSystem")},
         ]}
         onchange={(ev) => previewSettings.patch({ monoFont: ev.value as PreviewStyle["monoFont"] })}
       />
-    </div>
-  </div>
-{/snippet}
-
-{#snippet csvFontSection()}
-  <p class="mdv-settings__section-title">{t("settings.fonts")}</p>
-  <div class="mdv-settings__fonts">
-    <div class="mdv-settings__font-row">
-      <span class="mdv-settings__font-label">{t("settings.fontMain")}</span>
-      <Combo
-        value={csvStyle.fontFamily}
-        options={[
-          {id: "fira-sans", label: "Fira Sans"},
-          {id: "inter", label: "Inter"},
-          {id: "system", label: t("settings.fontSystem")},
-          {id: "custom", label: t("settings.fontCustom")},
-        ]}
-        onchange={(ev) => csvSettings.patch({ fontFamily: ev.value as CsvBodyFont })}
-      />
-      {#if csvStyle.fontFamily === "custom"}
-        <Text
-          value={csvStyle.customFontName}
-          placeholder={t("settings.fontPlaceholder")}
-          onchange={(ev) => debounceInput("font-csv", String(ev.value), (v) => csvSettings.patch({ customFontName: v }))}
-        />
-      {/if}
     </div>
   </div>
 {/snippet}
@@ -723,7 +685,7 @@ async function startCollesImport() {
 
             <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
             <p class="mdv-settings__hint">{t("settings.customCssHint")}</p>
-            <div style="font-family: var(--font-mono); font-size: 12px;">
+            <div style="font-family: var(--font-ui); font-size: 12px;">
               <TextArea value={s.customCss} onchange={(ev) => debounceInput("css-prose", ev.value, (v) => proseMarkSettings.patch({ customCss: v }))} />
             </div>
           {/if}
@@ -754,7 +716,7 @@ async function startCollesImport() {
 
             <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
             <p class="mdv-settings__hint">{t("settings.customCssHint")}</p>
-            <div style="font-family: var(--font-mono); font-size: 12px;">
+            <div style="font-family: var(--font-ui); font-size: 12px;">
               <TextArea value={pvs.customCss} onchange={(ev) => debounceInput("css-preview", ev.value, (v) => previewSettings.patch({ customCss: v }))} />
             </div>
           {/if}
@@ -789,7 +751,7 @@ async function startCollesImport() {
 
             <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
             <p class="mdv-settings__hint">{t("settings.customCssPresHint")}</p>
-            <div style="font-family: var(--font-mono); font-size: 12px;">
+            <div style="font-family: var(--font-ui); font-size: 12px;">
               <TextArea value={prs.customCss} onchange={(ev) => debounceInput("css-pres", ev.value, (v) => presentationSettings.patch({ customCss: v }))} />
             </div>
           {/if}
@@ -807,7 +769,7 @@ async function startCollesImport() {
             </div>
 
             <p class="mdv-settings__section-title">{t("settings.globalMacros")}</p>
-            <div style="font-family: var(--font-mono); font-size: 12px;">
+            <div style="font-family: var(--font-ui); font-size: 12px;">
               <TextArea value={mathJaxPreamble.current} placeholder={t("settings.mathjaxPlaceholder")} onchange={(ev) => debounceInput("mathjax", ev.value, (v) => (mathJaxPreamble.current = v))} />
             </div>
           {/if}
@@ -891,8 +853,6 @@ async function startCollesImport() {
           {/if}
 
           {#if activeModule === "csv-general"}
-            {@render csvFontSection()}
-
             <p class="mdv-settings__section-title">{t("settings.typography")}</p>
             <div class="mdv-settings__sliders">
               <div class="mdv-settings__slider-row">
@@ -906,6 +866,7 @@ async function startCollesImport() {
                 <span class="mdv-settings__slider-value">{csvStyle.lineHeight.toFixed(2)}</span>
               </div>
             </div>
+            <p class="mdv-settings__hint">{t("settings.spreadsheetFontHint")}</p>
           {/if}
 
           {#if activeModule === "latex-general"}
@@ -1015,32 +976,11 @@ async function startCollesImport() {
               value={userProfile.current.role}
               options={[
                 {id: "professeur", label: t("settings.profileRoleProfesseur")},
-                {id: "colleur", label: t("settings.profileRoleColleur")},
                 {id: "eleve", label: t("settings.profileRoleEleve")},
               ]}
               onchange={(ev) => userProfile.patch({ role: ev.value as UserRole })}
             />
             <p class="mdv-settings__hint">{t("settings.profileRoleHint")}</p>
-
-            {#if userProfile.current.role === "professeur" || userProfile.current.role === "colleur"}
-              <p class="mdv-settings__section-title">{t("settings.profileMatieres")}</p>
-              <div class="mdv-settings__pkg-grid">
-                {#each userProfile.MATIERE_OPTIONS as mat (mat.id)}
-                  <Checkbox
-                    value={userProfile.current.matieres.includes(mat.id)}
-                    label={mat.label}
-                    onchange={() => {
-                      const current = userProfile.current.matieres;
-                      const next = current.includes(mat.id)
-                        ? current.filter((m) => m !== mat.id)
-                        : [...current, mat.id];
-                      userProfile.patch({ matieres: next });
-                    }}
-                  />
-                {/each}
-              </div>
-              <p class="mdv-settings__hint">{t("settings.profileMatieresHint")}</p>
-            {/if}
           {/if}
 
           {#if activeModule === "editor"}
@@ -1055,6 +995,7 @@ async function startCollesImport() {
                   options={[
                     {id: "fira-code", label: "Fira Code"},
                     {id: "jetbrains-mono", label: "JetBrains Mono"},
+                    {id: "ubuntu-mono", label: "Ubuntu Mono"},
                     {id: "source-code-pro", label: "Source Code Pro"},
                     {id: "ibm-plex-mono", label: "IBM Plex Mono"},
                     {id: "system", label: t("settings.fontSystem")},
@@ -1097,32 +1038,125 @@ async function startCollesImport() {
             </div>
           {/if}
 
-          {#if activeModule === "colles"}
-            <p class="mdv-settings__section-title">{t("settings.collesImport")}</p>
-            <div class="mdv-settings__row" style="gap:8px">
-              <button type="button" class="mdv-settings__restart"
-                onclick={startCollesImport}>
-                {t("settings.collesImportAll")}
-              </button>
+          {#if activeModule === "appearance"}
+            <!-- Theme — simple dropdown with builtin themes -->
+            <p class="mdv-settings__section-title">{t("settings.appearanceTheme")}</p>
+            <div class="mdv-settings__row">
+              <Combo
+                value={theme.mode}
+                options={THEME_GROUPS
+                  .filter(g => g.label !== "crafted")
+                  .flatMap(g => g.choices)
+                  .map(c => ({ id: c.value, label: c.label }))}
+                onchange={(ev) => { theme.setMode(ev.value as ThemeMode); }}
+              />
             </div>
 
-            <p class="mdv-settings__section-title">{t("settings.collesStartDate")}</p>
-            <DatePicker
-              value={colloscope.state.startDate}
-              onchange={async (date) => {
-                colloscope.state.startDate = date;
-                await colloscope.save();
-              }} />
-            <p class="mdv-settings__hint">{t("settings.collesStartDateHint")}</p>
+            <!-- UI Scale -->
+            <p class="mdv-settings__section-title">{t("settings.appearanceZoom")}</p>
+            <div class="mdv-settings__row">
+              <Slider
+                min={0}
+                max={UI_SCALE_OPTIONS.length - 1}
+                step={1}
+                value={UI_SCALE_OPTIONS.indexOf(generalSettings.uiScale as (typeof UI_SCALE_OPTIONS)[number])}
+                onchange={(ev) => { generalSettings.uiScale = UI_SCALE_OPTIONS[ev.value as number]; }}
+              />
+              <span class="mdv-settings__range-value">{Math.round(generalSettings.uiScale * 100)}%</span>
+            </div>
 
-            <p class="mdv-settings__section-title">{t("settings.collesEndDate")}</p>
-            <DatePicker
-              value={colloscope.state.endDate}
-              onchange={async (date) => {
-                colloscope.state.endDate = date;
-                await colloscope.save();
-              }} />
-            <p class="mdv-settings__hint">{t("settings.collesEndDateHint")}</p>
+            <!-- UI Fonts -->
+            <p class="mdv-settings__section-title">{t("settings.appearanceUiFont")}</p>
+            <div class="mdv-settings__fonts">
+              <div class="mdv-settings__font-row">
+                <span class="mdv-settings__font-label">{t("settings.appearanceUiSans")}</span>
+                <Combo
+                  value={generalSettings.uiFontFamily}
+                  options={UI_FONT_PRESETS.map(p => ({ id: p.id, label: p.label }))}
+                  onchange={(ev) => { generalSettings.uiFontFamily = ev.value as string; }}
+                />
+              </div>
+              <div class="mdv-settings__font-row">
+                <span class="mdv-settings__font-label">{t("settings.appearanceUiMono")}</span>
+                <Combo
+                  value={generalSettings.uiMonoFamily}
+                  options={UI_MONO_FONT_PRESETS.map(p => ({ id: p.id, label: p.label }))}
+                  onchange={(ev) => { generalSettings.uiMonoFamily = ev.value as string; }}
+                />
+              </div>
+              <div class="mdv-settings__font-row">
+                <span class="mdv-settings__font-label">{t("settings.appearanceSidebar")}</span>
+                <Combo
+                  value={generalSettings.uiSidebarFamily}
+                  options={UI_SIDEBAR_FONT_PRESETS.map(p => ({ id: p.id, label: p.label }))}
+                  onchange={(ev) => { generalSettings.uiSidebarFamily = ev.value as string; }}
+                />
+              </div>
+            </div>
+
+            <!-- Preview Fonts (Polices de l'affichage) — default fonts for all HTML rendering -->
+            <p class="mdv-settings__section-title">{t("settings.appearancePreviewFont")}</p>
+            <div class="mdv-settings__fonts">
+              <div class="mdv-settings__font-row">
+                <span class="mdv-settings__font-label">{t("settings.appearancePreviewSans")}</span>
+                <Combo
+                  value={generalSettings.previewFontFamily}
+                  options={[
+                    ...PREVIEW_FONT_PRESETS.map(p => ({ id: p.id, label: p.label })),
+                    { id: "custom", label: t("settings.fontCustom") },
+                  ]}
+                  onchange={(ev) => { generalSettings.previewFontFamily = ev.value as string; }}
+                />
+                {#if generalSettings.previewFontFamily === "custom"}
+                  <Text
+                    value={generalSettings.previewCustomFontName}
+                    placeholder={t("settings.fontPlaceholder")}
+                    onchange={(ev) => debounceInput("font-preview-custom", String(ev.value), (v) => generalSettings.previewCustomFontName = v)}
+                  />
+                {/if}
+              </div>
+              <div class="mdv-settings__font-row">
+                <span class="mdv-settings__font-label">{t("settings.appearancePreviewMono")}</span>
+                <Combo
+                  value={generalSettings.previewMonoFamily}
+                  options={PREVIEW_MONO_FONT_PRESETS.map(p => ({ id: p.id, label: p.label }))}
+                  onchange={(ev) => { generalSettings.previewMonoFamily = ev.value as string; }}
+                />
+              </div>
+            </div>
+
+            <!-- Native decorations -->
+            <p class="mdv-settings__section-title">{t("settings.nativeDecorations")}</p>
+            <div class="mdv-settings__toggle-row">
+              <Switch value={generalSettings.nativeDecorations} onchange={(ev) => { generalSettings.nativeDecorations = ev.value; }} />
+              <span>{t("settings.nativeDecorationsHint")}</span>
+            </div>
+
+            <!-- Font Hinting -->
+            <p class="mdv-settings__section-title">{t("settings.fontHinting")}</p>
+            <div class="mdv-settings__row">
+              <Combo
+                value={generalSettings.fontHinting}
+                options={FONT_HINTING_OPTIONS.map(o => ({ id: o.id, label: t(o.labelKey) }))}
+                onchange={(ev) => { generalSettings.fontHinting = ev.value as "standard" | "none" | "full"; }}
+              />
+            </div>
+          {/if}
+
+          {#if activeModule === "calendar"}
+            <p class="mdv-settings__section-title">{t("settings.module.calendar")}</p>
+            <div class="mdv-settings__row" style="gap:8px;flex-wrap:wrap">
+              <button type="button" class="mdv-settings__restart" onclick={exportCalendar}>
+                {t("settings.calendarExport")}
+              </button>
+              <button type="button" class="mdv-settings__restart" onclick={importCalendar}>
+                {t("settings.calendarImport")}
+              </button>
+              <button type="button" class="mdv-settings__reset" onclick={clearCalendar}>
+                {t("settings.calendarClear")}
+              </button>
+            </div>
+            <p class="mdv-settings__hint">Le calendrier vit dans le stockage local du navigateur. Utilisez ces commandes pour sauvegarder ou restaurer vos événements manuellement.</p>
           {/if}
 
         </div>
@@ -1172,16 +1206,12 @@ async function startCollesImport() {
           <button type="button" class="mdv-settings__reset" onclick={() => editorSettings.reset()}>
             {t("settings.reset")}
           </button>
+        {:else if activeModule === "appearance"}
+          <button type="button" class="mdv-settings__reset" onclick={() => generalSettings.reset()}>
+            {t("settings.reset")}
+          </button>
         {/if}
       </footer>
     </div>
   </div>
-{/if}
-
-{#if showCollesImportDialog && importData}
-  <CollesImportDialog
-    open={showCollesImportDialog}
-    data={importData}
-    onclose={() => { showCollesImportDialog = false; importData = null; }}
-  />
 {/if}

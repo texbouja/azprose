@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Test — Jspreadsheet style persistence</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@5/dist/jspreadsheet.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsuites@5/dist/jsuites.min.css" />
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 24px; background: #f5f5f5; }
+    h1 { font-size: 18px; margin: 0 0 16px; }
+    h2 { font-size: 14px; margin: 20px 0 8px; }
+    .row { display: flex; gap: 24px; }
+    .col { flex: 1; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-size: 12px; overflow: auto; max-height: 400px; }
+    button { margin: 8px 0; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+    #spreadsheet1, #spreadsheet2 { width: 600px; }
+    .pass { color: #0a0; font-weight: bold; }
+    .fail { color: #c00; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<h1>🧪 Jspreadsheet — Test de persistence des styles</h1>
+
+<div class="row">
+  <div class="col">
+    <h2>1. Tableau original</h2>
+    <p>Cellules avec alignements différents :</p>
+    <ul>
+      <li><b>A1</b> = <code>text-align: left</code></li>
+      <li><b>A2</b> = <code>text-align: center</code></li>
+      <li><b>A3</b> = <code>text-align: right</code></li>
+    </ul>
+    <div id="spreadsheet1"></div>
+    <button id="btnCapture">📸 Capturer l'état → JSON</button>
+  </div>
+
+  <div class="col">
+    <h2>2. JSON capturé (getStyle)</h2>
+    <pre id="jsonOutput">{}</pre>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col">
+    <h2>3. Reconstruction avec setStyle</h2>
+    <div id="spreadsheet2"></div>
+    <button id="btnRestore">🔁 Restaurer depuis le JSON</button>
+  </div>
+
+  <div class="col">
+    <h2>4. Analyse du DOM</h2>
+    <pre id="domOutput">—</pre>
+    <p id="verdict"></p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsuites@5/dist/jsuites.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@5/dist/jspreadsheet.min.js"></script>
+
+<script>
+let capturedState = null;
+
+// ─── 1. Init du tableau original ───────────────────────────────────────
+const data = [
+  ['Gauche',  'Centre',  'Droite'],
+  ['rouge',   'vert',    'bleu'],
+  ['100',     '200',     '300'],
+];
+
+const sheet1 = jspreadsheet(document.getElementById('spreadsheet1'), {
+  worksheets: [{
+    data: data,
+    columns: [
+      { title: 'Col A', width: 120 },
+      { title: 'Col B', width: 120 },
+      { title: 'Col C', width: 120 },
+    ],
+    csvHeaders: false,
+  }],
+});
+
+// Appliquer les styles après init
+(function applyStyles() {
+  const api = sheet1[0];
+  if (!api) return;
+
+  // A1 → text-align: left
+  api.setStyle({ 'A1': 'text-align: left' });
+  // B1 → text-align: center
+  api.setStyle({ 'B1': 'text-align: center;font-weight: bold' });
+  // C1 → text-align: right
+  api.setStyle({ 'C1': 'text-align: right;font-style: italic' });
+  // A2 → fond rouge, texte blanc
+  api.setStyle({ 'A2': 'background-color: #ff4444;color: #ffffff' });
+  // B2 → fond vert, gras
+  api.setStyle({ 'B2': 'background-color: #44aa44;font-weight: bold' });
+  // C2 → fond bleu
+  api.setStyle({ 'C2': 'background-color: #4488ff;color: #ffffff' });
+  // A3 → left, rouge
+  api.setStyle({ 'A3': 'text-align: left;color: #cc0000' });
+  // B3 → center, vert
+  api.setStyle({ 'B3': 'text-align: center;color: #00aa00' });
+  // C3 → right, bleu
+  api.setStyle({ 'C3': 'text-align: right;color: #0000ff' });
+
+  console.log('[1] Styles appliqués sur le tableau original');
+})();
+
+// ─── 2. Capturer l'état ────────────────────────────────────────────────
+document.getElementById('btnCapture').onclick = function() {
+  const api = sheet1[0];
+  if (!api) return;
+
+  const raw = api.getStyle();
+  console.log('[2] getStyle() raw output:', raw);
+
+  // Normaliser comme notre captureStyles() le fait
+  const normalized = {};
+  for (const key of Object.keys(raw)) {
+    const val = raw[key];
+    normalized[key] = typeof val === 'string' ? val : JSON.stringify(val);
+  }
+  capturedState = normalized;
+
+  document.getElementById('jsonOutput').textContent =
+    JSON.stringify(capturedState, null, 2);
+
+  console.log('[2] État capturé,', Object.keys(capturedState).length, 'cellules avec style');
+};
+
+// ─── 3. Reconstruction ────────────────────────────────────────────────
+document.getElementById('btnRestore').onclick = function() {
+  if (!capturedState) {
+    alert('Capture d\'abord l\'état avec le bouton 📸');
+    return;
+  }
+
+  // Détruire l'ancienne instance si elle existe
+  try { jspreadsheet.destroy(document.getElementById('spreadsheet2'), true); } catch(e) {}
+
+  // Recréer avec les mêmes données
+  const sheet2 = jspreadsheet(document.getElementById('spreadsheet2'), {
+    worksheets: [{
+      data: data,
+      columns: [
+        { title: 'Col A', width: 120 },
+        { title: 'Col B', width: 120 },
+        { title: 'Col C', width: 120 },
+      ],
+      csvHeaders: false,
+    }],
+  });
+
+  // Restaurer les styles — exactement comme notre load() le fait
+  const api2 = sheet2[0];
+  if (!api2) return;
+
+  api2.setStyle(capturedState);
+
+  console.log('[3] Styles restaurés via setStyle()');
+
+  // ─── 4. Analyse du DOM ──────────────────────────────────────
+  setTimeout(analyzeDom, 100);
+};
+
+function analyzeDom() {
+  const el = document.getElementById('spreadsheet2');
+  const tds = el.querySelectorAll('td[data-x]');
+  const results = [];
+
+  for (const td of tds) {
+    const x = td.getAttribute('data-x');
+    const y = td.getAttribute('data-y');
+    const text = td.textContent.trim();
+    const style = td.getAttribute('style');
+    const cellRef = String.fromCharCode(65 + parseInt(x)) + (parseInt(y) + 1);
+
+    results.push({ cellRef, x, y, text, style });
+  }
+
+  document.getElementById('domOutput').textContent =
+    results.map(r =>
+      `${r.cellRef} "${r.text}"  →  style="${r.style || ''}"`
+    ).join('\n');
+
+  // Vérification
+  const errors = [];
+  const table2 = document.getElementById('spreadsheet2');
+  const cellA1 = table2.querySelector('td[data-x="0"][data-y="0"]');
+  const cellC1 = table2.querySelector('td[data-x="2"][data-y="0"]');
+
+  if (cellA1) {
+    const s = (cellA1.getAttribute('style') || '').toLowerCase();
+    if (!s.includes('text-align: left') && !s.includes('text-align:left')) {
+      errors.push('A1: text-align: left manquant');
+    }
+  } else {
+    errors.push('Cell A1 introuvable');
+  }
+
+  if (cellC1) {
+    const s = (cellC1.getAttribute('style') || '').toLowerCase();
+    if (!s.includes('text-align: right') && !s.includes('text-align:right')) {
+      errors.push('C1: text-align: right manquant');
+    }
+  } else {
+    errors.push('Cell C1 introuvable');
+  }
+
+  const verdict = document.getElementById('verdict');
+  if (errors.length === 0) {
+    verdict.innerHTML = '<span class="pass">✅ Tous les styles sont correctement restaurés</span>';
+  } else {
+    verdict.innerHTML = '<span class="fail">❌ Problèmes :</span><br>' + errors.join('<br>');
+  }
+}
+</script>
+
+</body>
+</html>

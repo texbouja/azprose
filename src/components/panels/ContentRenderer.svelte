@@ -9,13 +9,12 @@ import LazyProseMark from "@/components/markdown/LazyProseMark.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
-import LazyCsvSpreadsheet from "@/components/csv/LazyCsvSpreadsheet.svelte";
-import LazyColloscopePanel from "@/components/colles/LazyColloscopePanel.svelte";
-import LazyCalendarPanel from "@/components/colles/LazyCalendarPanel.svelte";
-import LazyElevesPanel from "@/components/colles/LazyElevesPanel.svelte";
+import LazyCalendarPanel from "@/components/calendar/LazyCalendarPanel.svelte";
 import LazyOpenCodePanel from "@/components/opencode/LazyOpenCodePanel.svelte";
 import LazyJournalCalendarPanel from "@/components/sidebar/LazyJournalCalendarPanel.svelte";
-import LazySvarCalendarPanel from "@/components/colles/LazySvarCalendarPanel.svelte";
+import LazySvarCalendarPanel from "@/components/calendar/LazySvarCalendarPanel.svelte";
+import LazySpreadsheetViewer from "@/components/spreadsheet/LazySpreadsheetViewer.svelte";
+
 import type { TypographySettings } from "@/lib/typography";
 import { getTexlabClient } from "@/lib/lsp/texlab";
 import { getMarkdownOxideClient } from "@/lib/lsp/markdown-oxide";
@@ -36,7 +35,6 @@ let {
   onJumpToLine,
   buildRev = 0,
   onToggleFullscreen,
-  onSyncToMain,
 }: {
   tab?: Tab | null;
   panelId?: string;
@@ -55,7 +53,6 @@ let {
   onJumpToLine?: (line: number) => void;
   buildRev?: number;
   onToggleFullscreen?: () => void;
-  onSyncToMain?: (source: string) => void;
 } = $props();
 
 // texlab and markdown-oxide start lazily on first .tex/.md file open
@@ -63,12 +60,8 @@ let {
 
 {#if !tab}
   <div class="mdv-empty-state" />
-{:else if tab.kind === "custom" && tab.panelId === "colloscope"}
-  <LazyColloscopePanel />
 {:else if tab.kind === "custom" && tab.panelId === "calendar-editor"}
   <LazyCalendarPanel />
-{:else if tab.kind === "custom" && tab.panelId === "eleves"}
-  <LazyElevesPanel />
 {:else if tab.kind === "custom" && tab.panelId === "opencode"}
   <LazyOpenCodePanel />
 {:else if tab.kind === "custom" && tab.panelId === "journal-calendar"}
@@ -108,8 +101,10 @@ let {
     value={tab.source}
     filePath={tab.path}
   />
-{:else if (extFromPath(tab.path) === "csv" || extFromPath(tab.path) === "tsv") && panelId !== "main"}
-  <LazyCsvSpreadsheet value={tab.source} filePath={tab.path} onChange={(csv) => onSyncToMain?.(csv)} />
+{:else if tab.kind === "spreadsheet"}
+  <LazySpreadsheetViewer
+    spreadsheetId={tab.spreadsheetId}
+  />
 {:else}
   <Editor
     value={tab.source}

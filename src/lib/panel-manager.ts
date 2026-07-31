@@ -82,6 +82,71 @@ export class PanelManager {
     this.side.openCustom(panelId, title);
   }
 
+  openSpreadsheetInMain(spreadsheetId: string, title: string): void {
+    const existing = this.findSpreadsheetTab(spreadsheetId);
+    if (existing) {
+      const panel = existing.panel === "main" ? this.main : this.side;
+      panel.select(existing.tab.id);
+      if (existing.panel === "side") {
+        this.side.visible = true;
+        this.layout = "main+side";
+      }
+      return;
+    }
+    this.main.openSpreadsheet(spreadsheetId, title);
+  }
+
+  openSpreadsheetInSide(spreadsheetId: string, title: string): void {
+    const existing = this.findSpreadsheetTab(spreadsheetId);
+    if (existing) {
+      const panel = existing.panel === "main" ? this.main : this.side;
+      panel.select(existing.tab.id);
+      if (existing.panel === "side") {
+        this.side.visible = true;
+        this.layout = "main+side";
+      }
+      return;
+    }
+    this.side.visible = true;
+    this.layout = "main+side";
+    this.side.openSpreadsheet(spreadsheetId, title);
+  }
+
+  /** Check if a spreadsheet is already open in either panel and return the tab info. */
+  findSpreadsheetTab(spreadsheetId: string): { panel: "main" | "side"; tab: Tab } | null {
+    for (const panel of [this.main, this.side]) {
+      const tab = panel.tabs.find(t => t.kind === "spreadsheet" && t.spreadsheetId === spreadsheetId);
+      if (tab) return { panel: panel.id as "main" | "side", tab };
+    }
+    return null;
+  }
+
+  /** Open the spreadsheet panel without loading any sheet (create mode). */
+  openEmptySpreadsheetPanel(): void {
+    this.side.visible = true;
+    this.layout = "main+side";
+    this.side.openEmptySpreadsheet("Tableur");
+  }
+
+  /** Update the tab title for a spreadsheet (called after loading its real name). */
+  setSpreadsheetTabTitle(spreadsheetId: string, title: string): void {
+    const sideTab = this.side.tabs.find(
+      t => t.kind === "spreadsheet" && t.spreadsheetId === spreadsheetId
+    );
+    if (sideTab) this.side.setTabTitle(sideTab.id, title);
+    const mainTab = this.main.tabs.find(
+      t => t.kind === "spreadsheet" && t.spreadsheetId === spreadsheetId
+    );
+    if (mainTab) this.main.setTabTitle(mainTab.id, title);
+  }
+
+  /** Set the spreadsheetId + title on the first "create" tab (no spreadsheetId yet).
+   *  Called after the user creates a spreadsheet via the dialog. */
+  setSpreadsheetTabId(spreadsheetId: string, title: string): void {
+    this.side.upgradeSpreadsheetTab(spreadsheetId, title);
+    this.main.upgradeSpreadsheetTab(spreadsheetId, title);
+  }
+
   toggleExpandPanel(panelId: "main" | "side"): number {
     const expanded =
       (panelId === "main" && this.splitRatio >= 0.99) ||

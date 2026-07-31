@@ -108,3 +108,33 @@ html.is-mac .mdv-titlebar {
 .mdv-titlebar__theme {
   position: relative;
 }
+
+/* ── Window control buttons (when native decorations are off) ──── */
+.mdv-win-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  border-radius: 4px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background 0.15s ease;
+}
+.mdv-win-btn:hover {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.15));
+}
+.mdv-win-btn:active {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.25));
+}
+.mdv-win-btn--close:hover {
+  background: #e81123;
+  color: #fff;
+}
+.mdv-win-btn--close:active {
+  background: #c42b1c;
+  color: #fff;
+}

@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     Calendar,
-    Editor,
     CalendarPanel as CalendarGroups,
     ContextMenu,
     getMenuOptions,
@@ -10,76 +9,47 @@
   } from "@svar-ui/svelte-calendar";
   import { fr } from "@svar-ui/calendar-locales";
   import { fr as frCore } from "@svar-ui/core-locales";
-  import { colloscope } from "@/stores/colloscope.svelte";
-  import { CALENDARS } from "@/lib/calendar-categories";
-
   import { Locale } from "@svar-ui/svelte-core";
+  import { getCalendarStore } from "@/stores/calendar-store.svelte";
+  import { CALENDARS } from "@/lib/calendar-categories";
+  import { expandRrule } from "@/calendar/recurrence";
 
   const words = { ...fr, ...frCore };
+  const store = getCalendarStore();
 
   let api: CalendarInstanceApi | null = $state(null);
 
-  // ── Colles → Calendar events ──────────────────────────────
-  const JOUR_TO_WEEKDAY: Record<string, number> = {
-    Lundi: 1, Mardi: 2, Mercredi: 3, Jeudi: 4, Vendredi: 5, Samedi: 6,
-  };
-
-  function colleColor(): string {
-    return CALENDARS.find(c => c.id === "devoirs")?.color ?? "var(--syntax-string)";
-  }
-
-  function computeDate(semaineDate: string, jour: string, horaire: string): Date {
-    const base = new Date(semaineDate + "T00:00:00");
-    base.setDate(base.getDate() + (JOUR_TO_WEEKDAY[jour] ?? 1) - 1);
-    const match = horaire.match(/(\d{1,2})h/);
-    if (match) base.setHours(parseInt(match[1], 10), 0, 0);
-    return base;
-  }
-
-  function computeEndDate(date: Date, horaire: string): Date {
-    const end = new Date(date);
-    const match = horaire.match(/[-–]\s*(\d{1,2})h/);
-    if (match) {
-      end.setHours(parseInt(match[1], 10), 0, 0);
-    } else {
-      end.setHours(end.getHours() + 1);
-    }
-    return end;
-  }
-
-  const events = $derived.by<CalendarEvent[]>(() => {
-    void colloscope.state.semaines;
-    void colloscope.state.creneaux;
-    void colloscope.state.selectedClasse;
-    void colloscope.state.selectedColleur;
+  // ── Expand recurring events ──────────────────────────────
+  const expandedEvents = $derived.by<CalendarEvent[]>(() => {
+    const rangeStart = new Date();
+    rangeStart.setMonth(rangeStart.getMonth() - 6);
+    const rangeEnd = new Date();
+    rangeEnd.setMonth(rangeEnd.getMonth() + 12);
 
     const result: CalendarEvent[] = [];
-    const semaines = colloscope.state.semaines;
-    const creneaux = colloscope.creneauxFiltered;
-
-    for (const c of creneaux) {
-      for (let i = 0; i < semaines.length; i++) {
-        const groupe = colloscope.getGroupe(c.id, i);
-        if (!groupe) continue;
-
-        const start = computeDate(semaines[i].date, c.jour, c.horaire);
-        const end = computeEndDate(start, c.horaire);
-
-        result.push({
-          id: `colle-${c.id}-${i}`,
-          text: `${c.matiere} — ${groupe}`,
-          start,
-          end,
-          color: colleColor(),
-          calendarId: "devoirs",
-          location: c.salle || undefined,
-        });
+    for (const ev of store.events) {
+      if (!(ev.start instanceof Date) || !(ev.end instanceof Date)) continue;
+      if (ev.rrule) {
+        const occurrences = expandRrule(ev.rrule, ev.start, rangeStart, rangeEnd, ev.exdates);
+        const duration = ev.end.getTime() - ev.start.getTime();
+        for (let i = 0; i < occurrences.length; i++) {
+          const d = occurrences[i];
+          const end = new Date(d.getTime() + duration);
+          result.push({
+            ...ev,
+            id: `${ev.id}__${d.getTime()}`,
+            start: d,
+            end,
+          });
+        }
+      } else {
+        result.push(ev);
       }
     }
     return result;
   });
 
-  // ── Calendar groups for filtering (semantic categories) ──
+  // ── Calendar groups ──────────────────────────────────────
   const calendars = $derived(CALENDARS.map((c) => ({
     id: c.id,
     label: c.label,
@@ -105,7 +75,7 @@
   <Locale {words}>
       <ContextMenu {api} options={menuOptions} onclick={handleContextMenu}>
         <Calendar
-          {events}
+          events={expandedEvents}
           view="month"
           views={[
             {
@@ -119,21 +89,11 @@
             "month",
           ]}
           {init}
-          cellCss={(ctx) => {
-            if (ctx.date) {
-              const d = ctx.date.getDay();
-              if (d === 0 || d === 6) return "wx-weekend";
-            }
-            return "";
-          }}
         >
           <CalendarGroups {calendars} accessor="calendarId" />
         </Calendar>
-        {#if api}
-          <Editor {api} />
-        {/if}
       </ContextMenu>
-    </Locale>
+  </Locale>
 </div>
 
 <style>

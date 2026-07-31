@@ -1,6 +1,9 @@
 :root {
-  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-ui: var(--font-ui-temp);
+  --font-mono: var(--font-mono-temp);
+  --font-sidebar: "Ubuntu Condensed", "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-preview: var(--font-preview-temp);
+  --font-preview-mono: var(--font-preview-mono-temp);
 
   --radius-sm: 6px;
   --radius-md: 8px;

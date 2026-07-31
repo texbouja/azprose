@@ -1,4 +1,10 @@
 .mdv-overlay--settings {
+  /* Root font for the overlay — impose the UI font on every element inside,
+     whatever the component family (webview or SVAR). SVAR maps its --wx-*
+     font vars to var(--font-preview), so rebind --font-preview locally. */
+  --font-preview: var(--font-ui);
+  --font-preview-mono: var(--font-mono);
+  font-family: var(--font-ui);
   width: min(860px, 94vw);
   top: 6vh;
   height: min(88vh, 780px);
@@ -33,8 +39,7 @@
 }
 
 .mdv-settings__title {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
@@ -45,6 +50,14 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+/* SVAR dropdowns (Combo/Select/DatePicker) are Portal-mounted to <body>,
+   outside the overlay subtree — rebind --font-preview app-wide while the
+   settings overlay is open so popups match the overlay root font too. */
+body:has(.mdv-overlay--settings) {
+  --font-preview: var(--font-ui);
+  --font-preview-mono: var(--font-mono);
 }
 
 /* ── sidebar nav ───────────────────────────────────── */
@@ -75,8 +88,7 @@
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   text-align: left;
@@ -111,8 +123,7 @@
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   text-align: left;
   cursor: pointer;
   transition:
@@ -122,7 +133,7 @@
 
 .mdv-settings__nav-item--flat {
   padding-left: 8px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
@@ -150,8 +161,7 @@
 }
 
 .mdv-settings__section-title {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -174,11 +184,11 @@
 }
 
 .mdv-settings__font-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg);
-  width: 78px;
+  width: 110px;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ── package grid ──────────────────────────────────── */
@@ -192,7 +202,7 @@
 /* ── hint text ─────────────────────────────────────── */
 .mdv-settings__hint {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-muted, color-mix(in srgb, var(--fg) 55%, transparent));
   font-style: italic;
   flex-shrink: 0;
@@ -213,16 +223,15 @@
 }
 
 .mdv-settings__slider-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg);
   width: 130px;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .mdv-settings__slider-value {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   width: 50px;
   text-align: right;
@@ -230,8 +239,7 @@
 }
 
 .mdv-settings__range-value {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   min-width: 40px;
   text-align: right;
@@ -265,8 +273,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
   transition:
     border-color var(--dur-fast) var(--easing),
@@ -284,8 +291,7 @@
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   color: var(--accent-fg, #fff);
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
   transition:
     opacity var(--dur-fast) var(--easing);
@@ -331,8 +337,7 @@
 }
 
 .mdv-settings__heading-header {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   padding-bottom: 2px;
   border-bottom: 1px solid var(--border);
@@ -348,8 +353,7 @@
 }
 
 .mdv-settings__heading-tag {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--accent);
 }
@@ -367,8 +371,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition:
@@ -403,11 +406,11 @@
 }
 
 .mdv-settings__list-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg);
   width: 60px;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ── callout settings ───────────────────────────────── */
@@ -436,8 +439,7 @@
 }
 
 .mdv-settings__callout-name {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--fg);
   flex: 1;
@@ -474,8 +476,7 @@
 }
 
 .mdv-settings__callout-field > span {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 
@@ -513,11 +514,26 @@
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   color: var(--accent-fg, #fff);
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   transition: opacity var(--dur-fast) var(--easing);
 }
 .mdv-settings__callout-add-btn:hover { opacity: 0.85; }
 .mdv-settings__callout-add-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Prevent label wrapping ─────────────────────────── */
+.mdv-settings__toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mdv-settings__toggle-row > span {
+  white-space: nowrap;
+}
+
+/* ── Constrain combos so labels don't get squeezed ─── */
+.mdv-settings__font-row .wx-combo,
+.mdv-settings__row .wx-combo {
+  max-width: 200px;
+}

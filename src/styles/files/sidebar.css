@@ -10,6 +10,8 @@
     border-color var(--dur-base) var(--easing),
     background-color var(--dur-base) var(--easing);
   user-select: none;
+  --font-ui: var(--font-sidebar);
+  font-family: var(--font-sidebar);
 }
 
 .mdv-sidebar.is-open {
@@ -64,7 +66,7 @@
 .mdv-sidebar__title {
   flex: 1;
   min-width: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--fg);
@@ -154,7 +156,7 @@
   border: 0;
   outline: none;
   color: var(--fg);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   padding: 2px 0;
 }
@@ -215,7 +217,7 @@
 }
 
 .mdv-search-result__name {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -225,7 +227,7 @@
 }
 
 .mdv-search-result__dir {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 10.5px;
   color: var(--muted);
   white-space: nowrap;
@@ -260,7 +262,7 @@
 .mdv-sidebar__hint {
   font-size: 11px;
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 /* resize handle on right edge */
@@ -448,7 +450,7 @@
   background: var(--bg);
   color: var(--fg);
   caret-color: var(--accent);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   outline: none;
 }
@@ -458,7 +460,9 @@
 }
 
 /* context menu — fixed-positioned at mouse coords; bakes its own panel
-   styling rather than relying on .mdv-popover (which is anchor-relative). */
+   styling rather than relying on .mdv-popover (which is anchor-relative).
+   Mounted at app level (outside .mdv-sidebar), so rebind --font-ui to the
+   sidebar font — .mdv-menu__item below inherits it via font-family. */
 .mdv-context-menu {
   min-width: 168px;
   max-width: 240px;
@@ -472,6 +476,8 @@
     0 2px 8px rgba(var(--shadow-color), 0.08);
   z-index: 950;
   gap: 0;
+  --font-ui: var(--font-sidebar);
+  font-family: var(--font-sidebar);
 }
 
 .mdv-context-menu .mdv-menu__item {
@@ -513,7 +519,7 @@
   border-radius: 999px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--fg) 4%, transparent);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 8.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -541,12 +547,15 @@
   flex-shrink: 0;
 }
 
+/* Tree display text uses var(--font-ui) so it follows the sidebar font
+   (rebind --font-ui: var(--font-sidebar)) inside .mdv-sidebar, the
+   breadcrumb dropdown, and the context menu. */
 .mdv-tree__name {
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
 }
 
@@ -555,7 +564,7 @@
   padding: 8px 14px;
   color: var(--muted);
   font-size: 11px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 .mdv-tree__error {
@@ -566,7 +575,7 @@
   padding: 24px 16px;
   color: var(--muted);
   font-size: 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   text-align: center;
 }
 
@@ -606,7 +615,7 @@
 
 .mdv-context-tray__label {
   flex: 0 0 100%;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: lowercase;
@@ -615,7 +624,7 @@
 
 .mdv-context-tray__count,
 .mdv-context-tray__tokens {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   color: var(--fg);
   white-space: nowrap;
@@ -700,7 +709,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   letter-spacing: 0.04em;
   font-weight: 600;
@@ -713,7 +722,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 9px;
   letter-spacing: 0.01em;
   color: var(--muted);
@@ -750,7 +759,7 @@
 }
 
 .mdv-rootfolder__badge {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -771,7 +780,7 @@
   padding: 6px 14px 8px 26px;
   color: var(--muted);
   font-size: 10.5px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   line-height: 1.4;
 }
 
@@ -856,7 +865,7 @@
 
 .mdv-favorites__drop-hint {
   display: block;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 10.5px;
   color: var(--muted);
   line-height: 1.4;

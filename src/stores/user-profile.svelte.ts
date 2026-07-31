@@ -1,28 +1,24 @@
 /**
  * User profile store — persistent user identity for calendar events.
  *
- * Stores name, email, role, and matière (subjects taught).
- * Professeur implies Colleur (can do both courses and colles).
+ * Stores name, email, and role.
  */
 
 import { persistedState } from "./persisted.svelte";
 import { STORAGE_KEYS } from "@/lib";
-import { MATIERES } from "@/types/colles";
 
-export type UserRole = "professeur" | "colleur" | "eleve";
+export type UserRole = "professeur" | "eleve";
 
 export interface UserProfile {
   name: string;
   email: string;
   role: UserRole;
-  matieres: string[];
 }
 
 const DEFAULTS: UserProfile = {
   name: "",
   email: "",
   role: "professeur",
-  matieres: [],
 };
 
 function createProfileStore() {
@@ -36,11 +32,6 @@ function createProfileStore() {
     },
 
     reset() { state.reset(); },
-
-    /** Available matière options from colles types */
-    get MATIERE_OPTIONS() {
-      return MATIERES.map((m) => ({ id: m, label: m }));
-    },
   };
 }
 

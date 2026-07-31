@@ -2,11 +2,11 @@ import { persistedState } from "./persisted.svelte";
 import { STORAGE_KEYS } from "@/lib";
 
 export type TextAlign = "left" | "center" | "right";
-export type HeadingFont = "inherit" | "fira-sans" | "inter" | "system" | "custom";
+export type HeadingFont = "inherit" | "fira-sans" | "inter" | "ubuntu" | "system" | "custom";
 export type OlType = "decimal" | "lower-alpha" | "lower-roman" | "upper-alpha" | "upper-roman";
-export type BodyFont = "fira-sans" | "inter" | "system" | "custom";
-export type MonoFont = "fira-code" | "jetbrains-mono" | "system";
-export type CsvBodyFont = "fira-sans" | "inter" | "system" | "custom";
+export type BodyFont = "fira-sans" | "inter" | "ubuntu" | "ubuntu-condensed" | "system" | "custom";
+export type MonoFont = "fira-code" | "jetbrains-mono" | "ubuntu-mono" | "system";
+export type CsvBodyFont = "fira-sans" | "inter" | "ubuntu" | "ubuntu-condensed" | "system" | "custom";
 
 // ── ProseMark editing mode ─────────────────────────────────────────────────
 
@@ -160,6 +160,10 @@ export function resolveFontFamily(key: BodyFont, customName?: string): string {
       return "'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif";
     case "inter":
       return "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+    case "ubuntu":
+      return "'Ubuntu', -apple-system, BlinkMacSystemFont, sans-serif";
+    case "ubuntu-condensed":
+      return "'Ubuntu Condensed', -apple-system, BlinkMacSystemFont, sans-serif";
     case "custom":
       return customName?.trim()
         ? `'${customName.trim()}', -apple-system, BlinkMacSystemFont, sans-serif`
@@ -175,6 +179,8 @@ export function resolveMonoFont(key: MonoFont): string {
       return "'Fira Code', ui-monospace, SFMono-Regular, monospace";
     case "jetbrains-mono":
       return "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace";
+    case "ubuntu-mono":
+      return "'Ubuntu Mono', ui-monospace, SFMono-Regular, monospace";
     default:
       return "ui-monospace, SFMono-Regular, Menlo, monospace";
   }

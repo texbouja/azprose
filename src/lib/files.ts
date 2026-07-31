@@ -66,12 +66,12 @@ export const TEXT_EXTENSIONS = new Set([
 
 const ALL_TEXT_EXTENSIONS = [...TEXT_EXTENSIONS].sort();
 
-export async function pickXlsx(): Promise<string | null> {
+export async function pickXlsx(label = "fichier"): Promise<string | null> {
   const result = await open({
     multiple: false,
-    title: "importer colloscope",
+    title: `Importer ${label}`,
     filters: [
-      { name: "Colloscope", extensions: ["xlsx", "csv"] },
+      { name: "Tableur", extensions: ["xlsx", "csv"] },
       { name: "Excel", extensions: ["xlsx"] },
       { name: "CSV", extensions: ["csv"] },
     ],

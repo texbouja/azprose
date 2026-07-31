@@ -53,8 +53,9 @@ import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { executeOxideCommand } from "@/lib/lsp/markdown-oxide";
-import { writeText, pickXlsx } from "@/lib/files";
+import { writeText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
+import { setOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
 import { saveSession, clearDraft, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
 import {
   findTabByPath as findTabByPathUtil,
@@ -73,16 +74,12 @@ import {
   type ExternalChangeState,
   type ExternalChangeDeps,
 } from "@/lib/app-events";
-import { generalSettings } from "@/stores/general-settings.svelte";
+import { generalSettings, applyFontHinting } from "@/stores/general-settings.svelte";
 import { proseMarkSettings, previewSettings, presentationSettings } from "@/stores/markdown-settings.svelte";
-import { setRootPath } from "@/stores/root-path.svelte";
+import { setRootPath, getRootPath } from "@/stores/root-path.svelte";
 import { setActivePath } from "@/stores/active-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
-import { flushAllCsvCaches } from "@/csv/flush";
-import { colloscope } from "@/stores/colloscope.svelte";
-import { eleves } from "@/stores/eleves.svelte";
-import { fiches } from "@/stores/fiches.svelte";
 import { getCalendarStore } from "@/stores/calendar-store.svelte";
 import { navPush, navBack, navForward, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
 import {
@@ -172,17 +169,17 @@ $effect(() => { setRootPath(rootPath); });
 // Keep the activePath store in sync for opencode panel (file context).
 $effect(() => { setActivePath(activePath); });
 
-// Wire colles stores to rootPath and load on vault open.
+// Wire stores to rootPath and load on vault open.
 $effect(() => {
   const rp = rootPath;
-  colloscope.setRootPath(rp);
-  eleves.setRootPath(rp);
-  fiches.setRootPath(rp);
   if (rp) {
-    colloscope.load();
-    eleves.load();
-    fiches.load();
     getCalendarStore().load(rp);
+    // Pre-warm SQLite database so the first spreadsheet open is fast —
+    // avoids an intermittent Tauri IPC timeout when with_db() creates
+    // the .azprose/data.db for the first time during a user interaction.
+    import("@/spreadsheet/store").then(({ spreadsheetInitDb }) => {
+      spreadsheetInitDb(rp);
+    });
   }
 });
 
@@ -197,6 +194,11 @@ let pm = new PanelManager({
       side: { ...data.side, visible: pm.sideVisible },
     });
     scheduleSessionMirror();
+    // Keep the open-sheet-IDs store in sync for SpreadsheetManager
+    const allOpen: string[] = [];
+    for (const t of pm.main.tabs) if (t.kind === "spreadsheet" && t.spreadsheetId) allOpen.push(t.spreadsheetId);
+    for (const t of pm.side.tabs) if (t.kind === "spreadsheet" && t.spreadsheetId) allOpen.push(t.spreadsheetId);
+    setOpenSheetIds(allOpen);
   },
   onError: (title, message) => {
     notifications.setLoadError({ title, message });
@@ -228,6 +230,13 @@ $effect(() => {
   if (sideTabs.length === 0 && sideVisible) {
     pm.sideVisible = false;
     sideVisible = false;
+  } else if (sideTabs.length > 0 && !sideVisible) {
+    // Spreadsheet, Calendar, and other side tabs are opened via
+    // PanelManager methods that set pm.side.visible = true, but the
+    // local $state copy (sideVisible) does not reactively update.
+    // This effect syncs it when _panelVersion increments.
+    sideVisible = true;
+    pm.sideVisible = true;
   }
 });
 
@@ -387,8 +396,8 @@ onMount(() => {
   // Sauvegarde des brouillons sur perte de focus (stratégie VSCode hot-exit).
 // localStorage est synchrone : pas de risque de perte sur crash.
   const onBlur = () => saveAllDirtyDrafts();
-  const onVisibility = () => { if (document.visibilityState === "hidden") { saveAllDirtyDrafts(); flushSessionMirror(); void flushAllCsvCaches(); } };
-  const onBeforeUnload = () => { saveAllDirtyDrafts(); flushSessionMirror(); void flushAllCsvCaches(); };
+  const onVisibility = () => { if (document.visibilityState === "hidden") { saveAllDirtyDrafts(); flushSessionMirror(); } };
+  const onBeforeUnload = () => { saveAllDirtyDrafts(); flushSessionMirror(); };
   window.addEventListener("blur", onBlur);
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("beforeunload", onBeforeUnload);
@@ -517,6 +526,75 @@ $effect(() => {
   };
   window.addEventListener("azprose:jump-to-file", onJumpFile);
   return () => window.removeEventListener("azprose:jump-to-file", onJumpFile);
+});
+
+// Journal date click → create or open daily note (wired from JournalCalendarPanel)
+$effect(() => {
+  const handler = async (e: Event) => {
+    const { date } = (e as CustomEvent<{ date: string }>).detail;
+    if (!date) return;
+    const { journal } = await import("@/stores/journal-store.svelte");
+    const rp = getRootPath();
+    if (!rp) return;
+    const { journalSettings } = await import("@/stores/journal-settings.svelte");
+    const folder = journalSettings.current.journalFolder;
+    const p = await journal.createNote(date, rp, folder);
+    if (p) {
+      await openFileInTab(p);
+    }
+    // Refresh note scan so the JournalCalendarPanel picks up the new file
+    await journal.scanForNotes(rp, folder);
+  };
+  window.addEventListener("azprose:journal-date-click", handler);
+  return () => window.removeEventListener("azprose:journal-date-click", handler);
+});
+
+// Spreadsheet title change → update the tab title
+$effect(() => {
+  const handler = (e: Event) => {
+    const { spreadsheetId, title } = (e as CustomEvent<{ spreadsheetId: string; title: string }>).detail;
+    pm.setSpreadsheetTabTitle(spreadsheetId, title);
+  };
+  window.addEventListener("azprose:spreadsheet-title-change", handler);
+  return () => window.removeEventListener("azprose:spreadsheet-title-change", handler);
+});
+
+// Spreadsheet "open in new tab" from the manager
+$effect(() => {
+  const handler = async (e: Event) => {
+    const { id } = (e as CustomEvent<{ id: string }>).detail;
+    // If already open in any panel, just activate it — no duplicate editors
+    const existing = pm.findSpreadsheetTab(id);
+    if (existing) {
+      const panel = existing.panel === "main" ? pm.main : pm.side;
+      panel.select(existing.tab.id);
+      if (existing.panel === "side") {
+        sideVisible = true;
+        pm.sideVisible = true;
+        pm.layout = "main+side";
+      }
+      return;
+    }
+    try {
+      const { spreadsheetGet } = await import("@/spreadsheet/store");
+      const data = await spreadsheetGet(id);
+      pm.openSpreadsheetInSide(id, data.name);
+    } catch (err) {
+      console.error("[spreadsheet] failed to open in new tab:", err);
+    }
+  };
+  window.addEventListener("azprose:spreadsheet-open-new", handler);
+  return () => window.removeEventListener("azprose:spreadsheet-open-new", handler);
+});
+
+// Spreadsheet "set-id" — upgrade a create-mode tab with a real spreadsheetId
+$effect(() => {
+  const handler = (e: Event) => {
+    const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
+    pm.setSpreadsheetTabId(id, title);
+  };
+  window.addEventListener("azprose:spreadsheet-set-id", handler);
+  return () => window.removeEventListener("azprose:spreadsheet-set-id", handler);
 });
 
 async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" }) {
@@ -676,6 +754,10 @@ const handleManualUpdateCheck = () => handleManualUpdateCheckUtil(updateUIState)
 
 const handleToggleSidebar = () => sidebarOpen.update((v: boolean) => !v);
 
+const handleOpenSpreadsheet = () => {
+  pm.openEmptySpreadsheetPanel();
+};
+
 const toggleFullscreen = async () => {
   const win = getCurrentWindow();
   try {
@@ -778,6 +860,27 @@ $effect(() => {
   const onKey = (e: KeyboardEvent) => handleKeydown(e, kbd);
   window.addEventListener("keydown", onKey);
   return () => window.removeEventListener("keydown", onKey);
+});
+
+// Apply native decorations setting at startup and when toggled
+$effect(() => {
+  const native = generalSettings.nativeDecorations;
+  getCurrentWindow().setDecorations(native).catch(() => {});
+});
+
+// Apply UI zoom override
+$effect(() => {
+  const scale = generalSettings.uiScale;
+  const appEl = document.querySelector(".mdv-app") as HTMLElement | null;
+  if (!appEl) return;
+  if (scale === 1.0) appEl.style.removeProperty("zoom");
+  else appEl.style.setProperty("zoom", String(scale));
+});
+
+// Apply font hinting override
+$effect(() => {
+  const h = generalSettings.fontHinting;
+  applyFontHinting(h);
 });
 
 const handleToggleVim = () => {
@@ -909,37 +1012,8 @@ let cmds = $derived(
     toggleViewPanel: handleToggleSidebar,
     toggleTitlebar: handleToggleTitlebar,
     openSettings: () => overlays.openSettings("general"),
-    showColles: () => {
-      pm.openCustomInSide("colloscope", "Colloscope");
-    },
-    openColloscopeGrid: () => {
-      pm.openCustomInSide("colloscope", "Colloscope");
-    },
     openCalendarEditor: () => {
       pm.openCustomInSide("calendar-editor", "Calendrier");
-    },
-    openElevesSpreadsheet: () => {
-      pm.openCustomInSide("eleves", "Élèves");
-    },
-    importElevesList: async () => {
-      pm.openCustomInSide("eleves", "Élèves");
-      const path = await pickXlsx();
-      if (!path) return;
-      try {
-        const parsed: any = await invoke("parse_eleves_csv", { path });
-        const parsedEleves = parsed.eleves.map((e: any, i: number) => ({
-          id: `eleve-${i}`,
-          nom: e.nom,
-          prenom: e.prenom,
-          classe: e.classe,
-          groupe: e.groupe,
-          email: e.email ?? "",
-        }));
-        eleves.importEleves(parsedEleves);
-        await eleves.save();
-      } catch (e) {
-        console.error("[eleves] import error:", e);
-      }
     },
     showOpenCode: () => {
       pm.openCustomInSide("opencode", "OpenCode");
@@ -949,6 +1023,15 @@ let cmds = $derived(
     },
     openSvarCalendar: () => {
       pm.openCustomInSide("svar-calendar", "Calendar");
+    },
+    openSpreadsheet: handleOpenSpreadsheet,
+    calendarExport: async () => {
+      const { exportCalendar } = await import("@/lib/calendar-persistence");
+      await exportCalendar();
+    },
+    calendarImport: async () => {
+      const { importCalendar } = await import("@/lib/calendar-persistence");
+      await importCalendar();
     },
     clearCalendarCache: async () => {
       if (!await confirm(t("command.clearCalendarCacheConfirm"), { kind: "warning" })) return;
@@ -965,6 +1048,7 @@ let cmds = $derived(
 >
   <TitleBar
     rootName={rootPath ? basename(rootPath) : undefined}
+    nativeDecorations={generalSettings.nativeDecorations}
   />
 
   <Breadcrumb
@@ -986,6 +1070,7 @@ let cmds = $derived(
     onToggleViewPanel={handleToggleViewPanel}
     onOpenCode={() => pm.openCustomInSide("opencode", "OpenCode")}
     onOpenSvarCalendar={() => pm.openCustomInSide("svar-calendar", "Calendar")}
+    onOpenSpreadsheet={handleOpenSpreadsheet}
     onOpenPalette={() => overlays.setPaletteOpen(true)}
     onSelectFile={fo.selectFile}
   />

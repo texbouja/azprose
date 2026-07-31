@@ -1,9 +1,7 @@
 /**
- * CSV spreadsheet helpers — delimiter detection, CSV parsing, serialization.
- * The actual jspreadsheet lifecycle is handled by `Spreadsheet.svelte`.
+ * CSV utility functions — delimiter detection, serialization.
+ * Copied from the old `src/csv/spreadsheet.ts` for general use.
  */
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 export function detectDelimiter(source: string): string {
   const firstLine = source.split("\n")[0] ?? "";
@@ -23,6 +21,17 @@ export function escapeCSVField(value: string, delimiter: string): string {
   return str;
 }
 
-export function dataToCSV(data: (string | number | boolean)[][], delimiter: string): string {
-  return data.map((row) => row.map((cell) => escapeCSVField(String(cell ?? ""), delimiter)).join(delimiter)).join("\n");
+export function dataToCSV(
+  data: (string | number | boolean)[][],
+  delimiter: string,
+): string {
+  return data
+    .map((row) =>
+      row
+        .map((cell) =>
+          escapeCSVField(String(cell ?? ""), delimiter),
+        )
+        .join(delimiter),
+    )
+    .join("\n");
 }

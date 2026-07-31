@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { getAllNames } from "@/stores/names.svelte";
-
   let {
     value = [],
+    suggestions = [],
     onchange,
   }: {
     value: (string | number)[];
+    /** Predefined suggestions for autocomplete (optional). */
+    suggestions?: string[];
     onchange: (ev: { value: (string | number)[] }) => void;
   } = $props();
 
@@ -15,16 +16,15 @@
   let inputEl: HTMLInputElement | undefined = $state();
   let containerEl: HTMLDivElement | undefined = $state();
 
-  const allNames = $derived(getAllNames());
   const selectedSet = $derived(new Set(value.map(String)));
 
   // Filter suggestions: exclude already-selected, match by substring
-  const suggestions = $derived.by(() => {
+  const filtered = $derived.by(() => {
     const q = text.trim().toLowerCase();
-    return allNames
-      .filter((n) => !selectedSet.has(n.name))
-      .filter((n) => !q || n.name.toLowerCase().includes(q))
-      .slice(0, 20); // cap at 20 visible
+    return suggestions
+      .filter((n) => !selectedSet.has(n))
+      .filter((n) => !q || n.toLowerCase().includes(q))
+      .slice(0, 20);
   });
 
   function add(name: string) {
@@ -53,9 +53,9 @@
       highlightIdx = Math.max(highlightIdx - 1, 0);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (open && suggestions.length > 0) {
-        const pick = suggestions[highlightIdx] ?? suggestions[0];
-        add(pick.name);
+      if (open && filtered.length > 0) {
+        const pick = filtered[highlightIdx] ?? filtered[0];
+        add(pick);
       } else if (text.trim()) {
         // Allow freeform if no suggestion matches
         add(text.trim());
@@ -71,6 +71,10 @@
   function selectSuggestion(name: string) {
     add(name);
     inputEl?.focus();
+  }
+
+  function shouldShowDropdown(): boolean {
+    return open && filtered.length > 0;
   }
 
   // Close dropdown on outside click
@@ -109,22 +113,18 @@
     />
   </div>
 
-  {#if open && suggestions.length > 0}
+  {#if shouldShowDropdown()}
     <div class="person-combo__dropdown">
-      {#each suggestions as s, i (s.name)}
+      {#each filtered as s, i (s)}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="person-combo__item"
           class:is-highlighted={i === highlightIdx}
-          class:role--colleur={s.role === "colleur"}
-          onclick={() => selectSuggestion(s.name)}
+          onclick={() => selectSuggestion(s)}
           onmouseenter={() => { highlightIdx = i; }}
         >
-          <span class="person-combo__item-name">{s.name}</span>
-          {#if s.role === "colleur"}
-            <span class="person-combo__item-badge">colleur</span>
-          {/if}
+          <span class="person-combo__item-name">{s}</span>
         </div>
       {/each}
     </div>
@@ -254,7 +254,4 @@
     flex-shrink: 0;
   }
 
-  .person-combo__item.role--colleur .person-combo__item-name {
-    color: var(--accent, #89b4fa);
-  }
 </style>

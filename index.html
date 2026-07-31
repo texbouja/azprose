@@ -7,6 +7,25 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style>
+      /* Material Symbols for jsuites toolbar (which hardcodes .material-icons class) */
+      .material-icons {
+        font-family: 'Material Symbols Outlined';
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-feature-settings: 'liga';
+        -webkit-font-smoothing: antialiased;
+      }
+    </style>
     <title>AZprose</title>
 
     <style>
@@ -171,6 +190,66 @@
         document.getElementById('boot').style.background       = BG[t];
         document.getElementById('boot-track').style.background = light ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.12)';
         document.getElementById('boot-fill').style.background  = light ? 'rgba(0,0,0,0.28)'  : 'rgba(255,255,255,0.36)';
+      })();
+    </script>
+    <script>
+      /* UI font override from localStorage — always sets --*-temp so
+         tokens.css only needs var(--font-ui-temp) without fallback. */
+      (function () {
+        try {
+          /* UI / preview fonts are read from localStorage to avoid a FOUC
+             before the JS bundle loads. Values are written by persistedState()
+             as JSON, so they must be JSON.parse()d here — a raw read yields
+             `"inter"` (quoted) which matches no preset and breaks the stack.
+             The sidebar font is HMR-only (the sidebar renders only after JS):
+             no boot-time application needed, tokens.css carries the default. */
+          function readJson(key) {
+            try { return JSON.parse(localStorage.getItem(key) || "null"); }
+            catch (e) { return null; }
+          }
+          var UI_FONTS = {
+            inter: '"Inter", "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            ubuntu: '"Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            'ubuntu-condensed': '"Ubuntu Condensed", "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          };
+          var UI_MONO_FONTS = {
+            'jetbrains-mono': '"JetBrains Mono", "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+            'ubuntu-mono': '"Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+            system: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+          };
+          var f = readJson('mdview.ui.font');
+          document.documentElement.style.setProperty('--font-ui-temp',
+            (f && (UI_FONTS[f] || f)) || '"Ubuntu", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif');
+          var m = readJson('mdview.ui.mono.font');
+          document.documentElement.style.setProperty('--font-mono-temp',
+            (m && (UI_MONO_FONTS[m] || m)) || '"Ubuntu Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace');
+          /* Preview (HTML rendering) fonts — resolve preset ids to stacks
+             so boot matches the store's applyPreviewFont(). */
+          var PREVIEW_FONTS = {
+            'fira-sans': '"Fira Sans", "Inter", "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            inter: '"Inter", "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            ubuntu: '"Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            'ubuntu-condensed': '"Ubuntu Condensed", "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          };
+          var PREVIEW_MONO_FONTS = {
+            'fira-code': '"Fira Code", "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+            'jetbrains-mono': '"JetBrains Mono", "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+            'ubuntu-mono': '"Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+            system: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+          };
+          var pf = readJson('mdview.preview.font') || 'fira-sans';
+          var pc = readJson('mdview.preview.font.custom') || '';
+          var pm = readJson('mdview.preview.mono.font') || 'fira-code';
+          document.documentElement.style.setProperty('--font-preview-temp',
+            pf === 'custom'
+              ? (pc ? '"' + pc + '", "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+                    : PREVIEW_FONTS['fira-sans'])
+              : PREVIEW_FONTS[pf] || PREVIEW_FONTS['fira-sans']);
+          document.documentElement.style.setProperty('--font-preview-mono-temp',
+            PREVIEW_MONO_FONTS[pm] || PREVIEW_MONO_FONTS['fira-code']);
+        } catch (e) {}
       })();
     </script>
 

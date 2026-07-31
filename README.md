@@ -33,3 +33,17 @@ Pour donner un exemple, il est déjà possible de définir, dans l'interface de 
 ## licence
 
 MIT
+
+
+Réecris la routine d'import de colloscope. 
+
+Le datagrid doit être éditable car le coloscope peut changer en cours d'années (changement de crénaux, de salles, rotation des profs...). Si changement, calendrier est maintenant prémuni contre les repétitions et va merger les nouvelles données après export.
+ 
+Seule les colonnes : Matière, Colleur, Jour, Horaire, Salle doivent avoir un entête obligatoire, les autres colonnes sont plus libre (des dates ou bien sem 1, sem 2,...). Les semaine commencent à partir de 6eme colonne. Reprendre les entêtes de ces colonnes verbatim à ce stade. L'utilisateur pourra éditer les dates après coup. 
+Le json des colles ne doit pas être crée à ce stade mais lorsque l'utilisateur utilisera la fonction d'export vers calendrier (pour garantir une synchronisation json/calendrier). Chaque export doit être une mise à jour sans répitition.  
+
+Les cellules des entetes des colonnes de semaine doivent fournir une assistance d'édition sous forme d'un calendrier où on pick une date. Si on édite une cellule les suivantes s'en déduisent automatiquement par translation d'une semaine. L'utilisateur n'aura donc à intervenir que sur des colonnes particulières pour renseigner toutes les dates (sauter les semaines de vacances). 
+
+À l'export, vers Calendar et json :
+Si TOUS les entêtes des semaines contiennent un format "date" valide se baser dessus pour l'export vers calendrier et json. 
+Si au moins un contient une chaine de caractères quelconque avertir l'utilisateur et s'il valide se baser uniquement sur date de début et date de fin pour l'export. 

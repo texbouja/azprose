@@ -34,7 +34,7 @@
   --wx-background-hover: color-mix(in srgb, var(--fg, #cdd6f4) 8%, var(--bg, #1e1e2e));
 
   /* ── Font ───────────────────────────────────────────────── */
-  --wx-font-family: var(--font-ui, system-ui);
+  --wx-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-font-size: 13px;
   --wx-line-height: 20px;
   --wx-font-size-md: 13px;
@@ -72,7 +72,7 @@
   --wx-field-width: 400px;
 
   /* ── Input ──────────────────────────────────────────────── */
-  --wx-input-font-family: var(--font-ui, system-ui);
+  --wx-input-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-input-font-size: 12px;
   --wx-input-line-height: 20px;
   --wx-input-font-weight: 400;
@@ -106,7 +106,7 @@
   --wx-checkbox-border-color: var(--fg-muted, #a6adc8);
   --wx-checkbox-border-color-disabled: var(--border, #45475a);
   --wx-checkbox-border-radius: var(--wx-input-border-radius);
-  --wx-checkbox-font-family: var(--font-ui, system-ui);
+  --wx-checkbox-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-checkbox-font-size: 12px;
   --wx-checkbox-line-height: var(--wx-line-height);
   --wx-checkbox-font-weight: 400;
@@ -131,14 +131,14 @@
   --wx-label-width: 100px;
   --wx-label-margin: 0 0 4px;
   --wx-label-padding: 0;
-  --wx-label-font-family: var(--font-ui, system-ui);
+  --wx-label-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-label-font-size: 12px;
   --wx-label-line-height: var(--wx-line-height);
   --wx-label-font-weight: 500;
   --wx-label-font-color: var(--fg-muted, #a6adc8);
 
   /* ── Button ─────────────────────────────────────────────── */
-  --wx-button-font-family: var(--font-ui, system-ui);
+  --wx-button-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-button-font-size: 12px;
   --wx-button-line-height: var(--wx-line-height);
   --wx-button-font-weight: 600;
@@ -184,7 +184,7 @@
   --wx-slider-thumb-border-disabled: 1px solid var(--border, #45475a);
   --wx-slider-thumb-shadow: none;
   --wx-slider-label-margin: 0 0 5px;
-  --wx-slider-label-font-family: var(--font-ui, system-ui);
+  --wx-slider-label-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-slider-label-font-size: 12px;
   --wx-slider-label-line-height: var(--wx-line-height);
   --wx-slider-label-font-weight: 600;
@@ -214,7 +214,7 @@
   --wx-modal-padding: 16px 20px;
   --wx-modal-gutter: 14px;
   --wx-modal-backdrop: rgba(108, 114, 131, 0.2);
-  --wx-modal-header-font-family: var(--font-ui, system-ui);
+  --wx-modal-header-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-modal-header-font-size: 15px;
   --wx-modal-header-line-height: 26px;
   --wx-modal-header-font-weight: 700;
@@ -227,7 +227,7 @@
   --wx-notice-border: none;
   --wx-notice-border-radius: 0 var(--wx-border-radius) var(--wx-border-radius) 0;
   --wx-notice-margin: 6px 12px;
-  --wx-notice-font-family: var(--font-ui, system-ui);
+  --wx-notice-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-notice-font-size: 13px;
   --wx-notice-line-height: 20px;
   --wx-notice-font-weight: 400;
@@ -249,7 +249,7 @@
   --wx-calendar-gap: 4px;
   --wx-calendar-line-gap: 4px;
   --wx-calendar-border-radius: var(--wx-border-radius);
-  --wx-calendar-font-family: var(--font-ui, system-ui);
+  --wx-calendar-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-calendar-font-size: 13px;
   --wx-calendar-line-height: 20px;
   --wx-calendar-font-weight: 400;
@@ -259,7 +259,7 @@
   --wx-calendar-header-font-size: 13px;
   --wx-calendar-header-line-height: 20px;
   --wx-calendar-header-font-weight: 600;
-  --wx-calendar-controls-font-family: var(--font-ui, system-ui);
+  --wx-calendar-controls-font-family: var(--font-preview, var(--font-ui, system-ui));
   --wx-calendar-controls-font-size: 13px;
   --wx-calendar-controls-line-height: 20px;
   --wx-calendar-controls-font-weight: 400;

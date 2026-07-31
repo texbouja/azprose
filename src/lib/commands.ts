@@ -9,7 +9,8 @@ export type CommandCategory =
   | "latex"
   | "markdown"
   | "view"
-  | "colles"
+  | "calendar"
+  | "spreadsheet"
   | "opencode"
   | "theme"
   | "maintenance"
@@ -78,12 +79,8 @@ export type CommandActions = {
   toggleTitlebar: () => void;
   openSettings: () => void;
 
-  // Colles
-  showColles: () => void;
-  openColloscopeGrid: () => void;
+  // Calendar
   openCalendarEditor: () => void;
-  openElevesSpreadsheet: () => void;
-  importElevesList: () => void;
 
   // OpenCode
   showOpenCode: () => void;
@@ -93,6 +90,13 @@ export type CommandActions = {
 
   // SVAR Calendar (comparison)
   openSvarCalendar: () => void;
+
+  // Spreadsheet
+  openSpreadsheet: () => void;
+
+  // Calendar (persistence)
+  calendarExport: () => void;
+  calendarImport: () => void;
 
   // Maintenance
   clearCalendarCache: () => void;
@@ -127,7 +131,8 @@ export const CATEGORY_ORDER: CommandCategory[] = [
   "latex",
   "markdown",
   "view",
-  "colles",
+  "calendar",
+  "spreadsheet",
   "opencode",
   "theme",
   "maintenance",
@@ -425,42 +430,24 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       keywords: ["svar", "calendar", "event", "schedule", "comparison"],
       action: actions.openSvarCalendar,
     },
-    // ── Colles ──────────────────────────────────────────────
-    {
-      id: "colloscope-grid",
-      label: t("command.colloscopeGrid"),
-      hint: t("sidebar.colles"),
-      icon: "wxi-table2",
-      category: "colles",
-      keywords: ["colles", "colloscope", "schedule", "grid"],
-      action: actions.openColloscopeGrid,
-    },
     {
       id: "calendar-editor",
       label: t("command.calendarEditor"),
-      hint: "colles",
+      hint: "calendar",
       icon: "wxi-table2",
-      category: "colles",
-      keywords: ["colles", "calendar", "schedule", "event"],
+      category: "calendar",
+      keywords: ["calendar", "schedule", "event"],
       action: actions.openCalendarEditor,
     },
+    // ── Spreadsheet ─────────────────────────────────────────
     {
-      id: "eleves-list",
-      label: t("command.elevesSpreadsheet"),
-      hint: "colles",
-      icon: "wxi-table2",
-      category: "colles",
-      keywords: ["colles", "eleves", "students", "spreadsheet"],
-      action: actions.openElevesSpreadsheet,
-    },
-    {
-      id: "import-eleves",
-      label: t("command.importEleves"),
-      hint: "colles",
-      icon: "wxi-table2",
-      category: "colles",
-      keywords: ["colles", "eleves", "students", "import", "csv"],
-      action: actions.importElevesList,
+      id: "spreadsheet-new",
+      label: t("command.spreadsheetNew"),
+      hint: t("command.spreadsheetNewHint"),
+      icon: "wxi-table",
+      category: "spreadsheet",
+      keywords: ["spreadsheet", "nouveau", "new", "tableur", "créer", "create"],
+      action: actions.openSpreadsheet,
     },
     // ── OpenCode ────────────────────────────────────────────
     {
@@ -502,6 +489,25 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       category: "theme",
       keywords: ["transparency", "solid", "opacity", "background"],
       action: () => setTransparency(100),
+    },
+    // ── Calendar ────────────────────────────────────────
+    {
+      id: "calendar-export",
+      label: t("command.calendarExport"),
+      hint: t("command.calendarExportHint"),
+      icon: "wxi-file-down",
+      category: "calendar",
+      keywords: ["calendar", "export", "save", "ics", "ical", "snapshot"],
+      action: actions.calendarExport,
+    },
+    {
+      id: "calendar-import",
+      label: t("command.calendarImport"),
+      hint: t("command.calendarImportHint"),
+      icon: "wxi-file-plus",
+      category: "calendar",
+      keywords: ["calendar", "import", "load", "ics", "ical", "restore"],
+      action: actions.calendarImport,
     },
     // ── Maintenance ─────────────────────────────────────
     {

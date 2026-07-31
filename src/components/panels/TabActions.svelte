@@ -310,7 +310,7 @@ let sideItems = $derived.by(() => {
     font-size: 12px;
     font-weight: 500;
     color: var(--fg-muted);
-    font-family: var(--font-ui, system-ui);
+    font-family: var(--font-preview, var(--font-ui, system-ui));
   }
   .ta-wrap--main :global(.wx-toolbar .wx-button i) {
     font-size: 14px;
@@ -356,6 +356,6 @@ let sideItems = $derived.by(() => {
 
   /* ── Side panel label element ─────────────────────────── */
   .ta-wrap :global(.wx-toolbar .wx-label) {
-    font-family: var(--font-ui, system-ui);
+    font-family: var(--font-preview, var(--font-ui, system-ui));
   }
 </style>

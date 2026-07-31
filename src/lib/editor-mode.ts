@@ -121,6 +121,18 @@ export async function inverseSync(ctx: EditorModeDeps, file: string, line: numbe
 }
 
 export function jumpToLine(ctx: EditorModeDeps, line: number) {
+  // Inverse search: ensure the side panel's previewed file is active in the main panel
+  // before jumping. Without this, the jump lands in whichever file happens to be
+  // active in the main panel — not the one the user double-clicked in the preview.
+  const sidePath = ctx.pm.side.activeTab?.path;
+  if (sidePath) {
+    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+    const target = norm(sidePath);
+    const mainTab = ctx.pm.main.tabs.find(t => norm(t.path) === target);
+    if (mainTab) {
+      ctx.pm.main.select(mainTab.id);
+    }
+  }
   ctx.setJumpToLine(line);
   setEditorMode(ctx, "raw");
 }

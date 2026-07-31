@@ -5,6 +5,7 @@ import { editorSettings } from "@/stores/editor-settings.svelte";
 export const FONT_FAMILY_MAP: Record<string, string> = {
   "fira-code": "'Fira Code', monospace",
   "jetbrains-mono": "'JetBrains Mono', monospace",
+  "ubuntu-mono": "'Ubuntu Mono', monospace",
   "source-code-pro": "'Source Code Pro', monospace",
   "ibm-plex-mono": "'IBM Plex Mono', monospace",
   "system": "ui-monospace, monospace",
