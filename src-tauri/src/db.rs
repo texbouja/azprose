@@ -5,6 +5,7 @@
 //            spreadsheet_cells, spreadsheet_state)
 //   - v3:    calendar tables (calendar_events)
 //   - v4:    datagrid tables (datagrids, datagrid_columns, datagrid_rows)
+//   - v5:    datagrids.source_spreadsheet_id (live bridge spreadsheet→grid)
 // Modules métier (spreadsheet_db, calendar_db, datagrid_db, ...) only define
 // their own tables + commands and go through `db::with_db`.
 
@@ -143,6 +144,13 @@ fn init_db(conn: &Connection) -> Result<(), String> {
     if version < 4 {
         conn.execute_batch(SCHEMA_V4).map_err(|e| e.to_string())?;
         version = 4;
+    }
+    // v5 — live bridge: a datagrid can be derived from a spreadsheet.
+    if version < 5 {
+        conn.execute_batch(
+            "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;"
+        ).map_err(|e| e.to_string())?;
+        version = 5;
     }
 
     if version > 0 {

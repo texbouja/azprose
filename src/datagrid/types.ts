@@ -5,6 +5,8 @@ export interface DatagridMeta {
   name: string;
   created_at: string;
   updated_at: string;
+  /** Set when the grid is derived from a spreadsheet (live bridge). */
+  source_spreadsheet_id?: string | null;
 }
 
 /** Column definition (mirrors SVAR grid IColumnConfig subset persisted). */
@@ -30,4 +32,6 @@ export interface DatagridData {
   rows: DatagridRow[];
   created_at: string;
   updated_at: string;
+  /** Set when the grid is derived from a spreadsheet (live bridge). */
+  source_spreadsheet_id?: string | null;
 }

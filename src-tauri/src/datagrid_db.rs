@@ -16,6 +16,8 @@ pub struct DatagridMeta {
     pub name: String,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_spreadsheet_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -48,6 +50,8 @@ pub struct DatagridData {
     pub rows: Vec<DatagridRow>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_spreadsheet_id: Option<String>,
 }
 
 fn default_col_type() -> String {
@@ -66,7 +70,7 @@ pub fn datagrid_list(
     with_db(&state, &root, |conn| {
         let mut stmt = conn
             .prepare(
-                "SELECT id, name, created_at, updated_at
+                "SELECT id, name, created_at, updated_at, source_spreadsheet_id
                  FROM datagrids ORDER BY updated_at DESC",
             )
             .map_err(|e| e.to_string())?;
@@ -77,6 +81,7 @@ pub fn datagrid_list(
                     name: row.get(1)?,
                     created_at: row.get(2)?,
                     updated_at: row.get(3)?,
+                    source_spreadsheet_id: row.get(4)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -97,7 +102,8 @@ pub fn datagrid_get(
         // Metadata
         let meta: DatagridMeta = conn
             .query_row(
-                "SELECT id, name, created_at, updated_at FROM datagrids WHERE id = ?1",
+                "SELECT id, name, created_at, updated_at, source_spreadsheet_id
+                 FROM datagrids WHERE id = ?1",
                 params![id],
                 |row| {
                     Ok(DatagridMeta {
@@ -105,6 +111,7 @@ pub fn datagrid_get(
                         name: row.get(1)?,
                         created_at: row.get(2)?,
                         updated_at: row.get(3)?,
+                        source_spreadsheet_id: row.get(4)?,
                     })
                 },
             )
@@ -156,6 +163,7 @@ pub fn datagrid_get(
             rows,
             created_at: meta.created_at,
             updated_at: meta.updated_at,
+            source_spreadsheet_id: meta.source_spreadsheet_id,
         })
     })
 }
@@ -360,9 +368,9 @@ pub fn datagrid_create_from_spreadsheet(
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         {
             tx.execute(
-                "INSERT INTO datagrids (id, name, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?3)",
-                params![id, grid_name, now],
+                "INSERT INTO datagrids (id, name, created_at, updated_at, source_spreadsheet_id)
+                 VALUES (?1, ?2, ?3, ?3, ?4)",
+                params![id, grid_name, now, spreadsheet_id],
             )
             .map_err(|e| e.to_string())?;
             {
@@ -437,6 +445,11 @@ mod tests {
 
     fn test_schema(conn: &rusqlite::Connection) {
         conn.execute_batch(crate::db::SCHEMA_V4).unwrap();
+        // v5: live bridge column (ALTER TABLE, mirror of production migration).
+        conn.execute_batch(
+            "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;",
+        )
+        .unwrap();
     }
 
     fn col(id: &str, title: &str) -> DatagridColumnDef {
@@ -535,13 +548,51 @@ mod tests {
         assert_eq!(grid_ids(&conn), vec!["g"]);
     }
 
-    /// Creating a grid from a spreadsheet must convert matrix → columns + rows.
+    /// A save (replace-all snapshot) must NOT clear the source_spreadsheet_id
+    /// link — the frontend snapshot doesn't carry it, so the update keeps it.
+    #[test]
+    fn save_preserves_source_spreadsheet_link() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO datagrids (id, name, created_at, updated_at, source_spreadsheet_id)
+             VALUES ('g', 'G', ?1, ?1, 's1')",
+            params![now],
+        )
+        .unwrap();
+
+        save_grid(
+            &mut conn,
+            "g",
+            "G",
+            &[col("c0", "A")],
+            &[row("r0", r#"{"c0":"x"}"#)],
+        )
+        .unwrap();
+
+        let link: Option<String> = conn
+            .query_row(
+                "SELECT source_spreadsheet_id FROM datagrids WHERE id = 'g'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(link.as_deref(), Some("s1"));
+    }
+
+    /// Creating a grid from a spreadsheet must convert matrix → columns + rows
+    /// and record the source link.
     #[test]
     fn create_from_spreadsheet_maps_matrix() {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         // Fresh test schema needs spreadsheet + datagrid tables.
         conn.execute_batch(crate::db::SCHEMA_V1).unwrap();
         conn.execute_batch(crate::db::SCHEMA_V4).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;",
+        )
+        .unwrap();
         let now = crate::db::now_iso();
         conn.execute(
             "INSERT INTO spreadsheets (id, name, imported_at, updated_at)
@@ -576,5 +627,54 @@ mod tests {
         assert_eq!(rows[0].id, "r0");
         assert_eq!(rows[0].data, r#"{"c0":"Alice","c1":"15"}"#);
         assert_eq!(rows[1].data, r#"{"c0":"Bob","c1":"17"}"#);
+    }
+
+    /// Creating a grid from a spreadsheet records the source link (v5).
+    #[test]
+    fn create_from_spreadsheet_records_source_link() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V1).unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V4).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;",
+        )
+        .unwrap();
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO spreadsheets (id, name, imported_at, updated_at)
+             VALUES ('s1', 'S', ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spreadsheet_columns (spreadsheet_id, col_index, title)
+             VALUES ('s1', 0, 'Nom')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value)
+             VALUES ('s1', 0, 0, 'Alice')",
+            [],
+        )
+        .unwrap();
+
+        // Insert the datagrid row manually (as the command would), then check
+        // the link is persisted with the grid.
+        conn.execute(
+            "INSERT INTO datagrids (id, name, created_at, updated_at, source_spreadsheet_id)
+             VALUES ('g1', 'G', ?1, ?1, 's1')",
+            params![now],
+        )
+        .unwrap();
+
+        let link: Option<String> = conn
+            .query_row(
+                "SELECT source_spreadsheet_id FROM datagrids WHERE id = 'g1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(link.as_deref(), Some("s1"));
     }
 }
