@@ -27,6 +27,7 @@ import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
 import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { notifications } from "@/stores/notifications.svelte";
+import { getFontStore, type FontCheck } from "@/stores/fonts.svelte";
 import { joinPath } from "@/lib/files";
 import { userProfile, type UserRole } from "@/stores/user-profile.svelte";
 import { exportCalendar, importCalendar, clearCalendar } from "@/lib/calendar-persistence";
@@ -93,6 +94,52 @@ function debounceInput(key: string, value: string, write: (v: string) => void, m
   clearTimeout(_inputTimers.get(key));
   _inputTimers.set(key, setTimeout(() => { _inputTimers.delete(key); write(value); }, ms));
 }
+
+// Font availability check — memoized canvas fallback, used only while the
+// system font store is still loading.
+const _fontCache = new Map<string, boolean>();
+function checkFontAvailable(name: string): boolean {
+  const key = name.trim().toLowerCase();
+  if (_fontCache.has(key)) return _fontCache.get(key)!;
+  try {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) { _fontCache.set(key, true); return true; }
+    const sample = "mmmmmmmmmllliiii";
+    ctx.font = "16px monospace";
+    const fallback = ctx.measureText(sample).width;
+    ctx.font = `16px '${name.trim()}', monospace`;
+    const ok = ctx.measureText(sample).width !== fallback;
+    _fontCache.set(key, ok);
+    return ok;
+  } catch { _fontCache.set(key, true); return true; }
+}
+
+const fontStore = getFontStore();
+
+// Word-by-word validation against the runtime font store (see fonts.svelte.ts).
+function checkFontName(name: string): FontCheck {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  if (fontStore.status === "ready") return fontStore.check(trimmed);
+  return checkFontAvailable(trimmed) ? "ok" : "error";
+}
+
+function fontFieldStyle(state: FontCheck): { inputStyle: string; error: boolean } {
+  if (state === "error") return { inputStyle: "color: var(--color-error)", error: true };
+  if (state === "partial") return { inputStyle: "color: var(--color-warning, #e6a94c)", error: false };
+  return { inputStyle: "", error: false };
+}
+
+let customFontState = $derived(s.fontFamily === "custom" ? checkFontName(s.customFontName) : null);
+let prsCustomFontState = $derived(prs.fontFamily === "custom" ? checkFontName(prs.customFontName) : null);
+let pvsCustomFontState = $derived(pvs.fontFamily === "custom" ? checkFontName(pvs.customFontName) : null);
+let editorCustomFontState = $derived(
+  editorSettings.current.fontFamily === "custom" ? checkFontName(editorSettings.current.customFontName) : null
+);
+let previewCustomFontState = $derived(
+  generalSettings.previewFontFamily === "custom" ? checkFontName(generalSettings.previewCustomFontName) : null
+);
 
 function toggleSection(id: SectionId) {
   const next = new Set(expandedSections);
@@ -229,9 +276,12 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
         onchange={(ev) => proseMarkSettings.patch({ fontFamily: ev.value as ProseMarkStyle["fontFamily"] })}
       />
       {#if s.fontFamily === "custom"}
+        {@const fs = fontFieldStyle(customFontState)}
         <Text
           value={s.customFontName}
           placeholder={t("settings.fontPlaceholder")}
+          inputStyle={fs.inputStyle}
+          error={fs.error}
           onchange={(ev) => debounceInput("font-main", String(ev.value), (v) => proseMarkSettings.patch({ customFontName: v }))}
         />
       {/if}
@@ -270,9 +320,12 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
         onchange={(ev) => presentationSettings.patch({ fontFamily: ev.value as PresentationStyle["fontFamily"] })}
       />
       {#if prs.fontFamily === "custom"}
+        {@const fs = fontFieldStyle(prsCustomFontState)}
         <Text
           value={prs.customFontName}
           placeholder={t("settings.fontPlaceholder")}
+          inputStyle={fs.inputStyle}
+          error={fs.error}
           onchange={(ev) => debounceInput("font-pres", String(ev.value), (v) => presentationSettings.patch({ customFontName: v }))}
         />
       {/if}
@@ -311,9 +364,12 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
         onchange={(ev) => previewSettings.patch({ fontFamily: ev.value as PreviewStyle["fontFamily"] })}
       />
       {#if pvs.fontFamily === "custom"}
+        {@const fs = fontFieldStyle(pvsCustomFontState)}
         <Text
           value={pvs.customFontName}
           placeholder={t("settings.fontPlaceholder")}
+          inputStyle={fs.inputStyle}
+          error={fs.error}
           onchange={(ev) => debounceInput("font-prev", String(ev.value), (v) => previewSettings.patch({ customFontName: v }))}
         />
       {/if}
@@ -346,6 +402,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
       ] as const) as row}
         {@const isCustom = s[row.key] === "custom"}
         {@const fontName = s[row.nameKey]}
+        {@const fontState = isCustom && fontName.trim() ? checkFontName(fontName) : null}
+        {@const fs = fontFieldStyle(fontState)}
         <div class="mdv-settings__font-row">
           <span class="mdv-settings__font-label mdv-settings__heading-tag">{row.tag}</span>
           <Combo
@@ -364,6 +422,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <Text
               value={fontName}
               placeholder={t("settings.fontPlaceholder")}
+              inputStyle={fs.inputStyle}
+              error={fs.error}
               onchange={(ev) => debounceInput("heading-" + row.tag, String(ev.value), (v) => proseMarkSettings.patch({ [row.nameKey]: v }))}
             />
           {/if}
@@ -412,6 +472,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
       ] as const) as row}
         {@const isCustom = prs[row.key] === "custom"}
         {@const fontName = prs[row.nameKey]}
+        {@const fontState = isCustom && fontName.trim() ? checkFontName(fontName) : null}
+        {@const fs = fontFieldStyle(fontState)}
         <div class="mdv-settings__font-row">
           <span class="mdv-settings__font-label mdv-settings__heading-tag">{row.tag}</span>
           <Combo
@@ -430,6 +492,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <Text
               value={fontName}
               placeholder={t("settings.fontPlaceholder")}
+              inputStyle={fs.inputStyle}
+              error={fs.error}
               onchange={(ev) => debounceInput("heading-" + row.tag, String(ev.value), (v) => presentationSettings.patch({ [row.nameKey]: v }))}
             />
           {/if}
@@ -478,6 +542,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
       ] as const) as row}
         {@const isCustom = pvs[row.key] === "custom"}
         {@const fontName = pvs[row.nameKey]}
+        {@const fontState = isCustom && fontName.trim() ? checkFontName(fontName) : null}
+        {@const fs = fontFieldStyle(fontState)}
         <div class="mdv-settings__font-row">
           <span class="mdv-settings__font-label mdv-settings__heading-tag">{row.tag}</span>
           <Combo
@@ -496,6 +562,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <Text
               value={fontName}
               placeholder={t("settings.fontPlaceholder")}
+              inputStyle={fs.inputStyle}
+              error={fs.error}
               onchange={(ev) => debounceInput("heading-prev-" + row.tag, String(ev.value), (v) => previewSettings.patch({ [row.nameKey]: v }))}
             />
           {/if}
@@ -1004,9 +1072,12 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                   onchange={(ev) => editorSettings.patch({ fontFamily: ev.value as EditorFontFamily })}
                 />
                 {#if es.fontFamily === "custom"}
+                  {@const fs = fontFieldStyle(editorCustomFontState)}
                   <Text
                     value={es.customFontName}
                     placeholder={t("settings.fontPlaceholder")}
+                    inputStyle={fs.inputStyle}
+                    error={fs.error}
                     onchange={(ev) => debounceInput("font-editor", String(ev.value), (v) => editorSettings.patch({ customFontName: v }))}
                   />
                 {/if}
@@ -1108,9 +1179,12 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                   onchange={(ev) => { generalSettings.previewFontFamily = ev.value as string; }}
                 />
                 {#if generalSettings.previewFontFamily === "custom"}
+                  {@const fs = fontFieldStyle(previewCustomFontState)}
                   <Text
                     value={generalSettings.previewCustomFontName}
                     placeholder={t("settings.fontPlaceholder")}
+                    inputStyle={fs.inputStyle}
+                    error={fs.error}
                     onchange={(ev) => debounceInput("font-preview-custom", String(ev.value), (v) => generalSettings.previewCustomFontName = v)}
                   />
                 {/if}
