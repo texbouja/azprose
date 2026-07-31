@@ -59,7 +59,12 @@ pub fn calendar_events_get(
     })
 }
 
-/// Upsert events (transactional, debounced from the frontend store).
+/// Replace-all save (transactional, debounced from the frontend store).
+///
+/// The frontend always sends the complete event list (snapshot), so this
+/// command must make the table EXACTLY match that list: rows missing from
+/// the payload are deleted. A plain upsert would leave deleted events behind
+/// (they would reappear on next load).
 #[tauri::command]
 pub fn calendar_events_save(
     state: State<'_, Db>,
@@ -72,9 +77,11 @@ pub fn calendar_events_save(
     with_db(&state, &root, |conn| {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         {
+            tx.execute("DELETE FROM calendar_events", [])
+                .map_err(|e| e.to_string())?;
             let mut stmt = tx
                 .prepare(
-                    "INSERT OR REPLACE INTO calendar_events
+                    "INSERT INTO calendar_events
                      (id, text, start, end, all_day, calendar_id, color, data)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )
