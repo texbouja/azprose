@@ -3,7 +3,7 @@
 // All structured storage shares this connection + migration chain:
 //   - v1/v2: spreadsheet tables (spreadsheets, spreadsheet_columns,
 //            spreadsheet_cells, spreadsheet_state)
-//   - v3+:   calendar tables (calendar_events), colles, etc.
+//   - v3+:   calendar tables (calendar_events)
 // Modules métier (spreadsheet_db, calendar_db, ...) only define their own
 // tables + commands and go through `db::with_db`.
 

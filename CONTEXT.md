@@ -10,7 +10,7 @@ An AZprose project is a **vault** — a directory of files managed by AZprose, a
 |-----------|------|-------|
 | `.md` | Markdown | Obsidian-compatible: `[[wikilinks]]`, `> [!callout]`, `#tags`, `![[transclusion]]`, `^[footnotes]` |
 | `.tex` | LaTeX | With LSP (completion, diagnostics). Root detected by `\documentclass` or marker files |
-| `.pdf` | PDF | With region selection (`Alt+drag`), annotations, wikilink embeds `![[file.pdf#page=N&rect=x,y,w,h]]` |
+| `.pdf` | PDF | With region selection (`Alt+drag`), wikilink embeds `![[file.pdf#page=N&rect=x,y,w,h]]` |
 | `.csv` | Spreadsheet | Rendered as jspreadsheet grid with formulas (`=SUM()`, `=AVERAGE()`, etc.) |
 
 ## Markdown Conventions (Obsidian-compatible)
@@ -35,10 +35,8 @@ The `.azprose/` directory stores project-specific data:
 ```
 .azprose/
 ├── config.json              # Project settings (editor, themes, math, etc.)
-├── colles/                  # Colles (oral exams) management
-│   ├── colloscope.json      # Schedule matrix: creneaux × semaines with groupes
-│   ├── eleves.json          # Students with class/group assignments
-│   └── fiches/*.json        # Individual assessment forms
+├── session.json             # Portable session mirror (open tabs, panels)
+├── data.db                  # Shared SQLite database (calendar events, spreadsheets)
 ├── csv-cache/               # Spreadsheet rendering cache (auto-managed)
 ├── pdf/
 │   └── rectangle/           # Cropped PDF region images (auto-managed)
@@ -54,21 +52,6 @@ Project-level settings. Key sections:
 - `callouts` — custom callout definitions
 - `favorites` — pinned files
 - `latex` — LaTeX build settings
-
-### colles/colloscope.json
-
-Schedule matrix for oral exams:
-- `creneaux[]` — time slots with `jour` (day), `matiere` (subject), `colleur` (examiner), `classe`, `salle`, `horaire`
-- `semaines[]` — weeks with `date` (start date)
-- `planning[slot_id][week_index]` — assigned groupe (G1–G8)
-
-### colles/eleves.json
-
-Student list: `nom`, `prenom`, `classe`, `groupe`.
-
-### colles/fiches/*.json
-
-Assessment forms linked to specific colle slots.
 
 ## LSP Servers (internal)
 
