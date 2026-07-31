@@ -1,4 +1,4 @@
-import { persistedState } from "@/stores/persisted.svelte";
+import { persistedScopedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS, createFile, createFolder, renameEntry, removeEntry, moveEntry, basename, dirname } from "@/lib";
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
@@ -35,7 +35,7 @@ export class FileOpsManager {
   newEntry = $state<{ parent: string; kind: "file" | "folder" } | null>(null);
   treeVersion = $state(0);
   contextMenuItems = $state<ContextMenuItem[]>([]);
-  favorites = persistedState<string[]>(STORAGE_KEYS.favorites, []);
+  favorites = persistedScopedState<string[]>(STORAGE_KEYS.favorites, []);
 
   activeDir = $derived.by(() => {
     const ap = this.deps.getActivePath();

@@ -29,6 +29,16 @@ export function getProjectRoot(): string | null {
   return _projectRoot;
 }
 
+/**
+ * Prefix a localStorage key with the current project scope.
+ * Anything stored under this key is isolated per vault (Obsidian-style),
+ * preventing data leakage between projects sharing the same WebView origin.
+ * Empty scope → unscoped (global fallback, e.g. before a project is opened).
+ */
+export function scopedKey(key: string): string {
+  return key + scope;
+}
+
 function draftKey(path: string): string {
   return DRAFT_PREFIX + scope + "::" + path;
 }

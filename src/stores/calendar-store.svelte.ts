@@ -5,20 +5,36 @@
  * localStorage is only used as a one-time migration source and as a secondary
  * cache during the transition; it is removed once data has been migrated.
  *
+ * The localStorage key is scoped per project (session.ts scopedKey) so events
+ * never leak between vaults sharing the same WebView origin. The key must be
+ * resolved lazily (at each access) because the project scope is only known
+ * after boot — a module-load evaluation would read the unscoped global key.
+ *
  * Events use rrule strings (RFC 5545) for recurrence.
  * Legacy `recurrence` fields are auto-migrated on import.
  */
 
 import type { CalendarEventData } from "@/lib/calendar-types";
 import { migrateRecurrence } from "@/calendar/recurrence";
+import { scopedKey } from "@/lib/session";
 import {
   calendarEventsGet,
   calendarEventsSave,
   calendarEventsClear,
 } from "@/lib/calendar-sqlite";
 
-const STORAGE_KEY = "mdview.calendar.events";
 const SAVE_DEBOUNCE_MS = 400;
+
+/** Scoped localStorage key — resolved lazily (project scope set after boot). */
+function storageKey(): string {
+  return scopedKey("mdview.calendar.events");
+}
+
+/**
+ * Pre-isolation unscoped key. Data was migrated to SQLite (source of truth)
+ * when isolation landed; this key is now dead and only cleaned up here.
+ */
+const LEGACY_STORAGE_KEY = "mdview.calendar.events";
 
 // ── localStorage serialization (legacy — migration source only) ──
 
@@ -41,7 +57,7 @@ function deserializeEvents(raw: string): CalendarEventData[] {
 
 function loadFromStorage(): CalendarEventData[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return [];
     return deserializeEvents(raw);
   } catch {
@@ -51,7 +67,7 @@ function loadFromStorage(): CalendarEventData[] {
 
 function saveToStorage(events: CalendarEventData[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, serializeEvents(events));
+    localStorage.setItem(storageKey(), serializeEvents(events));
   } catch {
     // ignore quota / serialization errors
   }
@@ -59,7 +75,11 @@ function saveToStorage(events: CalendarEventData[]): void {
 
 // ── Module state ─────────────────────────────────────────────
 
-let userEvents = $state<CalendarEventData[]>(loadFromStorage().map(migrateRecurrence));
+// Intentionally NOT loaded from localStorage at module init: the project
+// scope is unknown before boot, so a module-load read would hit the unscoped
+// global key (cross-vault leak). State starts empty and load() populates it
+// once the scope is set.
+let userEvents = $state<CalendarEventData[]>([]);
 
 let _rootPath: string | null = null;
 let _loadedRoot: string | null = null;
@@ -100,7 +120,7 @@ export function getCalendarStore() {
     /** Clear all calendar events from memory + SQLite (+ localStorage). */
     clearAll() {
       userEvents = [];
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(storageKey());
       if (_rootPath) {
         calendarEventsClear(_rootPath).catch((err) => {
           console.warn("[calendar] clear failed:", err);
@@ -116,26 +136,28 @@ export function getCalendarStore() {
     async load(rootPath: string | null) {
       if (!rootPath || _loadedRoot === rootPath) return;
       _rootPath = rootPath;
+      // Legacy pre-isolation key — never read, only purged.
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
       try {
         const dbEvents = await calendarEventsGet(rootPath);
         if (dbEvents.length > 0) {
           userEvents = dbEvents.map(migrateRecurrence);
           // SQLite is authoritative — drop any stale legacy localStorage copy
           // (it is only ever a migration source, never a fallback while SQLite has data).
-          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(storageKey());
           _loadedRoot = rootPath;
           return;
         }
-        // SQLite empty → one-time migration from legacy localStorage
+        // SQLite empty → one-time migration from scoped localStorage
         const legacy = loadFromStorage().map(migrateRecurrence);
         if (legacy.length > 0) {
           userEvents = legacy;
           await calendarEventsSave(rootPath, userEvents);
-          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(storageKey());
         }
         _loadedRoot = rootPath;
       } catch (err) {
-        console.warn("[calendar] load failed, falling back to localStorage:", err);
+        console.warn("[calendar] load failed, falling back to scoped localStorage:", err);
         userEvents = loadFromStorage().map(migrateRecurrence);
         _loadedRoot = rootPath;
       }

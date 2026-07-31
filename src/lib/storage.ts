@@ -1,3 +1,19 @@
+// ── localStorage key catalog ───────────────────────────────────────────────
+//
+// Two-tier persistence model (Obsidian-style vault isolation):
+//
+// 1. PROJECT DATA (scoped per vault via session.ts `scopedKey`) — stored under
+//    `key + "::" + root`, so two vaults sharing the same WebView origin never
+//    leak into each other:
+//      - session / drafts / lastFile / guests   (lib/session.ts, already scoped)
+//      - calendar events                        (calendar-store, scoped storageKey)
+//      - favorites                              (persistedScopedState)
+//
+// 2. GLOBAL UI PREFERENCES (unscoped) — theme, language, fonts, layout, etc.
+//    The per-project source of truth for these lives in `.azprose/config.json`
+//    (project-config.ts); localStorage is only a fast boot cache that loadConfig
+//    overrides with the vault's own values. `folders` is unscoped by design —
+//    folders.current[0] is how the app remembers the last opened project.
 export const STORAGE_KEYS = {
   themeMode: "mdview.theme",
   transparency: "mdview.transparency",
