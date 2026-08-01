@@ -4,6 +4,7 @@
   // table. Temporary scaffold used to validate the spreadsheet→datagrid live
   // bridge; a real SVAR grid component will replace this later.
 
+  import { onMount } from "svelte";
   import { datagridGet } from "@/datagrid/store";
   import type { DatagridData, DatagridColumnDef } from "@/datagrid/types";
 
@@ -43,6 +44,19 @@
   $effect(() => {
     const id = datagridId;
     if (id) load();
+  });
+
+  /** Reload when the linked spreadsheet pushes an update for THIS grid. */
+  function onGridUpdated(e: Event) {
+    const detail = (e as CustomEvent<{ datagridId?: string }>).detail;
+    if (detail?.datagridId && detail.datagridId === datagridId) {
+      load();
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener("azprose:datagrid-updated", onGridUpdated);
+    return () => window.removeEventListener("azprose:datagrid-updated", onGridUpdated);
   });
 
   /** Parse a DataHash blob `{"c0":"x","c1":"y"}` into a row map. */

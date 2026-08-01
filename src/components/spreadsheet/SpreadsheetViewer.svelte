@@ -318,6 +318,10 @@
     try {
       const changes = [...pendingCellChanges.values()];
       const structureNow = structureDirty;
+      // The link may have appeared after mount (e.g. "Ouvrir dans datagrid"
+      // created the grid while this sheet was already open) — re-check once
+      // per flush so edits still mirror into the newly-linked grid.
+      await refreshLinkedGrid();
 
       if (changes.length > 0) {
         await spreadsheetSaveCells(spreadsheetId, changes);
@@ -347,6 +351,13 @@
         if (linkedGridId) {
           await datagridSyncFromSpreadsheet(spreadsheetId);
         }
+      }
+
+      // The linked grid's SQLite rows are now up to date (cell sync, or full
+      // structural rebuild, or both) — tell any open datagrid view to reload
+      // so it mirrors the sheet without waiting for a manual refresh.
+      if (linkedGridId && (changes.length > 0 || structureNow)) {
+        notifyDatagridUpdated();
       }
 
     } catch (err) {
@@ -544,18 +555,47 @@
     const liveColumns = buildColumnsFromSheet(sheet);
     const stylesJson = captureStyles(sheet);
     const finalState = { ...viewState, styles: stylesJson };
-    spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState)
-      .then(() => {
-        viewState = finalState;
-        columns = liveColumns;
-        // Mirror the full snapshot into the linked grid (single write).
-        if (linkedGridId) {
-          datagridSyncFromSpreadsheet(spreadsheetId).catch((err: unknown) =>
-            console.warn("[spreadsheet] live bridge sync failed:", err)
-          );
-        }
-      })
-      .catch((err: unknown) => console.error("Failed to save spreadsheet:", err));
+    // Refresh the link first (a grid may have been created after mount) so
+    // the safety-net snapshot still mirrors into it.
+    refreshLinkedGrid().then(() => {
+      spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState)
+        .then(() => {
+          viewState = finalState;
+          columns = liveColumns;
+          // Mirror the full snapshot into the linked grid (single write).
+          if (linkedGridId) {
+            datagridSyncFromSpreadsheet(spreadsheetId)
+              .then(() => notifyDatagridUpdated())
+              .catch((err: unknown) =>
+                console.warn("[spreadsheet] live bridge sync failed:", err)
+              );
+          }
+        })
+        .catch((err: unknown) => console.error("Failed to save spreadsheet:", err));
+    });
+  }
+
+  /** Tell any open datagrid view that its linked grid changed → reload. */
+  function notifyDatagridUpdated() {
+    if (!linkedGridId) return;
+    window.dispatchEvent(new CustomEvent("azprose:datagrid-updated", {
+      detail: { datagridId: linkedGridId },
+    }));
+  }
+
+  /**
+   * Refresh the cached linked grid id. The link is only found on mount
+   * ($effect above); if a grid is created afterwards (toolbar button), this
+   * re-check picks it up so subsequent edits mirror into it too.
+   */
+  async function refreshLinkedGrid() {
+    if (linkedGridId) return; // already linked
+    try {
+      const meta = await datagridFindBySource(spreadsheetId);
+      linkedGridId = meta?.id ?? null;
+    } catch {
+      // keep previous value (null) — next flush will retry
+    }
   }
 
   // ── Toolbar ─────────────────────────────────────────────────────────────
