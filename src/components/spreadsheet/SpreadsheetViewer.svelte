@@ -7,8 +7,7 @@
   import { ExportPopup } from "@svar-ui/svelte-export-popup";
   import type { ExportRequest } from "@svar-ui/svelte-export-popup";
   import {
-    spreadsheetGet, spreadsheetCreate, spreadsheetSaveCells,
-    spreadsheetSaveState,
+    spreadsheetGet, spreadsheetCreate,
     spreadsheetSaveAll,
   } from "@/spreadsheet/store";
   import type { ColumnDef, SpreadsheetViewState } from "@/spreadsheet/types";
@@ -94,7 +93,7 @@
   // When this spreadsheet is the source of a datagrid (source_spreadsheet_id),
   // cell edits are mirrored into that grid so both representations stay in
   // sync. The grid is found once per spreadsheet open; re-sync happens AFTER
-  // the SQLite cell save (in doSaveCells) so the bridge never reads a stale
+  // the SQLite snapshot save (in saveSnapshot) so the bridge never reads a stale
   // spreadsheet snapshot.
   let linkedGridId: string | null = null;
 
@@ -187,8 +186,6 @@
       data = result.data;
       columns = autoDetectColumnTypes(result.data, result.columns);
       viewState = result.state;
-      // Sync lastSavedData with the fresh data so the next diff works
-      lastSavedData = result.data.map((row) => [...row]);
       loading = false;
 
       // Note: styles / hidden cols are restored via onReady (called after
@@ -219,18 +216,20 @@
     }
   });
 
-  // ── SQLite persistence on cell change ─────────────────────────────────
-
-  // Non-reactive copy of last saved data, used ONLY for diff computation
-  // in doSaveCells(). DO NOT make this $state — updating a $state variable
-  // would trigger Spreadsheet.svelte's $effect → init() → destroys the
-  // jspreadsheet instance and loses all in-memory state (styles, selection…).
-  let lastSavedData: string[][] = [];
+  // ── SQLite persistence (full snapshot, replace-all) ────────────────────
+  //
+  // Persistence uses the same replace-all contract as calendar and datagrid:
+  // the frontend always sends the COMPLETE snapshot (columns + data + state),
+  // and the Rust command makes the tables EXACTLY match it. No incremental
+  // cell diff — a diff would never persist structural changes (added column,
+  // deleted row, renamed header, resized column…). `spreadsheetSaveAll` is
+  // debounced (500ms) and fires on every change: cell edit, column/row
+  // insert/delete/move, resize.
 
   function debouncedSaveCells() {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      doSaveCells();
+      saveSnapshot();
     }, 500);
   }
 
@@ -251,47 +250,65 @@
     }
   }
 
-  async function doSaveCells() {
-    const sheet = spreadsheetRef?.getApi()?.[0];
-    if (!sheet) return;
-    const currentData = sheet.getData() as (string | number | boolean)[][];
-    const numCols = columns.length || (currentData[0]?.length ?? 0);
-    const changes: { row: number; col: number; value: string }[] = [];
-    for (let r = 0; r < currentData.length; r++) {
-      const row = currentData[r];
-      for (let c = 0; c < numCols; c++) {
-        const val = String(row?.[c] ?? "");
-        const oldVal = lastSavedData[r]?.[c] ?? "";
-        if (val !== oldVal) {
-          changes.push({ row: r, col: c, value: val } as any);
-        }
-      }
-    }
-    // Update the non-reactive diff copy — DO NOT update `data` (a $state)
-    // because that would trigger Spreadsheet.svelte's $effect → init() and
-    // destroy the current jspreadsheet instance.
-    lastSavedData = currentData.map((row) =>
-      Array.from({ length: numCols }, (_, c) => String(row[c] ?? ""))
-    );
+  /**
+   * Rebuild the column definitions from the live jspreadsheet instance.
+   * Structural edits (insert/delete/move/resize) never reach the `columns`
+   * $state prop, so we read the authoritative headers/widths at save time:
+   * headers via getHeaders(), widths via getWidth(c). Types/options are kept
+   * from the previous column config when the column already existed.
+   */
+  function buildColumnsFromSheet(sheet: JspreadsheetInstance): ColumnDef[] {
+    const live: ColumnDef[] = [];
     try {
-      if (changes.length > 0) {
-        await spreadsheetSaveCells(spreadsheetId, changes);
+      const headers = (sheet.getHeaders?.() as string[] | undefined) ?? [];
+      const count = Math.max(headers.length, columns.length);
+      for (let c = 0; c < count; c++) {
+        const prev = columns[c];
+        const width = Number(sheet.getWidth?.(c) ?? prev?.width ?? 120);
+        live.push({
+          title: headers[c] ?? prev?.title ?? "",
+          width: Number.isFinite(width) && width > 0 ? width : (prev?.width ?? 120),
+          type: prev?.type ?? "text",
+          options: prev?.options ?? undefined,
+        });
       }
-      // Also persist styles (save debounced across value saves)
+    } catch (err) {
+      console.warn("[spreadsheet] buildColumnsFromSheet failed, falling back:", err);
+      return columns;
+    }
+    return live;
+  }
+
+  async function saveSnapshot() {
+    const sheet = spreadsheetRef?.getApi()?.[0];
+    if (!sheet || !spreadsheetId) return;
+    try {
+      const currentData = sheet.getData() as (string | number | boolean)[][];
+      const strData = currentData.map((row) =>
+        Array.from({ length: row.length }, (_, c) => String(row[c] ?? ""))
+      );
+      const liveColumns = buildColumnsFromSheet(sheet);
       const stylesJson = captureStyles(sheet);
-      viewState = { ...viewState, styles: stylesJson };
-      await spreadsheetSaveState(spreadsheetId, viewState);
+      const finalState = { ...viewState, styles: stylesJson };
+      // Replace-all save: columns + cells + state exactly match the snapshot.
+      await spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState);
+      viewState = finalState;
       // Live bridge: mirror the now-persisted snapshot into the linked
       // datagrid (after the save so we never read a stale sheet).
       await syncLinkedGrid();
     } catch (err) {
-      console.error("Failed to save cells:", err);
+      console.error("Failed to save spreadsheet snapshot:", err);
     }
   }
 
-  // ── Change handler ──────────────────────────────────────────────────────
+  // ── Change handlers ─────────────────────────────────────────────────────
 
   function handleCellChange(_colIndex: number, _rowIndex: number, _value: any, _oldValue: any) {
+    debouncedSaveCells();
+  }
+
+  /** Column/row inserted, deleted, moved or resized → full snapshot save. */
+  function handleStructureChange() {
     debouncedSaveCells();
   }
 
@@ -443,7 +460,7 @@
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    doSaveCells();
+    saveSnapshot();
   }
 
   // ── Toolbar ─────────────────────────────────────────────────────────────
@@ -525,17 +542,18 @@
     if (!sheet || !spreadsheetId) return;
     // Cancel any pending debounced save
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-    // Capture data synchronously while the API is valid
+    // Capture data synchronously while the API is valid (live columns too,
+    // so structural changes made since the last debounce are not lost)
     const currentData = sheet.getData() as (string | number | boolean)[][];
-    const numCols = columns.length || (currentData[0]?.length ?? 0);
     const strData = currentData.map((row) =>
-      Array.from({ length: numCols }, (_, c) => String(row[c] ?? ""))
+      Array.from({ length: row.length }, (_, c) => String(row[c] ?? ""))
     );
+    const liveColumns = buildColumnsFromSheet(sheet);
     const stylesJson = captureStyles(sheet);
     const finalState = { ...viewState, styles: stylesJson };
     // Fire async save — don't await, let the destroy complete
     setTimeout(() => {
-      spreadsheetSaveAll(spreadsheetId, columns, strData, finalState)
+      spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState)
         .catch((err: unknown) => console.error("Failed to save on close:", err));
     }, 0);
   }
@@ -646,6 +664,7 @@
       {columns}
       toolbar={(dt: any, inst: any[]) => buildToolbar(dt, inst)}
       onchange={handleCellChange}
+      onStructureChange={handleStructureChange}
       onsave={handleSave}
       onReady={restoreViewState}
       onBeforeDestroy={flushOnDestroy}

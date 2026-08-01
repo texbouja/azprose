@@ -411,6 +411,87 @@ pub fn spreadsheet_save_state(
     })
 }
 
+/// Replace-all save: makes the tables EXACTLY match the snapshot.
+///
+/// Same contract as calendar_events_save / datagrid_save: the frontend always
+/// sends the complete snapshot (columns + cells + state), so any row/column
+/// missing from the payload is deleted. This is what makes structural edits
+/// (added/deleted/moved/resized columns, renamed headers, added/deleted rows)
+/// persist — an incremental cell diff would never touch `spreadsheet_columns`.
+/// Exposed as a pure function for unit tests.
+fn save_all(
+    conn: &mut rusqlite::Connection,
+    id: &str,
+    cols: &[ColumnDef],
+    rows: &[Vec<String>],
+    vs: &SpreadsheetViewState,
+) -> Result<(), String> {
+    let now = crate::db::now_iso();
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // Replace columns
+    tx.execute("DELETE FROM spreadsheet_columns WHERE spreadsheet_id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO spreadsheet_columns (spreadsheet_id, col_index, title, width, type, options)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
+            .map_err(|e| e.to_string())?;
+        for (i, col) in cols.iter().enumerate() {
+            stmt.execute(params![id, i as i32, col.title, col.width, col.col_type, col.options])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Replace cells
+    tx.execute("DELETE FROM spreadsheet_cells WHERE spreadsheet_id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value)
+                 VALUES (?1, ?2, ?3, ?4)",
+            )
+            .map_err(|e| e.to_string())?;
+        for (r, row) in rows.iter().enumerate() {
+            for (c, val) in row.iter().enumerate() {
+                stmt.execute(params![id, r as i32, c as i32, val])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    // Update state + timestamp
+    conn.execute(
+        "INSERT OR REPLACE INTO spreadsheet_state (spreadsheet_id, hidden_columns, hidden_rows, frozen_columns, frozen_rows, sort_column, sort_order, styles)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            id,
+            vs.hidden_columns,
+            vs.hidden_rows,
+            vs.frozen_columns,
+            vs.frozen_rows,
+            vs.sort_column,
+            vs.sort_order,
+            vs.styles,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE spreadsheets SET updated_at = ?1 WHERE id = ?2",
+        params![now, id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /// Full save on tab close: replaces all cells, columns, and state.
 #[tauri::command]
 pub fn spreadsheet_save_all(
@@ -427,72 +508,8 @@ pub fn spreadsheet_save_all(
         serde_json::from_str(&data).map_err(|e| format!("invalid data JSON: {e}"))?;
     let vs: SpreadsheetViewState =
         serde_json::from_str(&view_state).map_err(|e| format!("invalid state JSON: {e}"))?;
-    let now = chrono::Utc::now().to_rfc3339();
 
-    with_db(&state, &root, |conn| {
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
-
-        // Replace columns
-        tx.execute("DELETE FROM spreadsheet_columns WHERE spreadsheet_id = ?1", params![id])
-            .map_err(|e| e.to_string())?;
-        {
-            let mut stmt = tx
-                .prepare(
-                    "INSERT INTO spreadsheet_columns (spreadsheet_id, col_index, title, width, type, options)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                )
-                .map_err(|e| e.to_string())?;
-            for (i, col) in cols.iter().enumerate() {
-                stmt.execute(params![id, i as i32, col.title, col.width, col.col_type, col.options])
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-
-        // Replace cells
-        tx.execute("DELETE FROM spreadsheet_cells WHERE spreadsheet_id = ?1", params![id])
-            .map_err(|e| e.to_string())?;
-        {
-            let mut stmt = tx
-                .prepare(
-                    "INSERT INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value)
-                     VALUES (?1, ?2, ?3, ?4)",
-                )
-                .map_err(|e| e.to_string())?;
-            for (r, row) in rows.iter().enumerate() {
-                for (c, val) in row.iter().enumerate() {
-                    stmt.execute(params![id, r as i32, c as i32, val])
-                        .map_err(|e| e.to_string())?;
-                }
-            }
-        }
-
-        tx.commit().map_err(|e| e.to_string())?;
-
-        // Update state + timestamp
-        conn.execute(
-            "INSERT OR REPLACE INTO spreadsheet_state (spreadsheet_id, hidden_columns, hidden_rows, frozen_columns, frozen_rows, sort_column, sort_order, styles)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                id,
-                vs.hidden_columns,
-                vs.hidden_rows,
-                vs.frozen_columns,
-                vs.frozen_rows,
-                vs.sort_column,
-                vs.sort_order,
-                vs.styles,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-
-        conn.execute(
-            "UPDATE spreadsheets SET updated_at = ?1 WHERE id = ?2",
-            params![now, id],
-        )
-        .map_err(|e| e.to_string())?;
-
-        Ok(())
-    })
+    with_db(&state, &root, |conn| save_all(conn, &id, &cols, &rows, &vs))
 }
 
 /// Eagerly initialize the SQLite database (called at app startup so the
@@ -581,4 +598,147 @@ pub fn spreadsheet_export_csv(
 
         Ok(())
     })
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Fresh schema: SCHEMA_V1 (spreadsheet tables) + the v2 `styles` column
+    /// migration (mirror of production init_db), so spreadsheet_state accepts
+    /// the styles field that save_all writes.
+    fn test_schema(conn: &rusqlite::Connection) {
+        conn.execute_batch(crate::db::SCHEMA_V1).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE spreadsheet_state ADD COLUMN styles TEXT DEFAULT '{}';",
+        )
+        .unwrap();
+    }
+
+    fn seed_sheet(conn: &rusqlite::Connection, id: &str) {
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO spreadsheets (id, name, imported_at, updated_at) VALUES (?1, 'S', ?2, ?2)",
+            params![id, now],
+        )
+        .unwrap();
+    }
+
+    fn col(title: &str, width: i32, col_type: &str) -> ColumnDef {
+        ColumnDef {
+            title: title.to_string(),
+            width,
+            col_type: col_type.to_string(),
+            options: None,
+        }
+    }
+
+    fn state() -> SpreadsheetViewState {
+        SpreadsheetViewState::default()
+    }
+
+    fn count(conn: &rusqlite::Connection, table: &str, id: &str) -> i64 {
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM {table} WHERE spreadsheet_id = '{}'", id),
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+    }
+
+    /// Regression test: a snapshot with MORE columns than before must persist
+    /// the added column AND its cell values (the old incremental cell-diff
+    /// saved values but never spreadsheet_columns, so added columns vanished
+    /// on reload because spreadsheet_get rebuilt the matrix with the stale
+    /// column count).
+    #[test]
+    fn save_all_persists_added_column_with_values() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        seed_sheet(&conn, "s1");
+
+        // 2 columns, 1 row of data
+        let cols = vec![col("Nom", 150, "text"), col("Note", 100, "number")];
+        let rows = vec![vec!["Alice".to_string(), "15".to_string()]];
+        save_all(&mut conn, "s1", &cols, &rows, &state()).unwrap();
+        assert_eq!(count(&conn, "spreadsheet_columns", "s1"), 2);
+        assert_eq!(count(&conn, "spreadsheet_cells", "s1"), 2);
+
+        // User adds a 3rd column and fills it — full snapshot now has 3 cols
+        let cols = vec![
+            col("Nom", 150, "text"),
+            col("Note", 100, "number"),
+            col("Salle", 120, "text"),
+        ];
+        let rows = vec![vec![
+            "Alice".to_string(),
+            "15".to_string(),
+            "A103".to_string(),
+        ]];
+        save_all(&mut conn, "s1", &cols, &rows, &state()).unwrap();
+
+        assert_eq!(
+            count(&conn, "spreadsheet_columns", "s1"),
+            3,
+            "added column must be persisted in spreadsheet_columns"
+        );
+        // The value of the added column must be readable back
+        let value: String = conn
+            .query_row(
+                "SELECT value FROM spreadsheet_cells
+                 WHERE spreadsheet_id = 's1' AND row_index = 0 AND col_index = 2",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, "A103");
+    }
+
+    /// Replace-all contract: a column removed from the snapshot must not
+    /// survive — same regression as calendar/datagrid replace-all saves.
+    #[test]
+    fn save_all_removes_deleted_column() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        seed_sheet(&conn, "s1");
+
+        let cols = vec![col("A", 120, "text"), col("B", 120, "text")];
+        let rows = vec![vec!["x".to_string(), "y".to_string()]];
+        save_all(&mut conn, "s1", &cols, &rows, &state()).unwrap();
+        assert_eq!(count(&conn, "spreadsheet_columns", "s1"), 2);
+
+        // User deletes column B in the UI → snapshot shrinks to 1 column
+        let cols = vec![col("A", 120, "text")];
+        let rows = vec![vec!["x".to_string()]];
+        save_all(&mut conn, "s1", &cols, &rows, &state()).unwrap();
+
+        assert_eq!(
+            count(&conn, "spreadsheet_columns", "s1"),
+            1,
+            "deleted column must not survive a save"
+        );
+        assert_eq!(
+            count(&conn, "spreadsheet_cells", "s1"),
+            1,
+            "cells of deleted column must not survive"
+        );
+    }
+
+    /// Empty snapshot clears cells but keeps the sheet + state row.
+    #[test]
+    fn save_all_with_empty_snapshot_clears_tables() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        seed_sheet(&conn, "s1");
+
+        let cols = vec![col("A", 120, "text")];
+        let rows = vec![vec!["x".to_string()]];
+        save_all(&mut conn, "s1", &cols, &rows, &state()).unwrap();
+
+        save_all(&mut conn, "s1", &[], &[], &state()).unwrap();
+        assert_eq!(count(&conn, "spreadsheet_columns", "s1"), 0);
+        assert_eq!(count(&conn, "spreadsheet_cells", "s1"), 0);
+    }
 }

@@ -13,6 +13,7 @@
     worksheetOptions = {},
     onchange,
     onsave,
+    onStructureChange,
     contextMenu,
     toolbar,
     onReady,
@@ -25,6 +26,10 @@
     onchange?: (colIndex: number, rowIndex: number, value: any, oldValue: any) => void;
     /** Fires on Ctrl+S / toolbar Save button click. */
     onsave?: () => void;
+    /** Fires on any structural change: column/row insert, delete, move, resize.
+     *  The parent uses it to trigger a full snapshot save (columns must be
+     *  persisted too, not just cell values). */
+    onStructureChange?: () => void;
     contextMenu?: (sheet: any, col: string | number | null, row: string | number | null, evt: any, items: any[], role: string) => any[];
     toolbar?: ((defaultToolbar: any, instance: JspreadsheetInstance[]) => any) | false;
     /** Fires when jspreadsheet instance is ready. */
@@ -83,6 +88,16 @@
         onsave: () => {
           onsave?.();
         },
+        // Structural events: any column/row insert/delete/move/resize must
+        // trigger a full snapshot save (cells AND columns) so structure
+        // changes persist — not just cell edits.
+        oninsertcolumn: () => onStructureChange?.(),
+        ondeletecolumn: () => onStructureChange?.(),
+        oninsertrow: () => onStructureChange?.(),
+        ondeleterow: () => onStructureChange?.(),
+        onmovecolumn: () => onStructureChange?.(),
+        onmoverow: () => onStructureChange?.(),
+        onresizecolumn: () => onStructureChange?.(),
       });
     } catch (err) {
       console.error("[Spreadsheet] jspreadsheet init failed:", err);
