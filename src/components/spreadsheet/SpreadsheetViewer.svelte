@@ -8,10 +8,12 @@
   import type { ExportRequest } from "@svar-ui/svelte-export-popup";
   import {
     spreadsheetGet, spreadsheetCreate,
-    spreadsheetSaveAll,
+    spreadsheetSaveAll, spreadsheetSaveCells, spreadsheetSaveStructure,
   } from "@/spreadsheet/store";
-  import type { ColumnDef, SpreadsheetViewState } from "@/spreadsheet/types";
-  import { datagridFindBySource, datagridSyncFromSpreadsheet } from "@/datagrid/store";
+  import type { ColumnDef, SpreadsheetViewState, CellChange } from "@/spreadsheet/types";
+  import {
+    datagridFindBySource, datagridSyncFromSpreadsheet, datagridSyncCells,
+  } from "@/datagrid/store";
   let {
     spreadsheetId = "",
   }: {
@@ -87,14 +89,13 @@
   let exportAnchor = $state<HTMLElement | null>(null);
 
   // Debounce timer
-  let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── Live bridge to a linked SVAR datagrid ──────────────────────────────
   // When this spreadsheet is the source of a datagrid (source_spreadsheet_id),
   // cell edits are mirrored into that grid so both representations stay in
   // sync. The grid is found once per spreadsheet open; re-sync happens AFTER
-  // the SQLite snapshot save (in saveSnapshot) so the bridge never reads a stale
-  // spreadsheet snapshot.
+  // the SQLite save (cells → datagridSyncCells, structure →
+  // datagridSyncFromSpreadsheet) so the bridge never reads a stale snapshot.
   let linkedGridId: string | null = null;
 
   $effect(() => {
@@ -119,20 +120,6 @@
       cancelled = true;
     };
   });
-
-  async function syncLinkedGrid() {
-    if (!linkedGridId) return;
-    try {
-      const gridId = await datagridSyncFromSpreadsheet(spreadsheetId);
-      if (gridId) {
-        window.dispatchEvent(new CustomEvent("azprose:datagrid-synced", {
-          detail: { spreadsheetId, gridId },
-        }));
-      }
-    } catch (err) {
-      console.warn("[spreadsheet] live bridge sync failed:", err);
-    }
-  }
 
   // ── Load ────────────────────────────────────────────────────────────────
 
@@ -159,7 +146,14 @@
         ? JSON.parse(viewState.styles) as Record<string, string>
         : null;
       if (styles && Object.keys(styles).length > 0) {
-        sheet.setStyle(styles);
+        // Replaying stored styles dispatches onchangestyle per cell — the
+        // restoring flag stops them from re-triggering a save.
+        restoring = true;
+        try {
+          sheet.setStyle(styles);
+        } finally {
+          restoring = false;
+        }
       }
     } catch (e) {
       console.warn("[spreadsheet] failed to restore styles:", e);
@@ -216,20 +210,38 @@
     }
   });
 
-  // ── SQLite persistence (full snapshot, replace-all) ────────────────────
+  // ── SQLite persistence (incremental cells + structural save) ─────────────
   //
-  // Persistence uses the same replace-all contract as calendar and datagrid:
-  // the frontend always sends the COMPLETE snapshot (columns + data + state),
-  // and the Rust command makes the tables EXACTLY match it. No incremental
-  // cell diff — a diff would never persist structural changes (added column,
-  // deleted row, renamed header, resized column…). `spreadsheetSaveAll` is
-  // debounced (500ms) and fires on every change: cell edit, column/row
-  // insert/delete/move, resize.
+  // Two-tier model, both flushed together on every change batch:
+  //   1. Cell edits — jspreadsheet's onchange gives exact (row, col, value)
+  //      coordinates, so we accumulate them in a Map keyed by "row:col" and
+  //      upsert via `spreadsheetSaveCells` (native ON CONFLICT, O(changes)).
+  //      No diff, no O(R×C) snapshot, no getStyle()/getData() on cell edits.
+  //   2. Structural changes (column/row insert/delete/move/resize, style
+  //      formatting) — `spreadsheetSaveStructure` replace-alls the columns,
+  //      garbage-collects orphan cells and persists the view state. This is
+  //      the path that guarantees added columns survive (the old bug: an
+  //      incremental cell save that never touched spreadsheet_columns).
+  // Order per flush: cells FIRST, structure AFTER (the structure save then
+  // removes any orphan cells, including edits that landed in a deleted
+  // column/row). `spreadsheetSaveAll` remains only as the safety net on
+  // Ctrl+S / tab close.
 
-  function debouncedSaveCells() {
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingCellChanges = new Map<string, CellChange>();
+  // Plain variables: only touched by handlers / flushChanges, never rendered.
+  let structureDirty = false;
+  let saving = false;
+  let pendingFlush = false;
+  // Set while restoreViewState replays stored styles into jspreadsheet, so
+  // the resulting onchangestyle events do not re-trigger a save.
+  let restoring = false;
+
+  function debouncedSave() {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      saveSnapshot();
+      saveTimer = null;
+      flushChanges();
     }, 500);
   }
 
@@ -254,15 +266,25 @@
    * Rebuild the column definitions from the live jspreadsheet instance.
    * Structural edits (insert/delete/move/resize) never reach the `columns`
    * $state prop, so we read the authoritative headers/widths at save time:
-   * headers via getHeaders(), widths via getWidth(c). Types/options are kept
-   * from the previous column config when the column already existed.
+   * headers via getHeaders(true), widths via getWidth(c). Types/options are
+   * kept from the previous column config when the column already existed.
+   *
+   * IMPORTANT: `getHeaders()` without the `asArray` argument returns a joined
+   * STRING ("A,B,C,…" with the worksheet's csvDelimiter), not an array. The
+   * original code indexed that string — every header collapsed to a single
+   * character and `headers.length` became the CHARACTER count (27 for 14
+   * columns), so EVERY structural save / Ctrl+S / tab-close persisted garbage
+   * columns and the sheet corrupted after reload. `getHeaders(true)` returns
+   * the real array, one entry per live column (hidden ones included), and its
+   * length IS the authoritative column count.
    */
   function buildColumnsFromSheet(sheet: JspreadsheetInstance): ColumnDef[] {
     const live: ColumnDef[] = [];
     try {
-      const headers = (sheet.getHeaders?.() as string[] | undefined) ?? [];
-      const count = Math.max(headers.length, columns.length);
-      for (let c = 0; c < count; c++) {
+      const headers = (sheet.getHeaders?.(true) as string[] | undefined) ?? [];
+      // Defensive: never let a silent empty result wipe the persisted columns.
+      if (headers.length === 0 && columns.length > 0) return columns;
+      for (let c = 0; c < headers.length; c++) {
         const prev = columns[c];
         const width = Number(sheet.getWidth?.(c) ?? prev?.width ?? 120);
         live.push({
@@ -279,37 +301,87 @@
     return live;
   }
 
-  async function saveSnapshot() {
+  /**
+   * Flush the accumulated changes. Cells → SQLite → linked datagrid, then
+   * structure (if dirty) → SQLite → linked datagrid full sync.
+   * Overlap-protected: a running flush re-queues (`pendingFlush`) instead of
+   * stacking parallel snapshots.
+   */
+  async function flushChanges() {
+    if (saving) {
+      pendingFlush = true;
+      return;
+    }
     const sheet = spreadsheetRef?.getApi()?.[0];
     if (!sheet || !spreadsheetId) return;
+    saving = true;
     try {
-      const currentData = sheet.getData() as (string | number | boolean)[][];
-      const strData = currentData.map((row) =>
-        Array.from({ length: row.length }, (_, c) => String(row[c] ?? ""))
-      );
-      const liveColumns = buildColumnsFromSheet(sheet);
-      const stylesJson = captureStyles(sheet);
-      const finalState = { ...viewState, styles: stylesJson };
-      // Replace-all save: columns + cells + state exactly match the snapshot.
-      await spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState);
-      viewState = finalState;
-      // Live bridge: mirror the now-persisted snapshot into the linked
-      // datagrid (after the save so we never read a stale sheet).
-      await syncLinkedGrid();
+      const changes = [...pendingCellChanges.values()];
+      const structureNow = structureDirty;
+
+      if (changes.length > 0) {
+        await spreadsheetSaveCells(spreadsheetId, changes);
+        // Remove only the entries that were just saved — edits made while the
+        // IPC was in flight must stay queued for the next flush (a blanket
+        // clear() would silently drop them).
+        for (const ch of changes) {
+          pendingCellChanges.delete(`${ch.row_index}:${ch.col_index}`);
+        }
+        if (linkedGridId) {
+          await datagridSyncCells(spreadsheetId, changes);
+        }
+      }
+
+      if (structureNow) {
+        const liveColumns = buildColumnsFromSheet(sheet);
+        const numRows = (sheet.getData() as unknown[]).length;
+        const stylesJson = captureStyles(sheet);
+        const finalState = { ...viewState, styles: stylesJson };
+        await spreadsheetSaveStructure(spreadsheetId, liveColumns, numRows, finalState);
+        structureDirty = false;
+        viewState = finalState;
+        // Mirror the persisted columns back into the $state so subsequent
+        // buildColumnsFromSheet() lookups (type/width via `prev`) stay
+        // accurate after inserts/deletes/moves.
+        columns = liveColumns;
+        if (linkedGridId) {
+          await datagridSyncFromSpreadsheet(spreadsheetId);
+        }
+      }
+
     } catch (err) {
-      console.error("Failed to save spreadsheet snapshot:", err);
+      console.error("Failed to save spreadsheet changes:", err);
+    } finally {
+      saving = false;
+      if (pendingFlush) {
+        pendingFlush = false;
+        flushChanges();
+      }
     }
   }
 
   // ── Change handlers ─────────────────────────────────────────────────────
 
-  function handleCellChange(_colIndex: number, _rowIndex: number, _value: any, _oldValue: any) {
-    debouncedSaveCells();
+  function handleCellChange(colIndex: number, rowIndex: number, value: any, _oldValue: any) {
+    pendingCellChanges.set(`${rowIndex}:${colIndex}`, {
+      row_index: rowIndex,
+      col_index: colIndex,
+      value: String(value ?? ""),
+    });
+    debouncedSave();
   }
 
-  /** Column/row inserted, deleted, moved or resized → full snapshot save. */
+  /** Column/row inserted, deleted, moved or resized → structural save. */
   function handleStructureChange() {
-    debouncedSaveCells();
+    structureDirty = true;
+    debouncedSave();
+  }
+
+  /** Toolbar formatting (bold/italic/align/color) → structural save. */
+  function handleStyleChange() {
+    if (restoring) return;
+    structureDirty = true;
+    debouncedSave();
   }
 
   // ── Import dialog ───────────────────────────────────────────────────────
@@ -455,12 +527,35 @@
   // ── Save (Ctrl+S / toolbar Save) ─────────────────────────────────────────
 
   function handleSave() {
-    // Flush pending debounced save immediately
+    // Safety net: flush the FULL snapshot immediately (columns + cells +
+    // state) instead of the incremental path — a single replace-all write.
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    saveSnapshot();
+    pendingCellChanges.clear();
+    structureDirty = false;
+    const sheet = spreadsheetRef?.getApi()?.[0];
+    if (!sheet || !spreadsheetId) return;
+    const currentData = sheet.getData() as (string | number | boolean)[][];
+    const strData = currentData.map((row) =>
+      Array.from({ length: row.length }, (_, c) => String(row[c] ?? ""))
+    );
+    const liveColumns = buildColumnsFromSheet(sheet);
+    const stylesJson = captureStyles(sheet);
+    const finalState = { ...viewState, styles: stylesJson };
+    spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState)
+      .then(() => {
+        viewState = finalState;
+        columns = liveColumns;
+        // Mirror the full snapshot into the linked grid (single write).
+        if (linkedGridId) {
+          datagridSyncFromSpreadsheet(spreadsheetId).catch((err: unknown) =>
+            console.warn("[spreadsheet] live bridge sync failed:", err)
+          );
+        }
+      })
+      .catch((err: unknown) => console.error("Failed to save spreadsheet:", err));
   }
 
   // ── Toolbar ─────────────────────────────────────────────────────────────
@@ -532,18 +627,20 @@
 
   /**
    * Flush pending save before jspreadsheet is destroyed.
-   * Called synchronously from Spreadsheet.svelte's onDestroy,
-   * BEFORE jspreadsheet.destroy() runs. Captures data now, fires
-   * the async IPC after a microtask so the component lifecycle
-   * can complete.
+   * Called synchronously from Spreadsheet.svelte's onDestroy (with the raw
+   * api — the `spreadsheetRef` bind:this may already be cleared at that
+   * point), BEFORE jspreadsheet.destroy() runs. Captures data now, fires
+   * the async IPC after a microtask so the component lifecycle can complete.
    */
-  function flushOnDestroy() {
-    const sheet = spreadsheetRef?.getApi()?.[0];
+  function flushOnDestroy(api: JspreadsheetInstance[] | null) {
+    const sheet = api?.[0];
     if (!sheet || !spreadsheetId) return;
     // Cancel any pending debounced save
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    pendingCellChanges.clear();
+    structureDirty = false;
     // Capture data synchronously while the API is valid (live columns too,
-    // so structural changes made since the last debounce are not lost)
+    // so structural changes made since the last flush are not lost)
     const currentData = sheet.getData() as (string | number | boolean)[][];
     const strData = currentData.map((row) =>
       Array.from({ length: row.length }, (_, c) => String(row[c] ?? ""))
@@ -554,6 +651,11 @@
     // Fire async save — don't await, let the destroy complete
     setTimeout(() => {
       spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState)
+        .then(() => {
+          if (linkedGridId) {
+            return datagridSyncFromSpreadsheet(spreadsheetId);
+          }
+        })
         .catch((err: unknown) => console.error("Failed to save on close:", err));
     }, 0);
   }
@@ -665,6 +767,7 @@
       toolbar={(dt: any, inst: any[]) => buildToolbar(dt, inst)}
       onchange={handleCellChange}
       onStructureChange={handleStructureChange}
+      onStyleChange={handleStyleChange}
       onsave={handleSave}
       onReady={restoreViewState}
       onBeforeDestroy={flushOnDestroy}

@@ -6,6 +6,7 @@
 //   - v3:    calendar tables (calendar_events)
 //   - v4:    datagrid tables (datagrids, datagrid_columns, datagrid_rows)
 //   - v5:    datagrids.source_spreadsheet_id (live bridge spreadsheet→grid)
+//   - v6:    drop redundant indexes (UNIQUE constraints already cover lookups)
 // Modules métier (spreadsheet_db, calendar_db, datagrid_db, ...) only define
 // their own tables + commands and go through `db::with_db`.
 
@@ -123,6 +124,12 @@ CREATE INDEX IF NOT EXISTS idx_grid_rows ON datagrid_rows(grid_id, row_index);
 ";
 
 fn init_db(conn: &Connection) -> Result<(), String> {
+    // Per-connection pragma (not persisted in the DB file): WAL mode with
+    // synchronous=NORMAL is the recommended fast+safe combo — a crash may
+    // lose recent frames on checkpoint but can never corrupt the database.
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(|e| e.to_string())?;
+
     let mut version: i32 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap_or(0);
@@ -151,6 +158,18 @@ fn init_db(conn: &Connection) -> Result<(), String> {
             "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;"
         ).map_err(|e| e.to_string())?;
         version = 5;
+    }
+    // v6 — perf: the UNIQUE(spreadsheet_id, col_index) and
+    // UNIQUE(spreadsheet_id, row_index, col_index) constraints already build
+    // the exact indexes every query needs (WHERE spreadsheet_id + ORDER BY
+    // index). The extra idx_cells_lookup / idx_columns_order indexes only
+    // doubled the write cost of every INSERT without speeding up reads.
+    if version < 6 {
+        conn.execute_batch(
+            "DROP INDEX IF EXISTS idx_cells_lookup;
+             DROP INDEX IF EXISTS idx_columns_order;"
+        ).map_err(|e| e.to_string())?;
+        version = 6;
     }
 
     if version > 0 {

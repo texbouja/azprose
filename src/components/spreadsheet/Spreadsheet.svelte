@@ -14,6 +14,7 @@
     onchange,
     onsave,
     onStructureChange,
+    onStyleChange,
     contextMenu,
     toolbar,
     onReady,
@@ -30,13 +31,18 @@
      *  The parent uses it to trigger a full snapshot save (columns must be
      *  persisted too, not just cell values). */
     onStructureChange?: () => void;
+    /** Fires when cell styles change (toolbar formatting). Triggers a
+     *  structural save so per-cell styles persist. */
+    onStyleChange?: () => void;
     contextMenu?: (sheet: any, col: string | number | null, row: string | number | null, evt: any, items: any[], role: string) => any[];
     toolbar?: ((defaultToolbar: any, instance: JspreadsheetInstance[]) => any) | false;
     /** Fires when jspreadsheet instance is ready. */
     onReady?: () => void;
     /** Fires BEFORE jspreadsheet is destroyed (onDestroy lifecycle).
-     *  Use this to flush pending saves while the API is still valid. */
-    onBeforeDestroy?: () => void;
+     *  Receives the raw jspreadsheet API so the parent can flush pending
+     *  saves while the instance is still valid — without depending on a
+     *  `bind:this` reference that may already be cleared during teardown. */
+    onBeforeDestroy?: (api: JspreadsheetInstance[] | null) => void;
     class?: string;
   } = $props();
 
@@ -98,6 +104,9 @@
         onmovecolumn: () => onStructureChange?.(),
         onmoverow: () => onStructureChange?.(),
         onresizecolumn: () => onStructureChange?.(),
+        // Formatting changes (bold/italic/align/color) must persist too —
+        // captureStyles() reads them, so treat them as a structural save.
+        onchangestyle: () => onStyleChange?.(),
       });
     } catch (err) {
       console.error("[Spreadsheet] jspreadsheet init failed:", err);
@@ -290,8 +299,9 @@
   });
 
   onDestroy(() => {
-    // Give the parent a chance to flush pending saves while the API is valid
-    onBeforeDestroy?.();
+    // Give the parent a chance to flush pending saves while the API is valid.
+    // Pass the api directly — the parent's `bind:this` may already be null.
+    onBeforeDestroy?.(api);
     try { jspreadsheet.destroy(el as any, true); } catch {}
     api = null;
   });

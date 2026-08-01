@@ -8,6 +8,7 @@ import type {
   DatagridColumnDef,
   DatagridRow,
 } from "./types";
+import type { CellChange } from "@/spreadsheet/types";
 
 function requireRoot(): string {
   const r = getRootPath();
@@ -91,4 +92,21 @@ export async function datagridSyncFromSpreadsheet(
 ): Promise<string | null> {
   const root = requireRoot();
   return invoke("datagrid_sync_from_spreadsheet", { root, spreadsheetId });
+}
+
+/**
+ * Incremental live bridge: mirror a batch of cell edits into the linked
+ * datagrid — O(changes), no full rebuild. Skipped cells (out-of-bounds)
+ * are handled by the structural sync (`datagridSyncFromSpreadsheet`).
+ */
+export async function datagridSyncCells(
+  spreadsheetId: string,
+  changes: CellChange[],
+): Promise<void> {
+  const root = requireRoot();
+  return invoke("datagrid_sync_cells", {
+    root,
+    spreadsheetId,
+    changes: JSON.stringify(changes),
+  });
 }

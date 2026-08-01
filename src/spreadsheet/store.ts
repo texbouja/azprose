@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { getRootPath } from "@/stores/root-path.svelte";
-import type { SpreadsheetData, SpreadsheetMeta, ColumnDef, SpreadsheetViewState } from "./types";
+import type { SpreadsheetData, SpreadsheetMeta, ColumnDef, SpreadsheetViewState, CellChange } from "./types";
 
 function requireRoot(): string {
   const r = getRootPath();
@@ -66,6 +66,43 @@ export async function spreadsheetSaveAll(
     id,
     columns: JSON.stringify(columns),
     data: JSON.stringify(data),
+    viewState: JSON.stringify(viewState),
+  });
+}
+
+/**
+ * Incremental cell save: upsert each edited cell by coordinates
+ * (native `ON CONFLICT … DO UPDATE`). O(changes) — no snapshot.
+ */
+export async function spreadsheetSaveCells(
+  id: string,
+  changes: CellChange[],
+): Promise<void> {
+  const root = requireRoot();
+  return invoke("spreadsheet_save_cells", {
+    root,
+    id,
+    changes: JSON.stringify(changes),
+  });
+}
+
+/**
+ * Structural save: columns replace-all + orphan cell GC + view state.
+ * Must be flushed together with (after) `spreadsheetSaveCells` on any
+ * change batch so structural edits never get lost (the old bug).
+ */
+export async function spreadsheetSaveStructure(
+  id: string,
+  columns: ColumnDef[],
+  numRows: number,
+  viewState: SpreadsheetViewState,
+): Promise<void> {
+  const root = requireRoot();
+  return invoke("spreadsheet_save_structure", {
+    root,
+    id,
+    columns: JSON.stringify(columns),
+    numRows,
     viewState: JSON.stringify(viewState),
   });
 }

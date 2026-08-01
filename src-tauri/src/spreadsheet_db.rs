@@ -21,6 +21,15 @@ pub struct SpreadsheetMeta {
     pub updated_at: String,
 }
 
+/// One cell edit: coordinates come straight from the jspreadsheet `onchange`
+/// callback (col, row, value) — no diff needed, no O(R×C) snapshot.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CellChange {
+    pub row_index: i32,
+    pub col_index: i32,
+    pub value: String,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpreadsheetData {
     pub id: String,
@@ -159,6 +168,22 @@ pub fn spreadsheet_create(
     })
 }
 
+/// Rebuild the 2D data matrix from the column defs + stored cells.
+/// Dimensions: `columns.len()` columns × (max row index + 1) rows.
+/// Cells outside the column bounds are dropped (defensive — save paths keep
+/// columns and cells consistent, but a partial write must not panic the get).
+fn build_matrix(columns: &[ColumnDef], cells: &[(i32, i32, String, String)]) -> Vec<Vec<String>> {
+    let max_row = cells.iter().map(|c| c.0).max().unwrap_or(0) as usize;
+    let num_cols = columns.len();
+    let mut data: Vec<Vec<String>> = vec![vec![String::new(); num_cols]; max_row + 1];
+    for (r, c, val, _style) in cells {
+        if *r as usize <= max_row && (*c as usize) < num_cols {
+            data[*r as usize][*c as usize] = val.clone();
+        }
+    }
+    data
+}
+
 /// Get full spreadsheet data for display.
 #[tauri::command]
 pub fn spreadsheet_get(
@@ -219,14 +244,7 @@ pub fn spreadsheet_get(
             .map_err(|e| e.to_string())?;
 
         // Build matrix: determine dimensions from columns + max row index
-        let max_row = cells.iter().map(|c| c.0).max().unwrap_or(0) as usize;
-        let num_cols = columns.len();
-        let mut data: Vec<Vec<String>> = vec![vec![String::new(); num_cols]; max_row + 1];
-        for (r, c, val, _style) in &cells {
-            if *r as usize <= max_row && (*c as usize) < num_cols {
-                data[*r as usize][*c as usize] = val.clone();
-            }
-        }
+        let data = build_matrix(&columns, &cells);
 
         // View state
         let mut state_stmt = conn
@@ -408,6 +426,118 @@ fn save_all(
     Ok(())
 }
 
+/// Incremental cell save: upsert each edited cell with a native
+/// `ON CONFLICT … DO UPDATE` — O(changes), no DELETE-all, no table rewrite.
+///
+/// Contract with the frontend: cell edits come from the jspreadsheet
+/// `onchange` callback which provides exact (row, col, value) coordinates,
+/// so there is nothing to diff — the DB follows every single edit.
+/// Structural edits are NOT handled here: they go to `save_structure`
+/// (a missing structure save is exactly the bug that lost added columns).
+///
+/// The frontend flushes BOTH (cells then structure) together on every
+/// change batch, so a mid-edit crash can only lose the very last edits.
+fn save_cells(
+    conn: &mut rusqlite::Connection,
+    id: &str,
+    changes: &[CellChange],
+) -> Result<(), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(spreadsheet_id, row_index, col_index)
+                 DO UPDATE SET value = excluded.value",
+            )
+            .map_err(|e| e.to_string())?;
+        for ch in changes {
+            stmt.execute(params![id, ch.row_index, ch.col_index, ch.value])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE spreadsheets SET updated_at = ?1 WHERE id = ?2",
+        params![crate::db::now_iso(), id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Structural save: replace-all columns + view state (same replace-all
+/// contract as `save_all` for the structural tables), then garbage-collect
+/// orphan cells — rows beyond `num_rows` and columns beyond the new column
+/// list must not survive (deleted rows / deleted columns).
+///
+/// O(columns + orphans): column count is small and orphan cleanup is a
+/// bounded DELETE, so this stays cheap even on huge sheets.
+fn save_structure(
+    conn: &mut rusqlite::Connection,
+    id: &str,
+    cols: &[ColumnDef],
+    num_rows: usize,
+    vs: &SpreadsheetViewState,
+) -> Result<(), String> {
+    let now = crate::db::now_iso();
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // Replace columns (exact same contract as save_all)
+    tx.execute("DELETE FROM spreadsheet_columns WHERE spreadsheet_id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT INTO spreadsheet_columns (spreadsheet_id, col_index, title, width, type, options)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
+            .map_err(|e| e.to_string())?;
+        for (i, col) in cols.iter().enumerate() {
+            stmt.execute(params![id, i as i32, col.title, col.width, col.col_type, col.options])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Orphan cells: rows beyond num_rows or columns beyond cols.len()
+    tx.execute(
+        "DELETE FROM spreadsheet_cells WHERE spreadsheet_id = ?1
+         AND (row_index >= ?2 OR col_index >= ?3)",
+        params![id, num_rows as i32, cols.len() as i32],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // View state (replace-all, exact same contract as save_all)
+    tx.execute(
+        "INSERT OR REPLACE INTO spreadsheet_state (spreadsheet_id, hidden_columns, hidden_rows, frozen_columns, frozen_rows, sort_column, sort_order, styles)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            id,
+            vs.hidden_columns,
+            vs.hidden_rows,
+            vs.frozen_columns,
+            vs.frozen_rows,
+            vs.sort_column,
+            vs.sort_order,
+            vs.styles,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE spreadsheets SET updated_at = ?1 WHERE id = ?2",
+        params![now, id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /// Full save on tab close: replaces all cells, columns, and state.
 #[tauri::command]
 pub fn spreadsheet_save_all(
@@ -426,6 +556,38 @@ pub fn spreadsheet_save_all(
         serde_json::from_str(&view_state).map_err(|e| format!("invalid state JSON: {e}"))?;
 
     with_db(&state, &root, |conn| save_all(conn, &id, &cols, &rows, &vs))
+}
+
+/// Incremental cell save (upsert by coordinates).
+#[tauri::command]
+pub fn spreadsheet_save_cells(
+    state: State<'_, Db>,
+    root: String,
+    id: String,
+    changes: String,
+) -> Result<(), String> {
+    let changes: Vec<CellChange> =
+        serde_json::from_str(&changes).map_err(|e| format!("invalid changes JSON: {e}"))?;
+    with_db(&state, &root, |conn| save_cells(conn, &id, &changes))
+}
+
+/// Structural save: columns replace-all + orphan cleanup + view state.
+#[tauri::command]
+pub fn spreadsheet_save_structure(
+    state: State<'_, Db>,
+    root: String,
+    id: String,
+    columns: String,
+    num_rows: usize,
+    view_state: String,
+) -> Result<(), String> {
+    let cols: Vec<ColumnDef> =
+        serde_json::from_str(&columns).map_err(|e| format!("invalid columns JSON: {e}"))?;
+    let vs: SpreadsheetViewState =
+        serde_json::from_str(&view_state).map_err(|e| format!("invalid state JSON: {e}"))?;
+    with_db(&state, &root, |conn| {
+        save_structure(conn, &id, &cols, num_rows, &vs)
+    })
 }
 
 /// Eagerly initialize the SQLite database (called at app startup so the
@@ -656,5 +818,222 @@ mod tests {
         save_all(&mut conn, "s1", &[], &[], &state()).unwrap();
         assert_eq!(count(&conn, "spreadsheet_columns", "s1"), 0);
         assert_eq!(count(&conn, "spreadsheet_cells", "s1"), 0);
+    }
+
+    /// Full round-trip through the exact storage path used by `spreadsheet_get`:
+    /// save_all writes → read cells back → build_matrix → must equal the
+    /// original snapshot. Proves the "no persistence" symptom cannot come
+    /// from the SQLite layer (columns + cells stay consistent).
+    #[test]
+    fn save_all_roundtrip_preserves_data_and_structure() {        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        seed_sheet(&conn, "s1");
+
+        let cols = vec![
+            col("Nom", 150, "text"),
+            col("Note", 100, "number"),
+            col("Salle", 120, "text"),
+        ];
+        let rows = vec![
+            vec!["Alice".to_string(), "15".to_string(), "A103".to_string()],
+            vec!["Bob".to_string(), "12".to_string(), String::new()],
+            vec![String::new(), String::new(), String::new()],
+        ];
+        save_all(&mut conn, "s1", &cols, &rows, &state()).unwrap();
+
+        // Replicate spreadsheet_get's read path: columns + cells ordered.
+        let col_defs: Vec<ColumnDef> = {
+            let mut stmt = conn
+                .prepare("SELECT title, width, type, options FROM spreadsheet_columns WHERE spreadsheet_id = 's1' ORDER BY col_index")
+                .unwrap();
+            stmt.query_map([], |row| {
+                Ok(ColumnDef {
+                    title: row.get(0)?,
+                    width: row.get::<_, Option<i32>>(1)?.unwrap_or(120),
+                    col_type: row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "text".to_string()),
+                    options: row.get(3)?,
+                })
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+        };
+        let cells: Vec<(i32, i32, String, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT row_index, col_index, value, style FROM spreadsheet_cells WHERE spreadsheet_id = 's1' ORDER BY row_index, col_index")
+                .unwrap();
+            stmt.query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+        };
+
+        let rebuilt = build_matrix(&col_defs, &cells);
+        assert_eq!(rebuilt, rows, "round-trip must return the original matrix");
+        assert_eq!(rebuilt.len(), 3, "trailing empty rows must be preserved");
+        assert_eq!(rebuilt[0].len(), 3, "added columns must be preserved");
+        assert_eq!(rebuilt[0][2], "A103");
+        assert_eq!(rebuilt[1][2], "");
+    }
+
+    fn cell(row: i32, col: i32, value: &str) -> CellChange {
+        CellChange {
+            row_index: row,
+            col_index: col,
+            value: value.to_string(),
+        }
+    }
+
+    fn value_at(conn: &rusqlite::Connection, id: &str, row: i32, col: i32) -> Option<String> {
+        conn.query_row(
+            "SELECT value FROM spreadsheet_cells
+             WHERE spreadsheet_id = ?1 AND row_index = ?2 AND col_index = ?3",
+            params![id, row, col],
+            |r| r.get(0),
+        )
+        .ok()
+    }
+
+    /// save_cells must upsert WITHOUT duplicating (no DELETE-all) and must
+    /// not touch unrelated cells or the structure tables.
+    #[test]
+    fn save_cells_upserts_by_coordinates() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        seed_sheet(&conn, "s1");
+
+        let cols = vec![col("A", 120, "text"), col("B", 120, "text")];
+        let rows = vec![vec!["x".to_string(), "y".to_string()]];
+        save_all(&mut conn, "s1", &cols, &rows, &state()).unwrap();
+        assert_eq!(count(&conn, "spreadsheet_cells", "s1"), 2);
+
+        // Edit two cells, one of them twice (must collapse to one row)
+        save_cells(
+            &mut conn,
+            "s1",
+            &[
+                cell(0, 0, "X2"),
+                cell(1, 1, "NEW"),
+                cell(0, 0, "X3"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            count(&conn, "spreadsheet_cells", "s1"),
+            3,
+            "2 original cells + 1 new (1,1), with (0,0) collapsed to one row"
+        );
+        assert_eq!(value_at(&conn, "s1", 0, 0).as_deref(), Some("X3"), "last write wins, no duplicate row");
+        assert_eq!(value_at(&conn, "s1", 1, 1).as_deref(), Some("NEW"));
+        assert_eq!(value_at(&conn, "s1", 0, 1).as_deref(), Some("y"), "unrelated cell untouched");
+        // Structure untouched by a cell-only save
+        assert_eq!(count(&conn, "spreadsheet_columns", "s1"), 2);
+    }
+
+    /// save_cells can create cells for columns/rows that do not exist yet
+    /// (the frontend flushes structure AFTER cells; the structure save then
+    /// adds the column). The cell itself must survive.
+    #[test]
+    fn save_cells_precedes_structure_ok() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        seed_sheet(&conn, "s1");
+
+        save_cells(&mut conn, "s1", &[cell(0, 5, "v")]).unwrap();
+        assert_eq!(value_at(&conn, "s1", 0, 5).as_deref(), Some("v"));
+    }
+
+    /// save_structure: columns replace-all + orphan GC + state. A deleted
+    /// column/row must purge its cells; a shrunk matrix must not leave
+    /// trailing rows behind.
+    #[test]
+    fn save_structure_persists_columns_and_gcs_orphans() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        seed_sheet(&conn, "s1");
+
+        // 3 cols × 3 rows, then user deletes col 2 and row 2
+        let cols = vec![
+            col("A", 120, "text"),
+            col("B", 120, "text"),
+            col("C", 120, "text"),
+        ];
+        let rows = vec![
+            vec!["a1".into(), "b1".into(), "c1".into()],
+            vec!["a2".into(), "b2".into(), "c2".into()],
+            vec!["a3".into(), "b3".into(), "c3".into()],
+        ];
+        save_all(&mut conn, "s1", &cols, &rows, &state()).unwrap();
+        assert_eq!(count(&conn, "spreadsheet_cells", "s1"), 9);
+
+        // Structure save with 2 cols × 2 rows → orphan cells (col 2, row 2) must die
+        let cols = vec![col("A", 120, "text"), col("B", 120, "text")];
+        save_structure(&mut conn, "s1", &cols, 2, &state()).unwrap();
+
+        assert_eq!(count(&conn, "spreadsheet_columns", "s1"), 2);
+        assert_eq!(
+            count(&conn, "spreadsheet_cells", "s1"),
+            4,
+            "cells of deleted column+row must be garbage-collected"
+        );
+        assert_eq!(value_at(&conn, "s1", 0, 0).as_deref(), Some("a1"));
+        assert_eq!(value_at(&conn, "s1", 1, 1).as_deref(), Some("b2"));
+        assert_eq!(value_at(&conn, "s1", 2, 0), None, "deleted row must be purged");
+        assert_eq!(value_at(&conn, "s1", 0, 2), None, "deleted column must be purged");
+    }
+
+    /// save_cells then save_structure is idempotent with save_all for the
+    /// same logical content: same tables in the end.
+    #[test]
+    fn cells_plus_structure_matches_save_all() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn);
+        seed_sheet(&conn, "s1");
+
+        // Incremental path: seed structure, then edit cells
+        let cols = vec![col("A", 120, "text"), col("B", 120, "text")];
+        save_structure(&mut conn, "s1", &cols, 2, &state()).unwrap();
+        save_cells(
+            &mut conn,
+            "s1",
+            &[
+                cell(0, 0, "p1"),
+                cell(0, 1, "p2"),
+                cell(1, 0, "p3"),
+                cell(1, 1, "p4"),
+            ],
+        )
+        .unwrap();
+
+        // Reference path: single snapshot save with identical content
+        let mut conn2 = rusqlite::Connection::open_in_memory().unwrap();
+        test_schema(&conn2);
+        seed_sheet(&conn2, "s1");
+        let rows2 = vec![
+            vec!["p1".to_string(), "p2".to_string()],
+            vec!["p3".to_string(), "p4".to_string()],
+        ];
+        save_all(&mut conn2, "s1", &cols, &rows2, &state()).unwrap();
+
+        // Both databases must now be identical
+        for (r, row) in rows2.iter().enumerate() {
+            for (c, val) in row.iter().enumerate() {
+                assert_eq!(
+                    value_at(&conn, "s1", r as i32, c as i32).as_deref(),
+                    Some(val.as_str()),
+                    "incremental path must match snapshot path at ({r},{c})"
+                );
+            }
+        }
+        assert_eq!(count(&conn, "spreadsheet_columns", "s1"), count(&conn2, "spreadsheet_columns", "s1"));
+        assert_eq!(count(&conn, "spreadsheet_cells", "s1"), count(&conn2, "spreadsheet_cells", "s1"));
     }
 }

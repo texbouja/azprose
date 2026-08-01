@@ -12,6 +12,8 @@ export {
   spreadsheetRename,
   spreadsheetDelete,
   spreadsheetSaveAll,
+  spreadsheetSaveCells,
+  spreadsheetSaveStructure,
   spreadsheetExportCsv,
   spreadsheetInitDb,
 } from "./store";

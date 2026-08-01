@@ -37,3 +37,10 @@ export interface SpreadsheetViewState {
   /** Per-cell styles JSON object: { "row,col": "font-weight:bold;text-align:center" } */
   styles?: string;
 }
+
+/** One cell edit — coordinates straight from jspreadsheet's `onchange`. */
+export interface CellChange {
+  row_index: number;
+  col_index: number;
+  value: string;
+}

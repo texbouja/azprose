@@ -515,6 +515,8 @@ pub fn run() {
             spreadsheet_db::spreadsheet_list,
             spreadsheet_db::spreadsheet_rename,
             spreadsheet_db::spreadsheet_save_all,
+            spreadsheet_db::spreadsheet_save_cells,
+            spreadsheet_db::spreadsheet_save_structure,
             calendar_db::calendar_events_get,
             calendar_db::calendar_events_save,
             calendar_db::calendar_events_delete,
@@ -525,6 +527,7 @@ pub fn run() {
             datagrid_db::datagrid_create_from_spreadsheet,
             datagrid_db::datagrid_find_by_source,
             datagrid_db::datagrid_sync_from_spreadsheet,
+            datagrid_db::datagrid_sync_cells,
             datagrid_db::datagrid_delete,
             datagrid_db::datagrid_rename,
         ])

@@ -535,7 +535,102 @@ pub fn datagrid_sync_from_spreadsheet(
     })
 }
 
-/// Rename a datagrid.
+/// Mirror a batch of cell edits into the linked datagrid — O(changes), the
+/// incremental counterpart of `datagrid_sync_from_spreadsheet` (full rebuild,
+/// reserved for structural edits which are rare).
+///
+/// For each change: find the grid linked to the spreadsheet, verify the
+/// `c{col}` column exists AND the `r{row}` row exists, then rewrite the row's
+/// DataHash JSON with the new value. Changes whose column/row is out of bounds
+/// for the current grid are skipped (the structural sync — which the frontend
+/// flushes right after — rebuilds those). Column ids are stable (`c0`, `c1`, …)
+/// by construction of `build_grid_from_spreadsheet`.
+#[tauri::command]
+pub fn datagrid_sync_cells(
+    state: State<'_, Db>,
+    root: String,
+    spreadsheet_id: String,
+    changes: String,
+) -> Result<(), String> {
+    let changes: Vec<crate::spreadsheet_db::CellChange> = serde_json::from_str(&changes)
+        .map_err(|e| format!("invalid changes JSON: {e}"))?;
+    if changes.is_empty() {
+        return Ok(());
+    }
+    with_db(&state, &root, |conn| sync_cells(conn, &spreadsheet_id, &changes))
+}
+
+/// Pure form of `datagrid_sync_cells` (unit-testable). See the command
+/// docstring for semantics.
+fn sync_cells(
+    conn: &mut rusqlite::Connection,
+    spreadsheet_id: &str,
+    changes: &[crate::spreadsheet_db::CellChange],
+) -> Result<(), String> {
+    let grid_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM datagrids WHERE source_spreadsheet_id = ?1
+             ORDER BY updated_at DESC LIMIT 1",
+            params![spreadsheet_id],
+            |r| r.get(0),
+        )
+        .ok();
+    let Some(grid_id) = grid_id else {
+        return Ok(());
+    };
+
+    // Existing column indexes of the linked grid (the only cells we can mirror)
+    let mut col_indexes: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    {
+        let mut col_stmt = conn
+            .prepare("SELECT col_index FROM datagrid_columns WHERE grid_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let mut rows = col_stmt
+            .query_map(params![grid_id], |row| row.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        while let Some(idx) = rows.next() {
+            col_indexes.insert(idx.map_err(|e| e.to_string())?);
+        }
+    }
+
+    let now = crate::db::now_iso();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    {
+        tx.execute(
+            "UPDATE datagrids SET updated_at = ?2 WHERE id = ?1",
+            params![grid_id, now],
+        )
+        .map_err(|e| e.to_string())?;
+        let mut read = tx
+            .prepare("SELECT data FROM datagrid_rows WHERE grid_id = ?1 AND row_index = ?2")
+            .map_err(|e| e.to_string())?;
+        let mut upd = tx
+            .prepare("UPDATE datagrid_rows SET data = ?1 WHERE grid_id = ?2 AND row_index = ?3")
+            .map_err(|e| e.to_string())?;
+        for ch in changes {
+            if !col_indexes.contains(&(ch.col_index as i64)) {
+                continue;
+            }
+            let row_idx = ch.row_index as i64;
+            let existing: Option<String> = read
+                .query_row(params![grid_id, row_idx], |r| r.get(0))
+                .ok();
+            let Some(existing) = existing else {
+                continue; // row does not exist in the grid yet
+            };
+            let mut map: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&existing).unwrap_or_default();
+            map.insert(
+                format!("c{}", ch.col_index),
+                serde_json::Value::String(ch.value.clone()),
+            );
+            upd.execute(params![serde_json::Value::Object(map).to_string(), grid_id, row_idx])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
 #[tauri::command]
 pub fn datagrid_rename(
     state: State<'_, Db>,
@@ -848,5 +943,102 @@ mod tests {
             )
             .unwrap();
         assert_eq!(link.as_deref(), Some("s1"));
+    }
+
+    /// Incremental bridge: sync_cells mirrors only the edited cells into the
+    /// linked grid — O(changes), no table rebuild. Out-of-bounds cells are
+    /// skipped (the structural sync rebuilds those).
+    #[test]
+    fn sync_cells_mirrors_edits_into_linked_grid() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        // SCHEMA_V4 needs the spreadsheet tables referenced in the test_schema
+        // variant used here — reuse the full bridge seed helper instead.
+        conn.execute_batch(crate::db::SCHEMA_V1).unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V4).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;",
+        )
+        .unwrap();
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO spreadsheets (id, name, imported_at, updated_at)
+             VALUES ('s1', 'S', ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spreadsheet_columns (spreadsheet_id, col_index, title, width, type)
+             VALUES ('s1', 0, 'Nom', 150, 'text'), ('s1', 1, 'Note', 100, 'number')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value)
+             VALUES ('s1', 0, 0, 'Alice'), ('s1', 0, 1, '15')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO datagrids (id, name, created_at, updated_at, source_spreadsheet_id)
+             VALUES ('g1', 'G', ?1, ?1, 's1')",
+            params![now],
+        )
+        .unwrap();
+
+        // Build the grid (same path as datagrid_create_from_spreadsheet)
+        let (cols, rows) = build_grid_from_spreadsheet("s1", &mut conn).unwrap();
+        save_grid(&mut conn, "g1", "G", &cols, &rows).unwrap();
+
+        use crate::spreadsheet_db::CellChange;
+        let ch = |r: i32, c: i32, v: &str| CellChange {
+            row_index: r,
+            col_index: c,
+            value: v.to_string(),
+        };
+
+        // Edits: (0,0) Alice→Aline, (0,1) 15→16, plus out-of-bounds (3,7) skipped
+        sync_cells(&mut conn, "s1", &[ch(0, 0, "Aline"), ch(0, 1, "16"), ch(3, 7, "zz")]).unwrap();
+
+        let data: String = conn
+            .query_row(
+                "SELECT data FROM datagrid_rows WHERE grid_id = 'g1' AND row_index = 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(data, r#"{"c0":"Aline","c1":"16"}"#);
+        // Row 1 does not exist in the grid — nothing to mirror
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM datagrid_rows WHERE grid_id = 'g1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1, "no new rows may be created by a cell-only sync");
+    }
+
+    /// sync_cells is a no-op when the spreadsheet has no linked grid.
+    #[test]
+    fn sync_cells_noop_without_linked_grid() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V1).unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V4).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;",
+        )
+        .unwrap();
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO spreadsheets (id, name, imported_at, updated_at)
+             VALUES ('s1', 'S', ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+
+        use crate::spreadsheet_db::CellChange;
+        sync_cells(
+            &mut conn,
+            "s1",
+            &[CellChange { row_index: 0, col_index: 0, value: "x".into() }],
+        )
+        .unwrap();
+        assert_eq!(count(&conn, "datagrid_rows"), 0);
     }
 }
