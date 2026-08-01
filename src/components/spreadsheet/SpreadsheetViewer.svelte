@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import Spreadsheet from "./Spreadsheet.svelte";
   import type { JspreadsheetInstance } from "./Spreadsheet.svelte";
   import ImportSpreadsheetDialog from "./dialogs/ImportSpreadsheetDialog.svelte";
@@ -23,8 +24,19 @@
   // When the current spreadsheet is deleted via Gérer,
   // we clear local state and show the empty view (tab stays open).
   let cleared = $state(false);
+  // `true` UNIQUEMENT tant que le premier chargement n'est pas terminé. Les
+  // rechargements suivants (pont live) NE démontent PAS <Spreadsheet> : ils
+  // ré-initialisent jspreadsheet en place via `Spreadsheet.reload()`. Le
+  // remount (`{#if loading}` → unmount → flushOnDestroy → remount → init) à
+  // CHAQUE reload était le moteur de la boucle infinie spreadsheet↔datagrid.
+  let initialLoading = $state(true);
 
-  let loading = $state(true);
+  /** Fenêtre de suppression des événements jspreadsheet pendant un re-init en
+   *  place (`Spreadsheet.reload()`) : les événements émis par init() (onchange,
+   *  structurels, styles) ne doivent pas être traités comme des edits utilisateur.
+   *  Plain variable — jamais rendue, uniquement lue par les handlers. */
+  let suppressChanges = false;
+
   let data: string[][] = $state([]);
   let columns: ColumnDef[] = $state([]);
   let viewState: SpreadsheetViewState = $state({
@@ -109,9 +121,6 @@
       .then((meta) => {
         if (cancelled) return;
         linkedGridId = meta?.id ?? null;
-        if (linkedGridId) {
-          console.log(`[spreadsheet] live bridge: grid "${linkedGridId}" follows this sheet`);
-        }
       })
       .catch((err) => {
         if (!cancelled) console.warn("[spreadsheet] bridge lookup failed:", err);
@@ -126,6 +135,10 @@
   // Generation counter to avoid stale completions from parallel load() calls.
   // NOT reactive — plain variable to avoid triggering the $effect on write.
   let loadGen = -1;
+
+  /** Dernier titre dispatché via `azprose:spreadsheet-title-change` (évite
+   *  les re-dispatches → notify() → re-render à chaque reload du pont live). */
+  let lastDispatchedSheetTitle = "";
 
   /** Restore view state after jspreadsheet init: hidden cols/rows, styles, sort. */
   function restoreViewState() {
@@ -163,7 +176,6 @@
   async function load() {
     if (!spreadsheetId) return;
     cleared = false;
-    loading = true;
     const gen = ++loadGen;
     try {
       const result = await spreadsheetGet(spreadsheetId);
@@ -172,7 +184,7 @@
 
       // Skip rendering if the result has no columns (broken old "Nouveau tableur" entries)
       if (result.columns.length === 0) {
-        loading = false;
+        initialLoading = false;
         cleared = true;
         return;
       }
@@ -180,22 +192,48 @@
       data = result.data;
       columns = autoDetectColumnTypes(result.data, result.columns);
       viewState = result.state;
-      loading = false;
 
       // Note: styles / hidden cols are restored via onReady (called after
       // Spreadsheet.svelte's init() has set the api reference).
       // We no longer try to restore them here because init() runs
       // asynchronously and the jspreadsheet instance isn't ready yet.
 
-      // Always sync the tab title with the database name.
-      window.dispatchEvent(new CustomEvent("azprose:spreadsheet-title-change", {
-        detail: { spreadsheetId, title: result.name },
-      }));
+      // Sync the tab title with the database name — only when it actually
+      // changed. load() runs on every `azprose:spreadsheet-updated` (datagrid
+      // edits) and an unconditional dispatch would cascade notify() →
+      // re-render on each reload.
+      if (lastDispatchedSheetTitle !== result.name) {
+        lastDispatchedSheetTitle = result.name;
+        window.dispatchEvent(new CustomEvent("azprose:spreadsheet-title-change", {
+          detail: { spreadsheetId, title: result.name },
+        }));
+      }
+
+      if (initialLoading) {
+        // Premier chargement : le template monte <Spreadsheet> avec les
+        // nouvelles props (init() prendra data/columns/viewState au mount).
+        initialLoading = false;
+      } else {
+        // Rechargement en place : le composant est DÉJÀ monté. On ne le
+        // démonte PAS (le remount à chaque reload était le moteur de la
+        // boucle) — on ré-initialise jspreadsheet avec les props courantes,
+        // en supprimant les événements émis par init() pour qu'ils ne soient
+        // pas persistés comme des edits fantômes.
+        suppressChanges = true;
+        try {
+          await spreadsheetRef?.reload();
+          // Laisse passer un flush Svelte pour que les événements différés de
+          // init()/onReady (s'il y en a) tombent encore dans la fenêtre.
+          await tick();
+        } finally {
+          suppressChanges = false;
+        }
+      }
     } catch (err) {
       // Only report if no newer load superseded this one
       if (gen === loadGen) {
         console.error("Failed to load spreadsheet:", err);
-        loading = false;
+        initialLoading = false;
         cleared = true; // Show empty/create UI instead of a broken grid
       }
     }
@@ -206,8 +244,37 @@
     if (id) {
       load();
     } else {
-      loading = false;
+      initialLoading = false;
     }
+  });
+
+  // A linked datagrid edits cells directly through the same SQLite table.
+  // When it saves, it dispatches "azprose:spreadsheet-updated" — reload so the
+  // sheet mirrors the grid without waiting for a manual refresh. Local pending
+  // edits are flushed first: they share the same spreadsheet_cells rows, and a
+  // blind reload would drop edits queued but not yet persisted.
+  $effect(() => {
+    const id = spreadsheetId;
+    if (!id) return;
+    const onSpreadsheetUpdated = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ spreadsheetId: string }>).detail;
+      if (!detail || detail.spreadsheetId !== id) return;
+      void (async () => {
+        // Let a currently in-flight flush (and any re-queued one) finish before
+        // reading, so the reload never sees a stale snapshot.
+        while (saving || pendingFlush) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        if (pendingCellChanges.size > 0) await flushChanges();
+        while (saving || pendingFlush) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        // Only reload if this viewer is still on the same spreadsheet.
+        if (spreadsheetId === id) load();
+      })();
+    };
+    window.addEventListener("azprose:spreadsheet-updated", onSpreadsheetUpdated);
+    return () => window.removeEventListener("azprose:spreadsheet-updated", onSpreadsheetUpdated);
   });
 
   // ── SQLite persistence (incremental cells + structural save) ─────────────
@@ -374,23 +441,32 @@
   // ── Change handlers ─────────────────────────────────────────────────────
 
   function handleCellChange(colIndex: number, rowIndex: number, value: any, _oldValue: any) {
-    pendingCellChanges.set(`${rowIndex}:${colIndex}`, {
+    if (suppressChanges) return;
+    const normalized = String(value ?? "");
+    const key = `${rowIndex}:${colIndex}`;
+    // Skip d'égalité : un événement fantôme (re-init en place, restore de
+    // style…) peut rejouer la même valeur déjà en attente — ne pas re-queuer
+    // une sauvegarde redondante (un upsert idempotent est inoffensif, mais
+    // chaque edit fantôme relance le debounce → flush → notify → reload).
+    if (pendingCellChanges.get(key)?.value === normalized) return;
+    pendingCellChanges.set(key, {
       row_index: rowIndex,
       col_index: colIndex,
-      value: String(value ?? ""),
+      value: normalized,
     });
     debouncedSave();
   }
 
   /** Column/row inserted, deleted, moved or resized → structural save. */
   function handleStructureChange() {
+    if (suppressChanges) return;
     structureDirty = true;
     debouncedSave();
   }
 
   /** Toolbar formatting (bold/italic/align/color) → structural save. */
   function handleStyleChange() {
-    if (restoring) return;
+    if (restoring || suppressChanges) return;
     structureDirty = true;
     debouncedSave();
   }
@@ -421,14 +497,19 @@
     // In create mode, upgrade the tab via the panel store instead of
     // setting the prop directly — this keeps the store in sync across sessions.
     if (!spreadsheetId) {
-      loading = true;
+      initialLoading = true;
       window.dispatchEvent(new CustomEvent("azprose:spreadsheet-set-id", {
         detail: { id: imported[0].id, title: imported[0].name },
       }));
       return;
     }
-    spreadsheetId = imported[0].id;
-    load();
+    // Switching sheet in place (import into an open tab): flush pending edits
+    // of the CURRENT sheet FIRST — the pending map is keyed "row:col" without
+    // a sheet id, a flush after the switch would save them against the NEW id.
+    void flushPendingBeforeSwitch().then(() => {
+      spreadsheetId = imported[0].id;
+      load();
+    });
   }
 
   // ── Create new spreadsheet ────────────────────────────────────────────
@@ -446,9 +527,9 @@
     try {
       await spreadsheetCreate(id, createName, cols, rows, undefined);
       createDialogOpen = false;
-      // Ensure loading=true BEFORE the prop changes, so the template
-      // never renders Spreadsheet briefly with stale loading=false.
-      loading = true;
+      // Ensure initialLoading=true BEFORE the prop changes, so the template
+      // never renders Spreadsheet briefly with stale initialLoading=false.
+      initialLoading = true;
       // Upgrade the current tab with the real spreadsheetId
       window.dispatchEvent(new CustomEvent("azprose:spreadsheet-set-id", {
         detail: { id, title: createName },
@@ -477,7 +558,7 @@
       if (!spreadsheetId) {
         try {
           const data = await spreadsheetGet(id);
-          loading = true;
+          initialLoading = true;
           window.dispatchEvent(new CustomEvent("azprose:spreadsheet-set-id", {
             detail: { id, title: data.name },
           }));
@@ -486,8 +567,26 @@
         }
         return;
       }
+      // Switching sheet in place: flush the CURRENT sheet's pending edits
+      // before the id changes (the pending map is not sheet-scoped — a flush
+      // after the switch would save them against the NEW id).
+      await flushPendingBeforeSwitch();
       spreadsheetId = id;
       await load();
+    }
+  }
+
+  /** Flushe les edits en attente du tableur courant avant un changement de
+   *  feuille en place. Le rechargement en place (reload()) ne démonte PAS le
+   *  composant, donc `flushOnDestroy` ne se déclenche pas pour l'ancienne
+   *  feuille — il faut donc sauver explicitement. */
+  async function flushPendingBeforeSwitch() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (pendingCellChanges.size > 0 || structureDirty) {
+      await flushChanges();
     }
   }
 
@@ -772,7 +871,7 @@
   />
 {/if}
 
-{#if loading}
+{#if initialLoading}
   <div class="spreadsheet-loading">Chargement…</div>
 {:else if !spreadsheetId || cleared}
   <div class="spreadsheet-empty">

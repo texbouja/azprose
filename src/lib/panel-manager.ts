@@ -154,16 +154,34 @@ export class PanelManager {
     this.side.openEmptySpreadsheet("Tableur");
   }
 
-  /** Update the tab title for a spreadsheet (called after loading its real name). */
+  /** Update the tab title for a spreadsheet (called after loading its real name).
+   *  No-op when the title is unchanged — the spreadsheet viewer dispatches
+   *  `azprose:spreadsheet-title-change` on EVERY load(), so an unconditional
+   *  setTabTitle would cascade notify() → re-render on each reload. */
   setSpreadsheetTabTitle(spreadsheetId: string, title: string): void {
     const sideTab = this.side.tabs.find(
       t => t.kind === "spreadsheet" && t.spreadsheetId === spreadsheetId
     );
-    if (sideTab) this.side.setTabTitle(sideTab.id, title);
+    if (sideTab && sideTab.title !== title) this.side.setTabTitle(sideTab.id, title);
     const mainTab = this.main.tabs.find(
       t => t.kind === "spreadsheet" && t.spreadsheetId === spreadsheetId
     );
-    if (mainTab) this.main.setTabTitle(mainTab.id, title);
+    if (mainTab && mainTab.title !== title) this.main.setTabTitle(mainTab.id, title);
+  }
+
+  /** Update the tab title for a datagrid (called after loading its real name).
+   *  No-op when the title is unchanged — avoids a redundant notify() → re-render
+   *  cascade on every reload (a title-change feedback loop is the prime suspect
+   *  for the "infinite loop when opening a datagrid from a spreadsheet"). */
+  setDatagridTabTitle(datagridId: string, title: string): void {
+    const sideTab = this.side.tabs.find(
+      t => t.kind === "datagrid" && t.datagridId === datagridId
+    );
+    if (sideTab && sideTab.title !== title) this.side.setTabTitle(sideTab.id, title);
+    const mainTab = this.main.tabs.find(
+      t => t.kind === "datagrid" && t.datagridId === datagridId
+    );
+    if (mainTab && mainTab.title !== title) this.main.setTabTitle(mainTab.id, title);
   }
 
   /** Set the spreadsheetId + title on the first "create" tab (no spreadsheetId yet).

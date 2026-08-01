@@ -59,6 +59,17 @@
     return api;
   }
 
+  /** Re-initialise jspreadsheet IN PLACE avec les props courantes (data,
+   *  columns, worksheetOptions…). Utilisé par le viewer pour recharger le
+   *  contenu sans démonter le composant : le remount (`{#if initialLoading}`)
+   *  à chaque reload était le moteur de la boucle infinie spreadsheet↔datagrid
+   *  (init() re-firait `onchange` → flush → notify l'autre vue → reload → …).
+   *  Le viewer enveloppe cet appel dans une fenêtre `suppressChanges` pour
+   *  que les événements émis par init() ne soient pas traités comme des edits. */
+  export async function reload(): Promise<void> {
+    await init();
+  }
+
   async function init() {
     if (!el) return;
     try { jspreadsheet.destroy(el as any, true); } catch {}

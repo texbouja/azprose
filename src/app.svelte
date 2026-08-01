@@ -559,6 +559,16 @@ $effect(() => {
   return () => window.removeEventListener("azprose:spreadsheet-title-change", handler);
 });
 
+// Datagrid title change → update the tab title
+$effect(() => {
+  const handler = (e: Event) => {
+    const { datagridId, title } = (e as CustomEvent<{ datagridId: string; title: string }>).detail;
+    pm.setDatagridTabTitle(datagridId, title);
+  };
+  window.addEventListener("azprose:datagrid-title-change", handler);
+  return () => window.removeEventListener("azprose:datagrid-title-change", handler);
+});
+
 // Spreadsheet "open in new tab" from the manager
 $effect(() => {
   const handler = async (e: Event) => {
@@ -622,6 +632,18 @@ $effect(() => {
   };
   window.addEventListener("azprose:datagrid-open", handler);
   return () => window.removeEventListener("azprose:datagrid-open", handler);
+});
+
+// Datagrid "Edit dans Spreadsheet" — open the source spreadsheet in the main
+// panel (it is the source of truth; the datagrid view is a mirror).
+$effect(() => {
+  const handler = (e: Event) => {
+    const { spreadsheetId, name } = (e as CustomEvent<{ spreadsheetId: string; name: string }>).detail;
+    if (!spreadsheetId) return;
+    pm.openSpreadsheetInMain(spreadsheetId, name || "Tableur");
+  };
+  window.addEventListener("azprose:datagrid-edit-in-spreadsheet", handler);
+  return () => window.removeEventListener("azprose:datagrid-edit-in-spreadsheet", handler);
 });
 
 async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" }) {

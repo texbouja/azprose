@@ -541,10 +541,12 @@ pub fn datagrid_sync_from_spreadsheet(
 ///
 /// For each change: find the grid linked to the spreadsheet, verify the
 /// `c{col}` column exists AND the `r{row}` row exists, then rewrite the row's
-/// DataHash JSON with the new value. Changes whose column/row is out of bounds
-/// for the current grid are skipped (the structural sync — which the frontend
-/// flushes right after — rebuilds those). Column ids are stable (`c0`, `c1`, …)
-/// by construction of `build_grid_from_spreadsheet`.
+/// DataHash JSON with the value read back from `spreadsheet_cells` (the source
+/// of truth — NOT the payload value, which may be stale when two viewers flush
+/// interleaved edits to the same cell). Changes whose column/row is out of
+/// bounds for the current grid are skipped (the structural sync — which the
+/// frontend flushes right after — rebuilds those). Column ids are stable
+/// (`c0`, `c1`, …) by construction of `build_grid_from_spreadsheet`.
 #[tauri::command]
 pub fn datagrid_sync_cells(
     state: State<'_, Db>,
@@ -607,6 +609,21 @@ fn sync_cells(
         let mut upd = tx
             .prepare("UPDATE datagrid_rows SET data = ?1 WHERE grid_id = ?2 AND row_index = ?3")
             .map_err(|e| e.to_string())?;
+        // SOURCE OF TRUTH: the value stored in spreadsheet_cells, NOT the
+        // payload's `ch.value`. When two viewers flush interleaved edits to
+        // the same cell (e.g. an `azprose:spreadsheet-updated` reload racing
+        // the datagrid's own flush), the payload can carry a value older than
+        // what was already committed to the DB — mirroring it would resurrect
+        // a stale value in the grid. Reading the row back at sync time makes
+        // the mirror independent of payload ordering. A missing row means the
+        // cell was cleared/GC'd → mirror the empty string (parity with
+        // `build_grid_from_spreadsheet`, which fills absent cells with "").
+        let mut src = tx
+            .prepare(
+                "SELECT value FROM spreadsheet_cells
+                 WHERE spreadsheet_id = ?1 AND row_index = ?2 AND col_index = ?3",
+            )
+            .map_err(|e| e.to_string())?;
         for ch in changes {
             if !col_indexes.contains(&(ch.col_index as i64)) {
                 continue;
@@ -618,11 +635,19 @@ fn sync_cells(
             let Some(existing) = existing else {
                 continue; // row does not exist in the grid yet
             };
+            let value: String = src
+                .query_row(
+                    params![spreadsheet_id, ch.row_index, ch.col_index],
+                    |r| r.get::<_, Option<String>>(0),
+                )
+                .ok()
+                .flatten()
+                .unwrap_or_default();
             let mut map: serde_json::Map<String, serde_json::Value> =
                 serde_json::from_str(&existing).unwrap_or_default();
             map.insert(
                 format!("c{}", ch.col_index),
-                serde_json::Value::String(ch.value.clone()),
+                serde_json::Value::String(value),
             );
             upd.execute(params![serde_json::Value::Object(map).to_string(), grid_id, row_idx])
                 .map_err(|e| e.to_string())?;
@@ -996,6 +1021,20 @@ mod tests {
             value: v.to_string(),
         };
 
+        // Real call sequence: the frontend persists the edits to
+        // spreadsheet_cells (save_cells) BEFORE mirroring into the grid.
+        // Simulate the upsert here so the source-of-truth read sees them.
+        for ch in &[ch(0, 0, "Aline"), ch(0, 1, "16")] {
+            conn.execute(
+                "INSERT INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value)
+                 VALUES ('s1', ?1, ?2, ?3)
+                 ON CONFLICT (spreadsheet_id, row_index, col_index)
+                 DO UPDATE SET value = excluded.value",
+                params![ch.row_index, ch.col_index, ch.value],
+            )
+            .unwrap();
+        }
+
         // Edits: (0,0) Alice→Aline, (0,1) 15→16, plus out-of-bounds (3,7) skipped
         sync_cells(&mut conn, "s1", &[ch(0, 0, "Aline"), ch(0, 1, "16"), ch(3, 7, "zz")]).unwrap();
 
@@ -1012,6 +1051,73 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM datagrid_rows WHERE grid_id = 'g1'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 1, "no new rows may be created by a cell-only sync");
+    }
+
+    /// sync_cells must mirror the AUTHORITATIVE value from spreadsheet_cells,
+    /// not the (potentially stale) payload value: when two viewers flush
+    /// interleaved edits to the same cell, the later DB write wins.
+    #[test]
+    fn sync_cells_uses_db_value_not_stale_payload() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V1).unwrap();
+        conn.execute_batch(crate::db::SCHEMA_V4).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE datagrids ADD COLUMN source_spreadsheet_id TEXT;",
+        )
+        .unwrap();
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO spreadsheets (id, name, imported_at, updated_at)
+             VALUES ('s1', 'S', ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spreadsheet_columns (spreadsheet_id, col_index, title, width, type)
+             VALUES ('s1', 0, 'Nom', 150, 'text')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value)
+             VALUES ('s1', 0, 0, 'Alice')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO datagrids (id, name, created_at, updated_at, source_spreadsheet_id)
+             VALUES ('g1', 'G', ?1, ?1, 's1')",
+            params![now],
+        )
+        .unwrap();
+        let (cols, rows) = build_grid_from_spreadsheet("s1", &mut conn).unwrap();
+        save_grid(&mut conn, "g1", "G", &cols, &rows).unwrap();
+
+        // Interleaved flushes: viewer A already committed "NEW" to the DB,
+        // but viewer B's payload still carries the older "OLD" value.
+        conn.execute(
+            "UPDATE spreadsheet_cells SET value = 'NEW'
+             WHERE spreadsheet_id = 's1' AND row_index = 0 AND col_index = 0",
+            [],
+        )
+        .unwrap();
+
+        use crate::spreadsheet_db::CellChange;
+        sync_cells(
+            &mut conn,
+            "s1",
+            &[CellChange { row_index: 0, col_index: 0, value: "OLD".into() }],
+        )
+        .unwrap();
+
+        let data: String = conn
+            .query_row(
+                "SELECT data FROM datagrid_rows WHERE grid_id = 'g1' AND row_index = 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(data, r#"{"c0":"NEW"}"#, "DB value wins over stale payload");
     }
 
     /// sync_cells is a no-op when the spreadsheet has no linked grid.
