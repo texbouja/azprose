@@ -91,15 +91,6 @@ impl Default for SpreadsheetViewState {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct CellChange {
-    pub row: usize,
-    pub col: usize,
-    pub value: String,
-    #[serde(default)]
-    pub style: String,
-}
-
 // ── Commands ───────────────────────────────────────────────────────────────
 
 /// Create a new spreadsheet from parsed data.
@@ -332,81 +323,6 @@ pub fn spreadsheet_delete(
             .map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM spreadsheets WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
-        Ok(())
-    })
-}
-
-/// Save incremental cell changes (debounced from frontend).
-#[tauri::command]
-pub fn spreadsheet_save_cells(
-    state: State<'_, Db>,
-    root: String,
-    id: String,
-    changes: String,
-) -> Result<(), String> {
-    let changes: Vec<CellChange> =
-        serde_json::from_str(&changes).map_err(|e| format!("invalid changes JSON: {e}"))?;
-    let now = chrono::Utc::now().to_rfc3339();
-
-    with_db(&state, &root, |conn| {
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
-        {
-            let mut stmt = tx
-                .prepare(
-                    "INSERT OR REPLACE INTO spreadsheet_cells (spreadsheet_id, row_index, col_index, value, style)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
-                )
-                .map_err(|e| e.to_string())?;
-            for ch in &changes {
-                stmt.execute(params![id, ch.row as i32, ch.col as i32, ch.value, ch.style])
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-        tx.commit().map_err(|e| e.to_string())?;
-
-        conn.execute(
-            "UPDATE spreadsheets SET updated_at = ?1 WHERE id = ?2",
-            params![now, id],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    })
-}
-
-/// Save view state (hidden columns/rows, frozen, sort).
-#[tauri::command]
-pub fn spreadsheet_save_state(
-    state: State<'_, Db>,
-    root: String,
-    id: String,
-    view_state: String,
-) -> Result<(), String> {
-    let vs: SpreadsheetViewState =
-        serde_json::from_str(&view_state).map_err(|e| format!("invalid state JSON: {e}"))?;
-
-    with_db(&state, &root, |conn| {
-        conn.execute(
-            "INSERT OR REPLACE INTO spreadsheet_state (spreadsheet_id, hidden_columns, hidden_rows, frozen_columns, frozen_rows, sort_column, sort_order, styles)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                id,
-                vs.hidden_columns,
-                vs.hidden_rows,
-                vs.frozen_columns,
-                vs.frozen_rows,
-                vs.sort_column,
-                vs.sort_order,
-                vs.styles,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-
-        let now = chrono::Utc::now().to_rfc3339();
-        conn.execute(
-            "UPDATE spreadsheets SET updated_at = ?1 WHERE id = ?2",
-            params![now, id],
-        )
-        .map_err(|e| e.to_string())?;
         Ok(())
     })
 }

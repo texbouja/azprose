@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { getRootPath } from "@/stores/root-path.svelte";
-import type { SpreadsheetData, SpreadsheetMeta, CellChange, ColumnDef, SpreadsheetViewState } from "./types";
+import type { SpreadsheetData, SpreadsheetMeta, ColumnDef, SpreadsheetViewState } from "./types";
 
 function requireRoot(): string {
   const r = getRootPath();
@@ -51,29 +51,6 @@ export async function spreadsheetRename(id: string, name: string): Promise<void>
 export async function spreadsheetDelete(id: string): Promise<void> {
   const root = requireRoot();
   return invoke("spreadsheet_delete", { root, id });
-}
-
-/** Save incremental cell changes (debounced). */
-export async function spreadsheetSaveCells(id: string, changes: CellChange[]): Promise<void> {
-  const root = requireRoot();
-  return invoke("spreadsheet_save_cells", {
-    root,
-    id,
-    changes: JSON.stringify(changes),
-  });
-}
-
-/** Save view state (hidden columns/rows, frozen panes, sort, styles). */
-export async function spreadsheetSaveState(
-  id: string,
-  viewState: SpreadsheetViewState,
-): Promise<void> {
-  const root = requireRoot();
-  return invoke("spreadsheet_save_state", {
-    root,
-    id,
-    viewState: JSON.stringify(viewState),
-  });
 }
 
 /** Full save on tab close: replaces all cells, columns, and state. */

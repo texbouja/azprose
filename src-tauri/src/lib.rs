@@ -515,8 +515,6 @@ pub fn run() {
             spreadsheet_db::spreadsheet_list,
             spreadsheet_db::spreadsheet_rename,
             spreadsheet_db::spreadsheet_save_all,
-            spreadsheet_db::spreadsheet_save_cells,
-            spreadsheet_db::spreadsheet_save_state,
             calendar_db::calendar_events_get,
             calendar_db::calendar_events_save,
             calendar_db::calendar_events_delete,

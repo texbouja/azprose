@@ -37,10 +37,3 @@ export interface SpreadsheetViewState {
   /** Per-cell styles JSON object: { "row,col": "font-weight:bold;text-align:center" } */
   styles?: string;
 }
-
-export interface CellChange {
-  row: number;
-  col: number;
-  value: string;
-  style?: string;
-}

@@ -3,7 +3,6 @@ export type {
   SpreadsheetData,
   ColumnDef,
   SpreadsheetViewState,
-  CellChange,
 } from "./types";
 
 export {
@@ -12,8 +11,6 @@ export {
   spreadsheetList,
   spreadsheetRename,
   spreadsheetDelete,
-  spreadsheetSaveCells,
-  spreadsheetSaveState,
   spreadsheetSaveAll,
   spreadsheetExportCsv,
   spreadsheetInitDb,
