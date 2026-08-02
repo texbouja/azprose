@@ -11,8 +11,14 @@ import type { ColleMeta, CollePlanche, CollesSection } from "./types";
 export const FENCE_OPEN_RE = /^```colle(?:[ \t]+.*)?$/;
 /** Ligne de fermeture d'un fence. */
 export const FENCE_CLOSE_RE = /^```[ \t]*$/;
-/** Ligne de séparation de planches : exactement `---` (convention SlideDeck). */
-export const HR_RE = /^---$/;
+/** Ligne de séparation de planches : ligne horizontale à tirets (convention
+ * SlideDeck), tolérante aux espaces/tabulations — CommonMark : 0-3 espaces
+ * d'indentation, 3+ tirets, espacements/tabulations de fin optionnels.
+ * `markdown-it` rend `<hr>` pour toutes ces variantes (`---`, `--- `, ` ---`,
+ * `----`, …) : le parser doit les reconnaître TOUTES pour retirer au parsing
+ * la séparation (sinon le `---` fuit dans le corps d'une planche ou dans le
+ * rendu HTML du preview). */
+export const HR_RE = /^ {0,3}-{3,}[ \t]*$/;
 
 export function isFenceOpen(line: string): boolean {
   return FENCE_OPEN_RE.test(line);

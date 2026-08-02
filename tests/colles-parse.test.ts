@@ -114,14 +114,28 @@ describe("findFichesSection", () => {
     const lines = ["a", "---", "", "---", "```colle"];
     expect(findFichesSection(lines)).toBe(4);
   });
+  test("tolère les espaces autour du --- (CommonMark)", () => {
+    expect(findFichesSection(["a", "--- ", "---", "```colle"])).toBe(3);
+    expect(findFichesSection(["a", "---", " ---", "```colle"])).toBe(3);
+    expect(findFichesSection(["a", "--- ", "", " ---", "```colle"])).toBe(4);
+  });
 });
 
 describe("isHrLine / isFenceOpen / isFenceClose", () => {
   test("--- exact", () => {
     expect(isHrLine("---")).toBe(true);
-    expect(isHrLine("----")).toBe(false);
     expect(isHrLine("--")).toBe(false);
-    expect(isHrLine("--- ")).toBe(false);
+    expect(isHrLine("-")).toBe(false);
+  });
+  test("variantes CommonMark tolérées (markdown-it rend <hr> pour toutes)", () => {
+    expect(isHrLine("----")).toBe(true);
+    expect(isHrLine("--- ")).toBe(true);
+    expect(isHrLine(" ---")).toBe(true);
+    expect(isHrLine("  ---")).toBe(true);
+    expect(isHrLine("   ---")).toBe(true);
+    expect(isHrLine("----\t")).toBe(true);
+    expect(isHrLine("    ---")).toBe(false); // 4 espaces = pas une ligne horizontale
+    expect(isHrLine("---x")).toBe(false);
   });
   test("ouverture/fermeture de fence", () => {
     expect(isFenceOpen("```colle")).toBe(true);
@@ -182,6 +196,15 @@ describe("parsePlanches", () => {
     const planches = splitPlanches(lines, 2);
     expect(planches).toHaveLength(2);
     expect(planches[1].meta.matiere).toBe("B");
+  });
+
+  test("séparateur avec espaces (--- ) : le corps s'arrête avant, pas de fuite", () => {
+    const src = ["a", "---", "---", "```colle", "matiere: A", "```", "corpsA", "--- ", "```colle", "matiere: B", "```", "corpsB"].join("\n");
+    const section = parsePlanches(src);
+    expect(section.planches).toHaveLength(2);
+    expect(section.planches[0].bodySource).toBe("corpsA");
+    expect(section.planches[0].bodySource).not.toContain("---");
+    expect(section.planches[1].bodySource).toBe("corpsB");
   });
 });
 
@@ -272,6 +295,17 @@ describe("stripColleSeparators", () => {
     expect(lines[1]).toBe(""); // ---\r → vidé (pas de \r résiduel)
     expect(lines[2]).toBe("");
     expect(lines[6]).toBe("corps\r");
+  });
+
+  test("vide aussi les séparateurs avec espaces (--- ,  ---)", () => {
+    const src = ["---", "---", "```colle", "matiere: X", "```", "corps", "--- ", "```colle", "matiere: Y", "```", "corps2"].join("\n");
+    const out = stripColleSeparators(src);
+    const lines = out.split("\n");
+    expect(lines[0]).toBe(""); // 1er --- d'annonce
+    expect(lines[1]).toBe(""); // 2e --- d'annonce
+    expect(lines[6]).toBe(""); // séparateur "--- " vidé
+    expect(out).toContain("corps");
+    expect(out).toContain("corps2");
   });
 });
 
