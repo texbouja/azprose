@@ -537,3 +537,120 @@ body:has(.mdv-overlay--settings) {
 .mdv-settings__row .wx-combo {
   max-width: 200px;
 }
+
+/* ── Colles : Dates + Rubriques ─────────────────────── */
+/* Grille type tableau : colonne 1 = labels (largeur auto = celle du plus
+   long, alignés entre eux), colonne 2 = date pickers (largeur fixe compacte).
+   `display: contents` sur le label laisse les span/picker devenir des
+   cellules de grille — sans cette structure les deux lignes ne s'aligneraient
+   pas entre elles. */
+.mdv-settings__colles-dates {
+  display: grid;
+  grid-template-columns: auto 168px;
+  gap: 8px 16px;
+  justify-content: start;
+  align-items: center;
+  flex-shrink: 0;
+}
+.mdv-settings__colles-date {
+  display: contents;
+}
+.mdv-settings__colles-date > span {
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--fg);
+}
+/* La largeur du composant est `--wx-input-width: 100%` — on la borne ici
+   (spécificité supérieure au style du composant). */
+.mdv-settings__colles-date .wx-datepicker,
+.mdv-settings__vacances .wx-datepicker {
+  width: 168px;
+}
+
+/* Périodes de vacances : grille type tableau — Début | Fin | ×, alignées
+   entre elles (même gabarit pour l'en-tête et les lignes). */
+.mdv-settings__vacances {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.mdv-settings__vacances-head,
+.mdv-settings__vacance-row {
+  display: grid;
+  grid-template-columns: 168px 168px 24px;
+  gap: 8px;
+  align-items: center;
+}
+.mdv-settings__vacances-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.mdv-settings__vacance-row .mdv-settings__colles-del {
+  justify-self: end;
+}
+
+.mdv-settings__colles-matiere {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.mdv-settings__colles-matiere-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.mdv-settings__colles-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mdv-settings__colles-row > :global(.wx-text) {
+  flex: 1;
+}
+.mdv-settings__colles-row > :global(.wx-text:last-of-type) {
+  flex: 0 0 72px;
+}
+.mdv-settings__colles-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.mdv-settings__colles-del:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--color-error, #e5484d);
+}
+.mdv-settings__colles-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  margin-top: 2px;
+}
+.mdv-settings__colles-add:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}

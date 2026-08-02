@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Counter, Combo, Slider, Switch, Checkbox, Segmented, Text, TextArea } from "@svar-ui/svelte-core";
+  import { Counter, Combo, Slider, Switch, Checkbox, Segmented, Text, TextArea, DatePicker } from "@svar-ui/svelte-core";
 import { slide } from "svelte/transition";
 import { Button } from "@/components/primitives";
 import { getT, language, setLanguage, LANGUAGE_CHOICES } from "@/lib/i18n";
@@ -31,6 +31,8 @@ import { getFontStore, type FontCheck } from "@/stores/fonts.svelte";
 import { joinPath } from "@/lib/files";
 import { userProfile, type UserRole } from "@/stores/user-profile.svelte";
 import { exportCalendar, importCalendar, clearCalendar } from "@/lib/calendar-persistence";
+import { collesSettings, type CollesSettings } from "@/stores/colles-settings.svelte";
+import { MATIERE_KEYS, type ColleRubrique } from "@/colles";
 
 let t = $derived(getT($language));
 
@@ -42,8 +44,8 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance";
-type SectionId = "markdown" | "general" | "latex";
+type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques";
+type SectionId = "markdown" | "general" | "latex" | "colles";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
   {
@@ -77,10 +79,87 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "latex-build",   labelKey: "settings.module.latexBuild" },
     ],
   },
+  {
+    id: "colles",
+    labelKey: "settings.section.colles",
+    modules: [
+      { id: "colles-dates",     labelKey: "settings.module.collesDates" },
+      { id: "colles-rubriques", labelKey: "settings.module.collesRubriques" },
+    ],
+  },
 ];
 
 let activeModule = $state<ModuleId>("editor");
-let expandedSections = $state(new Set<SectionId>(["general", "markdown", "latex"]));
+let expandedSections = $state(new Set<SectionId>(["general", "markdown", "latex", "colles"]));
+
+// ── Réglages des colles (Dates + Rubriques) ────────────────────────────────
+let cs = $derived(collesSettings.current);
+
+function patchColles(patch: (draft: CollesSettings) => CollesSettings) {
+  collesSettings.update(patch);
+}
+
+function setRubrique(mk: string, idx: number, patch: Partial<ColleRubrique>) {
+  patchColles((prev) => {
+    const rubs = (prev.rubriques[mk] ?? []).map((r, i) => (i === idx ? { ...r, ...patch } : r));
+    return { ...prev, rubriques: { ...prev.rubriques, [mk]: rubs } };
+  });
+}
+
+function addRubrique(mk: string) {
+  patchColles((prev) => {
+    const rubs = prev.rubriques[mk] ?? [];
+    let max = 0;
+    for (const r of rubs) {
+      const m = /^rub(\d+)$/.exec(r.id);
+      if (m) max = Math.max(max, Number(m[1]));
+    }
+    return {
+      ...prev,
+      rubriques: { ...prev.rubriques, [mk]: [...rubs, { id: `rub${max + 1}`, label: "", maxScore: 0 }] },
+    };
+  });
+}
+
+function removeRubrique(mk: string, idx: number) {
+  patchColles((prev) => {
+    const rubs = (prev.rubriques[mk] ?? []).filter((_, i) => i !== idx);
+    return { ...prev, rubriques: { ...prev.rubriques, [mk]: rubs } };
+  });
+}
+
+function addVacance() {
+  patchColles((prev) => ({ ...prev, vacances: [...prev.vacances, { start: "", end: "" }] }));
+}
+
+function setVacance(idx: number, field: "start" | "end", value: string) {
+  patchColles((prev) => {
+    const vacances = prev.vacances.map((v, i) => (i === idx ? { ...v, [field]: value } : v));
+    return { ...prev, vacances };
+  });
+}
+
+function removeVacance(idx: number) {
+  patchColles((prev) => ({
+    ...prev,
+    vacances: prev.vacances.filter((_, i) => i !== idx),
+  }));
+}
+
+// ── Conversion YYYY-MM-DD ⇄ Date (DatePicker SVAR) ─────────────────────────
+// Les dates sont stockées en ISO local (`2026-09-01`). Le DatePicker SVAR
+// travaille en `Date` : parse composante par composante (new Date(y, m-1, d))
+// pour éviter tout décalage de fuseau, et reformate en composantes locales.
+function isoToDate(iso: string | undefined): Date | undefined {
+  if (!iso) return undefined;
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d);
+}
+function dateToIso(d: Date | null | undefined): string {
+  if (!d) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // Explicit $derived so the template tracks settings reactively.
 let s = $derived(proseMarkSettings.current);
@@ -1233,6 +1312,113 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <p class="mdv-settings__hint">Le calendrier vit dans le stockage local du navigateur. Utilisez ces commandes pour sauvegarder ou restaurer vos événements manuellement.</p>
           {/if}
 
+          {#if activeModule === "colles-dates"}
+            <p class="mdv-settings__section-title">{t("settings.collesDates")}</p>
+            <div class="mdv-settings__colles-dates">
+              <label class="mdv-settings__colles-date">
+                <span>{t("settings.collesStartDate")}</span>
+                <DatePicker
+                  value={isoToDate(cs.dateDebut)}
+                  buttons={["clear", "today"]}
+                  onchange={(ev) => patchColles((p) => ({ ...p, dateDebut: dateToIso(ev.value) }))}
+                />
+              </label>
+              <label class="mdv-settings__colles-date">
+                <span>{t("settings.collesEndDate")}</span>
+                <DatePicker
+                  value={isoToDate(cs.dateFin)}
+                  buttons={["clear", "today"]}
+                  onchange={(ev) => patchColles((p) => ({ ...p, dateFin: dateToIso(ev.value) }))}
+                />
+              </label>
+            </div>
+            <p class="mdv-settings__hint">{t("settings.collesDatesHint")}</p>
+
+            <p class="mdv-settings__section-title">{t("settings.collesVacances")}</p>
+            <p class="mdv-settings__hint">{t("settings.collesVacancesHint")}</p>
+            {#if cs.vacances.length}
+              <div class="mdv-settings__vacances">
+                <div class="mdv-settings__vacances-head" aria-hidden="true">
+                  <span>{t("settings.collesVacanceStart")}</span>
+                  <span>{t("settings.collesVacanceEnd")}</span>
+                  <span></span>
+                </div>
+                {#each cs.vacances as vac, idx (idx)}
+                  <div class="mdv-settings__vacance-row">
+                    <DatePicker
+                      value={isoToDate(vac.start)}
+                      buttons={["clear", "today"]}
+                      onchange={(ev) => setVacance(idx, "start", dateToIso(ev.value))}
+                    />
+                    <DatePicker
+                      value={isoToDate(vac.end)}
+                      buttons={["clear", "today"]}
+                      onchange={(ev) => setVacance(idx, "end", dateToIso(ev.value))}
+                    />
+                    <button
+                      type="button"
+                      class="mdv-settings__colles-del"
+                      aria-label={t("settings.collesRemoveVacance")}
+                      onclick={() => removeVacance(idx)}
+                    >
+                      <i class="wxi-x" style="font-size:12px"></i>
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <button type="button" class="mdv-settings__colles-add" onclick={addVacance}>
+              <i class="wxi-plus" style="font-size:12px"></i>
+              {t("settings.collesAddVacance")}
+            </button>
+          {/if}
+
+          {#if activeModule === "colles-rubriques"}
+            <p class="mdv-settings__section-title">{t("settings.collesRubriques")}</p>
+            <p class="mdv-settings__hint">{t("settings.collesRubriquesHint")}</p>
+            {#each MATIERE_KEYS as mk (mk)}
+              {@const rubs = cs.rubriques[mk] ?? []}
+              <div class="mdv-settings__colles-matiere">
+                <p class="mdv-settings__colles-matiere-title">{t(`settings.matiere.${mk}`)}</p>
+                {#each rubs as rub, idx (rub.id)}
+                  <div class="mdv-settings__colles-row">
+                    <Text
+                      value={rub.label}
+                      placeholder={t("settings.collesRubriqueLabel")}
+                      onchange={(ev) => setRubrique(mk, idx, { label: String(ev.value ?? "") })}
+                    />
+                    <Text
+                      value={String(rub.maxScore)}
+                      placeholder={t("settings.collesRubriqueMax")}
+                      inputStyle="max-width:64px"
+                      onchange={(ev) => {
+                        const n = Number(String(ev.value).trim().replace(",", "."));
+                        setRubrique(mk, idx, { maxScore: Number.isFinite(n) && n >= 0 ? n : 0 });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      class="mdv-settings__colles-del"
+                      title={t("settings.collesRemoveRubrique")}
+                      aria-label={t("settings.collesRemoveRubrique")}
+                      onclick={() => removeRubrique(mk, idx)}
+                    >
+                      <i class="wxi-minus-circle" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                {/each}
+                <button
+                  type="button"
+                  class="mdv-settings__colles-add"
+                  onclick={() => addRubrique(mk)}
+                >
+                  <i class="wxi-plus-circle" aria-hidden="true"></i>
+                  <span>{t("settings.collesAddRubrique")}</span>
+                </button>
+              </div>
+            {/each}
+          {/if}
+
         </div>
 
       </div>
@@ -1282,6 +1468,10 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           </button>
         {:else if activeModule === "appearance"}
           <button type="button" class="mdv-settings__reset" onclick={() => generalSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "colles-dates" || activeModule === "colles-rubriques"}
+          <button type="button" class="mdv-settings__reset" onclick={() => collesSettings.reset()}>
             {t("settings.reset")}
           </button>
         {/if}

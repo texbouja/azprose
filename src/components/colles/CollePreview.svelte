@@ -75,7 +75,7 @@
     };
   });
 
-  function handleEval(index: number, keys: { note?: number | string | null; observations?: string | null }) {
+  function handleEval(index: number, keys: { notes?: Record<string, number | string> | null; observations?: string | null }) {
     window.dispatchEvent(
       new CustomEvent("azprose:colle-eval", {
         detail: { path: filePath, index, keys },

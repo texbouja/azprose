@@ -8,6 +8,7 @@ import type { ThemeMode } from "./theme";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import type { LatexSettings } from "@/stores/latex-settings.svelte";
 import type { EditorFontFamily } from "@/stores/editor-settings.svelte";
+import type { CollesSettings } from "@/stores/colles-settings.svelte";
 
 // ── Nested config sections (mirror Settings Overlay hierarchy) ──────────────
 
@@ -59,6 +60,7 @@ export interface ProjectConfig {
   callouts?: CalloutDef[] | null;
   favorites?: string[] | null;
   latex?: LatexSettings | null;
+  colles?: CollesSettings | null;
 }
 
 // ── Schema — validates nested sections ──────────────────────────────────────
@@ -70,6 +72,7 @@ const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
   preview: { style: "object" },
   presentation: { style: "object", slideMode: "string" },
   math: { preamble: "string", packages: "object" },
+  colles: { dateDebut: "string", dateFin: "string", vacances: "object", rubriques: "object" },
 };
 
 const CONFIG_SCHEMA: Record<string, string> = {
@@ -82,6 +85,7 @@ const CONFIG_SCHEMA: Record<string, string> = {
   callouts: "object",
   favorites: "object",
   latex: "object",
+  colles: "object",
 };
 
 function validateSection(obj: Record<string, unknown>, schema: Record<string, string>): boolean {

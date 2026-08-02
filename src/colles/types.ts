@@ -13,15 +13,40 @@ export interface ColleMeta {
   colleur?: string;
   eleve?: string;
   date?: string;
-  creneaux?: string[];
+  /** Créneau unique (ex. "09:00-10:00") — remplace l'ancien tableau `creneaux`. */
+  creneau?: string;
   salle?: string;
-  /** Note attribuée par le colleur (write-back depuis le preview). */
+  /**
+   * Note attribuée par le colleur (héritage). DEPRECATED : remplacée par le
+   * dict `notes` (rubriques) — conservée en lecture seule pour les notes
+   * existantes saisies avant le passage aux rubriques.
+   */
   note?: number | string | null;
+  /**
+   * Notes par rubrique (write-back depuis le preview) : clés `rub1…rubN`
+   * définies par la config des rubriques de la matière (colles-settings).
+   * La note GLOBALE est la somme des rubriques, TOUJOURS calculée au rendu
+   * (jamais stockée). `null` = suppression de la clé au write-back.
+   */
+  notes?: Record<string, number | string> | null;
   /** Observations du colleur (write-back depuis le preview). */
   observations?: string | null;
   /** Clés YAML libres supplémentaires (extensibilité). */
   [key: string]: unknown;
 }
+
+/** Une rubrique d'évaluation (config par matière, voir colles-settings). */
+export interface ColleRubrique {
+  /** Clé YAML dans le dict `notes` (rub1, rub2, …). */
+  id: string;
+  /** Libellé affiché (ex. « Maîtrise du cours »). */
+  label: string;
+  /** Score maximal attribuable à cette rubrique. */
+  maxScore: number;
+}
+
+/** Config des rubriques par matière (clé matière → liste de rubriques). */
+export type RubriquesParMatiere = Record<string, ColleRubrique[]>;
 
 /** Une planche extraite d'une daily note (vue source, pas de rendu). */
 export interface CollePlanche {

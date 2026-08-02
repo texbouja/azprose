@@ -17,13 +17,23 @@ function save<T>(key: string, value: T): void {
   }
 }
 
-export function persistedState<T>(key: string, initial: T) {
-  let value = $state(load(key, initial));
+/**
+ * Persisted state (global UI prefs — unscoped key).
+ *
+ * `normalize` (optional) migrates legacy persisted shapes: it runs on the
+ * initial load AND on every set/update, so a store whose model gained new
+ * fields never exposes `undefined` for them (e.g. `collesSettings.vacances`
+ * added after an older shape was already persisted in localStorage / config).
+ * It must be idempotent and preserve unknown/extra fields.
+ */
+export function persistedState<T>(key: string, initial: T, normalize?: (v: T) => T) {
+  let value = $state(normalize ? normalize(load(key, initial)) : load(key, initial));
+  const norm = (v: T): T => (normalize ? normalize(v) : v);
 
   return {
     get current() { return value; },
-    set current(v: T) { value = v; save(key, v); },
-    update(fn: (prev: T) => T) { value = fn(value); save(key, value); },
+    set current(v: T) { value = norm(v); save(key, value); },
+    update(fn: (prev: T) => T) { value = norm(fn(value)); save(key, value); },
     reset() { value = initial; save(key, initial); },
   };
 }

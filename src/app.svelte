@@ -93,6 +93,7 @@ import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svel
 import { latexSettings } from "@/stores/latex-settings.svelte";
 import { theme } from "@/stores/theme.svelte";
 import { editorSettings } from "@/stores/editor-settings.svelte";
+import { collesSettings } from "@/stores/colles-settings.svelte";
 import { createHandlers, type HandlerContext } from "@/lib/handlers";
 import { handleKeydown, type KeyboardDeps } from "@/lib/app-keyboard";
 import {
@@ -346,6 +347,7 @@ $effect(() => {
   theme.mode;
   latexSettings.current;
   editorSettings.current;
+  collesSettings.current;
   scheduleConfigSync();
 });
 
@@ -1041,7 +1043,7 @@ $effect(() => {
     const detail = (e as CustomEvent).detail as {
       path?: string | null;
       index: number;
-      keys: { note?: number | string | null; observations?: string | null };
+      keys: { notes?: Record<string, number | string> | null; observations?: string | null };
     };
     if (detail.path == null) return;
     const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");

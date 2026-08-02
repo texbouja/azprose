@@ -10,7 +10,9 @@ import {
   isFenceClose,
 } from "../src/colles/parse";
 import { writeBackColleKeys } from "../src/colles/write-back";
-import type { ColleMeta } from "../src/colles/types";
+import { matiereKey, rubriquesFor, sumMaxScore, sumNotes } from "../src/colles/rubrics";
+import { normalizeCollesSettings } from "../src/colles/settings-model";
+import type { ColleMeta, RubriquesParMatiere } from "../src/colles/types";
 
 const SAMPLE = `---
 title: Daily note 2026-08-02
@@ -30,9 +32,7 @@ matiere: "Maths"
 colleur: "M. Dupont"
 eleve: "Alice"
 date: "2026-08-03"
-creneaux:
-  - "09:00-10:00"
-  - "10:00-11:00"
+creneau: "09:00-10:00"
 salle: "B204"
 \`\`\`
 
@@ -49,8 +49,7 @@ matiere: "Physique"
 colleur: "Mme Martin"
 eleve: "Bob"
 date: "2026-08-03"
-creneaux:
-  - "14:00-15:00"
+creneau: "14:00-15:00"
 salle: "B205"
 \`\`\`
 
@@ -67,9 +66,14 @@ describe("parseColleYaml", () => {
     expect(meta.salle).toBe("B204");
   });
 
-  test("parse une liste de créneaux", () => {
-    const meta = parseColleYaml(`creneaux:\n  - "09:00-10:00"\n  - "10:00-11:00"`);
-    expect(meta.creneaux).toEqual(["09:00-10:00", "10:00-11:00"]);
+  test("parse un créneau simple", () => {
+    const meta = parseColleYaml(`creneau: "09:00-10:00"`);
+    expect(meta.creneau).toBe("09:00-10:00");
+  });
+
+  test("parse le dict notes (rubriques)", () => {
+    const meta = parseColleYaml(`notes:\n  rub1: 5\n  rub2: 3`);
+    expect(meta.notes).toEqual({ rub1: 5, rub2: 3 });
   });
 
   test("retourne {} sur contenu vide", () => {
@@ -157,7 +161,7 @@ describe("parsePlanches", () => {
     expect(p1.meta.matiere).toBe("Maths");
     expect(p1.meta.colleur).toBe("M. Dupont");
     expect(p1.meta.eleve).toBe("Alice");
-    expect(p1.meta.creneaux).toEqual(["09:00-10:00", "10:00-11:00"]);
+    expect(p1.meta.creneau).toBe("09:00-10:00");
     expect(p1.bodySource).toContain("## Exercice 1 — Séries numériques");
     expect(p1.bodySource).toContain("Convergence");
     expect(p1.bodySource).toContain("![[fiche-geometrie]]");
@@ -376,5 +380,178 @@ describe("writeBackColleKeys", () => {
   test("suppression idempotente (clé déjà absente → source inchangé)", () => {
     const out = writeBackColleKeys(SAMPLE, 0, { note: "", observations: null });
     expect(out).toBe(SAMPLE);
+  });
+});
+
+describe("writeBackColleKeys — dict notes (rubriques)", () => {
+  test("écrit le dict notes et préserve le reste du bloc", () => {
+    const out = writeBackColleKeys(SAMPLE, 0, { notes: { rub1: 5, rub2: 3 }, observations: "Bien." });
+    expect(out).not.toBe(SAMPLE);
+    const re = parsePlanches(out);
+    expect(re.planches[0].meta.notes).toEqual({ rub1: 5, rub2: 3 });
+    expect(re.planches[0].meta.observations).toBe("Bien.");
+    expect(re.planches[0].meta.matiere).toBe("Maths");
+    expect(re.planches[0].meta.creneau).toBe("09:00-10:00");
+    // la planche 2 est intacte
+    expect(re.planches[1].meta.notes).toBeUndefined();
+  });
+
+  test("idempotent pour un dict identique (égalité profonde)", () => {
+    const out = writeBackColleKeys(SAMPLE, 0, { notes: { rub1: 5, rub2: 3 } });
+    const out2 = writeBackColleKeys(out, 0, { notes: { rub1: 5, rub2: 3 } });
+    expect(out2).toBe(out);
+  });
+
+  test("met à jour une rubrique existante", () => {
+    const withNotes = writeBackColleKeys(SAMPLE, 0, { notes: { rub1: 5, rub2: 3 } });
+    const out = writeBackColleKeys(withNotes, 0, { notes: { rub1: 4, rub2: 3 } });
+    const re = parsePlanches(out);
+    expect(re.planches[0].meta.notes).toEqual({ rub1: 4, rub2: 3 });
+  });
+
+  test("null retire le dict notes (sémantique suppression)", () => {
+    const withNotes = writeBackColleKeys(SAMPLE, 0, { notes: { rub1: 5 } });
+    const out = writeBackColleKeys(withNotes, 0, { notes: null });
+    expect(out).not.toBe(withNotes);
+    const re = parsePlanches(out);
+    expect(re.planches[0].meta.notes).toBeUndefined();
+    expect(re.planches[0].meta.matiere).toBe("Maths");
+  });
+
+  test("round-trip YAML : le dict notes reparsé reste exact", () => {
+    const out = writeBackColleKeys(SAMPLE, 0, { notes: { rub1: 5, rub2: 3, rub6: 2.5 } });
+    const meta: ColleMeta = parseColleYaml(
+      out
+        .split("\n")
+        .slice(parsePlanches(out).planches[0].blockStart + 1, parsePlanches(out).planches[0].blockEnd)
+        .join("\n"),
+    );
+    expect(meta.notes).toEqual({ rub1: 5, rub2: 3, rub6: 2.5 });
+  });
+});
+
+describe("writeBackColleKeys — observations : protection YAML", () => {
+  test("caractères spéciaux : round-trip fidèle (colonne, dièse, listes, quotes, LaTeX, numériques, espaces)", () => {
+    const cases = [
+      "colonne : deux points suivis d'espace",
+      "dièse # et liste - item",
+      "guillemets \"double\" et 'simple'",
+      "LaTeX $\\frac{1}{2}$ et \\alpha",
+      "15.5",
+      "true",
+      " espaces de bord ",
+      "fin avec :",
+      "`code` et *italique*",
+    ];
+    for (const obs of cases) {
+      const re = parsePlanches(writeBackColleKeys(SAMPLE, 0, { observations: obs }));
+      expect(re.planches[0].meta.observations).toBe(obs);
+    }
+  });
+
+  test("multi-ligne : bloc scalaire verbatim (\\n, colonne, LaTeX, indentation)", () => {
+    const obs = "Première ligne\nDeuxième avec : colon et $\\frac{1}{2}$\n\n  indentation conservée";
+    const out = writeBackColleKeys(SAMPLE, 0, { observations: obs });
+    expect(out).toContain("observations: |-");
+    const re = parsePlanches(out);
+    expect(re.planches[0].meta.observations).toBe(obs);
+  });
+
+  test("le contenu hostile reste une VALEUR (pas d'injection de clé YAML)", () => {
+    const obs = "notes: { rub9: 20 }\nmatiere: hack\n---";
+    const out = writeBackColleKeys(SAMPLE, 0, { observations: obs });
+    const re = parsePlanches(out);
+    expect(re.planches[0].meta.observations).toBe(obs);
+    // Ni le dict notes ni la matière réels ne sont pollués par le texte.
+    expect(re.planches[0].meta.notes).toBeUndefined();
+    expect(re.planches[0].meta.matiere).toBe("Maths");
+  });
+
+  test("bloc YAML reparsé complet : observations multi-ligne LaTeX exactes", () => {
+    const obs = "Démonstration :\n$\\frac{a}{b} = c$\nThéorème de Thalès.";
+    const out = writeBackColleKeys(SAMPLE, 0, { observations: obs });
+    const block = out
+      .split("\n")
+      .slice(parsePlanches(out).planches[0].blockStart + 1, parsePlanches(out).planches[0].blockEnd)
+      .join("\n");
+    const meta = parseColleYaml(block);
+    expect(meta.observations).toBe(obs);
+  });
+});
+
+describe("rubrics — note globale calculée (jamais stockée)", () => {
+  const RUBRIQUES: RubriquesParMatiere = {
+    maths: [
+      { id: "rub1", label: "Maîtrise du cours", maxScore: 5 },
+      { id: "rub2", label: "Chercher", maxScore: 3 },
+    ],
+  };
+
+  test("sumNotes additionne les valeurs numériques", () => {
+    expect(sumNotes({ rub1: 5, rub2: 3 })).toBe(8);
+    expect(sumNotes({ rub1: 4.5, rub2: 0 })).toBe(4.5);
+  });
+
+  test("sumNotes ignore les valeurs non numériques et le vide", () => {
+    expect(sumNotes({ rub1: 5, rub2: "—" })).toBe(5);
+    expect(sumNotes({ rub1: "non" })).toBeNull();
+    expect(sumNotes(undefined)).toBeNull();
+    expect(sumNotes(null)).toBeNull();
+    expect(sumNotes({})).toBeNull();
+  });
+
+  test("sumMaxScore somme les maxScore", () => {
+    expect(sumMaxScore(RUBRIQUES.maths)).toBe(8);
+    expect(sumMaxScore([])).toBe(0);
+  });
+
+  test("matiereKey normalise les valeurs YAML", () => {
+    expect(matiereKey("Maths")).toBe("maths");
+    expect(matiereKey("mathématiques")).toBe("maths");
+    expect(matiereKey("Physique")).toBe("physique");
+    expect(matiereKey("Français")).toBe("francais");
+    expect(matiereKey("Anglais")).toBe("anglais");
+    expect(matiereKey("Culture arabe et traduction")).toBe("cat");
+    expect(matiereKey(undefined)).toBe("maths");
+    expect(matiereKey("")).toBe("maths");
+    expect(matiereKey("SVT")).toBe("svt");
+  });
+
+  test("rubriquesFor résout la config de la matière, défaut maths sinon", () => {
+    expect(rubriquesFor("Maths", RUBRIQUES)).toHaveLength(2);
+    expect(rubriquesFor("inconnu", RUBRIQUES)).toEqual(RUBRIQUES.maths);
+    expect(rubriquesFor("Physique", RUBRIQUES)).toEqual(RUBRIQUES.maths); // pas configuré → défaut
+  });
+
+  test("normalizeCollesSettings comble les champs manquants (migration legacy)", () => {
+    // Ancienne forme persistée (avant l'ajout de `vacances`) → pas de crash
+    // `undefined.vacances` et champ initialisé à [].
+    const legacy = { dateDebut: "2026-09-01", dateFin: "", rubriques: RUBRIQUES } as any;
+    expect(normalizeCollesSettings(legacy)).toEqual({
+      dateDebut: "2026-09-01",
+      dateFin: "",
+      vacances: [],
+      rubriques: RUBRIQUES,
+    });
+  });
+
+  test("normalizeCollesSettings préserve les vacances existantes", () => {
+    const v = normalizeCollesSettings({
+      dateDebut: "2026-09-01",
+      dateFin: "",
+      vacances: [{ start: "2026-10-19", end: "2026-10-25" }],
+      rubriques: RUBRIQUES,
+    } as any);
+    expect(v.vacances).toEqual([{ start: "2026-10-19", end: "2026-10-25" }]);
+  });
+
+  test("normalizeCollesSettings est idempotent", () => {
+    const once = normalizeCollesSettings({
+      dateDebut: "2026-09-01",
+      dateFin: "2027-06-30",
+      vacances: [],
+      rubriques: RUBRIQUES,
+    } as any);
+    expect(normalizeCollesSettings(once)).toEqual(once);
   });
 });

@@ -49,6 +49,7 @@ export const STORAGE_KEYS = {
   latexSettings: "mdview.latex.settings",
   shortcuts: "mdview.shortcuts",
   journalSettings: "mdview.journal",
+  collesSettings: "mdview.colles",
   userProfile: "mdview.user.profile",
 } as const;
 

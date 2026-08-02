@@ -1,6 +1,11 @@
 /* ── Planches de colles (CollePreview) ──────────────────────────────────────
    Vue side-panel des fiches de colle d'une daily note : barre de navigation,
-   carte unique (en-tête métadonnées + corps markdown + form d'évaluation). */
+   carte unique en TROIS sections pliables (métadonnées / contenu / évaluation),
+   style identique au stack DataFilter (`.dfg`/`.dfg__head`) : barre de carte
+   à fond solide, icône + titre + badge + spacer + bouton chevron à droite.
+   Le chevron remplace l'icône « close » des cartes DataFilter (ici on
+   plie/déplie, on ne retire rien) — bouton HTML pur, jamais perdu dans un
+   menu « … » d'overflow de toolbar. */
 
 .colle-viewer {
   flex: 1;
@@ -55,59 +60,148 @@
   padding: 12px;
 }
 
-/* ── Carte planche ─────────────────────────────────────────────────────── */
+/* ── Carte planche : trois sections pliables (style DataFilter) ──────────── */
 
 .colle-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  gap: 10px;
+  /* Largeur de lecture confortable (même norme que .mdv-prose), centrée
+     dans le stage scrollable quand le panneau est plus large. */
+  max-width: 800px;
+  margin: 0 auto;
 }
 
-.colle-card__head {
+/* Section = carte `.dfg` : bordure + radius + fond --bg */
+.colle-sec {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  min-height: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
 }
 
-.colle-card__title {
+/* Barre de carte `.dfg__head` : fond --surface solide, filet bas */
+.colle-sec__head {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.colle-card__badge {
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  gap: 8px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
   font-family: var(--font-ui);
+  font-size: 12px;
+  flex-shrink: 0;
+  min-height: 30px;
 }
 
-.colle-card__name {
-  margin: 0;
-  font-size: 15px;
+.colle-sec__icon {
+  font-size: 17px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.colle-sec__title {
   font-weight: 600;
   color: var(--fg);
-  font-family: var(--font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.colle-card__meta {
+/* Note globale dans le heading (mode preview de l'évaluation) : badge
+   accent compact, vidé (—) quand aucune rubrique n'est renseignée. */
+.colle-sec__note-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.colle-sec__note-badge--empty {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.colle-sec__badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.colle-sec__spacer {
+  flex: 1;
+}
+
+/* Bouton chevron (à la place de l'icône « close » des cartes DataFilter) */
+.colle-sec__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+/* Mode actif (ex. œil du preview d'évaluation) : accent souligné */
+.colle-sec__btn.is-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.colle-sec__btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+
+.colle-sec__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.colle-sec__btn .wxi-chevron-down,
+.colle-sec__btn .wxi-chevron-right,
+.colle-sec__btn .wxi-eye {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* Contenus des sections : filet de séparation avec la barre */
+.colle-sec__meta,
+.colle-sec__body,
+.colle-sec__form,
+.colle-sec__preview {
+  padding: 10px 12px;
+}
+
+/* Métadonnées */
+.colle-sec__meta {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 18px;
   margin: 0;
 }
 
-.colle-card__field {
+.colle-sec__field {
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -115,38 +209,50 @@
   font-family: var(--font-ui);
 }
 
-.colle-card__field dt {
+.colle-sec__field dt {
   color: var(--muted);
   font-weight: 500;
 }
 
-.colle-card__field dd {
+.colle-sec__field dd {
   margin: 0;
   color: var(--fg);
   font-weight: 500;
 }
 
-.colle-card__field--note dd {
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.colle-card__body {
-  border-top: 1px dashed var(--border);
-  padding-top: 12px;
-}
-
-.colle-card__body .mdv-prose {
+/* Contenu markdown */
+.colle-sec__body .mdv-prose {
   max-width: none;
 }
 
-.colle-card__foot {
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
+/* Form headless (section repliée = masquée par CSS, form jamais démonté) */
+.colle-sec__form--hidden {
+  display: none;
 }
 
-.colle-card__foot .colle-note-form {
+.colle-sec__form {
   font-family: var(--font-ui);
   font-size: 12px;
+}
+
+/* ── Mode preview de l'évaluation (icône œil) ────────────────────────────────
+   La note globale vit dans le heading (`.colle-sec__note-badge`) : le corps du
+   preview ne contient QUE les observations rendues en markdown (même pipeline
+   que le contenu : post-render + MathJax). Le formulaire reste monté derrière
+   (masqué par CSS). */
+
+.colle-sec__preview {
+  /* Aucune font-size/font-family forcée : le rendu des observations hérite
+     du style global de la page (comme la section « Énoncé ») — forcer 12px
+     + --font-ui rendait le texte plus petit que le reste du preview. */
+}
+
+.colle-sec__preview-obs .mdv-prose {
+  max-width: none;
+}
+
+.colle-sec__preview-empty {
+  margin: 0;
+  color: var(--muted);
+  font-style: italic;
 }

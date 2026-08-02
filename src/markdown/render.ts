@@ -185,7 +185,7 @@ const COLLE_FIELD_LABELS: Array<[keyof ColleMeta, string]> = [
   ["colleur", "Colleur"],
   ["eleve", "Élève"],
   ["date", "Date"],
-  ["creneaux", "Créneaux"],
+  ["creneau", "Créneau"],
   ["salle", "Salle"],
 ];
 

@@ -11,6 +11,7 @@ import { listCustomThemes, injectThemeCSS } from "@/lib/custom-themes"
 import { BUILTIN_THEMES } from "@/lib/theme"
 import type { FileOpsManager } from "@/lib/file-operations.svelte"
 import { editorSettings, DEFAULT_EDITOR_SETTINGS } from "@/stores/editor-settings.svelte"
+import { collesSettings, DEFAULT_COLLES_SETTINGS } from "@/stores/colles-settings.svelte"
 
 export interface ConfigSyncContext {
   configRoot: string | null
@@ -77,6 +78,9 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   cfg.callouts = calloutSettings.current;
 
   if (ctx.fo.favorites.current.length) cfg.favorites = ctx.fo.favorites.current;
+
+  const cs = collesSettings.current;
+  if (JSON.stringify(cs) !== JSON.stringify(DEFAULT_COLLES_SETTINGS)) cfg.colles = cs;
 
   await saveProjectConfig(ctx.configRoot, cfg);
 }
@@ -150,6 +154,7 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   if (cfg.latex != null) latexSettings.patch(cfg.latex);
   if (cfg.callouts != null) calloutSettings.load(cfg.callouts);
   if (cfg.favorites != null) deps.fo.favorites.current = cfg.favorites;
+  if (cfg.colles != null) collesSettings.current = cfg.colles;
 
   deps.setConfigLoaded(true);
   deps.setThemeBootDone(true);
