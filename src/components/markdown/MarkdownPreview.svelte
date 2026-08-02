@@ -13,6 +13,7 @@ import {
 } from "@/markdown";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { subscribeMode, type Theme } from "@/lib/theme";
+import { typesetMath } from "@/lib/typeset-math";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { previewSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PreviewStyle } from "@/stores/markdown-settings.svelte";
@@ -104,18 +105,6 @@ $effect(() => {
   });
   return () => { cancelled = true; };
 });
-
-async function typesetMath(el: HTMLElement): Promise<void> {
-  await import("mathjax/tex-svg.js");
-  const mj = window.MathJax as
-    | { startup?: { promise?: Promise<void> }; tex2svgPromise?: (tex: string, opts: { display: boolean }) => Promise<unknown>; typesetPromise?: (els: HTMLElement[]) => Promise<void> }
-    | undefined;
-  if (!mj?.startup?.promise) return;
-  await mj.startup.promise;
-  const preamble = mathJaxPreamble.current.trim();
-  if (preamble) await mj.tex2svgPromise?.(preamble, { display: true });
-  await mj.typesetPromise?.([el]);
-}
 
 // ── Math cache: preserve MathJax SVGs across re-renders ──────────────────
 // Maps data-math-source → outerHTML (MathJax-rendered <mjx-container>)

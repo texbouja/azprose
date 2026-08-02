@@ -7,6 +7,7 @@ import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
 import LazyProseMark from "@/components/markdown/LazyProseMark.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
+import LazyCollePreview from "@/components/colles/LazyCollePreview.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
 import LazyCalendarPanel from "@/components/calendar/LazyCalendarPanel.svelte";
@@ -79,6 +80,11 @@ let {
   />
 {:else if isImagePath(tab.path)}
   <ImageViewer path={tab.path} />
+{:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "colle"}
+  <LazyCollePreview
+    value={tab.source}
+    filePath={tab.path}
+  />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}
   <LazySlideDeck
     value={tab.source}

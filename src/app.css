@@ -25,6 +25,7 @@
 @import "./styles/pdf/pdf.css";
 @import "./styles/markdown/preview.css";
 @import "./styles/grid-theme.css";
+@import "./styles/colles/colles.css";
 
 /* shell layout */
 .mdv-app {

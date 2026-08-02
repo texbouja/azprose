@@ -2,7 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { PanelManager } from "@/lib/panel-manager";
 import type { LatexState } from "@/latex";
 
-export type EditorMode = "raw" | "prose" | "preview" | "presentation";
+export type EditorMode = "raw" | "prose" | "preview" | "presentation" | "colle";
 
 export interface EditorModeDeps {
   pm: PanelManager;
@@ -74,6 +74,26 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.pm.openInSide(ctx.activePath!, { preview: true }).catch(() => {});
         const tab = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "presentation");
+        ctx.setSideVisible(true);
+        ctx.pm.sideVisible = true;
+        ctx.bumpPanelVersion();
+      }
+      break;
+    }
+    case "colle": {
+      if (!isMd) return;
+      // Le main panel reste sur l'éditeur (règle structurelle) ; la vue colles
+      // s'ouvre dans le side panel avec renderMode "colle".
+      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
+      if (existing) {
+        ctx.pm.side.setRenderMode(existing.id, "colle");
+        ctx.pm.side.select(existing.id);
+        ctx.setSideVisible(true);
+        ctx.pm.sideVisible = true;
+      } else {
+        ctx.pm.openInSide(ctx.activePath!, { preview: true }).catch(() => {});
+        const tab = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
+        if (tab) ctx.pm.side.setRenderMode(tab.id, "colle");
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
         ctx.bumpPanelVersion();

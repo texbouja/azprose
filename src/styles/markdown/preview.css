@@ -446,3 +446,54 @@
   background: color-mix(in srgb, var(--surface) 60%, transparent);
   border-radius: 3px;
 }
+
+/* ── Planches de colles (```colle) — placeholder dans le preview normal ── */
+
+.colle-block {
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-left: 3px solid var(--accent, #4a90d9);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.colle-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+.colle-block__badge {
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent, #4a90d9);
+  border: 1px solid color-mix(in srgb, var(--accent, #4a90d9) 40%, transparent);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.colle-block__field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 0.85em;
+}
+
+.colle-block__label {
+  color: var(--muted);
+}
+
+.colle-block__value {
+  font-weight: 500;
+}
+
+.colle-block__hint {
+  margin: 8px 0 0;
+  font-size: 0.8em;
+  font-style: italic;
+  color: var(--muted);
+}

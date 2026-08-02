@@ -67,6 +67,7 @@ export type CommandActions = {
   // Markdown editor modes
   setEditorMode: (mode: "raw" | "prose" | "preview") => void;
   startPresentation: () => void;
+  startColles: () => void;
   editorMode: string;
 
   // LaTeX actions
@@ -303,6 +304,15 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         category: "markdown" as CommandCategory,
         keywords: ["markdown", "presentation", "slides", "fullscreen"],
         action: actions.startPresentation,
+      },
+      {
+        id: "md-colle",
+        label: t("command.mdColle"),
+        hint: t("command.mdColleHint"),
+        icon: "wxi-star",
+        category: "markdown" as CommandCategory,
+        keywords: ["colle", "colles", "planches", "fiche", "oral", "évaluation"],
+        action: actions.startColles,
       },
       {
         id: "export-pdf",

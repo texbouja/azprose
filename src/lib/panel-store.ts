@@ -2,7 +2,7 @@ import { basename, isOpenablePath, isPdfPath, isImagePath } from "@/lib";
 import { readText, writeText } from "@/lib/files";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
-export type RenderMode = "raw" | "prose" | "preview" | "presentation";
+export type RenderMode = "raw" | "prose" | "preview" | "presentation" | "colle";
 export type TabSource = "latex";
 export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter";
 

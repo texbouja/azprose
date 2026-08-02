@@ -6,6 +6,8 @@ import { isPdfPath, isImagePath } from "@/lib";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
+import { journalSettings } from "@/stores/journal-settings.svelte";
+import { isDailyNotePath } from "@/stores/journal-store.svelte";
 import SlideModeRadio from "./SlideModeRadio.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
 
@@ -22,6 +24,8 @@ let {
   onLatexBuild,
   onExportPdf,
   onToggleRenderMode,
+  onToggleColles,
+  collesOn = false,
   onToggleFullscreen,
   onCommand,
 }: {
@@ -34,6 +38,8 @@ let {
   onLatexBuild?: () => void;
   onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
+  onToggleColles?: () => void;
+  collesOn?: boolean;
   onToggleFullscreen?: () => void;
   onCommand?: (cmd: string) => void;
 } = $props();
@@ -67,26 +73,41 @@ let isMd = $derived(ext === "md");
 let isTex = $derived(ext === "tex");
 let isCsv = $derived(ext === "csv" || ext === "tsv");
 let isMain = $derived(panelId === "main");
+let isDaily = $derived(
+  isMd && isDailyNotePath(activeTab?.path ?? "", journalSettings.current.journalFolder),
+);
 
 /* ── Toolbar items — reactive on mode + renderMode + slideMode ── */
 
 let mainItems = $derived.by(() => {
-  if (isMd) return [
-    { spacer: true },
-    { comp: "button", icon: "wxi-code", text: t("tabs.raw"),
-      type: renderMode === "raw" ? "pressed" : "",
-      handler: () => onSetEditorMode?.("raw") },
-    { comp: "button", icon: "wxi-edit", text: t("tabs.prose"),
-      type: renderMode === "prose" ? "pressed" : "",
-      handler: () => onSetEditorMode?.("prose") },
-    { comp: "separator" },
-    { comp: "button", icon: "wxi-file-down", text: t("tabs.exportPdf"),
-      handler: () => onExportPdf?.() },
-    { comp: "separator" },
-    { comp: "button", icon: "wxi-eye", text: t("tabs.preview"),
-      type: (renderMode === "preview" || renderMode === "presentation") ? "pressed" : "",
-      handler: () => onSetEditorMode?.("preview") },
-  ];
+  if (isMd) {
+    const items: any[] = [
+      { spacer: true },
+      { comp: "button", icon: "wxi-code", text: t("tabs.raw"),
+        type: renderMode === "raw" ? "pressed" : "",
+        handler: () => onSetEditorMode?.("raw") },
+      { comp: "button", icon: "wxi-edit", text: t("tabs.prose"),
+        type: renderMode === "prose" ? "pressed" : "",
+        handler: () => onSetEditorMode?.("prose") },
+      { comp: "separator" },
+      { comp: "button", icon: "wxi-file-down", text: t("tabs.exportPdf"),
+        handler: () => onExportPdf?.() },
+      { comp: "separator" },
+      { comp: "button", icon: "wxi-eye", text: t("tabs.preview"),
+        type: (renderMode === "preview" || renderMode === "presentation") ? "pressed" : "",
+        handler: () => onSetEditorMode?.("preview") },
+    ];
+    // Daily notes uniquement : bouton « Colles » → vue planches dans le side panel
+    if (isDaily) {
+      items.push(
+        { comp: "separator" },
+        { comp: "button", icon: "wxi-star", text: t("tabs.colles"),
+          type: collesOn ? "pressed" : "",
+          handler: () => onToggleColles?.() },
+      );
+    }
+    return items;
+  }
   if (isTex) return [
     { spacer: true },
     { comp: "button", icon: "wxi-file-down", text: t("tabs.build"),
@@ -122,7 +143,7 @@ let sideItems = $derived.by(() => {
       { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", handler: () => fire("zoom-out") },
       { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", handler: () => fire("zoom-in") },
     );
-  } else if (isMd && renderMode !== "presentation") {
+  } else if (isMd && renderMode !== "presentation" && renderMode !== "colle") {
     items.push(
       { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", handler: () => fire("zoom-out") },
       { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", handler: () => fire("zoom-reset") },
@@ -146,7 +167,16 @@ let sideItems = $derived.by(() => {
 
   items.push({ spacer: true });
 
-  // Right: presentation toggle + fullscreen
+  // Right: colle toggle (daily notes only), presentation toggle + fullscreen
+  if (isDaily) {
+    items.push({
+      comp: "icon",
+      icon: "wxi-star",
+      text: t("tabs.colles"),
+      type: renderMode === "colle" ? "pressed" : "",
+      handler: () => onToggleColles?.(),
+    });
+  }
   if (isMd) {
     items.push({
       comp: "icon",

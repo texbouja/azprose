@@ -27,6 +27,8 @@ let {
   onLatexBuild,
   onExportPdf,
   onToggleRenderMode,
+  onToggleColles,
+  collesOn = false,
   onToggleFullscreen: _onToggleFullscreen,
   viewerFullscreenOn = false,
   onViewerFullscreen,
@@ -53,6 +55,8 @@ let {
   onLatexBuild?: () => void;
   onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
+  onToggleColles?: () => void;
+  collesOn?: boolean;
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
@@ -110,6 +114,8 @@ function handleViewerFullscreen() {
       {onLatexBuild}
       {onExportPdf}
       {onToggleRenderMode}
+      {onToggleColles}
+      {collesOn}
       onToggleFullscreen={handleViewerFullscreen}
       onCommand={handleViewerCommand}
     />

@@ -1,0 +1,116 @@
+/**
+ * Parsing des planches de colles dans une daily note.
+ *
+ * Logique pure (pas de DOM) — réutilisable par le preview normal, CollePreview,
+ * et la future vue DataFilter (table de métadonnées).
+ */
+import { parse } from "yaml";
+import type { ColleMeta, CollePlanche, CollesSection } from "./types";
+
+/** Ligne d'ouverture d'un bloc colle (éventuellement suivie d'infos ignorées). */
+export const FENCE_OPEN_RE = /^```colle(?:[ \t]+.*)?$/;
+/** Ligne de fermeture d'un fence. */
+export const FENCE_CLOSE_RE = /^```[ \t]*$/;
+/** Ligne de séparation de planches : exactement `---` (convention SlideDeck). */
+export const HR_RE = /^---$/;
+
+export function isFenceOpen(line: string): boolean {
+  return FENCE_OPEN_RE.test(line);
+}
+
+export function isFenceClose(line: string): boolean {
+  return FENCE_CLOSE_RE.test(line);
+}
+
+export function isHrLine(line: string): boolean {
+  return HR_RE.test(line);
+}
+
+/** Parse le contenu YAML d'un bloc ```` ```colle ````. {} si vide, invalide ou non-objet. */
+export function parseColleYaml(blockSource: string): ColleMeta {
+  const trimmed = blockSource.trim();
+  if (!trimmed) return {};
+  try {
+    const doc = parse(trimmed);
+    if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return {};
+    return doc as ColleMeta;
+  } catch {
+    return {};
+  }
+}
+
+function isEmptyLine(line: string): boolean {
+  return line.trim() === "";
+}
+
+/**
+ * Index de la première ligne APRÈS le double `---` qui annonce la section fiches.
+ * Tolérant à UNE ligne vide optionnelle entre les deux `---` (faute de frappe
+ * naturelle à la saisie). -1 si la section n'existe pas.
+ */
+export function findFichesSection(lines: string[]): number {
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (isHrLine(lines[i])) {
+      if (isHrLine(lines[i + 1])) return i + 2;
+      if (i + 2 < lines.length && isEmptyLine(lines[i + 1]) && isHrLine(lines[i + 2])) {
+        return i + 3;
+      }
+    }
+  }
+  return -1;
+}
+
+/** Découpe la section fiches (à partir de `startLine`) en planches. */
+export function splitPlanches(lines: string[], startLine: number): CollePlanche[] {
+  const planches: CollePlanche[] = [];
+  const n = lines.length;
+  let i = startLine;
+  let index = 0;
+
+  while (i < n) {
+    if (isFenceOpen(lines[i])) {
+      // Fermeture du fence (i peut atteindre n si mal fermé → corps vide).
+      let j = i + 1;
+      while (j < n && !isFenceClose(lines[j])) j++;
+      const blockEnd = j;
+
+      const blockSource = lines.slice(i + 1, j).join("\n");
+      const meta = parseColleYaml(blockSource);
+
+      // Corps : markdown entre la fermeture du fence et la ligne `---` suivante (ou EOF).
+      const bodyStart = Math.min(j + 1, n);
+      let k = bodyStart;
+      while (k < n && !isHrLine(lines[k])) k++;
+      const bodyEnd = k;
+      const bodySource = lines.slice(bodyStart, bodyEnd).join("\n");
+
+      planches.push({
+        index,
+        meta,
+        blockSource,
+        bodySource,
+        blockStart: i,
+        blockEnd,
+        bodyStart,
+        bodyEnd,
+      });
+      index++;
+
+      // La planche suivante commence après le `---` (ou EOF).
+      i = bodyEnd < n ? bodyEnd + 1 : bodyEnd;
+    } else {
+      // Ligne hors planche (journal résiduel dans la section, planche sans fence) — ignorée.
+      i++;
+    }
+  }
+
+  return planches;
+}
+
+/** Découpe une daily note complète en planches de colles. */
+export function parsePlanches(source: string): CollesSection {
+  const lines = source.split(/\r?\n/);
+  const startLine = findFichesSection(lines);
+  if (startLine < 0) return { startLine: -1, planches: [] };
+  return { startLine, planches: splitPlanches(lines, startLine) };
+}

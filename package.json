@@ -91,7 +91,8 @@
     "rrule": "^2.8.1",
     "shiki": "^4.3.0",
     "svelte": "^5.56.4",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

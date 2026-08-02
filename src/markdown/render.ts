@@ -11,6 +11,7 @@ import { wikilinkPlugin } from "./wikilinks";
 import { resolveTransclusions, type TransclusionRange } from "./transclusion";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import { slugify } from "./slugify";
+import { parseColleYaml, type ColleMeta } from "@/colles";
 
 // ── HTML escape utilities ────────────────────────────────
 export function escapeHtml(s: string): string {
@@ -177,11 +178,56 @@ md.use(callouts, calloutOptions);
 
 md.use(footnote);
 
+// ── Colle planches (```colle) — carte d'en-tête lisible dans le preview normal ──
+
+const COLLE_FIELD_LABELS: Array<[keyof ColleMeta, string]> = [
+  ["matiere", "Matière"],
+  ["colleur", "Colleur"],
+  ["eleve", "Élève"],
+  ["date", "Date"],
+  ["creneaux", "Créneaux"],
+  ["salle", "Salle"],
+];
+
+function renderCollePlaceholder(index: number, meta: ColleMeta): string {
+  const metaJson = escapeAttr(JSON.stringify(meta));
+  const fields = COLLE_FIELD_LABELS
+    .filter(([k]) => meta[k] != null && meta[k] !== "")
+    .map(([k, label]) => {
+      const v = Array.isArray(meta[k]) ? (meta[k] as unknown[]).join(" · ") : String(meta[k]);
+      return (
+        `<span class="colle-block__field">` +
+        `<span class="colle-block__label">${escapeHtml(label)}</span>` +
+        `<span class="colle-block__value">${escapeHtml(v)}</span>` +
+        `</span>`
+      );
+    })
+    .join("");
+  return (
+    `<div class="colle-block" data-colle-index="${index}" data-colle-meta="${metaJson}">` +
+    `<div class="colle-block__head">` +
+    `<span class="colle-block__badge">Colle</span>${fields}` +
+    `</div>` +
+    `<p class="colle-block__hint">Fiche de colle — ouvrir la vue « Colles » pour l'évaluation</p>` +
+    `</div>`
+  );
+}
+
 // Fenced code blocks — Shiki highlighting
-md.renderer.rules.fence = ((tokens, idx, _options, _env, _self) => {
+md.renderer.rules.fence = ((tokens, idx, _options, env, _self) => {
   const token = tokens[idx];
-  if (!highlighter) return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
   const lang = (token.info.trim().split(/\s+/)[0]) || "text";
+
+  // ```colle — planche de colle : métadonnées YAML → carte d'en-tête lisible.
+  if (lang === "colle") {
+    const meta = parseColleYaml(token.content);
+    const rEnv = env as Record<string, unknown>;
+    const pIndex = (rEnv.colleIndex as number) ?? 0;
+    rEnv.colleIndex = pIndex + 1;
+    return renderCollePlaceholder(pIndex, meta);
+  }
+
+  if (!highlighter) return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
   const loaded = highlighter.getLoadedLanguages() as readonly string[];
   const language = loaded.includes(lang) ? lang : "text";
   try {

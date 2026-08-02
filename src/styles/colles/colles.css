@@ -1,0 +1,182 @@
+/* ── Planches de colles (CollePreview) ──────────────────────────────────────
+   Vue side-panel des fiches de colle d'une daily note : barre de navigation,
+   carte unique (en-tête métadonnées + corps markdown + form d'évaluation). */
+
+.colle-viewer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.colle-viewer__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.colle-viewer__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  font-family: var(--font-ui);
+}
+
+.colle-viewer__count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.colle-viewer__nav {
+  display: flex;
+  gap: 4px;
+}
+
+.colle-viewer__btn {
+  min-width: 28px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-hover);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-base) var(--easing);
+}
+
+.colle-viewer__btn:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.colle-viewer__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.colle-viewer__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-family: var(--font-ui);
+}
+
+.colle-viewer__stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* ── Carte planche ─────────────────────────────────────────────────────── */
+
+.colle-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.colle-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.colle-card__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.colle-card__badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  font-family: var(--font-ui);
+}
+
+.colle-card__name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+  font-family: var(--font-ui);
+}
+
+.colle-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+}
+
+.colle-card__field {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
+.colle-card__field dt {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.colle-card__field dd {
+  margin: 0;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.colle-card__field--note dd {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.colle-card__body {
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+
+.colle-card__body .mdv-prose {
+  max-width: none;
+}
+
+.colle-card__foot {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.colle-card__foot .colle-note-form {
+  font-family: var(--font-ui);
+  font-size: 12px;
+}

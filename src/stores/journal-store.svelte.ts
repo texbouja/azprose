@@ -90,6 +90,18 @@ export function createJournalState() {
 // Shared instance used by the sidebar, JournalCalendarPanel, and app events.
 export const journal = createJournalState();
 
+// ── Helper : un fichier est-il une daily note ? ─────────────────────────
+// Même logique que createNote/scanForNotes : fichier `YYYY-MM-DD.md` situé
+// (éventuellement en sous-dossier) sous le dossier journal configuré. Si le
+// dossier journal est vide, seul le motif de date compte (notes à la racine).
+export function isDailyNotePath(path: string, folder?: string): boolean {
+  const parts = path.split("/");
+  const base = parts.pop() ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}\.md$/i.test(base)) return false;
+  if (folder) return parts.includes(folder);
+  return true;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function todayYearMonth(): { year: number; month: number } {

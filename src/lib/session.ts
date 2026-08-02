@@ -47,7 +47,7 @@ export interface SessionTab {
   path: string;
   title: string;
   sourceType?: "latex";
-  renderMode?: "raw" | "prose" | "preview" | "presentation";
+  renderMode?: "raw" | "prose" | "preview" | "presentation" | "colle";
 }
 
 export interface PanelSessionData {

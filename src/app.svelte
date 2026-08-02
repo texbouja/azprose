@@ -54,6 +54,7 @@ import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { executeOxideCommand } from "@/lib/lsp/markdown-oxide";
 import { writeText } from "@/lib/files";
+import { writeBackColleKeys } from "@/colles/write-back";
 import { extFromPath } from "@/lib/editor-languages";
 import { setOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
 import { saveSession, clearDraft, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
@@ -947,7 +948,8 @@ const handleToggleTitlebar = () => {
 };
 
 const editorMode = $derived<EditorMode>(
-  sideActivePath && pm.side.activeTab?.renderMode === "presentation" ? "presentation"
+  sideActivePath && pm.side.activeTab?.renderMode === "colle" ? "colle"
+  : sideActivePath && pm.side.activeTab?.renderMode === "presentation" ? "presentation"
   : sideActivePath && pm.side.activeTab?.renderMode === "preview" ? "preview"
   : prosemarkOn ? "prose"
   : "raw"
@@ -980,6 +982,40 @@ const handleInverseSync = (file: string, line: number) => inverseSyncUtil(editor
 const handleConsoleJump = (line: number, col?: number | null) => consoleJumpUtil(editorModeCtx, line, col);
 const handleSetEditorMode = (mode: EditorMode) => { setEditorModeUtil(editorModeCtx, mode); _panelVersion++; };
 const handleToggleSideRenderMode = () => toggleSideRenderModeUtil(editorModeCtx);
+const normPath = (p: string) => p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
+
+// Toolbar MAIN « Colles » (daily notes) : bascule la vue planches du fichier
+// main actif — ouvre l'onglet side en "colle", revient à "preview" si déjà en colle.
+const handleToggleColles = () => {
+  if (!activePath) return;
+  const target = normPath(activePath);
+  const sideTab = pm.side.tabs.find((t: any) => normPath(t.path) === target);
+  if (sideTab?.renderMode === "colle") {
+    pm.side.setRenderMode(sideTab.id, "preview");
+    _panelVersion++;
+  } else {
+    handleSetEditorMode("colle");
+  }
+};
+
+// Toolbar SIDE « Colles » : bascule colle ↔ preview pour le fichier side actif.
+const handleToggleSideColles = () => {
+  const tab = pm.side.activeTab;
+  if (!tab) return;
+  const next = tab.renderMode === "colle" ? "preview" : "colle";
+  pm.side.setRenderMode(tab.id, next);
+  _panelVersion++;
+};
+
+// État pressé du bouton main : la vue colles du fichier main actif est ouverte.
+// (lit _panelVersion : les champs de PanelState ne sont pas $state, la
+// réactivité passe par le bump manuel — cf. activePath/tabs plus haut)
+const collesOn = $derived.by(() => {
+  _panelVersion;
+  if (!activePath) return false;
+  const target = normPath(activePath);
+  return pm.side.tabs.find((t: any) => normPath(t.path) === target)?.renderMode === "colle";
+});
 
 const handleToggleConsole = () => {
   if (consoleOpen) {
@@ -990,6 +1026,51 @@ const handleToggleConsole = () => {
   if (!activePath || (extFromPath(activePath) !== "tex" && extFromPath(activePath) !== "md")) consoleTab = "terminal";
   consoleOpen = true;
 };
+
+/**
+ * Write-back d'évaluation depuis la vue colles (CollePreview → azprose:colle-eval).
+ * Base = source LIVE du tab main (même path) pour ne jamais écraser les edits
+ * non-sauvegardés de l'éditeur ; repli = source du tab side (dernier contenu sauvé).
+ * 1) tab main mis à jour (→ dirty, sauvegarde standard, undo/redo éditeur préservés)
+ * 2) tab side mis à jour (→ l'affichage des cartes reflète la note)
+ * 3) sauvegarde immédiate : handleSave si le fichier est l'onglet main actif,
+ *    sinon écriture directe sur disque.
+ */
+$effect(() => {
+  const onColleEval = (e: Event) => {
+    const detail = (e as CustomEvent).detail as {
+      path?: string | null;
+      index: number;
+      keys: { note?: number | string | null; observations?: string | null };
+    };
+    if (detail.path == null) return;
+    const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
+    const target = norm(detail.path);
+    const mainTab = pm.main.tabs.find((t: any) => norm(t.path) === target);
+    const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
+    const base = mainTab?.source ?? sideTab?.source;
+    if (base === undefined) return;
+    const next = writeBackColleKeys(base, detail.index, detail.keys);
+    if (next === base) return;
+    if (mainTab) {
+      pm.main.setTabSource(mainTab.id, next);
+    }
+    if (sideTab) {
+      pm.side.setTabSource(sideTab.id, next);
+    }
+    _panelVersion++;
+    if (mainTab && norm(pm.main.activePath ?? "") === target) {
+      // L'effet dirty (source !== savedContent) s'exécute après le flush Svelte :
+      // on pose l'état explicitement pour que handleSave() parte immédiatement.
+      saveStatus = "dirty";
+      void handleSave();
+    } else {
+      void writeText(detail.path, next).catch((err: unknown) => console.error("azprose: colle write-back direct failed", err));
+    }
+  };
+  window.addEventListener("azprose:colle-eval", onColleEval);
+  return () => window.removeEventListener("azprose:colle-eval", onColleEval);
+});
 
 const handleToggleViewPanel = () => {
   if (!sideVisible && sideTabs.length > 0) {
@@ -1050,6 +1131,7 @@ let cmds = $derived(
       handleSetEditorMode(mode);
     },
     startPresentation: () => handleSetEditorMode("presentation"),
+    startColles: () => handleSetEditorMode("colle"),
     editorMode,
     latexBuild: async () => {
       if (!activePath) return;
@@ -1207,6 +1289,9 @@ let cmds = $derived(
           } : undefined}
           onExportPdf={activePath && extFromPath(activePath) === "md" ? handleExportPdf : undefined}
           onToggleRenderMode={handleToggleSideRenderMode}
+          onToggleColles={handleToggleColles}
+          onToggleSideColles={handleToggleSideColles}
+          collesOn={collesOn}
           onToggleFullscreen={toggleFullscreen}
           {viewerFullscreenOn}
           onViewerFullscreen={toggleViewerFullscreen}
