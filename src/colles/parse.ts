@@ -114,3 +114,40 @@ export function parsePlanches(source: string): CollesSection {
   if (startLine < 0) return { startLine: -1, planches: [] };
   return { startLine, planches: splitPlanches(lines, startLine) };
 }
+
+/**
+ * Vide les lignes `---` STRUCTURELLES pour qu'elles ne deviennent pas des
+ * `<hr>` dans le rendu HTML : le double `---` d'annonce de la section fiches
+ * et les `---` simples séparant les planches. Les lignes sont REMPLACÉES par
+ * une chaîne vide (jamais supprimées) pour préserver l'alignement des lignes
+ * et les data-sline de l'éditeur. Les fences de code sont épargnées. No-op si
+ * la note ne contient aucun fence ```` ```colle ````.
+ */
+export function stripColleSeparators(source: string): string {
+  const lines = source.split("\n");
+  const clean = (l: string) => (l.endsWith("\r") ? l.slice(0, -1) : l);
+  const cleanLines = lines.map(clean);
+  if (!cleanLines.some(isFenceOpen)) return source;
+  const startLine = findFichesSection(cleanLines);
+  if (startLine < 0) return source;
+
+  const blank = new Set<number>();
+  // Double `---` d'annonce : les lignes `---` juste avant startLine
+  // (startLine-2 et startLine-1, ou startLine-3/-1 avec ligne vide tolérée).
+  for (let i = Math.max(0, startLine - 3); i < startLine; i++) {
+    if (isHrLine(cleanLines[i])) blank.add(i);
+  }
+  // Séparateurs de planches : toutes les lignes `---` de la section à EOF,
+  // hors fences de code.
+  let inFence = false;
+  for (let i = startLine; i < lines.length; i++) {
+    const l = cleanLines[i];
+    if (l.startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && isHrLine(l)) blank.add(i);
+  }
+  if (blank.size === 0) return source;
+  return lines.map((l, i) => (blank.has(i) ? "" : l)).join("\n");
+}

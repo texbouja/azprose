@@ -68,6 +68,46 @@ let t = $derived(getT($language));
 
 function fire(cmd: string) { onCommand?.(cmd); }
 
+// ── Navigation colles (chevrons) — état rapporté par CollePreview ────────
+let colleNav = $state({ index: 0, total: 0 });
+
+$effect(() => {
+  const onState = (e: Event) => {
+    const d = (e as CustomEvent).detail as {
+      filePath?: string | null;
+      index?: number;
+      total?: number;
+    };
+    if (
+      d.filePath &&
+      activeTab &&
+      d.filePath === activeTab.path &&
+      typeof d.index === "number" &&
+      typeof d.total === "number"
+    ) {
+      colleNav = { index: d.index, total: d.total };
+    }
+  };
+  window.addEventListener("azprose:colle-nav-state", onState);
+  return () => window.removeEventListener("azprose:colle-nav-state", onState);
+});
+
+// À l'entrée en mode colle, on re-synchronise l'état auprès de la vue active
+// (le CollePreview monté répond au fichier correspondant).
+$effect(() => {
+  if (isMain || renderMode !== "colle" || !activeTab) return;
+  window.dispatchEvent(
+    new CustomEvent("azprose:colle-nav-sync", { detail: { filePath: activeTab.path } }),
+  );
+});
+
+function dispatchColleNav(dir: "prev" | "next") {
+  if (!activeTab) return;
+  window.dispatchEvent(
+    new CustomEvent("azprose:colle-nav", { detail: { filePath: activeTab.path, dir } }),
+  );
+}
+
 let ext = $derived(extFromPath(activeTab?.path ?? ""));
 let isMd = $derived(ext === "md");
 let isTex = $derived(ext === "tex");
@@ -127,6 +167,18 @@ let mainItems = $derived.by(() => {
 let sideItems = $derived.by(() => {
   const items: any[] = [];
 
+  // Left: navigation colles (chevrons) — vue planches active dans le side panel
+  if (renderMode === "colle") {
+    const prevDisabled = colleNav.total <= 0 || colleNav.index <= 0;
+    const nextDisabled = colleNav.total <= 0 || colleNav.index >= colleNav.total - 1;
+    items.push(
+      { comp: "icon", icon: "wxi-chevron-left", text: t("colle.prev"), pinned: true,
+        disabled: prevDisabled, handler: () => dispatchColleNav("prev") },
+      { comp: "icon", icon: "wxi-chevron-right", text: t("colle.next"), pinned: true,
+        disabled: nextDisabled, handler: () => dispatchColleNav("next") },
+    );
+  }
+
   // Left: title (PDF/image/HTML)
   if (isPdfPath(activeTab?.path ?? "") || isImagePath(activeTab?.path ?? "") || ext === "html") {
     items.push({
@@ -140,14 +192,14 @@ let sideItems = $derived.by(() => {
   // Center: zoom / radios
   if (isImagePath(activeTab?.path ?? "")) {
     items.push(
-      { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", handler: () => fire("zoom-out") },
-      { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", handler: () => fire("zoom-in") },
+      { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", pinned: true, handler: () => fire("zoom-out") },
+      { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", pinned: true, handler: () => fire("zoom-in") },
     );
   } else if (isMd && renderMode !== "presentation" && renderMode !== "colle") {
     items.push(
-      { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", handler: () => fire("zoom-out") },
-      { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", handler: () => fire("zoom-reset") },
-      { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", handler: () => fire("zoom-in") },
+      { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", pinned: true, handler: () => fire("zoom-out") },
+      { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", pinned: true, handler: () => fire("zoom-reset") },
+      { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", pinned: true, handler: () => fire("zoom-in") },
     );
   } else if (isMd && renderMode === "presentation") {
     for (const sm of SLIDE_MODES) {
@@ -155,40 +207,45 @@ let sideItems = $derived.by(() => {
         comp: "slide-mode-radio",
         value: sm.id,
         mode: slideSettings.mode,
+        pinned: true,
       });
     }
     items.push(
       { comp: "separator" },
-      { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", handler: () => fire("zoom-out") },
-      { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", handler: () => fire("zoom-reset") },
-      { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", handler: () => fire("zoom-in") },
+      { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", pinned: true, handler: () => fire("zoom-out") },
+      { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", pinned: true, handler: () => fire("zoom-reset") },
+      { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", pinned: true, handler: () => fire("zoom-in") },
     );
   }
 
   items.push({ spacer: true });
 
-  // Right: colle toggle (daily notes only), presentation toggle + fullscreen
+  // Right: colle toggle (daily notes only), presentation (non-daily md) + fullscreen.
+  // `pinned: true` = jamais basculés dans le menu « … » de débordement (l'overflow
+  // SVAR masque tout ce qui ne tient pas — l'exception native est le pinning).
   if (isDaily) {
     items.push({
       comp: "icon",
       icon: "wxi-star",
       text: t("tabs.colles"),
+      pinned: true,
       type: renderMode === "colle" ? "pressed" : "",
       handler: () => onToggleColles?.(),
     });
   }
-  if (isMd) {
+  if (isMd && !isDaily) {
     items.push({
       comp: "icon",
       icon: renderMode === "presentation" ? "wxi-slideshow" : "wxi-image",
       text: "Presentation",
+      pinned: true,
       type: renderMode === "presentation" ? "pressed" : "",
       handler: () => onToggleRenderMode?.(),
     });
     items.push({ comp: "separator" });
   }
   items.push(
-    { comp: "icon", icon: "wxi-fullscreen", text: "Fullscreen", handler: () => onToggleFullscreen?.() },
+    { comp: "icon", icon: "wxi-fullscreen", text: "Fullscreen", pinned: true, handler: () => onToggleFullscreen?.() },
   );
 
   return items;
@@ -328,6 +385,14 @@ let sideItems = $derived.by(() => {
   .ta-wrap :global(.wx-toolbar .wx-button.wx-pressed) {
     color: var(--accent);
     background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .ta-wrap :global(.wx-toolbar .wx-button[disabled]) {
+    opacity: 0.35;
+    cursor: default;
+    color: var(--fg-muted);
+  }
+  .ta-wrap :global(.wx-toolbar .wx-button[disabled]:hover) {
+    background: transparent;
   }
 
   /* ── Main panel: icon+label buttons ──────────────────── */

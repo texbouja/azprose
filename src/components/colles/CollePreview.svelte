@@ -40,6 +40,41 @@
     if (current < planches.length - 1) current++;
   }
 
+  // L'état de navigation est reporté à TabActions (chevrons du toolbar) :
+  // celui-ci ne l'affiche que si le fichier correspond au tab side actif.
+  $effect(() => {
+    window.dispatchEvent(
+      new CustomEvent("azprose:colle-nav-state", {
+        detail: { filePath, index: current, total: planches.length },
+      }),
+    );
+  });
+
+  // Commandes de navigation (chevrons TabActions) + resync d'état à la demande.
+  $effect(() => {
+    const onNav = (e: Event) => {
+      const d = (e as CustomEvent).detail as { filePath?: string | null; dir?: "prev" | "next" };
+      if (d.filePath !== filePath) return;
+      if (d.dir === "prev") prev();
+      else if (d.dir === "next") next();
+    };
+    const onSync = (e: Event) => {
+      const d = (e as CustomEvent).detail as { filePath?: string | null };
+      if (d.filePath !== filePath) return;
+      window.dispatchEvent(
+        new CustomEvent("azprose:colle-nav-state", {
+          detail: { filePath, index: current, total: planches.length },
+        }),
+      );
+    };
+    window.addEventListener("azprose:colle-nav", onNav);
+    window.addEventListener("azprose:colle-nav-sync", onSync);
+    return () => {
+      window.removeEventListener("azprose:colle-nav", onNav);
+      window.removeEventListener("azprose:colle-nav-sync", onSync);
+    };
+  });
+
   function handleEval(index: number, keys: { note?: number | string | null; observations?: string | null }) {
     window.dispatchEvent(
       new CustomEvent("azprose:colle-eval", {
@@ -79,22 +114,6 @@
       {#if planches.length > 0}
         <span class="colle-viewer__count">{current + 1} / {planches.length}</span>
       {/if}
-    </div>
-    <div class="colle-viewer__nav">
-      <button
-        class="colle-viewer__btn"
-        onclick={prev}
-        disabled={current === 0}
-        title={t("colle.prev")}
-        aria-label={t("colle.prev")}
-      >←</button>
-      <button
-        class="colle-viewer__btn"
-        onclick={next}
-        disabled={current >= planches.length - 1}
-        title={t("colle.next")}
-        aria-label={t("colle.next")}
-      >→</button>
     </div>
   </header>
 

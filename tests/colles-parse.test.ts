@@ -4,6 +4,7 @@ import {
   parseColleYaml,
   parsePlanches,
   splitPlanches,
+  stripColleSeparators,
   isHrLine,
   isFenceOpen,
   isFenceClose,
@@ -181,6 +182,96 @@ describe("parsePlanches", () => {
     const planches = splitPlanches(lines, 2);
     expect(planches).toHaveLength(2);
     expect(planches[1].meta.matiere).toBe("B");
+  });
+});
+
+describe("stripColleSeparators", () => {
+  test("vide le double --- d'annonce et les --- séparateurs, pas les autres", () => {
+    const src = [
+      "# Journal",
+      "",
+      "---", // légitime (hors section, séparé du marqueur par du contenu) → conservé
+      "",
+      "contenu du journal",
+      "",
+      "---",
+      "---",
+      "```colle",
+      "matiere: Maths",
+      "```",
+      "corps 1",
+      "---",
+      "```colle",
+      "matiere: Physique",
+      "```",
+      "corps 2",
+    ].join("\n");
+    const out = stripColleSeparators(src);
+    const lines = out.split("\n");
+    expect(lines[2]).toBe("---"); // conservé (hors section)
+    expect(lines[6]).toBe(""); // 1er --- d'annonce vidé
+    expect(lines[7]).toBe(""); // 2e --- d'annonce vidé
+    expect(lines[12]).toBe(""); // séparateur de planches vidé
+    // le contenu est intact
+    expect(out).toContain("# Journal");
+    expect(out).toContain("contenu du journal");
+    expect(out).toContain("corps 1");
+    expect(out).toContain("corps 2");
+    expect(out).toContain("matiere: Maths");
+  });
+
+  test("préserve l'alignement des lignes (data-sline)", () => {
+    const src = ["a", "b", "---", "---", "```colle", "matiere: X", "```", "corps"].join("\n");
+    const out = stripColleSeparators(src);
+    expect(out.split("\n")).toHaveLength(src.split("\n").length);
+    // les lignes vides restent à la même position
+    const lines = out.split("\n");
+    expect(lines[0]).toBe("a");
+    expect(lines[1]).toBe("b");
+    expect(lines[2]).toBe("");
+    expect(lines[3]).toBe("");
+    expect(lines[7]).toBe("corps");
+  });
+
+  test("no-op sans fence colle", () => {
+    const src = ["a", "---", "---", "b"].join("\n");
+    expect(stripColleSeparators(src)).toBe(src);
+  });
+
+  test("no-op sans section (--- simple uniquement)", () => {
+    const src = ["a", "---", "```colle", "x", "```"].join("\n");
+    expect(stripColleSeparators(src)).toBe(src);
+  });
+
+  test("préserve les --- à l'intérieur d'un fence de code", () => {
+    const src = [
+      "---",
+      "---",
+      "```colle",
+      "matiere: Maths",
+      "```",
+      "```python",
+      "---",
+      "print('---')",
+      "```",
+      "---",
+    ].join("\n");
+    const out = stripColleSeparators(src);
+    const lines = out.split("\n");
+    expect(lines[5]).toBe("```python");
+    expect(lines[6]).toBe("---"); // dans le fence → conservé
+    expect(lines[7]).toBe("print('---')");
+    expect(lines[9]).toBe(""); // séparateur final vidé
+  });
+
+  test("conserve les fins de ligne CRLF (--- vidé sans \\r résiduel)", () => {
+    const src = ["a\r", "---\r", "---\r", "```colle\r", "matiere: X\r", "```\r", "corps\r"].join("\n");
+    const out = stripColleSeparators(src);
+    const lines = out.split("\n");
+    expect(lines[0]).toBe("a\r");
+    expect(lines[1]).toBe(""); // ---\r → vidé (pas de \r résiduel)
+    expect(lines[2]).toBe("");
+    expect(lines[6]).toBe("corps\r");
   });
 });
 

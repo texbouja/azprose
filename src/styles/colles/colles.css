@@ -38,36 +38,6 @@
   color: var(--muted);
 }
 
-.colle-viewer__nav {
-  display: flex;
-  gap: 4px;
-}
-
-.colle-viewer__btn {
-  min-width: 28px;
-  height: 24px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-hover);
-  color: var(--fg);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--dur-base) var(--easing);
-}
-
-.colle-viewer__btn:hover:not(:disabled) {
-  background: var(--border);
-}
-
-.colle-viewer__btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
 .colle-viewer__empty {
   flex: 1;
   display: flex;

@@ -11,7 +11,7 @@ import { wikilinkPlugin } from "./wikilinks";
 import { resolveTransclusions, type TransclusionRange } from "./transclusion";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import { slugify } from "./slugify";
-import { parseColleYaml, type ColleMeta } from "@/colles";
+import { parseColleYaml, stripColleSeparators, type ColleMeta } from "@/colles";
 
 // ── HTML escape utilities ────────────────────────────────
 export function escapeHtml(s: string): string {
@@ -351,7 +351,10 @@ export async function renderMarkdown(
     activeShikiTheme = "github-light";
   }
   await ensureLangsLoaded(h, extractLangs(content));
-  const html = renderFrontMatterHeader(meta) + md.render(content, { fmOffset: fmLineCount });
+  // Les `---` structurels des colles (annonce de section + séparateurs de
+  // planches) ne doivent pas devenir des `<hr>` dans le rendu HTML.
+  const rendered = stripColleSeparators(content);
+  const html = renderFrontMatterHeader(meta) + md.render(rendered, { fmOffset: fmLineCount });
   return { html, ranges };
 }
 
