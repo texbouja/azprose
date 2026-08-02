@@ -26,6 +26,7 @@ mod fonts;
 mod spreadsheet_db;
 mod calendar_db;
 mod datagrid_db;
+mod stack_rules_db;
 mod db;
 use db::Db;
 
@@ -526,10 +527,11 @@ pub fn run() {
             datagrid_db::datagrid_save,
             datagrid_db::datagrid_create_from_spreadsheet,
             datagrid_db::datagrid_find_by_source,
-            datagrid_db::datagrid_sync_from_spreadsheet,
-            datagrid_db::datagrid_sync_cells,
+            datagrid_db::datagrid_save_cells,
             datagrid_db::datagrid_delete,
             datagrid_db::datagrid_rename,
+            stack_rules_db::datagrid_stack_rules_get,
+            stack_rules_db::datagrid_stack_rules_save,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

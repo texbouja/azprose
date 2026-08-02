@@ -13,7 +13,7 @@
   } from "@/spreadsheet/store";
   import type { ColumnDef, SpreadsheetViewState, CellChange } from "@/spreadsheet/types";
   import {
-    datagridFindBySource, datagridSyncFromSpreadsheet, datagridSyncCells,
+    datagridFindBySource,
   } from "@/datagrid/store";
   let {
     spreadsheetId = "",
@@ -102,12 +102,11 @@
 
   // Debounce timer
 
-  // ── Live bridge to a linked SVAR datagrid ──────────────────────────────
-  // When this spreadsheet is the source of a datagrid (source_spreadsheet_id),
-  // cell edits are mirrored into that grid so both representations stay in
-  // sync. The grid is found once per spreadsheet open; re-sync happens AFTER
-  // the SQLite save (cells → datagridSyncCells, structure →
-  // datagridSyncFromSpreadsheet) so the bridge never reads a stale snapshot.
+  // ── Link to datagrid views of this spreadsheet ─────────────────────────
+  // Data lives in the shared spreadsheet_cells table, so datagrid views are
+  // just config over the same source — no mirroring needed. We still track
+  // the linked grid id to notify open views to reload after a save (the
+  // "azprose:datagrid-updated" event), found once per spreadsheet open.
   let linkedGridId: string | null = null;
 
   $effect(() => {
@@ -123,7 +122,7 @@
         linkedGridId = meta?.id ?? null;
       })
       .catch((err) => {
-        if (!cancelled) console.warn("[spreadsheet] bridge lookup failed:", err);
+        if (!cancelled) console.warn("[spreadsheet] link lookup failed:", err);
       });
     return () => {
       cancelled = true;
@@ -369,10 +368,9 @@
   }
 
   /**
-   * Flush the accumulated changes. Cells → SQLite → linked datagrid, then
-   * structure (if dirty) → SQLite → linked datagrid full sync.
-   * Overlap-protected: a running flush re-queues (`pendingFlush`) instead of
-   * stacking parallel snapshots.
+   * Flush the accumulated changes. Cells → SQLite, structure (if dirty) →
+   * SQLite. Overlap-protected: a running flush re-queues (`pendingFlush`)
+   * instead of stacking parallel snapshots.
    */
   async function flushChanges() {
     if (saving) {
@@ -385,10 +383,6 @@
     try {
       const changes = [...pendingCellChanges.values()];
       const structureNow = structureDirty;
-      // The link may have appeared after mount (e.g. "Ouvrir dans datagrid"
-      // created the grid while this sheet was already open) — re-check once
-      // per flush so edits still mirror into the newly-linked grid.
-      await refreshLinkedGrid();
 
       if (changes.length > 0) {
         await spreadsheetSaveCells(spreadsheetId, changes);
@@ -397,9 +391,6 @@
         // clear() would silently drop them).
         for (const ch of changes) {
           pendingCellChanges.delete(`${ch.row_index}:${ch.col_index}`);
-        }
-        if (linkedGridId) {
-          await datagridSyncCells(spreadsheetId, changes);
         }
       }
 
@@ -415,14 +406,11 @@
         // buildColumnsFromSheet() lookups (type/width via `prev`) stay
         // accurate after inserts/deletes/moves.
         columns = liveColumns;
-        if (linkedGridId) {
-          await datagridSyncFromSpreadsheet(spreadsheetId);
-        }
       }
 
-      // The linked grid's SQLite rows are now up to date (cell sync, or full
-      // structural rebuild, or both) — tell any open datagrid view to reload
-      // so it mirrors the sheet without waiting for a manual refresh.
+      // Data lives in the shared spreadsheet_cells table — any open datagrid
+      // view reads it live. Tell them to reload so they reflect this sheet
+      // without waiting for a manual refresh.
       if (linkedGridId && (changes.length > 0 || structureNow)) {
         notifyDatagridUpdated();
       }
@@ -654,20 +642,15 @@
     const liveColumns = buildColumnsFromSheet(sheet);
     const stylesJson = captureStyles(sheet);
     const finalState = { ...viewState, styles: stylesJson };
-    // Refresh the link first (a grid may have been created after mount) so
-    // the safety-net snapshot still mirrors into it.
+    // Refresh the link (it may have appeared after mount) so open datagrid
+    // views are notified to reload.
     refreshLinkedGrid().then(() => {
       spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState)
         .then(() => {
           viewState = finalState;
           columns = liveColumns;
-          // Mirror the full snapshot into the linked grid (single write).
           if (linkedGridId) {
-            datagridSyncFromSpreadsheet(spreadsheetId)
-              .then(() => notifyDatagridUpdated())
-              .catch((err: unknown) =>
-                console.warn("[spreadsheet] live bridge sync failed:", err)
-              );
+            notifyDatagridUpdated();
           }
         })
         .catch((err: unknown) => console.error("Failed to save spreadsheet:", err));
@@ -685,7 +668,7 @@
   /**
    * Refresh the cached linked grid id. The link is only found on mount
    * ($effect above); if a grid is created afterwards (toolbar button), this
-   * re-check picks it up so subsequent edits mirror into it too.
+   * re-check picks it up so open datagrid views get notified to reload.
    */
   async function refreshLinkedGrid() {
     if (linkedGridId) return; // already linked
@@ -700,14 +683,14 @@
   // ── Toolbar ─────────────────────────────────────────────────────────────
 
   /**
-   * Test button: open (or create, then open) the linked datagrid for the
-   * current spreadsheet in the side panel. The actual create/find logic
-   * lives in app.svelte ("azprose:datagrid-open" listener).
+   * Toolbar button: open (or create, then open) the linked grid for the
+   * current spreadsheet in the DataFilter side panel. The actual create/find
+   * logic lives in app.svelte ("azprose:datafilter-open" listener).
    */
-  function openInDatagrid() {
+  function openInDataFilter() {
     if (!spreadsheetId) return;
-    window.dispatchEvent(new CustomEvent("azprose:datagrid-open", {
-      detail: { spreadsheetId, name: sheetName || "Datagrid" },
+    window.dispatchEvent(new CustomEvent("azprose:datafilter-open", {
+      detail: { spreadsheetId, name: sheetName || "Tableau" },
     }));
   }
 
@@ -747,8 +730,8 @@
         },
         {
           content: "grid_view",
-          title: "Ouvrir dans datagrid",
-          onclick: () => openInDatagrid(),
+          title: "Ouvrir dans le filtre de données",
+          onclick: () => openInDataFilter(),
         },
         {
           content: "save",
@@ -790,11 +773,6 @@
     // Fire async save — don't await, let the destroy complete
     setTimeout(() => {
       spreadsheetSaveAll(spreadsheetId, liveColumns, strData, finalState)
-        .then(() => {
-          if (linkedGridId) {
-            return datagridSyncFromSpreadsheet(spreadsheetId);
-          }
-        })
         .catch((err: unknown) => console.error("Failed to save on close:", err));
     }, 0);
   }

@@ -2,17 +2,17 @@
   import { onMount } from "svelte";
 
   let {
-    datagridId = "",
+    datafilterIds = [],
   }: {
-    datagridId?: string;
+    datafilterIds?: string[];
   } = $props();
 
   let Comp: any = $state(null);
   onMount(() => {
-    import("./DatagridViewer.svelte").then((m: any) => (Comp = m.default));
+    import("./DataFilterViewer.svelte").then((m: any) => (Comp = m.default));
   });
 </script>
 
 {#if Comp}
-  <Comp {datagridId} />
+  <Comp {datafilterIds} />
 {/if}

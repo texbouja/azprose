@@ -268,4 +268,52 @@
   --wx-calendar-grid-color: var(--border, #45475a);
   --wx-calendar-weekend-background: color-mix(in srgb, var(--fg, #cdd6f4) 4%, var(--bg, #1e1e2e));
   --wx-calendar-y-scale-width: 56px;
+
+  /* ── Table / Grid (svelte-grid) ─────────────────────────── */
+  /* En-tête à fond SOLIDE (`--surface`), jamais transparent — le contenu
+     qui défile ne transparaît plus sous les colonnes. Les filets de
+     séparation sont discrets (teinte de `--border` à 50-60 %), à la fois
+     verticaux (cellules) et horizontaux (lignes). */
+  --wx-table-select-background: color-mix(in srgb, var(--accent, #89b4fa) 22%, transparent);
+  --wx-table-select-color: var(--wx-color-font);
+  --wx-table-border: 1px solid var(--border, #45475a);
+  --wx-table-select-border: inset 3px 0 var(--accent, #89b4fa);
+  --wx-table-header-border: var(--wx-table-border);
+  --wx-table-header-cell-border: 1px solid color-mix(in srgb, var(--border, #45475a) 60%, transparent);
+  --wx-table-footer-cell-border: var(--wx-table-border);
+  --wx-table-cell-border: 1px solid color-mix(in srgb, var(--border, #45475a) 50%, transparent);
+  --wx-header-font-weight: 600;
+  --wx-table-header-background: var(--surface, #2a2a3c);
+  --wx-table-fixed-column-border: 3px solid var(--border, #45475a);
+  --wx-table-editor-dropdown-border: var(--wx-table-border);
+  --wx-table-editor-dropdown-shadow: var(--wx-box-shadow);
+  --wx-table-drag-over-background: var(--wx-background-alt);
+  --wx-table-drag-zone-shadow: var(--wx-box-shadow);
+}
+
+/* ── Grid compact (densité DataFilter) ────────────────────────────────────
+   La grille est un mode de VISUALISATION : cellules resserrées (police
+   12px, padding 3px 8px) pour maximiser le nombre de lignes visibles.
+   Les hauteurs de ligne sont pilotées par le prop `sizes` du Grid
+   (rowHeight/headerHeight compacts) dans DataFilterGrid. */
+.wx-grid .wx-cell {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* Cellules de mesure internes (resize auto des colonnes) : mêmes paddings
+   et police pour que les largeurs calculées correspondent à l'affichage
+   réel (le DOM de mesure vit sur document.body, hors du .wx-grid). */
+.wx-measure-cell-header,
+.wx-measure-cell-body {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* Le scroll interne d'une grille ne se propage PAS à la pile externe
+   (`overscroll-behavior: contain`) : le scrolling actif dépend de la
+   position du curseur — sur la grille il scrolle la grille, sur la barre
+   de carte / le padding il scrolle la pile (DataFilterViewer). */
+.wx-scroll {
+  overscroll-behavior: contain;
 }

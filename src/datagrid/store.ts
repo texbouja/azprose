@@ -1,4 +1,9 @@
 // ── IPC wrapper for SQLite-backed datagrid commands ────────────────────────
+// v8 model: a datagrid is a VIEW over a source spreadsheet. The data lives in
+// spreadsheet_cells (shared with the tableur); the grid only persists per-view
+// column config (width/hidden + per-column filter rules). There is no
+// duplicated snapshot and no bridge to keep in sync — writes land directly in
+// the shared table, reads are live.
 
 import { invoke } from "@tauri-apps/api/core";
 import { getRootPath } from "@/stores/root-path.svelte";
@@ -6,7 +11,7 @@ import type {
   DatagridData,
   DatagridMeta,
   DatagridColumnDef,
-  DatagridRow,
+  StackFilterRule,
 } from "./types";
 import type { CellChange } from "@/spreadsheet/types";
 
@@ -22,18 +27,19 @@ export async function datagridList(): Promise<DatagridMeta[]> {
   return invoke("datagrid_list", { root });
 }
 
-/** Load a full datagrid (columns + rows). */
+/** Load a full datagrid VIEW (columns joined from the source spreadsheet,
+ *  rows built live from spreadsheet_cells). */
 export async function datagridGet(id: string): Promise<DatagridData> {
   const root = requireRoot();
   return invoke("datagrid_get", { root, id });
 }
 
-/** Replace-all save: the caller always sends the complete snapshot. */
+/** Save the VIEW config only (name + per-column width/hidden + filter rules).
+ *  The data is never part of the payload — it lives in spreadsheet_cells. */
 export async function datagridSave(
   id: string,
   name: string,
   columns: DatagridColumnDef[],
-  rows: DatagridRow[],
 ): Promise<void> {
   const root = requireRoot();
   return invoke("datagrid_save", {
@@ -41,11 +47,11 @@ export async function datagridSave(
     id,
     name,
     columns: JSON.stringify(columns),
-    rows: JSON.stringify(rows),
   });
 }
 
-/** Create a new datagrid snapshot from an existing spreadsheet. */
+/** Create a new datagrid VIEW over an existing spreadsheet (copies column
+ *  widths as initial view config, never the data). */
 export async function datagridCreateFromSpreadsheet(
   id: string,
   name: string,
@@ -60,7 +66,7 @@ export async function datagridCreateFromSpreadsheet(
   });
 }
 
-/** Delete a datagrid (cascades to columns and rows). */
+/** Delete a datagrid VIEW. The source spreadsheet — data included — survives. */
 export async function datagridDelete(id: string): Promise<void> {
   const root = requireRoot();
   return invoke("datagrid_delete", { root, id });
@@ -73,7 +79,7 @@ export async function datagridRename(id: string, name: string): Promise<void> {
 }
 
 /**
- * Find the datagrid derived from a given spreadsheet (live bridge).
+ * Find the datagrid view derived from a given spreadsheet.
  * Returns null when the spreadsheet has no linked grid.
  */
 export async function datagridFindBySource(
@@ -84,29 +90,38 @@ export async function datagridFindBySource(
 }
 
 /**
- * Re-sync a linked datagrid from its source spreadsheet content.
- * Returns the re-synced grid id, or null when no grid is linked.
+ * Write a batch of cell edits from the datagrid VIEW straight into the source
+ * spreadsheet's own cells (`spreadsheet_cells`) — the shared source of truth,
+ * O(changes) native upsert. The tableur sees the edit on its next load; there
+ * is no bridge to go stale. Out-of-bounds columns are skipped.
  */
-export async function datagridSyncFromSpreadsheet(
-  spreadsheetId: string,
-): Promise<string | null> {
-  const root = requireRoot();
-  return invoke("datagrid_sync_from_spreadsheet", { root, spreadsheetId });
-}
-
-/**
- * Incremental live bridge: mirror a batch of cell edits into the linked
- * datagrid — O(changes), no full rebuild. Skipped cells (out-of-bounds)
- * are handled by the structural sync (`datagridSyncFromSpreadsheet`).
- */
-export async function datagridSyncCells(
-  spreadsheetId: string,
+export async function datagridSaveCells(
+  id: string,
   changes: CellChange[],
 ): Promise<void> {
   const root = requireRoot();
-  return invoke("datagrid_sync_cells", {
+  return invoke("datagrid_save_cells", {
     root,
-    spreadsheetId,
+    id,
     changes: JSON.stringify(changes),
+  });
+}
+
+/** List the STACK-wide filter rules (unified filter widget, v10). */
+export async function datagridStackRulesGet(): Promise<StackFilterRule[]> {
+  const root = requireRoot();
+  return invoke("datagrid_stack_rules_get", { root });
+}
+
+/** Replace-all save of the STACK-wide filter rules. The frontend always sends
+ *  the complete snapshot, so dropped rules (e.g. cleared by the user) are
+ *  deleted. */
+export async function datagridStackRulesSave(
+  rules: StackFilterRule[],
+): Promise<void> {
+  const root = requireRoot();
+  return invoke("datagrid_stack_rules_save", {
+    root,
+    rules: JSON.stringify(rules),
   });
 }

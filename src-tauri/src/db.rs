@@ -7,6 +7,20 @@
 //   - v4:    datagrid tables (datagrids, datagrid_columns, datagrid_rows)
 //   - v5:    datagrids.source_spreadsheet_id (live bridge spreadsheet→grid)
 //   - v6:    drop redundant indexes (UNIQUE constraints already cover lookups)
+//   - v7:    filter_keywords table (datagrid stack filter suggestions) —
+//            DROPPED again at v10 once the text search field was removed
+//   - v8:    datagrids become VIEWS over their source spreadsheet — drop
+//            autonomous grids + datagrid_rows, add datagrid_columns
+//            sort_order/filter (title/type/options come from the JOIN)
+//   - v9:    datagrid_columns.id is no longer a global primary key — column
+//            identity is per-view (grid_id, col_index); ids are positional
+//            `c{n}` and may repeat across views (second view used to collide)
+//   - v10:   datagrid_stack_rules — the STACK-wide multi-criteria filter
+//            (one rule per column TITLE, shared by every grid in the
+//            "Recherche dans la base de données" stack). The old keyword
+//            suggestions table (filter_keywords, v7) is dropped — the shared
+//            text search field it fed was replaced by the unified filter
+//            widget (datagrid_columns.filter stays: per-VIEW rule storage)
 // Modules métier (spreadsheet_db, calendar_db, datagrid_db, ...) only define
 // their own tables + commands and go through `db::with_db`.
 
@@ -123,6 +137,56 @@ CREATE INDEX IF NOT EXISTS idx_grid_columns ON datagrid_columns(grid_id, col_ind
 CREATE INDEX IF NOT EXISTS idx_grid_rows ON datagrid_rows(grid_id, row_index);
 ";
 
+// v8 migration as a pure function so unit tests can apply it on a fresh
+// in-memory schema (and assert the autonomous-grid cleanup + drop table).
+pub(crate) fn migrate_v8(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute_batch(
+        // Autonomous grids (no source) were the only users of datagrid_rows;
+        // their data dies with them. Linked grids keep their identity and the
+        // bridge link — only the duplicated rows table goes away.
+        "BEGIN;
+         DELETE FROM datagrids WHERE source_spreadsheet_id IS NULL;
+         DROP TABLE IF EXISTS datagrid_rows;
+         ALTER TABLE datagrid_columns ADD COLUMN sort_order TEXT;
+         ALTER TABLE datagrid_columns ADD COLUMN filter TEXT;
+         COMMIT;"
+    ).map_err(|e| e.to_string())
+}
+
+// v9 migration as a pure function. v8's column ids are POSITIONAL (`c{col_index}`,
+// derived from col_index) yet datagrid_columns.id was a GLOBAL primary key:
+// creating a second view over another spreadsheet re-inserted `c0..cN` and
+// failed with "UNIQUE constraint failed: datagrid_columns.id". v9 recreates the
+// table WITHOUT the global PK — column identity is per-view `(grid_id,
+// col_index)` (already UNIQUE); `id` stays `c{n}` as a plain derived value. The
+// UNIQUE(grid_id, col_index) index covers the grid lookups (same reasoning as
+// the v6 index drop).
+pub(crate) fn migrate_v9(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "BEGIN;
+         CREATE TABLE datagrid_columns_v9 (
+             id         TEXT NOT NULL,
+             grid_id    TEXT NOT NULL REFERENCES datagrids(id) ON DELETE CASCADE,
+             col_index  INTEGER NOT NULL,
+             title      TEXT NOT NULL DEFAULT '',
+             col_type   TEXT DEFAULT 'text',
+             width      INTEGER DEFAULT 120,
+             options    TEXT,
+             hidden     INTEGER DEFAULT 0,
+             sort_order TEXT,
+             filter     TEXT,
+             UNIQUE(grid_id, col_index)
+         );
+         INSERT INTO datagrid_columns_v9
+             (id, grid_id, col_index, title, col_type, width, options, hidden, sort_order, filter)
+             SELECT id, grid_id, col_index, title, col_type, width, options, hidden, sort_order, filter
+             FROM datagrid_columns;
+         DROP TABLE datagrid_columns;
+         ALTER TABLE datagrid_columns_v9 RENAME TO datagrid_columns;
+         COMMIT;"
+    ).map_err(|e| e.to_string())
+}
+
 fn init_db(conn: &Connection) -> Result<(), String> {
     // Per-connection pragma (not persisted in the DB file): WAL mode with
     // synchronous=NORMAL is the recommended fast+safe combo — a crash may
@@ -171,6 +235,57 @@ fn init_db(conn: &Connection) -> Result<(), String> {
         ).map_err(|e| e.to_string())?;
         version = 6;
     }
+    // v7 — filter keywords: persistent store of every filter keyword with its
+    // detected type (text/number/date/tuple), feeding value suggestions in the
+    // datagrid stack filter across sessions.
+    if version < 7 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS filter_keywords (
+                keyword  TEXT PRIMARY KEY,
+                type     TEXT NOT NULL DEFAULT 'text',
+                last_used TEXT NOT NULL
+            );"
+        ).map_err(|e| e.to_string())?;
+    }
+    // v8 — datagrids become VIEWS over their source spreadsheet. The data
+    // (rows) is no longer duplicated in datagrid_rows: it is read live from
+    // spreadsheet_cells, the single source of truth shared with the tableur.
+    // Autonomous grids (no source_spreadsheet_id) were the only users of
+    // datagrid_rows — they are dropped. datagrid_columns keeps only per-view
+    // config (width/hidden + new sort_order/filter); title/type/options now
+    // come from spreadsheet_columns via the JOIN.
+    // NOTE: guarded like every other migration — without the `version < 8`
+    // check, a base already at v8 would re-run the ALTERs and fail with
+    // "duplicate column name: sort_order" on every re-open (init_db runs on
+    // every connection).
+    if version < 8 {
+        migrate_v8(conn).map_err(|e| e.to_string())?;
+        version = 8;
+    }
+    // v9 — datagrid_columns.id was a GLOBAL primary key but the column ids are
+    // positional (`c{col_index}`, derived): the second view over another
+    // spreadsheet collided ("UNIQUE constraint failed: datagrid_columns.id").
+    // Recreate the table with identity on (grid_id, col_index) instead.
+    if version < 9 {
+        migrate_v9(conn).map_err(|e| e.to_string())?;
+        version = 9;
+    }
+    // v10 — the unified stack filter widget. Rules are GLOBAL to the stack
+    // (keyed by column TITLE, applied to every grid that has that column),
+    // stored here as replace-all rows. The v7 keyword-suggestion table is no
+    // longer used — the text-search field it fed is gone.
+    if version < 10 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS datagrid_stack_rules (
+                 field      TEXT PRIMARY KEY,
+                 rule       TEXT NOT NULL,
+                 updated_at TEXT NOT NULL
+             );
+             DROP TABLE IF EXISTS filter_keywords;"
+        )
+        .map_err(|e| e.to_string())?;
+        version = 10;
+    }
 
     if version > 0 {
         conn.pragma_update(None, "user_version", &version)
@@ -209,4 +324,54 @@ where
     }
     let (_, conn) = guard.as_mut().unwrap();
     f(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// init_db runs on EVERY connection open (with_db re-opens per root change
+    /// or app restart). A migration chain with an unguarded step re-runs its
+    /// ALTERs on a base that already reached that version — the v8 bug
+    /// ("duplicate column name: sort_order", every command failing at runtime)
+    /// was exactly this. Calling init_db twice on the same connection must be
+    /// a no-op.
+    #[test]
+    fn init_db_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).expect("first init succeeds");
+        init_db(&conn).expect("second init is a no-op — every migration is guarded");
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 10);
+        // The v8 columns exist exactly once.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('datagrid_columns')
+                 WHERE name IN ('sort_order', 'filter')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+        // v9: no global PK on id anymore (two views may share `c0` ids).
+        let pk: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('datagrid_columns') WHERE pk = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(pk, 0, "v9 removes the global primary key on datagrid_columns");
+        // v10: stack rules table exists; the v7 keyword table is gone.
+        let rules: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='datagrid_stack_rules'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rules, 1, "v10 creates datagrid_stack_rules");
+        let kw: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='filter_keywords'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(kw, 0, "v10 drops the unused filter_keywords table");
+    }
 }

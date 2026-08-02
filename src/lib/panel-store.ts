@@ -4,7 +4,7 @@ import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation";
 export type TabSource = "latex";
-export type TabKind = "file" | "custom" | "spreadsheet" | "datagrid";
+export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter";
 
 export type Tab = {
   id: string;
@@ -18,11 +18,11 @@ export type Tab = {
   kind?: TabKind;
   panelId?: string;
   spreadsheetId?: string;
-  datagridId?: string;
+  datafilterIds?: string[];
 };
 
 export type PanelSessionData = {
-  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string; datagridId?: string }[];
+  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string; datafilterIds?: string[] }[];
   activePath: string | null;
 };
 
@@ -184,8 +184,12 @@ export class PanelState {
     this.notify();
   }
 
-  openDatagrid(datagridId: string, title: string): void {
-    const existing = this.tabs.find(t => t.kind === "datagrid" && t.datagridId === datagridId);
+  /** Open (or activate) a DataFilter tab holding a stack of grids at once.
+   *  The stack identity is the sorted set of grid ids. */
+  openDataFilter(datafilterIds: string[], title: string): void {
+    const key = (ids: string[]) => [...ids].sort().join("\u0000");
+    const target = key(datafilterIds);
+    const existing = this.tabs.find(t => t.kind === "datafilter" && t.datafilterIds && key(t.datafilterIds) === target);
     if (existing) {
       this.activeTabId = existing.id;
       this.notify();
@@ -194,10 +198,10 @@ export class PanelState {
     const id = crypto.randomUUID();
     this.tabs = [...this.tabs, {
       id, title,
-      path: `datagrid://${datagridId}`,
+      path: "datafilter://stack",
       source: "", savedContent: "",
-      kind: "datagrid",
-      datagridId,
+      kind: "datafilter",
+      datafilterIds: [...datafilterIds],
     }];
     this.activeTabId = id;
     this.notify();
@@ -282,7 +286,7 @@ export class PanelState {
         kind: t.kind,
         panelId: t.panelId,
         spreadsheetId: t.spreadsheetId,
-        datagridId: t.datagridId,
+        datafilterIds: t.datafilterIds ? [...t.datafilterIds] : undefined,
       })),
       activePath: this.activePath,
     };
@@ -292,14 +296,23 @@ export class PanelState {
     this.tabs = data.tabs
       .filter(t => t.kind !== "custom")
       .map(t => {
-        // Reconstruct spreadsheetId / datagridId from path if not stored directly
+        // Reconstruct spreadsheetId from path if not stored directly
         let spreadsheetId = t.spreadsheetId;
         if (!spreadsheetId && t.path.startsWith("spreadsheet://")) {
           spreadsheetId = t.path.slice("spreadsheet://".length);
         }
-        let datagridId = t.datagridId;
-        if (!datagridId && t.path.startsWith("datagrid://")) {
-          datagridId = t.path.slice("datagrid://".length);
+        // Normaliser l'ancien modèle « datagrid » (avant le merge DataFilter) :
+        // le kind "datagrid" devient "datafilter" et les ids migrent vers
+        // `datafilterIds` (la vue unique est devenue une pile d'une carte).
+        const rawKind = (t as { kind?: string }).kind;
+        const legacyKind = rawKind === "datagrid" ? "datafilter" as TabKind : t.kind;
+        let datafilterIds = t.datafilterIds ? [...t.datafilterIds] : undefined;
+        if (!datafilterIds && (t as { datagridIds?: string[] }).datagridIds) {
+          datafilterIds = [...(t as { datagridIds?: string[] }).datagridIds!];
+        }
+        if (!datafilterIds && t.path.startsWith("datagrid://")) {
+          const legacyId = t.path.slice("datagrid://".length);
+          if (legacyId && legacyId !== "stack") datafilterIds = [legacyId];
         }
         return {
           id: crypto.randomUUID(),
@@ -309,9 +322,9 @@ export class PanelState {
           savedContent: "",
           renderMode: t.renderMode,
           sourceType: t.sourceType,
-          kind: t.kind as any as TabKind | undefined,
+          kind: legacyKind as TabKind | undefined,
           spreadsheetId,
-          datagridId,
+          datafilterIds,
         } as Tab;
       });
     if (data.activePath) {
@@ -323,7 +336,7 @@ export class PanelState {
   async restoreContent(preferDraft?: boolean): Promise<void> {
     const toRemove: string[] = [];
     for (const tab of this.tabs) {
-      if (tab.kind === "custom" || tab.kind === "spreadsheet" || tab.kind === "datagrid") continue;
+      if (tab.kind === "custom" || tab.kind === "spreadsheet" || tab.kind === "datafilter") continue;
       try {
         const fileSource = await readText(tab.path);
         const draft = preferDraft ? loadDraft(tab.path) : null;

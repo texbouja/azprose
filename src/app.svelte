@@ -559,16 +559,6 @@ $effect(() => {
   return () => window.removeEventListener("azprose:spreadsheet-title-change", handler);
 });
 
-// Datagrid title change → update the tab title
-$effect(() => {
-  const handler = (e: Event) => {
-    const { datagridId, title } = (e as CustomEvent<{ datagridId: string; title: string }>).detail;
-    pm.setDatagridTabTitle(datagridId, title);
-  };
-  window.addEventListener("azprose:datagrid-title-change", handler);
-  return () => window.removeEventListener("azprose:datagrid-title-change", handler);
-});
-
 // Spreadsheet "open in new tab" from the manager
 $effect(() => {
   const handler = async (e: Event) => {
@@ -607,8 +597,9 @@ $effect(() => {
   return () => window.removeEventListener("azprose:spreadsheet-set-id", handler);
 });
 
-// Spreadsheet "open in datagrid" (test button) — find the linked grid, or
-// create one from the spreadsheet snapshot, then open it in the side panel.
+// Spreadsheet "open in DataFilter" (toolbar) — find the linked grid, or
+// create one from the spreadsheet snapshot, then open DataFilter in the side
+// panel with this table loaded (the user can add more tables from there).
 $effect(() => {
   const handler = async (e: Event) => {
     const { spreadsheetId, name } = (e as CustomEvent<{ spreadsheetId: string; name: string }>).detail;
@@ -621,26 +612,29 @@ $effect(() => {
       } else {
         gridId = await datagridCreateFromSpreadsheet(
           `dg-${spreadsheetId}`,
-          name || "Datagrid",
+          name || "Tableau",
           spreadsheetId,
         );
       }
-      pm.openDatagridInSide(gridId, name || "Datagrid");
+      pm.openDataFilterInSide([gridId], name || "Filtre de données");
     } catch (err) {
-      console.error("[spreadsheet] failed to open datagrid:", err);
+      console.error("[spreadsheet] failed to open data filter:", err);
     }
   };
-  window.addEventListener("azprose:datagrid-open", handler);
-  return () => window.removeEventListener("azprose:datagrid-open", handler);
+  window.addEventListener("azprose:datafilter-open", handler);
+  return () => window.removeEventListener("azprose:datafilter-open", handler);
 });
 
-// Datagrid "Edit dans Spreadsheet" — open the source spreadsheet in the main
-// panel (it is the source of truth; the datagrid view is a mirror).
+// DataFilter « Edit dans Spreadsheet » — ouvre le tableur source dans le
+// SIDE panel : le panneau principal est réservé EXCLUSIVEMENT à CodeMirror
+// (l'éditeur), toute vue d'outil (tableur, DataFilter, calendrier, …) s'ouvre
+// en side. La source de vérité des données reste `spreadsheet_cells` ; le
+// tableur et la vue datagrid la lisent live (pas de mirror à resynchroniser).
 $effect(() => {
   const handler = (e: Event) => {
     const { spreadsheetId, name } = (e as CustomEvent<{ spreadsheetId: string; name: string }>).detail;
     if (!spreadsheetId) return;
-    pm.openSpreadsheetInMain(spreadsheetId, name || "Tableur");
+    pm.openSpreadsheetInSide(spreadsheetId, name || "Tableur");
   };
   window.addEventListener("azprose:datagrid-edit-in-spreadsheet", handler);
   return () => window.removeEventListener("azprose:datagrid-edit-in-spreadsheet", handler);
@@ -805,6 +799,18 @@ const handleToggleSidebar = () => sidebarOpen.update((v: boolean) => !v);
 
 const handleOpenSpreadsheet = () => {
   pm.openEmptySpreadsheetPanel();
+};
+
+/**
+ * Breadcrumb « Filtre de données » — open the DataFilter view in the SIDE
+ * panel. It always opens on the HOME page (empty stack), the exact
+ * counterpart of the spreadsheet button: the multi-open dialog gives access
+ * to ALL tables in the db (spreadsheets + linked datagrid views).
+ * NOTE: opens in the SIDE panel — the main panel is reserved exclusively for
+ * the CodeMirror editor.
+ */
+const handleOpenDataFilter = async () => {
+  pm.openDataFilterInSide([], t("breadcrumb.dataFilter"));
 };
 
 const toggleFullscreen = async () => {
@@ -1120,6 +1126,7 @@ let cmds = $derived(
     onOpenCode={() => pm.openCustomInSide("opencode", "OpenCode")}
     onOpenSvarCalendar={() => pm.openCustomInSide("svar-calendar", "Calendar")}
     onOpenSpreadsheet={handleOpenSpreadsheet}
+    onOpenDataFilter={handleOpenDataFilter}
     onOpenPalette={() => overlays.setPaletteOpen(true)}
     onSelectFile={fo.selectFile}
   />

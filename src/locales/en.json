@@ -455,6 +455,7 @@
   "command.svarCalendar": "Calendar",
   "breadcrumb.svarCalendar": "Calendar",
   "breadcrumb.spreadsheet": "Spreadsheet",
+  "breadcrumb.dataFilter": "Data filter",
   "settings.module.profile": "Profile",
   "settings.profileTitle": "User Profile",
   "settings.profileName": "Name",

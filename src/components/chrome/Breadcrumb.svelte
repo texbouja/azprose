@@ -29,6 +29,7 @@
     onOpenCode,
     onOpenSvarCalendar,
     onOpenSpreadsheet,
+    onOpenDataFilter,
     onOpenPalette,
     onSelectFile,
   }: {
@@ -51,6 +52,7 @@
     onOpenCode?: () => void;
     onOpenSvarCalendar?: () => void;
     onOpenSpreadsheet?: () => void;
+    onOpenDataFilter?: () => void;
     onOpenPalette?: () => void;
     onSelectFile?: (path: string) => void;
   } = $props();
@@ -248,7 +250,7 @@
       {/if}
     </div>
 
-    {#if onOpenCode || onOpenSvarCalendar || onOpenSpreadsheet}
+    {#if onOpenCode || onOpenSvarCalendar || onOpenSpreadsheet || onOpenDataFilter}
       <div class="mdv-breadcrumb__tools">
         {#if onOpenCode}
           <Button
@@ -269,6 +271,17 @@
           >
             {#snippet icon()}
               <i class="wxi-table" style="font-size:14px"></i>
+            {/snippet}
+          </Button>
+        {/if}
+        {#if onOpenDataFilter}
+          <Button
+            data-tooltip={t("breadcrumb.dataFilter")}
+            aria-label={t("breadcrumb.dataFilter")}
+            onclick={onOpenDataFilter}
+          >
+            {#snippet icon()}
+              <i class="wxi-database-search" style="font-size:14px"></i>
             {/snippet}
           </Button>
         {/if}

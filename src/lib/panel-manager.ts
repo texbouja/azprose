@@ -72,30 +72,16 @@ export class PanelManager {
     return this.side.open(path, opts);
   }
 
-  openCustomInMain(panelId: string, title: string): void {
-    this.main.openCustom(panelId, title);
-  }
-
   openCustomInSide(panelId: string, title: string): void {
     this.side.visible = true;
     this.layout = "main+side";
     this.side.openCustom(panelId, title);
   }
 
-  openSpreadsheetInMain(spreadsheetId: string, title: string): void {
-    const existing = this.findSpreadsheetTab(spreadsheetId);
-    if (existing) {
-      const panel = existing.panel === "main" ? this.main : this.side;
-      panel.select(existing.tab.id);
-      if (existing.panel === "side") {
-        this.side.visible = true;
-        this.layout = "main+side";
-      }
-      return;
-    }
-    this.main.openSpreadsheet(spreadsheetId, title);
-  }
-
+  /** Ouvre (ou active) un tableur dans le SIDE panel. Le panneau principal
+   *  est réservé EXCLUSIVEMENT à CodeMirror — il n'existe volontairement
+   *  aucun `openSpreadsheetInMain`/`openCustomInMain` : la règle est
+   *  garantie par la surface d'API, pas par convention. */
   openSpreadsheetInSide(spreadsheetId: string, title: string): void {
     const existing = this.findSpreadsheetTab(spreadsheetId);
     if (existing) {
@@ -121,30 +107,28 @@ export class PanelManager {
     return null;
   }
 
-  /** Open (or activate) a datagrid tab in the side panel. */
-  openDatagridInSide(datagridId: string, title: string): void {
-    const existing = this.findDatagridTab(datagridId);
-    if (existing) {
-      const panel = existing.panel === "main" ? this.main : this.side;
-      panel.select(existing.tab.id);
-      if (existing.panel === "side") {
-        this.side.visible = true;
-        this.layout = "main+side";
+  /** Open (or activate) a DataFilter tab in the SIDE panel.
+   *  Several grids are loaded at once into a single tab (DataFilterViewer);
+   *  the stack identity is the sorted set of grid ids.
+   *  NOTE: the main panel is reserved EXCLUSIVELY for the CodeMirror editor —
+   *  all tool views (data filter, spreadsheet, calendar, …) open in side. */
+  openDataFilterInSide(datafilterIds: string[], title: string): void {
+    const key = (ids: string[]) => [...ids].sort().join("\u0000");
+    const target = key(datafilterIds);
+    for (const panel of [this.main, this.side]) {
+      const tab = panel.tabs.find(t => t.kind === "datafilter" && t.datafilterIds && key(t.datafilterIds) === target);
+      if (tab) {
+        panel.select(tab.id);
+        if (panel.id === "side") {
+          this.side.visible = true;
+          this.layout = "main+side";
+        }
+        return;
       }
-      return;
     }
     this.side.visible = true;
     this.layout = "main+side";
-    this.side.openDatagrid(datagridId, title);
-  }
-
-  /** Check if a datagrid is already open in either panel and return the tab info. */
-  findDatagridTab(datagridId: string): { panel: "main" | "side"; tab: Tab } | null {
-    for (const panel of [this.main, this.side]) {
-      const tab = panel.tabs.find(t => t.kind === "datagrid" && t.datagridId === datagridId);
-      if (tab) return { panel: panel.id as "main" | "side", tab };
-    }
-    return null;
+    this.side.openDataFilter(datafilterIds, title);
   }
 
   /** Open the spreadsheet panel without loading any sheet (create mode). */
@@ -165,21 +149,6 @@ export class PanelManager {
     if (sideTab && sideTab.title !== title) this.side.setTabTitle(sideTab.id, title);
     const mainTab = this.main.tabs.find(
       t => t.kind === "spreadsheet" && t.spreadsheetId === spreadsheetId
-    );
-    if (mainTab && mainTab.title !== title) this.main.setTabTitle(mainTab.id, title);
-  }
-
-  /** Update the tab title for a datagrid (called after loading its real name).
-   *  No-op when the title is unchanged — avoids a redundant notify() → re-render
-   *  cascade on every reload (a title-change feedback loop is the prime suspect
-   *  for the "infinite loop when opening a datagrid from a spreadsheet"). */
-  setDatagridTabTitle(datagridId: string, title: string): void {
-    const sideTab = this.side.tabs.find(
-      t => t.kind === "datagrid" && t.datagridId === datagridId
-    );
-    if (sideTab && sideTab.title !== title) this.side.setTabTitle(sideTab.id, title);
-    const mainTab = this.main.tabs.find(
-      t => t.kind === "datagrid" && t.datagridId === datagridId
     );
     if (mainTab && mainTab.title !== title) this.main.setTabTitle(mainTab.id, title);
   }
@@ -247,6 +216,29 @@ export class PanelManager {
     this.splitRatio = data.splitRatio ?? 0.55;
     this.savedSplitRatio = this.splitRatio;
     this.side.visible = data.layout === "main+side";
+
+    // Consolidation « main réservé EXCLUSIVEMENT à CodeMirror » : une session
+    // sauvegardée avant la consolidation peut contenir des onglets d'outils
+    // (tableur, DataFilter) dans le panneau principal — on les migre vers le
+    // side panel au restore. La règle est ainsi garantie même pour l'héritage,
+    // pas seulement à l'ouverture (openDataFilterInSide/openSpreadsheetInSide).
+    const toolTabs = this.main.tabs.filter(
+      t => t.kind === "spreadsheet" || t.kind === "datafilter",
+    );
+    if (toolTabs.length > 0) {
+      const mainActive = this.main.activeTabId;
+      this.main.tabs = this.main.tabs.filter(
+        t => t.kind !== "spreadsheet" && t.kind !== "datafilter",
+      );
+      if (!this.main.tabs.some(t => t.id === this.main.activeTabId)) {
+        this.main.activeTabId = this.main.tabs[0]?.id ?? null;
+      }
+      const movedActive = toolTabs.find(t => t.id === mainActive);
+      this.side.tabs = [...this.side.tabs, ...toolTabs];
+      if (movedActive) this.side.activeTabId = movedActive.id;
+      this.side.visible = true;
+      this.layout = "main+side";
+    }
   }
 
   async restoreContent(preferDraft?: boolean): Promise<void> {
