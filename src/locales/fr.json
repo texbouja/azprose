@@ -104,6 +104,8 @@
   "menu.copyRelativePath": "copier le chemin relatif",
   "menu.copyPaths": "copier {count} chemins",
   "menu.pathCopied": "chemin copié",
+  "menu.expandAll": "tout déplier",
+  "menu.collapseAll": "tout replier",
   "command.recent": "récents",
   "command.file": "fichiers",
   "command.latex": "latex",

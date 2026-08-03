@@ -2,12 +2,11 @@
   import type { Snippet } from "svelte";
   import { untrack } from "svelte";
   import { createTree, type ItemInstance, type TreeConfig, type TreeInstance } from "@headless-tree/core";
-  import { containerProps, registerItem, rowProps } from "./headless-utils";
+  import { registerItem } from "./headless-utils";
 
   let {
     config,
     onTree,
-    onRowClick,
     label,
     className = "mdv-tree",
     children,
@@ -19,8 +18,6 @@
     config: TreeConfig<T>;
     /** Called once the tree instance exists (for external state sync like auto-expand). */
     onTree?: (tree: TreeInstance<T>) => void;
-    /** Custom row click (multi-select aware). Replaces the feature onClick chain. */
-    onRowClick?: (e: MouseEvent, item: ItemInstance<T>) => void;
     label?: string;
     className?: string;
     /** Renders the content of each treeitem `<li>`. */
@@ -67,7 +64,32 @@
 
   let items = $derived.by(() => {
     void version;
-    return tree.getItems();
+    // Spread into a NEW array: headless-tree caches the itemInstances array,
+    // so returning it directly would give Svelte the same reference on every
+    // state change (selection, focus, search…) — the derived would compare
+    // equal and the DOM would never re-render (a stale tree is exactly what
+    // the pre-refactor multi-select bug looked like).
+    return [...tree.getItems()];
+  });
+
+  // After every re-render ({#key version}) restore the keyboard focus on the
+  // focused item. The bundle hotkey handlers already call updateDomFocus
+  // (focusNextItem/focusPreviousItem/collapseOrUp/…), so arrow navigation is
+  // covered — but OTHER rebuilds are not: the auto-expand effect
+  // (applySubStateUpdate + rebuildTree via queueMicrotask) destroys the
+  // focused <li> and the DOM focus falls back to <body>, silently killing
+  // the container hotkeys. This effect catches that case.
+  // Guards: (1) never auto-focus before the user has focused something
+  // (focusedItem set); (2) only steal the focus back when it actually fell to
+  // <body>/<html> — an input being edited inside the tree, a toolbar button,
+  // or the main editor must keep the focus.
+  $effect(() => {
+    void version;
+    const t = tree;
+    if (!t?.getState()?.focusedItem) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== document.documentElement) return;
+    queueMicrotask(() => t.updateDomFocus?.());
   });
 
   let isLoading = $derived.by(() => {
@@ -93,7 +115,7 @@
   });
 </script>
 
-<div bind:this={containerEl} class={className} {...containerProps(tree, label)}>
+<div bind:this={containerEl} class={className} {...tree.getContainerProps(label)}>
   {#if prependItems}
     {@render prependItems()}
   {/if}
@@ -106,15 +128,18 @@
       <div class="mdv-tree__empty">{loading}</div>
     {/if}
   {:else}
-    {#each items as item (item.getId())}
-      <li
-        class="mdv-tree__item"
-        use:registerItem={item}
-        {...rowProps(item, (e) => onRowClick?.(e, item))}
-      >
-        {@render children(item)}
-      </li>
-    {/each}
+    {#key version}
+      {#each items as item (item.getId())}
+        <li
+          class="mdv-tree__item"
+          data-version={version}
+          use:registerItem={item}
+          {...item.getProps()}
+        >
+          {@render children(item)}
+        </li>
+      {/each}
+    {/key}
   {/if}
   {#if dragLineStyle}
     <div class="mdv-tree__dragline" style={dragLineStyle}></div>

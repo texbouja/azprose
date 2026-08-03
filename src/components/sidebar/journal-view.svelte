@@ -1,7 +1,7 @@
 <script lang="ts">
 import { journalSettings } from "@/stores/journal-settings.svelte";
 import { createJournalState } from "@/stores/journal-store.svelte";
-import { joinPath } from "@/lib/files";
+import { joinPath, type FileEntry } from "@/lib/files";
 import JournalCalendar from "./journal-calendar.svelte";
 import VirtualTree from "./virtual-tree.svelte";
 
@@ -12,12 +12,14 @@ let {
   onSelectFile,
   treeVersion = 0,
   onOpenCalendar,
+  onDeleteEntry,
 }: {
   rootPath: string | null;
   activePath: string | null;
   onSelectFile: (path: string) => void;
   treeVersion?: number;
   onOpenCalendar?: () => void;
+  onDeleteEntry?: (entry: FileEntry) => void;
 } = $props();
 
 const journal = createJournalState();
@@ -68,6 +70,7 @@ async function handleSelectDate(date: string) {
         rootPath={dailyPath}
         {activePath}
         onSelect={onSelectFile}
+        onDelete={onDeleteEntry}
         scrollToPath={scrollToNote}
       />
     {/if}

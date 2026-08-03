@@ -21,6 +21,7 @@ let {
   editingPath,
   onSubmitRename,
   onCancelEdit,
+  onRenameRequest,
   newEntry,
   onSubmitNew,
   onCancelNew,
@@ -42,6 +43,7 @@ let {
   editingPath?: string | null;
   onSubmitRename?: (src: string, newName: string) => void;
   onCancelEdit?: () => void;
+  onRenameRequest?: (path: string) => void;
   newEntry?: NewEntry | null;
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
@@ -130,6 +132,7 @@ function onDrop(e: DragEvent) {
       {editingPath}
       {onSubmitRename}
       {onCancelEdit}
+      {onRenameRequest}
       {newEntry}
       {onSubmitNew}
       {onCancelNew}

@@ -341,15 +341,14 @@
 }
 
 
+/* Active-file highlight: PURELY DECORATIVE — the file open in the main
+   panel. Driven only by the `activePath` prop, never by selection/focus, so
+   keyboard navigation must not touch it (no animation: the {#key version}
+   re-render would replay it on every selection change). Visually distinct
+   from a real selection (is-selected): faint tint + accent left bar. */
 .mdv-tree__row.is-active {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
   color: var(--accent);
-  animation: mdv-row-pulse 360ms var(--easing);
-}
-
-@keyframes mdv-row-pulse {
-  0% { background: color-mix(in srgb, var(--accent) 24%, transparent); }
-  100% { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 }
 
 .mdv-tree__row.is-active::before {
@@ -376,11 +375,36 @@
 }
 
 .mdv-tree__row.is-selected {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  outline-offset: -1px;
 }
 
 .mdv-tree__row.is-selected .mdv-tree__icon {
   color: var(--accent);
+}
+
+/* Selected + active simultaneously (row was clicked to open): the selection
+   fill wins, the active accent bar still marks the open file. */
+.mdv-tree__row.is-active.is-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Keyboard focus frame: the item focused via updateDomFocus (the <li> has
+   tabIndex 0 when isFocused) gets a thin outline WITHOUT any fill. This is
+   what makes arrow-key navigation visible — the frame follows the focus
+   while the selection fill stays put (focus ≠ selection, VS Code semantics).
+   Distinct from is-selected (tint + outline) and is-active (decorative tint
+   + bar). The <li> itself is the focused element: kill the browser's default
+   ring on it so the row frame is the single focus indicator. */
+.mdv-tree__item:focus {
+  outline: none;
+}
+
+.mdv-tree__item:focus > .mdv-tree__rowline,
+.mdv-tree__item:focus > .mdv-tree__row--file {
+  outline: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: -1px;
 }
 
 .mdv-tree__stage {
@@ -491,6 +515,14 @@
   gap: 8px;
 }
 
+/* Generic hover feedback — the shared .mdv-menu__item:hover (surface-hover)
+   loses to the transparent background above (specificity 0-2-0 vs 0-1-1), so
+   the context menu had NO visual response on hover. */
+.mdv-context-menu .mdv-menu__item:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+
 .mdv-context-menu .mdv-menu__item:disabled {
   cursor: default;
   opacity: 0.45;
@@ -527,6 +559,96 @@
   white-space: nowrap;
 }
 
+/* Folder rowlines wrap the chevron + row so the selection tint spans the
+   full width including the chevron (file-manager semantics: a folder row
+   selects on click, only the chevron toggles). The row inside loses its own
+   tint/outline — the rowline carries them via :has() on the inner row. */
+.mdv-tree__rowline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  /* right padding clears the 10px scrollbar so active-row tint doesn't bleed */
+  padding: 0 14px 0 8px;
+  border-radius: 4px;
+  position: relative;
+}
+
+.mdv-tree__rowline > .mdv-tree__row {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 14px 4px 0;
+  background: transparent;
+}
+
+.mdv-tree__rowline:has(> .mdv-tree__row.is-selected) {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  outline-offset: -1px;
+}
+
+/* Active-file marker on folder rowlines: purely decorative, same recipe as
+   the flat rows (faint tint + accent bar, no outline = not a selection). */
+.mdv-tree__rowline:has(> .mdv-tree__row.is-active) {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--accent);
+}
+
+.mdv-tree__rowline:has(> .mdv-tree__row.is-active)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.mdv-tree__rowline:has(> .mdv-tree__row.is-drop-target) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: -1px;
+}
+
+/* Chevron button — a real 18px hit target, the only folder toggle on click.
+   The icon inside rotates so the button shape stays put. */
+.mdv-tree__chevron-btn {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--easing);
+}
+
+.mdv-tree__chevron-btn i {
+  transition: transform var(--dur-fast) var(--easing);
+}
+
+.mdv-tree__chevron-btn.is-open i {
+  transform: rotate(90deg);
+}
+
+.mdv-tree__chevron-btn:hover {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--fg);
+}
+
+.mdv-tree__chevron-btn:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 60%, var(--border));
+  outline-offset: -1px;
+}
+
+/* Legacy non-interactive chevron span — still used by the favorites panel,
+   the root folder header, the editable row and any non-HeadlessTree tree. */
 .mdv-tree__chevron {
   display: inline-flex;
   align-items: center;

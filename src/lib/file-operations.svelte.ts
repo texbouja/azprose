@@ -1,21 +1,10 @@
 import { persistedScopedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS, createFile, createFolder, renameEntry, removeEntry, moveEntry, basename, dirname, joinPath } from "@/lib";
 import { notifications } from "@/stores/notifications.svelte";
-import { contextMenu } from "@/stores/context-menu.svelte";
+import { contextMenu, type ContextMenuItem } from "@/stores/context-menu.svelte";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { IS_MAC } from "@/lib/platform";
-
-type ContextMenuItem =
-  | {
-      label: string;
-      icon?: string;
-      onSelect: () => void;
-      disabled?: boolean;
-      hint?: string;
-      destructive?: boolean;
-    }
-  | "divider";
 import type { FileEntry } from "@/lib";
 import type { PanelManager } from "@/lib/panel-manager";
 
@@ -38,7 +27,6 @@ export class FileOpsManager {
       `treeVersion` so the tree can invalidate only the affected folders
       instead of re-listing everything (which flashes all rows). */
   treeDirtyPaths = $state<string[]>([]);
-  contextMenuItems = $state<ContextMenuItem[]>([]);
   favorites = persistedScopedState<string[]>(STORAGE_KEYS.favorites, []);
 
   activeDir = $derived.by(() => {
@@ -215,7 +203,7 @@ export class FileOpsManager {
     // Multi-selection: new entries in the right-clicked parent + batch delete
     // and copy (the root is never deletable, even as part of a selection).
     if (isBatch) {
-      this.contextMenuItems = [
+      contextMenu.open(e, entry, [
         {
           label: t("menu.newFile"),
           icon: "wxi-file-plus2",
@@ -239,12 +227,11 @@ export class FileOpsManager {
           icon: "wxi-copy",
           onSelect: () => void navigator.clipboard.writeText(sel.map((s) => s.path).join("\n")),
         },
-      ];
-      contextMenu.open(e, entry);
+      ]);
       return;
     }
 
-    this.contextMenuItems = [
+    contextMenu.open(e, entry, [
       {
         label: t("menu.newFile"),
         icon: "wxi-file-plus2",
@@ -289,7 +276,6 @@ export class FileOpsManager {
         icon: "wxi-copy",
         onSelect: () => void navigator.clipboard.writeText(entry.path),
       },
-    ];
-    contextMenu.open(e, entry);
+    ]);
   };
 }

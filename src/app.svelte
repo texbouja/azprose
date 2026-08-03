@@ -1279,8 +1279,10 @@ let cmds = $derived(
       onSelectFile={fo.selectFile}
       onContextMenu={fo.buildContextMenu}
       editingPath={fo.editingPath}
+      onRenameRequest={(path) => (fo.editingPath = path)}
       onSubmitRename={fo.submitRename}
       onCancelEdit={fo.cancelEdit}
+      onDeleteEntry={fo.delete}
       newEntry={fo.newEntry}
       onSubmitNew={fo.submitNew}
       onCancelNew={fo.cancelNew}
@@ -1385,7 +1387,7 @@ let cmds = $derived(
     open={contextMenu.target !== null}
     x={contextMenu.target?.x ?? 0}
     y={contextMenu.target?.y ?? 0}
-    items={fo.contextMenuItems}
+    items={contextMenu.items}
     onClose={contextMenu.close}
   />
 

@@ -33,6 +33,8 @@ let {
   editingPath,
   onSubmitRename,
   onCancelEdit,
+  onRenameRequest,
+  onDeleteEntry,
   newEntry,
   onSubmitNew,
   onCancelNew,
@@ -66,6 +68,8 @@ let {
   editingPath?: string | null;
   onSubmitRename?: (src: string, newName: string) => void;
   onCancelEdit?: () => void;
+  onRenameRequest?: (path: string) => void;
+  onDeleteEntry?: (entry: FileEntry) => void;
   newEntry?: NewEntry | null;
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
@@ -137,6 +141,7 @@ function stopResize(e: PointerEvent) {
           {editingPath}
           {onSubmitRename}
           {onCancelEdit}
+          {onRenameRequest}
           {newEntry}
           {onSubmitNew}
           {onCancelNew}
@@ -144,7 +149,14 @@ function stopResize(e: PointerEvent) {
           {dirtyPaths}
         />
       {:else if sidebarView.current === "journal"}
-        <JournalView {rootPath} {activePath} {onSelectFile} {treeVersion} {onOpenCalendar} />
+        <JournalView
+          {rootPath}
+          {activePath}
+          {onSelectFile}
+          {treeVersion}
+          {onOpenCalendar}
+          {onDeleteEntry}
+        />
       {/if}
     </div>
   </div>

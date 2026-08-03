@@ -1,4 +1,4 @@
-import type { ItemInstance, TreeInstance } from "@headless-tree/core";
+import type { ItemInstance } from "@headless-tree/core";
 import { dirname } from "@/lib/paths-utils";
 
 /** MIME type used for file-tree drag & drop payloads (moved from folder-node.svelte). */
@@ -44,42 +44,11 @@ export function registerItem<T>(node: HTMLElement, item: ItemInstance<T>) {
   };
 }
 
-const EVENT_KEY_RE = /^on[A-Z]/;
-
 /**
- * Svelte 5 spread props require lowercase DOM event names (`onClick` → `onclick`);
- * camelCase keys in a `{...props}` spread would be set as plain attributes.
- * Also strips the `ref` key (handled via `use:registerItem` / `bind:this`).
+ * Right-click selection semantics shared by our trees: right-clicking an
+ * unselected item selects it alone; an already selected item keeps the whole
+ * selection (the context menu then acts on the whole selection).
  */
-export function normalizeEventKeys(props: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (key === "ref") continue;
-    if (EVENT_KEY_RE.test(key) && typeof value === "function") {
-      out[key.toLowerCase()] = value;
-    } else {
-      out[key] = value;
-    }
-  }
-  return out;
-}
-
-/**
- * Props for a tree row (the `treeitem` element): `role`, aria attributes,
- * `tabIndex`, `draggable` + drag handlers from the features, with `ref`
- * stripped and event keys normalized for Svelte. `onClick` is overridden so
- * callers can supply their own multi-select aware click handler.
- */
-export function rowProps<T>(
-  item: ItemInstance<T>,
-  onClick?: (e: MouseEvent) => void,
-): Record<string, unknown> {
-  const props = item.getProps();
-  if (onClick) props.onClick = onClick;
-  return normalizeEventKeys(props);
-}
-
-/** Props for the tree container (`role="tree"`, dnd handlers, `position: relative`). */
-export function containerProps<T>(tree: TreeInstance<T>, label?: string): Record<string, unknown> {
-  return normalizeEventKeys(tree.getContainerProps(label ?? ""));
+export function ensureContextMenuSelection<T>(item: ItemInstance<T>): void {
+  if (!item.isSelected()) item.getTree().setSelectedItems([item.getId()]);
 }

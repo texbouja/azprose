@@ -111,6 +111,8 @@
   "menu.copyRelativePath": "copy relative path",
   "menu.copyPaths": "copy {count} paths",
   "menu.pathCopied": "path copied",
+  "menu.expandAll": "expand all",
+  "menu.collapseAll": "collapse all",
   "menu.rename": "rename",
   "menu.newFile": "new file",
   "menu.newFolder": "new folder",

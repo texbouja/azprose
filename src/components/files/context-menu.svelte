@@ -1,14 +1,6 @@
 <script lang="ts">
-export type ContextMenuItem =
-  | {
-      label: string;
-      icon?: string;
-      onSelect: () => void;
-      disabled?: boolean;
-      hint?: string;
-      destructive?: boolean;
-    }
-  | "divider";
+export type { ContextMenuItem } from "@/stores/context-menu.svelte";
+import type { ContextMenuItem } from "@/stores/context-menu.svelte";
 
 let {
   open,
@@ -83,7 +75,7 @@ $effect(() => {
         >
           <span class="mdv-menu__item-icon">
             {#if item.icon}
-              <i class={item.icon} style="font-size:13px"></i>
+              <i class={item.icon} style="font-size:13px;{item.iconStyle ?? ''}"></i>
             {:else}
               <span aria-hidden="true" />
             {/if}

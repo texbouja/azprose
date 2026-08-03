@@ -2,16 +2,25 @@
   import {
     asyncDataLoaderFeature,
     dragAndDropFeature,
+    expandAllFeature,
     hotkeysCoreFeature,
+    keyboardDragAndDropFeature,
     selectionFeature,
-    type AsyncDataLoaderDataRef,
     type ItemInstance,
     type TreeConfig,
     type TreeInstance,
   } from "@headless-tree/core";
-  import { basename, dirname, listFolder, type FileEntry } from "@/lib";
+  import { basename, listFolder, type FileEntry } from "@/lib";
   import HeadlessTree from "@/components/tree/HeadlessTree.svelte";
-  import { DRAG_MIME, ancestorPaths } from "@/components/tree/headless-utils";
+  import {
+    DRAG_MIME,
+    ancestorPaths,
+    ensureContextMenuSelection,
+  } from "@/components/tree/headless-utils";
+  import { fsInvalidationFeature } from "@/components/tree/fs-invalidation-feature";
+  import { mdvExpansionTrackerFeature } from "@/components/tree/mdv-expansion-tracker";
+  import { mdvRowClickFeature } from "@/components/tree/mdv-row-click-feature";
+  import { sveltePropsFeature } from "@/components/tree/svelte-props-feature";
   import EditableRow from "./editable-row.svelte";
   import FileIcon from "./FileIcon.svelte";
   import sadUrl from "@/assets/mascot/az-sad.svg";
@@ -31,6 +40,7 @@
     editingPath,
     onSubmitRename,
     onCancelEdit,
+    onRenameRequest,
     newEntry,
     onSubmitNew,
     onCancelNew,
@@ -49,6 +59,7 @@
     editingPath?: string | null;
     onSubmitRename?: (src: string, newName: string) => void;
     onCancelEdit?: () => void;
+    onRenameRequest?: (path: string) => void;
     newEntry?: NewEntry | null;
     onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
     onCancelNew?: () => void;
@@ -78,6 +89,26 @@
         hotkeysCoreFeature,
         selectionFeature,
         dragAndDropFeature,
+        keyboardDragAndDropFeature,
+        expandAllFeature,
+        // Our shared features, outermost LAST so their prev chain wraps the
+        // built-in ones: fsInvalidation adds tree.invalidatePaths(); mdvRowClick
+        // implements file-manager click semantics (select only, no folder
+        // toggle); mdvExpansionTracker reports the real expand/collapse
+        // transitions (chevron, ArrowRight/Left, Enter, expand/collapse-all)
+        // so the auto-expand effect never re-opens user-collapsed folders;
+        // svelteProps remaps React prop names to Svelte.
+        fsInvalidationFeature,
+        mdvRowClickFeature<FileEntry>(),
+        mdvExpansionTrackerFeature<FileEntry>((item, nowExpanded) => {
+          const id = item.getId();
+          if (nowExpanded) userCollapsed.delete(id);
+          // The isLoading guard covers expand() no-ops: expanding a folder
+          // that is currently fetching children keeps it collapsed without
+          // wrongly marking it user-collapsed.
+          else if (!item.isLoading()) userCollapsed.add(id);
+        }),
+        sveltePropsFeature,
       ],
       dataLoader: {
         getItem: (id) => ({ name: basename(id), path: id, isDir: false }),
@@ -120,19 +151,34 @@
       }),
       hotkeys: {
         // Custom (non-builtin) hotkey: Enter opens files / toggles folders
-        // like VS Code. Builtin presets have no "open" action.
+        // like VS Code. Builtin presets have no "open" action. VS Code
+        // semantics: Enter on the focused row also SELECTS it (focus ≠
+        // selection — arrows only move the focus, Enter bridges the two).
         customopenItem: {
           hotkey: "Enter",
           preventDefault: true,
           handler: (_e, tree) => {
             const item = tree.getFocusedItem();
             if (!item) return;
+            tree.setSelectedItems([item.getId()]);
             if (item.isFolder()) {
               if (item.isExpanded()) item.collapse();
               else item.expand();
             } else {
               item.primaryAction();
             }
+          },
+        },
+        // Native rename lives on F2 (renamingFeature preset) — we route it to
+        // our own EditableRow instead of the feature's inline editing. The
+        // root rename is guarded in submitRename.
+        customrenameItem: {
+          hotkey: "F2",
+          preventDefault: true,
+          handler: (_e, tree) => {
+            const item = tree.getFocusedItem();
+            if (!item) return;
+            onRenameRequest?.(item.getId());
           },
         },
       },
@@ -145,6 +191,12 @@
   // Auto-expand: ancestors of the active file (unless user-collapsed) and the
   // parent of a pending new entry. Merges with the current expandedItems so
   // manually expanded folders are preserved.
+  //
+  // Uses the same native mechanism as item.expand() (applySubStateUpdate on
+  // "expandedItems" + rebuildTree) instead of setConfig: setConfig replaces
+  // the whole config object and merges the ENTIRE state (a stale config.state
+  // would clobber focusedItem etc.). applySubStateUpdate only touches the
+  // expandedItems slice — the doc-recommended way to change individual state.
   $effect(() => {
     const tree = headlessTree;
     if (!tree) return;
@@ -155,66 +207,41 @@
       }
     }
     if (newEntry?.parent && newEntry.parent !== rootPath) target.add(newEntry.parent);
-    tree.setConfig((c) => {
-      const current = new Set(c.state?.expandedItems ?? []);
-      for (const p of target) current.add(p);
-      for (const p of userCollapsed) current.delete(p);
-      return { ...c, state: { ...c.state, expandedItems: [...current] } };
+    tree.applySubStateUpdate("expandedItems", (current) => {
+      const cur = current ?? [];
+      const merged = new Set(cur);
+      for (const p of target) merged.add(p);
+      for (const p of userCollapsed) merged.delete(p);
+      const next = [...merged];
+      // Rebuild only when the expanded set actually changed. rebuildTree
+      // triggers the wrapper's {#key version} re-render, which tears down the
+      // DOM and drops the keyboard focus — a no-op rebuild right after a
+      // chevron collapse (this effect re-runs because userCollapsed changed)
+      // would kill the focus the chevron handler just restored.
+      const same =
+        next.length === cur.length && next.every((id, i) => id === cur[i]);
+      if (!same) queueMicrotask(() => tree.rebuildTree());
+      return next;
     });
   });
 
   // Reload folder listings when the FS changes externally (treeVersion bump).
-  // Targeted invalidation: only the folders that (may) contain the changed
-  // paths re-list, so the tree never flashes all rows on a single change.
-  // Without path info (empty list) it falls back to a full re-list.
+  // Targeted invalidation via the fsInvalidationFeature: only the folders that
+  // (may) contain the changed paths re-list, so the tree never flashes all
+  // rows on a single change. See fs-invalidation-feature.ts for the rules
+  // (dirname + p, full re-list on empty, optimistic native invalidation).
   $effect(() => {
     void treeVersion;
     const tree = headlessTree;
     if (!tree || treeVersion === 0) return;
-    const ref = tree.getDataRef<AsyncDataLoaderDataRef<FileEntry>>();
-    if (!dirtyPaths?.length) {
-      ref.current.childrenIds = {};
-    } else {
-      const dirs = new Set<string>();
-      for (const p of dirtyPaths) {
-        dirs.add(dirname(p));
-        dirs.add(p); // p itself may be a (re)created folder with stale children
-      }
-      dirs.add(rootPath);
-      for (const d of dirs) delete ref.current.childrenIds[d];
-    }
-    tree.rebuildTree();
+    tree.invalidatePaths(dirtyPaths ?? []);
   });
 
-  function handleRowClick(e: MouseEvent, item: ItemInstance<FileEntry>) {
-    if (e.shiftKey) {
-      item.selectUpTo(e.ctrlKey || e.metaKey);
-      return;
-    }
-    if (e.ctrlKey || e.metaKey) {
-      item.toggleSelect();
-      return;
-    }
-    item.getTree().setSelectedItems([item.getId()]);
-    item.setFocused();
-    if (item.isFolder()) {
-      if (item.isExpanded()) {
-        userCollapsed.add(item.getId());
-        item.collapse();
-      } else {
-        userCollapsed.delete(item.getId());
-        item.expand();
-      }
-    } else {
-      onSelect(item.getId(), false);
-    }
-  }
-
   function handleRowContextMenu(e: MouseEvent, item: ItemInstance<FileEntry>) {
-    const tree = item.getTree();
     // Right-clicking an unselected item selects it alone; clicking an already
     // selected item keeps the whole selection (menu acts on the selection).
-    if (!item.isSelected()) tree.setSelectedItems([item.getId()]);
+    ensureContextMenuSelection(item);
+    const tree = item.getTree();
     const data = item.getItemData();
     if (!data) return;
     const selection = tree
@@ -231,7 +258,6 @@
   onTree={(t) => {
     headlessTree = t;
   }}
-  onRowClick={handleRowClick}
 >
   {#snippet children(item: ItemInstance<FileEntry>)}
     {#if editingPath === item.getId() && onSubmitRename && onCancelEdit}
@@ -243,22 +269,45 @@
         onCancel={onCancelEdit}
       />
     {:else if item.isFolder()}
-      <button
-        type="button"
-        tabindex="-1"
-        class="mdv-tree__row mdv-tree__row--folder{item.isSelected() ? ' is-selected' : ''}{item.isDragTarget() ? ' is-drop-target' : ''}"
+      <div
+        class="mdv-tree__rowline"
         style="padding-left:{8 + (item.getItemMeta().level + 1) * 12}px"
-        oncontextmenu={(e) => handleRowContextMenu(e, item)}
-        title={item.getItemName()}
       >
-        <span class="mdv-tree__chevron{item.isExpanded() ? ' is-open' : ''}">
+        <button
+          type="button"
+          tabindex="-1"
+          class="mdv-tree__chevron-btn{item.isExpanded() ? ' is-open' : ''}"
+          aria-label={item.isExpanded() ? "Collapse folder {item.getItemName()}" : "Expand folder {item.getItemName()}"}
+          onclick={(e) => {
+            // The chevron is the ONLY click toggle for folders — a plain row
+            // click only selects (mdvRowClickFeature). stopPropagation keeps
+            // the li's onClick (which would select & focus) from firing, so
+            // chevron clicks toggle without touching the selection.
+            e.stopPropagation();
+            if (item.isExpanded()) item.collapse();
+            else item.expand();
+            // Keep the folder focused (no selection) so the ArrowRight/Left
+            // hotkeys continue working after the wrapper's {#key version}
+            // re-render drops the button from the DOM.
+            item.setFocused();
+            item.getTree().updateDomFocus();
+          }}
+        >
           <i class="wxi-chevron-right" style="font-size:12px"></i>
-        </span>
-        <span class="mdv-tree__icon">
-          <i class={item.isExpanded() ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
-        </span>
-        <span class="mdv-tree__name">{item.getItemName()}</span>
-      </button>
+        </button>
+        <button
+          type="button"
+          tabindex="-1"
+          class="mdv-tree__row mdv-tree__row--folder{item.isSelected() ? ' is-selected' : ''}{item.isDragTarget() ? ' is-drop-target' : ''}"
+          oncontextmenu={(e) => handleRowContextMenu(e, item)}
+          title={item.getItemName()}
+        >
+          <span class="mdv-tree__icon">
+            <i class={item.isExpanded() ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
+          </span>
+          <span class="mdv-tree__name">{item.getItemName()}</span>
+        </button>
+      </div>
       {#if newEntry && newEntry.parent === item.getId() && onSubmitNew && onCancelNew}
         <EditableRow
           depth={item.getItemMeta().level + 2}
