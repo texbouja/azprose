@@ -72,7 +72,7 @@ const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
   preview: { style: "object" },
   presentation: { style: "object", slideMode: "string" },
   math: { preamble: "string", packages: "object" },
-  colles: { dateDebut: "string", dateFin: "string", vacances: "object", rubriques: "object" },
+  colles: { dateDebut: "string", dateFin: "string", vacances: "object", rubriques: "object", colloscope: "object" },
 };
 
 const CONFIG_SCHEMA: Record<string, string> = {

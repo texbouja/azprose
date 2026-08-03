@@ -571,11 +571,12 @@
   // fixe une hauteur en pixels par glisser (ou clavier), ou revient à la
   // hauteur automatique (hauteur naturelle si contenu ≤ ⅓ de la pile, sinon
   // cap ⅓ — cf. CSS `.dfg`). `cardHeight = null` = auto ; sinon hauteur fixe
-  // clippée par `max-height: 33.333%` (le Grid SVAR scrolle alors en interne,
-  // scrollbar masquée). Le drag suit la souris sur `window` (mousemove +
-  // mouseup) pour ne pas perdre le geste hors de la carte ; le ResizeObserver
-  // interne SVAR (`use:onresize` sur `.wx-grid`) re-rend les lignes virtuelles
-  // pendant le drag.
+  // libérée du cap (`.dfg--resized { max-height: none }`), plafonnée en JS à
+  // la hauteur du scrollport de la pile (le Grid SVAR scrolle alors en
+  // interne, scrollbar masquée). Le drag suit la souris sur `window`
+  // (mousemove + mouseup) pour ne pas perdre le geste hors de la carte ; le
+  // ResizeObserver interne SVAR (`use:onresize` sur `.wx-grid`) re-rend les
+  // lignes virtuelles pendant le drag.
 
   const RESIZE_MIN_H = 80;
   const RESIZE_STEP = 8;
@@ -584,10 +585,20 @@
   let cardHeight = $state<number | null>(null);
   let resizing = $state(false);
 
-  /** Card `max-height` calculée (en px) — résout `max-height: 33.333%`. */
+  /** Plafond du redimensionnement MANUEL (drag + clavier) : la hauteur du
+   *  scrollport de la pile (`.dfs__stack`). Le cap CSS `max-height: 33.333%`
+   *  ne borne QUE la hauteur auto (carte non redimensionnée) ; dès que
+   *  `cardHeight` est fixé, la classe `.dfg--resized` pose `max-height:
+   *  none` et l'utilisateur peut étirer jusqu'à occuper toute la pile
+   *  (l'ascenseur extérieur de la pile scrolle toujours entre les cartes).
+   *  Repli : 400 px si le stack n'est pas trouvé. */
   function cardMaxHeight(card: HTMLElement): number {
-    const mh = parseFloat(getComputedStyle(card).maxHeight);
-    return Number.isFinite(mh) && mh > 0 ? mh : 400;
+    const stack = card.closest<HTMLElement>(".dfs__stack");
+    if (stack) {
+      const sh = stack.clientHeight;
+      if (sh > 0) return Math.round(sh);
+    }
+    return 400;
   }
 
   function startResize(e: MouseEvent) {
@@ -756,7 +767,9 @@
        cartes — l'ascenseur EXTÉRIEUR de la pile fait le scrolling ; le Grid
        scrolle en interne (scrollbar masquée) quand la carte est cappée ou
        redimensionnée. Une hauteur manuelle (style inline `height`, cf.
-       `cardHeight`) prime sur `height: auto` mais reste clippée par le cap. */
+       `cardHeight`) prime sur `height: auto` ET libère le cap
+       (`.dfg--resized { max-height: none }`) : l'utilisateur étire jusqu'à
+       toute la pile. */
     height: auto;
     max-height: 33.333%;
     flex-shrink: 0;
@@ -765,6 +778,13 @@
   .dfg--resizing {
     cursor: ns-resize;
     user-select: none;
+  }
+
+  /* Hauteur MANUELLE (cardHeight ≠ null) : libère le cap ⅓ — le drag et le
+     clavier peuvent étirer jusqu'à toute la pile (plafond JS = scrollport
+     `.dfs__stack`). Le cap `max-height: 33.333%` ne borne que l'auto. */
+  .dfg--resized {
+    max-height: none;
   }
 
   .dfg--resizing .dfg__resize {

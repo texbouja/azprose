@@ -1,7 +1,9 @@
 /**
  * User profile store — persistent user identity for calendar events.
  *
- * Stores name, email, and role.
+ * Stores name, email, role, and the "colleur name" used as the user's
+ * identifier when importing a colloscope (often abbreviated, e.g.
+ * "M. Boujaida" instead of the full name "Sadik Anas Boujaida").
  */
 
 import { persistedState } from "./persisted.svelte";
@@ -13,16 +15,32 @@ export interface UserProfile {
   name: string;
   email: string;
   role: UserRole;
+  /** Nom abrégé d'identité colleur (identifiant dans le colloscope importé). */
+  colleurName: string;
 }
 
 const DEFAULTS: UserProfile = {
   name: "",
   email: "",
   role: "professeur",
+  colleurName: "",
 };
 
+/**
+ * Migration des anciennes formes persistées (localStorage) vers le modèle
+ * courant — comble les champs manquants sans toucher aux valeurs existantes.
+ */
+function normalizeProfile(v: UserProfile): UserProfile {
+  return {
+    name: typeof v.name === "string" ? v.name : "",
+    email: typeof v.email === "string" ? v.email : "",
+    role: v.role === "eleve" ? "eleve" : "professeur",
+    colleurName: typeof v.colleurName === "string" ? v.colleurName : "",
+  };
+}
+
 function createProfileStore() {
-  const state = persistedState<UserProfile>(STORAGE_KEYS.userProfile, DEFAULTS);
+  const state = persistedState<UserProfile>(STORAGE_KEYS.userProfile, DEFAULTS, normalizeProfile);
 
   return {
     get current(): UserProfile { return state.current; },

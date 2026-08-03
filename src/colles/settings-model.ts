@@ -19,6 +19,31 @@ export interface ColleVacances {
   end: string;
 }
 
+/**
+ * Mapping des données du colloscope importées : les élèves (tableau « Élèves »)
+ * et UN tableau par classe (« Colloscope — {classe} », ~450 lignes/classe)
+ * vivent dans des tableaux spreadsheet de data.db (éditables dans Spreadsheet,
+ * filtrables dans DataFilter). Chaque tableau de classe contient les séances
+ * EXPANDUES de sa classe (date, groupe, matière, colleur, jour, horaire, salle —
+ * pas de colonne « Classe » : le tableau est identifié par son nom et par la clé
+ * du mapping). Ce champ relie ces tableaux — c'est la source de vérité, plus de
+ * rotation stockée.
+ *
+ * Décision (round 8) : un tableau PAR CLASSE plutôt qu'un tableau fusionné de
+ * ~1800 lignes — le rendu monolithique de jspreadsheet (toutes les lignes dans
+ * le DOM d'un coup) rendait la bascule vers le tab spreadsheet trop lente.
+ */
+export interface ColloscopeImport {
+  /** Nom du fichier source importé (xlsx). */
+  source: string;
+  /** Date de l'import (ISO). */
+  importedAt: string;
+  /** ID du tableau spreadsheet « Élèves » (liste des élèves, tel quel). */
+  elevesSpreadsheetId: string;
+  /** Tableaux « Colloscope — {classe} » : un tableau par classe, clé = classe. */
+  colloscopeSpreadsheetIds: Record<string, string>;
+}
+
 export interface CollesSettings {
   /** Date de début de la première semaine (YYYY-MM-DD). */
   dateDebut: string;
@@ -29,6 +54,8 @@ export interface CollesSettings {
   vacances: ColleVacances[];
   /** Rubriques d'évaluation par matière (clés : maths, physique, francais, anglais, cat). */
   rubriques: RubriquesParMatiere;
+  /** Colloscope importé (null tant que rien n'est importé). */
+  colloscope: ColloscopeImport | null;
 }
 
 const DEFAULT_RUBRIQUES: RubriquesParMatiere = {
@@ -75,7 +102,36 @@ export const DEFAULT_COLLES_SETTINGS: CollesSettings = {
   dateFin: "",
   vacances: [],
   rubriques: DEFAULT_RUBRIQUES,
+  colloscope: null,
 };
+
+/** Nom du tableau spreadsheet d'une classe (utilisé par l'import et la pile DataFilter). */
+export function colloscopeTableName(classe: string): string {
+  return `Colloscope — ${classe}`;
+}
+
+/** Normalise une valeur de mapping colloscope persistée (défensive). */
+export function normalizeColloscopeImport(v: unknown): ColloscopeImport | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.source !== "string" || typeof o.importedAt !== "string") return null;
+  if (typeof o.elevesSpreadsheetId !== "string") return null;
+  // Un tableau par classe : objet {classe → spreadsheetId}, valeurs string.
+  // Les objets/arrays/autres sont rejetés (ré-import requis).
+  if (!o.colloscopeSpreadsheetIds || typeof o.colloscopeSpreadsheetIds !== "object") return null;
+  if (Array.isArray(o.colloscopeSpreadsheetIds)) return null;
+  const colloscopeSpreadsheetIds: Record<string, string> = {};
+  for (const [classe, id] of Object.entries(o.colloscopeSpreadsheetIds as Record<string, unknown>)) {
+    if (typeof id === "string" && id) colloscopeSpreadsheetIds[classe] = id;
+  }
+  if (Object.keys(colloscopeSpreadsheetIds).length === 0) return null;
+  return {
+    source: o.source,
+    importedAt: o.importedAt,
+    elevesSpreadsheetId: o.elevesSpreadsheetId,
+    colloscopeSpreadsheetIds,
+  };
+}
 
 /**
  * Migration des anciennes formes persistées (localStorage / cfg.colles de
@@ -88,5 +144,6 @@ export function normalizeCollesSettings(v: CollesSettings): CollesSettings {
     dateFin: typeof v.dateFin === "string" ? v.dateFin : "",
     vacances: Array.isArray(v.vacances) ? v.vacances : [],
     rubriques: v.rubriques && typeof v.rubriques === "object" ? v.rubriques : DEFAULT_RUBRIQUES,
+    colloscope: normalizeColloscopeImport(v.colloscope),
   };
 }

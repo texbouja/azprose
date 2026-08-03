@@ -628,6 +628,52 @@ $effect(() => {
   return () => window.removeEventListener("azprose:datafilter-open", handler);
 });
 
+// DataFilter "open stack" — same as above, but opens ALL the spreadsheets of a
+// set as a single stack (the DataFilter stack view). Used by the colloscope
+// import: students + per-class tables are stacked together, one grid per table,
+// sharing the unified stack filter. A linked grid is created on first use.
+$effect(() => {
+  const handler = async (e: Event) => {
+    const { spreadsheetIds, name } = (e as CustomEvent<{ spreadsheetIds: string[]; name?: string }>).detail;
+    if (!spreadsheetIds?.length) return;
+    try {
+      const { datagridFindBySource, datagridCreateFromSpreadsheet, datagridRename } = await import("@/datagrid/store");
+      const { spreadsheetGet } = await import("@/spreadsheet/store");
+      const gridIds: string[] = [];
+      for (const spreadsheetId of spreadsheetIds) {
+        // Le grid porte le nom de SON tableau source (jamais le nom de la pile
+        // — un grid créé avec le nom de pile afficherait « Colloscope —
+        // Colloscope » sur toutes les cartes). On lit le nom live depuis la db
+        // pour rester aligné même après un rename du tableur.
+        const sheet = await spreadsheetGet(spreadsheetId).catch(() => null);
+        const sheetName = sheet?.name || name || "Tableau";
+        const meta = await datagridFindBySource(spreadsheetId);
+        if (meta) {
+          // Réparer les grids créés avant ce fix (nom de pile au lieu du nom
+          // du tableau) : `datagridRename` n'a aucun appelant UI, pas de
+          // rename manuel à préserver.
+          if (meta.name !== sheetName) {
+            await datagridRename(meta.id, sheetName);
+          }
+          gridIds.push(meta.id);
+        } else {
+          const gridId = await datagridCreateFromSpreadsheet(
+            `dg-${spreadsheetId}`,
+            sheetName,
+            spreadsheetId,
+          );
+          gridIds.push(gridId);
+        }
+      }
+      pm.openDataFilterInSide(gridIds, name || "Filtre de données");
+    } catch (err) {
+      console.error("[spreadsheet] failed to open data filter stack:", err);
+    }
+  };
+  window.addEventListener("azprose:datafilter-open-stack", handler);
+  return () => window.removeEventListener("azprose:datafilter-open-stack", handler);
+});
+
 // DataFilter « Edit dans Spreadsheet » — ouvre le tableur source dans le
 // SIDE panel : le panneau principal est réservé EXCLUSIVEMENT à CodeMirror
 // (l'éditeur), toute vue d'outil (tableur, DataFilter, calendrier, …) s'ouvre

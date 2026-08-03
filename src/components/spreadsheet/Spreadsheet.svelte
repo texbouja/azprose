@@ -356,6 +356,33 @@
     height: 100%;
   }
 
+  /* ── jsuites tabs wrappers: hauteur DÉFINIE obligatoire ──
+     jspreadsheet enveloppe chaque feuille dans jSuites.tabs même avec une
+     seule feuille (hideHeaders). IMPORTANT : jSuites.tabs ajoute la classe
+     `jtabs` sur le MÊME nœud que `jss_spreadsheet` (`el.classList.add`) —
+     il n'existe pas de `.jtabs` enfant. Sans ces règles, `.jss_container
+     { height:100% }` résout contre `.jtabs-selected` (hauteur auto, bloc)
+     → le conteneur s'étire à la hauteur naturelle de la table,
+     `.jss_content` ne déborde jamais et le scrollbar reste INACTIF.
+     Flex column sur le nœud racine + `flex:1` sur `.jtabs-content` +
+     `height:100%` sur la feuille active ferment la chaîne de hauteur. */
+  .spreadsheet :global(.jss_spreadsheet.jtabs) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .spreadsheet :global(.jss_spreadsheet > .jtabs-content) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .spreadsheet :global(.jss_spreadsheet > .jtabs-content > .jtabs-selected) {
+    height: 100%;
+    min-height: 0;
+  }
+
   .spreadsheet :global(.jss_toolbar) {
     flex-shrink: 0;
   }

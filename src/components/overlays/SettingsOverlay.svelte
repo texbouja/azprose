@@ -146,6 +146,75 @@ function removeVacance(idx: number) {
   }));
 }
 
+// ── Import du colloscope ───────────────────────────────────────────────────
+// Le fichier xlsx est importé une fois et expandu en tableaux spreadsheet
+// persistés dans data.db : « Élèves » (tel quel) + un « Colloscope — {classe} »
+// par classe (séances de la classe, ~450 lignes — la fusion de ~1800 lignes
+// rendait la bascule vers le tab spreadsheet trop lente). Le mapping est gardé
+// dans cfg.colles.colloscope ; un ré-import remplace tout.
+let colloscopeBusy = $state(false);
+
+async function importColloscopeFromFile() {
+  const { pickXlsx } = await import("@/lib/files");
+  const path = await pickXlsx("colloscope");
+  if (!path) return;
+  const { importColloscope } = await import("@/colles/import-colloscope");
+  colloscopeBusy = true;
+  try {
+    const res = await importColloscope(path);
+    notifications.setInfo(
+      `Colloscope importé : ${res.eleveCount} élèves, ${res.seanceCount} séances (${res.source})`,
+    );
+  } catch (err) {
+    console.error("[colloscope] import failed:", err);
+    notifications.setInfo(`Import du colloscope échoué : ${String(err instanceof Error ? err.message : err)}`);
+  } finally {
+    colloscopeBusy = false;
+  }
+}
+
+function resetColloscope() {
+  const prev = cs.colloscope;
+  if (!prev) return;
+  void (async () => {
+    const { spreadsheetDelete } = await import("@/spreadsheet/store");
+    const ids = new Set<string>([
+      prev.elevesSpreadsheetId,
+      ...Object.values(prev.colloscopeSpreadsheetIds ?? {}),
+    ]);
+    for (const id of ids) {
+      if (!id) continue;
+      try { await spreadsheetDelete(id); } catch { /* best-effort */ }
+    }
+    collesSettings.update((p) => ({ ...p, colloscope: null }));
+    notifications.setInfo("Colloscope retiré (tableaux supprimés)");
+  })();
+}
+
+/** Ouvre TOUS les tableaux du colloscope (Élèves + un « Colloscope — {classe} »
+ *  par classe) dans DataFilter, empilés en une seule vue — le widget de filtre
+ *  unifié s'applique à toute la pile. Chaque tableau reçoit un grid lié (créé au
+ *  premier usage, réutilisé ensuite) via le handler `azprose:datafilter-open-stack`
+ *  d'app.svelte. L'utilisateur bascule vers Spreadsheet depuis la barre de carte
+ *  (« Edit dans Spreadsheet ») s'il veut éditer un tableau. */
+function openColloscopeInDataFilter() {
+  const c = cs.colloscope;
+  if (!c) return;
+  const classes = Object.keys(c.colloscopeSpreadsheetIds ?? {}).sort((a, b) =>
+    a.localeCompare(b, "fr"),
+  );
+  const spreadsheetIds = [
+    c.elevesSpreadsheetId,
+    ...classes.map((classe) => c.colloscopeSpreadsheetIds[classe]),
+  ].filter((id): id is string => !!id);
+  if (!spreadsheetIds.length) return;
+  window.dispatchEvent(
+    new CustomEvent("azprose:datafilter-open-stack", {
+      detail: { spreadsheetIds, name: "Colloscope" },
+    }),
+  );
+}
+
 // ── Conversion YYYY-MM-DD ⇄ Date (DatePicker SVAR) ─────────────────────────
 // Les dates sont stockées en ISO local (`2026-09-01`). Le DatePicker SVAR
 // travaille en `Date` : parse composante par composante (new Date(y, m-1, d))
@@ -1109,6 +1178,14 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                 />
               </div>
               <div class="mdv-settings__font-row">
+                <span class="mdv-settings__font-label">{t("settings.profileColleurName")}</span>
+                <Text
+                  value={userProfile.current.colleurName}
+                  placeholder={t("settings.profileColleurNamePlaceholder")}
+                  onchange={(ev) => userProfile.patch({ colleurName: String(ev.value) })}
+                />
+              </div>
+              <div class="mdv-settings__font-row">
                 <span class="mdv-settings__font-label">{t("settings.profileEmail")}</span>
                 <Text
                   value={userProfile.current.email}
@@ -1335,8 +1412,7 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <p class="mdv-settings__hint">{t("settings.collesDatesHint")}</p>
 
             <p class="mdv-settings__section-title">{t("settings.collesVacances")}</p>
-            <p class="mdv-settings__hint">{t("settings.collesVacancesHint")}</p>
-            {#if cs.vacances.length}
+            <p class="mdv-settings__hint">{t("settings.collesVacancesHint")}</p>            {#if cs.vacances.length}
               <div class="mdv-settings__vacances">
                 <div class="mdv-settings__vacances-head" aria-hidden="true">
                   <span>{t("settings.collesVacanceStart")}</span>
@@ -1371,6 +1447,42 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               <i class="wxi-plus" style="font-size:12px"></i>
               {t("settings.collesAddVacance")}
             </button>
+
+            <p class="mdv-settings__section-title">{t("settings.collesColloscope")}</p>
+            <p class="mdv-settings__hint">{t("settings.collesColloscopeHint")}</p>
+            <div class="mdv-settings__row" style="gap:8px;flex-wrap:wrap">
+              <button
+                type="button"
+                class="mdv-settings__restart"
+                disabled={colloscopeBusy}
+                onclick={importColloscopeFromFile}
+              >
+                <i class="wxi-upload" style="font-size:12px"></i>
+                {t(cs.colloscope ? "settings.collesReimport" : "settings.collesImport")}
+              </button>
+              {#if cs.colloscope}
+                <button type="button" class="mdv-settings__reset" onclick={resetColloscope}>
+                  <i class="wxi-trash" style="font-size:12px"></i>
+                  {t("settings.collesRemove")}
+                </button>
+                <span class="mdv-settings__hint" style="align-self:center">
+                  {t("settings.collesColloscopeSource")} {cs.colloscope.source}
+                  {#if cs.colloscope.importedAt}
+                    · {new Date(cs.colloscope.importedAt).toLocaleDateString()}
+                  {/if}
+                </span>
+                <div class="mdv-settings__colles-view">
+                  <button
+                    type="button"
+                    class="mdv-settings__view mdv-settings__view--primary"
+                    onclick={openColloscopeInDataFilter}
+                  >
+                    <i class="wxi-filter" style="font-size:12px"></i>
+                    {t("settings.collesViewDataFilter")}
+                  </button>
+                </div>
+              {/if}
+            </div>
           {/if}
 
           {#if activeModule === "colles-rubriques"}

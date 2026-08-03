@@ -11,7 +11,7 @@ import {
 } from "../src/colles/parse";
 import { writeBackColleKeys } from "../src/colles/write-back";
 import { matiereKey, rubriquesFor, sumMaxScore, sumNotes } from "../src/colles/rubrics";
-import { normalizeCollesSettings } from "../src/colles/settings-model";
+import { normalizeCollesSettings, colloscopeTableName } from "../src/colles/settings-model";
 import type { ColleMeta, RubriquesParMatiere } from "../src/colles/types";
 
 const SAMPLE = `---
@@ -29,8 +29,8 @@ Du contenu normal de la daily note, sans colle.
 
 \`\`\`colle
 matiere: "Maths"
-colleur: "M. Dupont"
-eleve: "Alice"
+colleur: "M. El Amrani"
+eleve: "Salma"
 date: "2026-08-03"
 creneau: "09:00-10:00"
 salle: "B204"
@@ -46,8 +46,8 @@ Convergence de la série $\\sum 1/n^2$.
 
 \`\`\`colle
 matiere: "Physique"
-colleur: "Mme Martin"
-eleve: "Bob"
+colleur: "Mme Benali"
+eleve: "Mehdi"
 date: "2026-08-03"
 creneau: "14:00-15:00"
 salle: "B205"
@@ -60,9 +60,9 @@ La relativité du temps.
 
 describe("parseColleYaml", () => {
   test("parse les métadonnées de base", () => {
-    const meta = parseColleYaml(`matiere: "Maths"\ncolleur: "M. Dupont"\neleve: "Alice"\nsalle: "B204"`);
+    const meta = parseColleYaml(`matiere: "Maths"\ncolleur: "M. El Amrani"\neleve: "Salma"\nsalle: "B204"`);
     expect(meta.matiere).toBe("Maths");
-    expect(meta.colleur).toBe("M. Dupont");
+    expect(meta.colleur).toBe("M. El Amrani");
     expect(meta.salle).toBe("B204");
   });
 
@@ -159,14 +159,14 @@ describe("parsePlanches", () => {
     const [p1, p2] = section.planches;
     expect(p1.index).toBe(0);
     expect(p1.meta.matiere).toBe("Maths");
-    expect(p1.meta.colleur).toBe("M. Dupont");
-    expect(p1.meta.eleve).toBe("Alice");
+    expect(p1.meta.colleur).toBe("M. El Amrani");
+    expect(p1.meta.eleve).toBe("Salma");
     expect(p1.meta.creneau).toBe("09:00-10:00");
     expect(p1.bodySource).toContain("## Exercice 1 — Séries numériques");
     expect(p1.bodySource).toContain("Convergence");
     expect(p1.bodySource).toContain("![[fiche-geometrie]]");
     // le corps s'arrête au --- suivant (pas de contenu de la planche 2 dedans)
-    expect(p1.bodySource).not.toContain("Mme Martin");
+    expect(p1.bodySource).not.toContain("Mme Benali");
     expect(p1.bodySource).not.toContain("## Questions de cours");
 
     expect(p2.index).toBe(1);
@@ -322,7 +322,7 @@ describe("writeBackColleKeys", () => {
     expect(re.planches[0].meta.note).toBe(15);
     expect(re.planches[0].meta.observations).toBe("Bien préparée.");
     expect(re.planches[0].meta.matiere).toBe("Maths");
-    expect(re.planches[0].meta.eleve).toBe("Alice");
+    expect(re.planches[0].meta.eleve).toBe("Salma");
     // la planche 2 est intacte
     expect(re.planches[1].meta.note).toBeUndefined();
     expect(re.planches[1].meta.matiere).toBe("Physique");
@@ -532,7 +532,73 @@ describe("rubrics — note globale calculée (jamais stockée)", () => {
       dateFin: "",
       vacances: [],
       rubriques: RUBRIQUES,
+      colloscope: null,
     });
+  });
+
+  test("normalizeCollesSettings valide le mapping colloscope importé (un tableau par classe)", () => {
+    const legacy = {
+      dateDebut: "2026-09-01",
+      dateFin: "",
+      rubriques: RUBRIQUES,
+      colloscope: {
+        source: "Colloscope.xlsx",
+        importedAt: "2026-01-01T00:00:00Z",
+        elevesSpreadsheetId: "e1",
+        colloscopeSpreadsheetIds: { "MPs-1": "s1", "MP-2": "s2" },
+      },
+    } as any;
+    const v = normalizeCollesSettings(legacy);
+    expect(v.colloscope).toEqual({
+      source: "Colloscope.xlsx",
+      importedAt: "2026-01-01T00:00:00Z",
+      elevesSpreadsheetId: "e1",
+      colloscopeSpreadsheetIds: { "MPs-1": "s1", "MP-2": "s2" },
+    });
+    // Mapping malformé → null (pas de crash, pas de tableaux orphelins en mémoire)
+    const bad = { ...legacy, colloscope: { source: 42 } } as any;
+    expect(normalizeCollesSettings(bad).colloscope).toBeNull();
+    // Ancien format round 7 (un seul tableau fusionné `colloscopeSpreadsheetId`)
+    // → null : l'utilisateur ré-importe (mapping incompatible, tableaux legacy
+    // restent en db, supprimables manuellement).
+    const mergedFormat = {
+      ...legacy,
+      colloscope: { source: "Colloscope.xlsx", importedAt: "2026-01-01T00:00:00Z", elevesSpreadsheetId: "e1", colloscopeSpreadsheetId: "c1" },
+    } as any;
+    expect(normalizeCollesSettings(mergedFormat).colloscope).toBeNull();
+    // Ancien format pré-round-7 (`seancesByClass`) → null aussi.
+    const oldFormat = {
+      ...legacy,
+      colloscope: { source: "Colloscope.xlsx", importedAt: "2026-01-01T00:00:00Z", elevesSpreadsheetId: "e1", seancesByClass: { "MPs-1": "s1" } },
+    } as any;
+    expect(normalizeCollesSettings(oldFormat).colloscope).toBeNull();
+    // Tableaux par classe invalides : array, valeurs non-string, vide → null.
+    const arrayFormat = {
+      ...legacy,
+      colloscope: { source: "C.xlsx", importedAt: "2026-01-01T00:00:00Z", elevesSpreadsheetId: "e1", colloscopeSpreadsheetIds: ["s1", "s2"] },
+    } as any;
+    expect(normalizeCollesSettings(arrayFormat).colloscope).toBeNull();
+    const nonStringIds = {
+      ...legacy,
+      colloscope: { source: "C.xlsx", importedAt: "2026-01-01T00:00:00Z", elevesSpreadsheetId: "e1", colloscopeSpreadsheetIds: { "MPs-1": 42 } },
+    } as any;
+    expect(normalizeCollesSettings(nonStringIds).colloscope).toBeNull();
+    const emptyIds = {
+      ...legacy,
+      colloscope: { source: "C.xlsx", importedAt: "2026-01-01T00:00:00Z", elevesSpreadsheetId: "e1", colloscopeSpreadsheetIds: { "MPs-1": "" } },
+    } as any;
+    expect(normalizeCollesSettings(emptyIds).colloscope).toBeNull();
+    // Les entrées invalides sont filtrées, les valides conservées.
+    const partial = {
+      ...legacy,
+      colloscope: { source: "C.xlsx", importedAt: "2026-01-01T00:00:00Z", elevesSpreadsheetId: "e1", colloscopeSpreadsheetIds: { "MPs-1": "s1", "MP-1": 7 } },
+    } as any;
+    expect(normalizeCollesSettings(partial).colloscope?.colloscopeSpreadsheetIds).toEqual({ "MPs-1": "s1" });
+  });
+
+  test("colloscopeTableName construit le nom du tableau par classe", () => {
+    expect(colloscopeTableName("MPs-1")).toBe("Colloscope — MPs-1");
+    expect(colloscopeTableName("MP-2")).toBe("Colloscope — MP-2");
   });
 
   test("normalizeCollesSettings préserve les vacances existantes", () => {
