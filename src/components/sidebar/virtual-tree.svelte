@@ -1,189 +1,195 @@
 <script lang="ts">
-import { joinPath } from "@/lib";
+  import {
+    hotkeysCoreFeature,
+    selectionFeature,
+    syncDataLoaderFeature,
+    type ItemInstance,
+    type TreeConfig,
+  } from "@headless-tree/core";
+  import HeadlessTree from "@/components/tree/HeadlessTree.svelte";
+  import { basename, joinPath } from "@/lib";
 
-let {
-  noteDates,
-  rootPath,
-  activePath,
-  onSelect,
-  scrollToPath,
-}: {
-  noteDates: Set<string>;
-  rootPath: string | null;
-  activePath: string | null;
-  onSelect: (path: string) => void;
-  scrollToPath: string | null;
-} = $props();
+  type VNode = {
+    name: string;
+    path: string;
+    isDir: boolean;
+    kind: "year" | "month" | "note";
+  };
 
-const MONTH_LABELS = [
-  "janvier", "février", "mars", "avril", "mai", "juin",
-  "juillet", "août", "septembre", "octobre", "novembre", "décembre",
-];
+  let {
+    noteDates,
+    rootPath,
+    activePath,
+    onSelect,
+    scrollToPath,
+  }: {
+    noteDates: Set<string>;
+    rootPath: string | null;
+    activePath: string | null;
+    onSelect: (path: string) => void;
+    scrollToPath: string | null;
+  } = $props();
 
-interface FileNode {
-  name: string;
-  path: string;
-  date: string;
-}
+  const MONTH_LABELS = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+  ];
 
-interface MonthFolder {
-  key: string;
-  label: string;
-  path: string;
-  files: FileNode[];
-}
-
-interface YearFolder {
-  key: string;
-  label: string;
-  path: string;
-  months: MonthFolder[];
-}
-
-function buildTree(dates: Set<string>, root: string | null): YearFolder[] {
-  if (!root || dates.size === 0) return [];
-
-  const years = new Map<string, Map<string, FileNode[]>>();
-
-  for (const date of dates) {
-    const [y, m, d] = date.split("-");
-    if (!y || !m || !d) continue;
-    if (!years.has(y)) years.set(y, new Map());
-    const months = years.get(y)!;
-    if (!months.has(m)) months.set(m, []);
-    months.get(m)!.push({
-      name: `${date}.md`,
-      path: joinPath(root, `${date}.md`),
-      date,
-    });
+  interface BuiltTree {
+    dataById: Map<string, VNode>;
+    childrenById: Map<string, string[]>;
+    expanded: string[];
   }
 
-  const result: YearFolder[] = [];
-  for (const [y, months] of [...years.entries()].sort((a, b) => b[0].localeCompare(a[0]))) {
-    const monthFolders: MonthFolder[] = [];
-    for (const [m, files] of [...months.entries()].sort((a, b) => b[0].localeCompare(a[0]))) {
-      const monthIdx = parseInt(m, 10) - 1;
-      monthFolders.push({
-        key: m,
-        label: MONTH_LABELS[monthIdx] ?? m,
-        path: joinPath(joinPath(root, y), m),
-        files: files.sort((a, b) => a.date.localeCompare(b.date)),
-      });
+  /** Builds the in-memory Year → Month → Note hierarchy once per data change. */
+  function buildTree(root: string, dates: Set<string>): BuiltTree {
+    const dataById = new Map<string, VNode>();
+    const childrenById = new Map<string, string[]>();
+    const years = new Map<string, Map<string, string[]>>();
+
+    for (const date of dates) {
+      const [y, m, d] = date.split("-");
+      if (!y || !m || !d) continue;
+      const notePath = joinPath(root, `${date}.md`);
+      dataById.set(notePath, { name: `${date}.md`, path: notePath, isDir: false, kind: "note" });
+      const yearPath = joinPath(root, y);
+      if (!years.has(y)) {
+        years.set(y, new Map());
+        dataById.set(yearPath, { name: y, path: yearPath, isDir: true, kind: "year" });
+      }
+      const months = years.get(y)!;
+      const monthPath = joinPath(yearPath, m);
+      if (!months.has(m)) {
+        months.set(m, []);
+        const label = MONTH_LABELS[parseInt(m, 10) - 1] ?? m;
+        dataById.set(monthPath, { name: label, path: monthPath, isDir: true, kind: "month" });
+      }
+      months.get(m)!.push(notePath);
     }
-    result.push({
-      key: y,
-      label: y,
-      path: joinPath(root, y),
-      months: monthFolders,
-    });
+
+    const expanded: string[] = [];
+    const yearIds = [...years.keys()].sort((a, b) => b.localeCompare(a));
+    // children are keyed by their full PATH in both dataById and childrenById
+    // (getItem/getChildren look up by item id = path); the bare year would be
+    // an id that exists nowhere → the year node could never expand.
+    childrenById.set(root, yearIds.map((y) => joinPath(root, y)));
+    for (const y of yearIds) {
+      const yearPath = joinPath(root, y);
+      const months = years.get(y)!;
+      const monthIds = [...months.keys()].sort((a, b) => b.localeCompare(a));
+      // Same path-keyed children as above: bare month numbers would be ids
+      // that exist nowhere (getItem/getChildren key by full path).
+      childrenById.set(yearPath, monthIds.map((m) => joinPath(yearPath, m)));
+      expanded.push(yearPath);
+      for (const m of monthIds) {
+        const monthPath = joinPath(yearPath, m);
+        const notes = months.get(m)!.sort((a, b) => a.localeCompare(b));
+        childrenById.set(monthPath, notes);
+        expanded.push(monthPath);
+      }
+    }
+
+    return { dataById, childrenById, expanded };
   }
-  return result;
-}
 
-let tree = $derived(buildTree(noteDates, rootPath));
+  function buildConfig(root: string, dates: Set<string>): TreeConfig<VNode> {
+    const { dataById, childrenById, expanded } = buildTree(root, dates);
+    return {
+      rootItemId: root,
+      state: { expandedItems: expanded, focusedItem: null },
+      features: [hotkeysCoreFeature, selectionFeature, syncDataLoaderFeature],
+      dataLoader: {
+        getItem: (id) =>
+          dataById.get(id) ?? { name: basename(id), path: id, isDir: true, kind: "month" },
+        getChildren: (id) => childrenById.get(id) ?? [],
+      },
+      getItemName: (item) => item.getItemData()?.name ?? basename(item.getId()),
+      isItemFolder: (item) => item.getItemData()?.isDir ?? false,
+      onPrimaryAction: (item) => {
+        if (!item.isFolder()) onSelect(item.getId());
+      },
+      indent: 12,
+    };
+  }
 
-// Plain object for open state — avoids Set proxy reactivity issues in Svelte 5
-let open: Record<string, boolean> = $state({});
+  // The config + key derive from the note dates: any rescan changes the key,
+  // remounting the tree with a fresh hierarchy (same pattern as the explorer
+  // where the parent keys by rootPath).
+  let config = $derived(rootPath ? buildConfig(rootPath, noteDates) : null);
+  let treeKey = $derived(
+    rootPath ? `${rootPath}\u0000${[...noteDates].sort().join("\u0000")}` : "",
+  );
 
-function toggleFolder(path: string) {
-  open[path] = !open[path];
-}
+  let containerEl: HTMLDivElement | undefined = $state();
 
-// Auto-open all year + month folders when tree changes
-let prevTreeKey = "";
-$effect(() => {
-  const key = tree.map((y) => y.key + ":" + y.months.map((m) => m.key).join(",")).join("|");
-  if (key === prevTreeKey) return;
-  prevTreeKey = key;
-  const next: Record<string, boolean> = {};
-  for (const y of tree) {
-    next[y.path] = true;
-    for (const m of y.months) {
-      next[m.path] = true;
+  function handleRowClick(_e: MouseEvent, item: ItemInstance<VNode>) {
+    if (item.isFolder()) {
+      if (item.isExpanded()) item.collapse();
+      else item.expand();
+    } else {
+      onSelect(item.getId());
     }
   }
-  open = next;
-});
 
-let containerEl: HTMLDivElement;
-
-$effect(() => {
-  if (!scrollToPath) return;
-  const filename = scrollToPath.split("/").pop()?.replace(/\.md$/i, "") ?? "";
-  const match = filename.match(/^(\d{4})-(\d{2})/);
-  if (!match || !rootPath) return;
-  const [, y, m] = match;
-  open[joinPath(rootPath, y)] = true;
-  open[joinPath(joinPath(rootPath, y), m)] = true;
-  requestAnimationFrame(() => {
-    const el = containerEl?.querySelector(`[data-path="${CSS.escape(scrollToPath!)}"]`) as HTMLElement | null;
-    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  // Scroll the freshly created / selected note into view. Re-runs after a
+  // remount (new note added → noteDates changed → treeKey changed).
+  $effect(() => {
+    if (!scrollToPath) return;
+    void treeKey;
+    requestAnimationFrame(() => {
+      const el = containerEl?.querySelector(
+        `[data-path="${CSS.escape(scrollToPath!)}"]`,
+      ) as HTMLElement | null;
+      if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   });
-});
 </script>
 
 <div class="mdv-vtree" bind:this={containerEl}>
-  {#if tree.length === 0}
-    <div class="mdv-tree__empty">no notes yet</div>
-  {:else}
-    <ul class="mdv-tree" role="tree">
-      {#each tree as year (year.key)}
-        <li class="mdv-tree__item" role="treeitem" aria-expanded={!!open[year.path]}>
-          <button
-            type="button"
-            class="mdv-tree__row mdv-tree__row--folder"
-            onclick={() => toggleFolder(year.path)}
-          >
-            <span class="mdv-tree__chevron{open[year.path] ? ' is-open' : ''}">
-              <i class="wxi-chevron-right" style="font-size:12px"></i>
-            </span>
-            <span class="mdv-tree__icon">
-              <i class={open[year.path] ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
-            </span>
-            <span class="mdv-tree__name">{year.label}</span>
-          </button>
-          {#if open[year.path]}
-            <ul class="mdv-tree" role="group">
-              {#each year.months as month (month.key)}
-                <li class="mdv-tree__item" role="treeitem" aria-expanded={!!open[month.path]}>
-                  <button
-                    type="button"
-                    class="mdv-tree__row mdv-tree__row--folder"
-                    onclick={() => toggleFolder(month.path)}
-                  >
-                    <span class="mdv-tree__chevron{open[month.path] ? ' is-open' : ''}">
-                      <i class="wxi-chevron-right" style="font-size:12px"></i>
-                    </span>
-                    <span class="mdv-tree__icon">
-                      <i class={open[month.path] ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
-                    </span>
-                    <span class="mdv-tree__name">{month.label}</span>
-                  </button>
-                  {#if open[month.path]}
-                    <ul class="mdv-tree" role="group">
-                      {#each month.files as file (file.path)}
-                        <li class="mdv-tree__item" role="treeitem">
-                          <button
-                            type="button"
-                            class="mdv-tree__row mdv-tree__row--file{activePath === file.path ? ' is-active' : ''}"
-                            data-path={file.path}
-                            onclick={() => onSelect(file.path)}
-                          >
-                            <span class="mdv-tree__icon">
-                              <i class="wxi-file-text" style="font-size:13px"></i>
-                            </span>
-                            <span class="mdv-tree__name">{file.name}</span>
-                          </button>
-                        </li>
-                      {/each}
-                    </ul>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
+  {#if config && treeKey}
+    {#key treeKey}
+      <HeadlessTree
+        {config}
+        label={rootPath ?? ""}
+        className="mdv-tree mdv-vtree__tree"
+        onRowClick={handleRowClick}
+      >
+        {#snippet children(item: ItemInstance<VNode>)}
+          {#if item.isFolder()}
+            <button
+              type="button"
+              tabindex="-1"
+              class="mdv-tree__row mdv-tree__row--folder"
+              style="padding-left:{8 + (item.getItemMeta().level + 1) * 12}px"
+              title={item.getId()}
+            >
+              <span class="mdv-tree__chevron{item.isExpanded() ? ' is-open' : ''}">
+                <i class="wxi-chevron-right" style="font-size:12px"></i>
+              </span>
+              <span class="mdv-tree__icon">
+                <i class={item.isExpanded() ? 'wxi-folder-open' : 'wxi-folder'} style="font-size:13px"></i>
+              </span>
+              <span class="mdv-tree__name">{item.getItemName()}</span>
+            </button>
+          {:else}
+            <button
+              type="button"
+              tabindex="-1"
+              class="mdv-tree__row mdv-tree__row--file{activePath === item.getId() ? ' is-active' : ''}"
+              style="padding-left:{12 + (item.getItemMeta().level + 1) * 12}px"
+              data-path={item.getId()}
+              title={item.getId()}
+            >
+              <span class="mdv-tree__icon">
+                <i class="wxi-file-text" style="font-size:13px"></i>
+              </span>
+              <span class="mdv-tree__name">{item.getItemName()}</span>
+            </button>
           {/if}
-        </li>
-      {/each}
-    </ul>
+        {/snippet}
+      </HeadlessTree>
+    {/key}
+  {:else}
+    <div class="mdv-tree__empty">no notes yet</div>
   {/if}
 </div>

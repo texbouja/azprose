@@ -3,7 +3,7 @@ import { basename, type FileEntry } from "@/lib";
 import { getT, language } from "@/lib/i18n";
 import FileTree from "./file-tree.svelte";
 import type { NewEntry } from "./file-tree.svelte";
-import { DRAG_MIME } from "./folder-node.svelte";
+import { DRAG_MIME } from "@/components/tree/headless-utils";
 
 let {
   path,
@@ -25,17 +25,14 @@ let {
   onSubmitNew,
   onCancelNew,
   treeVersion = 0,
-  selectedPaths = new Set<string>(),
-  onToggleSelect,
-  onSelectRange,
-  onClearSelection,
+  dirtyPaths = [] as string[],
 }: {
   path: string;
   activePath: string | null;
   isPrimary?: boolean;
   onSelect: (path: string) => void;
   onMove?: (src: string, dstParent: string) => void;
-  onContextMenu?: (e: MouseEvent, entry: FileEntry) => void;
+  onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
   onClose: (path: string) => void;
   closeLabel: string;
   stagedPaths?: readonly string[];
@@ -49,10 +46,7 @@ let {
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
   treeVersion?: number;
-  selectedPaths?: Set<string>;
-  onToggleSelect?: (path: string) => void;
-  onSelectRange?: (clickedPath: string, siblingPaths: string[]) => void;
-  onClearSelection?: () => void;
+  dirtyPaths?: string[];
 } = $props();
 
 let t = $derived(getT($language));
@@ -140,11 +134,7 @@ function onDrop(e: DragEvent) {
       {onSubmitNew}
       {onCancelNew}
       {treeVersion}
-      {selectedPaths}
-      {onToggleSelect}
-      {onSelectRange}
-      {onClearSelection}
-      depth={1}
+      {dirtyPaths}
     />
   {/if}
 </section>

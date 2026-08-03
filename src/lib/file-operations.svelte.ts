@@ -1,5 +1,5 @@
 import { persistedScopedState } from "@/stores/persisted.svelte";
-import { STORAGE_KEYS, createFile, createFolder, renameEntry, removeEntry, moveEntry, basename, dirname } from "@/lib";
+import { STORAGE_KEYS, createFile, createFolder, renameEntry, removeEntry, moveEntry, basename, dirname, joinPath } from "@/lib";
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
 import { confirm } from "@tauri-apps/plugin-dialog";
@@ -25,15 +25,19 @@ export interface FileOpsDeps {
   getActivePath: () => string | null;
   onOpenFile: (path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean }) => Promise<void>;
   onTabClose: (id: string) => void;
-  onTreeChange: () => void;
+  onTreeChange: (paths: string[]) => void;
   onPanelChange: () => void;
-  getT: () => (key: string, vars?: Record<string, string>) => string;
+  getT: () => (key: string, vars?: Record<string, string | number>) => string;
 }
 
 export class FileOpsManager {
   editingPath = $state<string | null>(null);
   newEntry = $state<{ parent: string; kind: "file" | "folder" } | null>(null);
   treeVersion = $state(0);
+  /** Paths changed by the last file op / watcher event. Read together with
+      `treeVersion` so the tree can invalidate only the affected folders
+      instead of re-listing everything (which flashes all rows). */
+  treeDirtyPaths = $state<string[]>([]);
   contextMenuItems = $state<ContextMenuItem[]>([]);
   favorites = persistedScopedState<string[]>(STORAGE_KEYS.favorites, []);
 
@@ -65,11 +69,14 @@ export class FileOpsManager {
 
   submitNew = async (parent: string, kind: "file" | "folder", name: string) => {
     this.newEntry = null;
+    let createdPath: string | null = null;
     try {
       if (kind === "folder") {
         await createFolder(parent, name);
+        createdPath = joinPath(parent, name);
       } else {
         const path = await createFile(parent, name);
+        createdPath = path;
         await this.deps.onOpenFile(path);
       }
     } catch (err) {
@@ -79,7 +86,7 @@ export class FileOpsManager {
         message: err instanceof Error ? err.message : String(err),
       });
     }
-    this.deps.onTreeChange();
+    this.deps.onTreeChange(createdPath ? [createdPath] : []);
   };
 
   cancelNew = () => { this.newEntry = null; };
@@ -88,12 +95,14 @@ export class FileOpsManager {
     if (this.deps.getRootPath() && src === this.deps.getRootPath()) return;
     this.editingPath = null;
     const t = this.deps.getT();
+    let newPath: string | null = null;
     try {
-      const newPath = await renameEntry(src, newName);
+      const renamed = await renameEntry(src, newName);
+      newPath = renamed;
       const tab = this.deps.pm.main.tabs.find((t: { path: string }) => t.path === src);
       if (tab) {
         this.deps.pm.main.tabs = this.deps.pm.main.tabs.map((t: any) =>
-          t.path === src ? { ...t, path: newPath, title: basename(newPath) } : t
+          t.path === src ? { ...t, path: renamed, title: basename(renamed) } : t
         );
         this.deps.onPanelChange();
       }
@@ -103,7 +112,7 @@ export class FileOpsManager {
         message: err instanceof Error ? err.message : String(err),
       });
     }
-    this.deps.onTreeChange();
+    this.deps.onTreeChange([src, newPath ?? src]);
   };
 
   cancelEdit = () => { this.editingPath = null; };
@@ -131,13 +140,39 @@ export class FileOpsManager {
         message: err instanceof Error ? err.message : String(err),
       });
     }
-    this.deps.onTreeChange();
+    this.deps.onTreeChange([entry.path]);
+  };
+
+  /** Batch delete for a multi-selection. Confirms once, then removes every
+      entry, closing tabs for deleted files. */
+  deleteMany = async (entries: FileEntry[]) => {
+    const t = this.deps.getT();
+    const ok = await confirm(t("menu.confirmDeleteMany", { count: entries.length }), {
+      title: t("menu.delete"),
+      kind: "warning",
+    });
+    if (!ok) return;
+    try {
+      for (const entry of entries) {
+        await removeEntry(entry.path, entry.isDir);
+        if (!entry.isDir) {
+          const tab = this.deps.pm.main.tabs.find((t: { path: string }) => t.path === entry.path);
+          if (tab) this.deps.onTabClose(tab.id);
+        }
+      }
+    } catch (err) {
+      notifications.setLoadError({
+        title: t("menu.delete"),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+    this.deps.onTreeChange(entries.map((e) => e.path));
   };
 
   move = async (src: string, dstParent: string) => {
     try {
       const newPath = await moveEntry(src, dstParent);
-      this.deps.onTreeChange();
+      this.deps.onTreeChange([src, newPath]);
       if (this.deps.getActivePath() === src) {
         const tab = this.deps.pm.main.activeTab;
         if (tab) {
@@ -168,10 +203,46 @@ export class FileOpsManager {
     this.favorites.update(() => next);
   };
 
-  buildContextMenu = (e: MouseEvent, entry: FileEntry) => {
+  buildContextMenu = (e: MouseEvent, entry: FileEntry, selection: FileEntry[] = [entry]) => {
     const t = this.deps.getT();
     const parentDir = entry.isDir ? entry.path : dirname(entry.path);
     const isRoot = this.deps.getRootPath() != null && entry.path === this.deps.getRootPath() && entry.isDir;
+    const sel = selection.length > 0 ? selection : [entry];
+    const isBatch = sel.length > 1;
+    const rootPath = this.deps.getRootPath();
+    const selHasRoot = rootPath != null && sel.some((s) => s.path === rootPath);
+
+    // Multi-selection: new entries in the right-clicked parent + batch delete
+    // and copy (the root is never deletable, even as part of a selection).
+    if (isBatch) {
+      this.contextMenuItems = [
+        {
+          label: t("menu.newFile"),
+          icon: "wxi-file-plus2",
+          onSelect: () => { this.newEntry = { parent: parentDir, kind: "file" }; },
+        },
+        {
+          label: t("menu.newFolder"),
+          icon: "wxi-folder-plus",
+          onSelect: () => { this.newEntry = { parent: parentDir, kind: "folder" }; },
+        },
+        "divider",
+        ...(!selHasRoot ? [{
+          label: t("menu.deleteMany", { count: sel.length }),
+          icon: "wxi-trash2",
+          destructive: true,
+          onSelect: () => void this.deleteMany(sel),
+        }] as ContextMenuItem[] : []),
+        "divider",
+        {
+          label: t("menu.copyPaths", { count: sel.length }),
+          icon: "wxi-copy",
+          onSelect: () => void navigator.clipboard.writeText(sel.map((s) => s.path).join("\n")),
+        },
+      ];
+      contextMenu.open(e, entry);
+      return;
+    }
 
     this.contextMenuItems = [
       {

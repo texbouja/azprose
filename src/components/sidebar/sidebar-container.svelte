@@ -37,6 +37,7 @@ let {
   onSubmitNew,
   onCancelNew,
   treeVersion = 0,
+  dirtyPaths = [] as string[],
   onOpenCalendar,
 }: {
   open: boolean;
@@ -53,7 +54,7 @@ let {
   onProjectFromFolder: () => void;
   onSelectFile: (path: string) => void;
   onMove?: (src: string, dstParent: string) => void;
-  onContextMenu?: (e: MouseEvent, entry: FileEntry) => void;
+  onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
   stagedPaths?: readonly string[];
   stagedTokenLabel?: string;
   onToggleStage?: (path: string) => void;
@@ -69,6 +70,7 @@ let {
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
   treeVersion?: number;
+  dirtyPaths?: string[];
   onOpenCalendar?: () => void;
 } = $props();
 
@@ -139,6 +141,7 @@ function stopResize(e: PointerEvent) {
           {onSubmitNew}
           {onCancelNew}
           {treeVersion}
+          {dirtyPaths}
         />
       {:else if sidebarView.current === "journal"}
         <JournalView {rootPath} {activePath} {onSelectFile} {treeVersion} {onOpenCalendar} />

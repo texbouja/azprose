@@ -715,14 +715,16 @@ const fo = new FileOpsManager({
   getActivePath: () => activePath,
   onOpenFile: openFileInTab,
   onTabClose: closeTab,
-  onTreeChange: () => { fo.treeVersion++; },
+  onTreeChange: (paths: string[]) => { fo.treeDirtyPaths = paths; fo.treeVersion++; },
   onPanelChange: () => { _panelVersion++; },
   getT: () => t,
 });
 
 // ── Filesystem watcher: bump treeVersion on external changes ──
 $effect(() => {
-  return setupFsWatcher(rootPath, { bumpTreeVersion: () => { fo.treeVersion++; } });
+  return setupFsWatcher(rootPath, {
+    bumpTreeVersion: (paths: string[]) => { fo.treeDirtyPaths = paths; fo.treeVersion++; },
+  });
 });
 
 $effect(() => {
@@ -1283,6 +1285,7 @@ let cmds = $derived(
       onSubmitNew={fo.submitNew}
       onCancelNew={fo.cancelNew}
       treeVersion={fo.treeVersion}
+      dirtyPaths={fo.treeDirtyPaths}
       favorites={fo.favorites.current}
       onToggleFavorite={fo.toggleFavorite}
       onReorderFavorites={fo.reorderFavorites}

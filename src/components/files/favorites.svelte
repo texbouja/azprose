@@ -21,7 +21,7 @@ let {
   onSelect: (path: string) => void;
   onToggleFavorite: (path: string) => void;
   onReorder: (from: number, to: number) => void;
-  onContextMenu?: (e: MouseEvent, entry: FileEntry) => void;
+  onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
 } = $props();
 
 let open = $state(true);

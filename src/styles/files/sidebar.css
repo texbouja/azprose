@@ -583,6 +583,14 @@
   opacity: 0.9;
 }
 
+/* DnD insertion line (headless-tree dragAndDropFeature) */
+.mdv-tree__dragline {
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  z-index: 5;
+}
+
 /* project selector footer */
 .mdv-sidebar__project-footer {
   display: flex;

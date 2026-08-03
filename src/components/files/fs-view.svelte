@@ -38,6 +38,7 @@ let {
   onSubmitNew,
   onCancelNew,
   treeVersion = 0,
+  dirtyPaths = [] as string[],
 }: {
   rootPath: string | null;
   folders: readonly string[];
@@ -50,7 +51,7 @@ let {
   onProjectFromFolder: () => void;
   onSelectFile: (path: string) => void;
   onMove?: (src: string, dstParent: string) => void;
-  onContextMenu?: (e: MouseEvent, entry: FileEntry) => void;
+  onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
   stagedPaths?: readonly string[];
   stagedTokenLabel?: string;
   onToggleStage?: (path: string) => void;
@@ -66,41 +67,11 @@ let {
   onSubmitNew?: (parent: string, kind: "file" | "folder", name: string) => void;
   onCancelNew?: () => void;
   treeVersion?: number;
+  dirtyPaths?: string[];
 } = $props();
 
 let t = $derived(getT($language));
 let activeDir = $derived(activePath ? dirname(activePath) : rootPath);
-
-let selectedPaths = $state(new Set<string>());
-let anchorPath = $state<string | null>(null);
-
-function toggleSelect(path: string) {
-  const next = new Set(selectedPaths);
-  if (next.has(path)) next.delete(path);
-  else next.add(path);
-  selectedPaths = next;
-  anchorPath = path;
-}
-
-function selectRange(clickedPath: string, siblingPaths: string[]) {
-  const next = new Set(selectedPaths);
-  const aidx = anchorPath ? siblingPaths.indexOf(anchorPath) : -1;
-  const cidx = siblingPaths.indexOf(clickedPath);
-  if (aidx >= 0 && cidx >= 0) {
-    const [start, end] = aidx < cidx ? [aidx, cidx] : [cidx, aidx];
-    for (let i = start; i <= end; i++) next.add(siblingPaths[i]);
-  } else {
-    if (next.has(clickedPath)) next.delete(clickedPath);
-    else next.add(clickedPath);
-  }
-  selectedPaths = next;
-  anchorPath = clickedPath;
-}
-
-function clearSelection() {
-  selectedPaths = new Set();
-  anchorPath = null;
-}
 
 let query = $state("");
 let searchOpen = $state(false);
@@ -305,10 +276,7 @@ function onHeaderMouseDown(e: MouseEvent) {
             {onSubmitNew}
             {onCancelNew}
             {treeVersion}
-            {selectedPaths}
-            onToggleSelect={toggleSelect}
-            onSelectRange={selectRange}
-            onClearSelection={clearSelection}
+            {dirtyPaths}
           />
         {/each}
       {/if}

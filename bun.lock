@@ -37,6 +37,7 @@
         "@fontsource/ubuntu": "^5.3.0",
         "@fontsource/ubuntu-condensed": "^5.3.0",
         "@fontsource/ubuntu-mono": "^5.3.0",
+        "@headless-tree/core": "^1.7.0",
         "@jspreadsheet/formula": "^2.0.2",
         "@lezer/highlight": "^1.2.1",
         "@prosemark/core": "^0.0.9",
@@ -182,6 +183,8 @@
     "@fontsource/ubuntu-condensed": ["@fontsource/ubuntu-condensed@5.3.0", "", {}, "sha512-xbxTJMlsN96ptF+AWgkbhR1gOt53Fb6+ZZgAfpG/twvHh4AG0sQoBbIBVT2I7Maqu3d2EetJHoW/mqCszDTzzg=="],
 
     "@fontsource/ubuntu-mono": ["@fontsource/ubuntu-mono@5.3.0", "", {}, "sha512-hLwLkeAV9YvLSOWExn0heOXy+EB4wKnt648qS5FaqsiCZDS8X9kR/ueIBzzX/vNSXjFkhLRSTKqlOfFvHdD4Bw=="],
+
+    "@headless-tree/core": ["@headless-tree/core@1.7.0", "", {}, "sha512-LxcX7LNepwfOPrZcs4PNfDwCzbi326uCAX5jYBfw94jI+pZQA7ANaE/No3LW0XFgcBcQtK/G2bInbVEhLF1C/Q=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

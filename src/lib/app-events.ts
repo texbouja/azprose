@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event"
-import { watch } from "@tauri-apps/plugin-fs"
+import { watch, type WatchEventKind } from "@tauri-apps/plugin-fs"
 import { readText } from "@/lib/files"
 import { isSupportedTextPath, isImagePath, isPdfPath, getMtime } from "@/lib"
 import type { PanelManager } from "@/lib/panel-manager"
@@ -117,7 +117,35 @@ export function setupDragDrop(deps: DragDropDeps): () => void {
 }
 
 export interface FsWatcherDeps {
-  bumpTreeVersion: () => void
+  /** Notified after a debounced structural FS change. `paths` = the changed
+      paths (absolute), so consumers can invalidate only the affected folders. */
+  bumpTreeVersion: (paths: string[]) => void
+}
+
+/** True when `p` lives under a hidden (dotfile) directory of the vault
+    (e.g. `.azprose/`, `.git/`). The FS view never shows those entries
+    (`isVisibleTreeEntryName`), so a change there must not reload the tree —
+    the app's own writes to `.azprose/` (session mirror, config.json, data.db,
+    opencode data…) would otherwise trigger a full tree reload on every write. */
+function isHiddenPath(rootPath: string, p: string): boolean {
+  const prefix = rootPath.endsWith("/") ? rootPath : rootPath + "/";
+  const rel = p.startsWith(prefix) ? p.slice(prefix.length) : p;
+  return rel.split(/[/\\]/).some((seg) => seg.startsWith("."));
+}
+
+/** True when the event can only be a content/metadata/access change that never
+    alters the file names or folder structure shown in the tree. Content saves —
+    including the app's own (`writeTextFile` is a direct write, not atomic) —
+    arrive as `modify: { kind: "data" }`; skipping them stops the tree from
+    reloading (and flashing) on every save. Renames arrive as
+    `modify: { kind: "rename" }` and MUST reload. */
+function isTreeIrrelevantEvent(type: WatchEventKind): boolean {
+  if (type === "any" || type === "other") return false;
+  if ("access" in type) return true;
+  if ("modify" in type) {
+    return type.modify.kind === "data" || type.modify.kind === "metadata";
+  }
+  return false; // create / remove → structural → reload
 }
 
 export function setupFsWatcher(
@@ -131,9 +159,17 @@ export function setupFsWatcher(
 
   watch(
     rootPath,
-    () => {
+    (event) => {
+      // Skip content writes / metadata / access — they never change the names
+      // or structure the tree displays (the app's own saves land here too).
+      if (isTreeIrrelevantEvent(event.type)) return;
+      // Filter hidden paths FIRST so they never cancel a pending reload
+      // scheduled for a visible change.
+      if (event.paths?.length && event.paths.every((p) => isHiddenPath(rootPath, p))) {
+        return;
+      }
       if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(() => { deps.bumpTreeVersion(); }, 200);
+      debounce = setTimeout(() => { deps.bumpTreeVersion(event.paths ?? []); }, 200);
     },
     { recursive: true, delayMs: 200 },
   ).then((unwatch) => { cleanup = unwatch; });
