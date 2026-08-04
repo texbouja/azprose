@@ -220,6 +220,89 @@
   font-weight: 500;
 }
 
+/* Programme : UNE ligne (label + champ + « Propager » — ou label + texte sous
+   l'œil). Le champ éditable plein-largeur est conservé, le write-back débouncé
+   passe toujours par azprose:colle-eval. */
+.colle-sec__field--programme {
+  flex-basis: 100%;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.colle-sec__field--programme dt {
+  flex-shrink: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.colle-sec__field--programme dd {
+  flex: 1;
+  min-width: 0;
+}
+
+.colle-sec__programme-input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+}
+
+.colle-sec__programme-input:focus {
+  border-color: var(--accent);
+}
+
+/* Ligne programme : champ + checkbox « Propager » (propagation VOLONTAIRE du
+   programme vers les autres planches du même créneau). */
+.colle-sec__programme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.colle-sec__propagate {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.colle-sec__propagate input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.colle-sec__propagate:hover {
+  color: var(--fg);
+}
+
+/* Programme en mode « rigide » (œil) : TEXTE sur la même ligne que le label,
+   une seule ligne (ellipsis), le titre complet reste au survol. */
+.colle-sec__programme-text {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Contenu markdown */
 .colle-sec__body .mdv-prose {
   max-width: none;

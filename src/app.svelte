@@ -40,6 +40,7 @@ import HelpOverlay from "@/components/overlays/HelpOverlay.svelte";
 import AboutOverlay from "@/components/overlays/AboutOverlay.svelte";
 import SettingsOverlay from "@/components/overlays/SettingsOverlay.svelte";
 import WelcomeOverlay from "@/components/overlays/WelcomeOverlay.svelte";
+import ProjectGate from "@/components/overlays/ProjectGate.svelte";
 import TitleBar from "@/components/chrome/TitleBar.svelte";
 import Breadcrumb from "@/components/chrome/Breadcrumb.svelte";
 import StatusBar from "@/components/chrome/StatusBar.svelte";
@@ -55,6 +56,7 @@ import { logStore } from "@/components/console/log.svelte";
 import { executeOxideCommand } from "@/lib/lsp/markdown-oxide";
 import { writeText } from "@/lib/files";
 import { writeBackColleKeys } from "@/colles/write-back";
+import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
 import { extFromPath } from "@/lib/editor-languages";
 import { setOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
 import { saveSession, clearDraft, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
@@ -541,7 +543,8 @@ $effect(() => {
     if (!rp) return;
     const { journalSettings } = await import("@/stores/journal-settings.svelte");
     const folder = journalSettings.current.journalFolder;
-    const p = await journal.createNote(date, rp, folder);
+    const { ensureDailyNoteWithColles } = await import("@/colles/daily-note");
+    const p = await ensureDailyNoteWithColles(date, rp, folder);
     if (p) {
       await openFileInTab(p);
     }
@@ -1067,6 +1070,11 @@ const collesOn = $derived.by(() => {
   return pm.side.tabs.find((t: any) => normPath(t.path) === target)?.renderMode === "colle";
 });
 
+// État du dialogue d'envoi des rapports de colles (ouvert par azprose:colle-send).
+let colleSendOpen = $state(false);
+let colleSendPath = $state<string | null>(null);
+let colleSendSource = $state<string | null>(null);
+
 const handleToggleConsole = () => {
   if (consoleOpen) {
     consoleOpen = false;
@@ -1078,20 +1086,58 @@ const handleToggleConsole = () => {
 };
 
 /**
+ * Envoi des rapports de colles par email (TabActions → azprose:colle-send).
+ * La source est lue LIVE depuis l'onglet (main ou side) au moment du clic :
+ * les notes/programme écrits en write-back sont toujours inclus.
+ */
+$effect(() => {
+  const onColleSend = (e: Event) => {
+    const detail = (e as CustomEvent).detail as { filePath?: string | null };
+    if (!detail.filePath) return;
+    const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
+    const target = norm(detail.filePath);
+    const mainTab = pm.main.tabs.find((t: any) => norm(t.path) === target);
+    const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
+    const source = mainTab?.source ?? sideTab?.source;
+    if (source === undefined) return;
+    colleSendPath = detail.filePath;
+    colleSendSource = source;
+    colleSendOpen = true;
+  };
+  window.addEventListener("azprose:colle-send", onColleSend);
+  return () => window.removeEventListener("azprose:colle-send", onColleSend);
+});
+
+/**
  * Write-back d'évaluation depuis la vue colles (CollePreview → azprose:colle-eval).
  * Base = source LIVE du tab main (même path) pour ne jamais écraser les edits
  * non-sauvegardés de l'éditeur ; repli = source du tab side (dernier contenu sauvé).
- * 1) tab main mis à jour (→ dirty, sauvegarde standard, undo/redo éditeur préservés)
- * 2) tab side mis à jour (→ l'affichage des cartes reflète la note)
- * 3) sauvegarde immédiate : handleSave si le fichier est l'onglet main actif,
- *    sinon écriture directe sur disque.
+ *
+ * Le detail porte soit la forme héritée `{index, keys}` (une écriture), soit la
+ * forme `{updates: Array<{index, keys}>}` (propagation volontaire du programme :
+ * plusieurs planches écrites dans le MÊME événement). Les write-back sont
+ * CHAÎNÉS sur le même `base` (chaque étape prend le résultat de la précédente),
+ * puis UNE seule mise à jour des tabs + UNE seule sauvegarde — pas de course
+ * entre plusieurs événements successifs.
  */
 $effect(() => {
   const onColleEval = (e: Event) => {
     const detail = (e as CustomEvent).detail as {
       path?: string | null;
-      index: number;
-      keys: { notes?: Record<string, number | string> | null; observations?: string | null };
+      index?: number;
+      keys?: {
+        notes?: Record<string, number | string> | null;
+        observations?: string | null;
+        programme?: string | null;
+      };
+      updates?: Array<{
+        index: number;
+        keys: {
+          notes?: Record<string, number | string> | null;
+          observations?: string | null;
+          programme?: string | null;
+        };
+      }>;
     };
     if (detail.path == null) return;
     const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
@@ -1100,7 +1146,12 @@ $effect(() => {
     const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
     const base = mainTab?.source ?? sideTab?.source;
     if (base === undefined) return;
-    const next = writeBackColleKeys(base, detail.index, detail.keys);
+    const updates = detail.updates ?? [{ index: detail.index!, keys: detail.keys! }];
+    let next = base;
+    for (const u of updates) {
+      const n = writeBackColleKeys(next, u.index, u.keys);
+      if (n !== next) next = n;
+    }
     if (next === base) return;
     if (mainTab) {
       pm.main.setTabSource(mainTab.id, next);
@@ -1233,6 +1284,16 @@ let cmds = $derived(
   class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}{!titlebarVisible.current ? " has-hidden-titlebar" : ""}"
   style={Object.entries(typographyStyle).map(([k, v]) => `${k}:${v}`).join(";")}
 >
+  {#if !rootPath && !overlays.welcomeOpen}
+    <!-- Dialogue de récupération de projet : aucun projet ouvert (premier
+         lancement sans dossier choisi, ou dernier dossier fermé). L'éditeur
+         n'est pas utilisable sans projet — rootPath n'est JAMAIS nul en usage
+         normal. Un SEUL bouton : le dialogue système de sélection de dossier
+         permet d'ouvrir un dossier existant OU d'en créer un nouveau ;
+         handleInitProject enregistre le projet (add_project idempotent) puis
+         l'ouvre. -->
+    <ProjectGate onChooseFolder={handleInitProject} />
+  {/if}
   <TitleBar
     rootName={rootPath ? basename(rootPath) : undefined}
     nativeDecorations={generalSettings.nativeDecorations}
@@ -1470,6 +1531,17 @@ let cmds = $derived(
   <SettingsOverlay
     open={overlays.settingsOpen}
     onClose={() => overlays.setSettingsOpen(false)}
+  />
+
+  <ColleSendDialog
+    open={colleSendOpen}
+    filePath={colleSendPath}
+    source={colleSendSource}
+    onClose={() => (colleSendOpen = false)}
+    onOpenSettings={() => {
+      colleSendOpen = false;
+      overlays.showSettings();
+    }}
   />
 
   <WelcomeOverlay

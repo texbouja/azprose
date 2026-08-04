@@ -23,6 +23,7 @@
 
 import { spreadsheetCreate, spreadsheetDelete } from "@/spreadsheet/store";
 import type { ColumnDef } from "@/spreadsheet/types";
+import type { ImportResult } from "@/lib/spreadsheet/import";
 import { buildColloscope, type ColloscopeData, type ColloscopeSeance } from "@/colles/colloscope";
 import { collesSettings } from "@/stores/colles-settings.svelte";
 
@@ -88,6 +89,14 @@ export async function importColloscope(
     vacances?: Array<{ start: string; end: string }>;
     /** Nom d'affichage (défaut : basename du fichier). */
     sourceName?: string;
+    /**
+     * Feuilles déjà parsées et SÉLECTIONNÉES par l'utilisateur (fenêtre de
+     * sélection d'import). Fournir ces feuilles évite de relire le fichier et
+     * active le mode explicite : chaque feuille cochée de forme colloscope est
+     * importée comme classe, sans exiger que son nom corresponde à une classe
+     * de la feuille Élèves.
+     */
+    sheets?: ImportResult[];
   },
 ): Promise<ColloscopeImportResult> {
   const cs = collesSettings.current;
@@ -100,9 +109,16 @@ export async function importColloscope(
 
   // Import dynamique : le parsing xlsx (excel-import-store) ne doit être
   // chargé qu'au moment de l'import, pas au démarrage de l'app.
-  const { importFileToMatrix } = await import("@/lib/spreadsheet/import");
-  const sheets = await importFileToMatrix({ path });
-  const data = buildColloscope(sheets, dateDebut, dateFin, vacances);
+  let sheets: ImportResult[];
+  if (opts?.sheets && opts.sheets.length > 0) {
+    sheets = opts.sheets;
+  } else {
+    const { importFileToMatrix } = await import("@/lib/spreadsheet/import");
+    sheets = await importFileToMatrix({ path });
+  }
+  const data = buildColloscope(sheets, dateDebut, dateFin, vacances, {
+    explicit: opts?.sheets !== undefined,
+  });
   if (data.classes.length === 0) {
     throw new Error("Aucune feuille de classe reconnue. Vérifiez que le fichier contient une feuille « Eleves » et des feuilles par classe.");
   }

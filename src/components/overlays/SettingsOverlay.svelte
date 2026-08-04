@@ -33,6 +33,8 @@ import { userProfile, type UserRole } from "@/stores/user-profile.svelte";
 import { exportCalendar, importCalendar, clearCalendar } from "@/lib/calendar-persistence";
 import { collesSettings, type CollesSettings } from "@/stores/colles-settings.svelte";
 import { MATIERE_KEYS, type ColleRubrique } from "@/colles";
+import type { ImportResult } from "@/lib/spreadsheet/import";
+import ColloscopeImportDialog from "@/components/settings/ColloscopeImportDialog.svelte";
 
 let t = $derived(getT($language));
 
@@ -153,15 +155,38 @@ function removeVacance(idx: number) {
 // rendait la bascule vers le tab spreadsheet trop lente). Le mapping est gardé
 // dans cfg.colles.colloscope ; un ré-import remplace tout.
 let colloscopeBusy = $state(false);
+let colloscopeDialogOpen = $state(false);
+let colloscopePendingSheets: ImportResult[] = $state([]);
+let colloscopePendingPath = $state("");
 
 async function importColloscopeFromFile() {
   const { pickXlsx } = await import("@/lib/files");
   const path = await pickXlsx("colloscope");
   if (!path) return;
+  const { importFileToMatrix } = await import("@/lib/spreadsheet/import");
+  const sheets = await importFileToMatrix({ path });
+  if (sheets.length === 0) {
+    notifications.setInfo("Import du colloscope échoué : aucune feuille trouvée dans le fichier.");
+    return;
+  }
+  // Fenêtre de sélection des feuilles : les mortes (en-têtes non reconnus)
+  // sont exclues d'office par le dialogue ; la sélection manuelle relâche le
+  // filtre par nom de classe (cas réel : feuille « MPETOILE1 » vs classe « MP*1 »).
+  colloscopePendingPath = path;
+  colloscopePendingSheets = sheets;
+  colloscopeDialogOpen = true;
+}
+
+async function importColloscopeFromSheets(chosen: ImportResult[]) {
+  const path = colloscopePendingPath;
+  colloscopeDialogOpen = false;
+  colloscopePendingPath = "";
+  colloscopePendingSheets = [];
+  if (!path || chosen.length === 0) return;
   const { importColloscope } = await import("@/colles/import-colloscope");
   colloscopeBusy = true;
   try {
-    const res = await importColloscope(path);
+    const res = await importColloscope(path, { sheets: chosen });
     notifications.setInfo(
       `Colloscope importé : ${res.eleveCount} élèves, ${res.seanceCount} séances (${res.source})`,
     );
@@ -1193,7 +1218,18 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                   onchange={(ev) => userProfile.patch({ email: String(ev.value) })}
                 />
               </div>
+              <div class="mdv-settings__font-row">
+                <span class="mdv-settings__font-label">{t("settings.profileGmailPassword")}</span>
+                <input
+                  type="password"
+                  class="mdv-settings__password-input"
+                  value={userProfile.current.gmailAppPassword}
+                  placeholder={t("settings.profileGmailPasswordPlaceholder")}
+                  onchange={(e) => userProfile.patch({ gmailAppPassword: e.currentTarget.value })}
+                />
+              </div>
             </div>
+            <p class="mdv-settings__hint">{t("settings.profileGmailPasswordHint")}</p>
 
             <p class="mdv-settings__section-title">{t("settings.profileRole")}</p>
             <Segmented
@@ -1591,3 +1627,14 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
     </div>
   </div>
 {/if}
+
+<ColloscopeImportDialog
+  open={colloscopeDialogOpen}
+  sheets={colloscopePendingSheets}
+  onClose={() => {
+    colloscopeDialogOpen = false;
+    colloscopePendingPath = "";
+    colloscopePendingSheets = [];
+  }}
+  onImport={importColloscopeFromSheets}
+/>

@@ -162,7 +162,7 @@ export function resolveHeader(title: string): string | null {
 
 // ── Parsing des feuilles ───────────────────────────────────────────────────
 
-function isElevesSheet(sheet: ImportResult): boolean {
+export function isElevesSheet(sheet: ImportResult): boolean {
   const headers = sheet.headers.map(normalizeHeader).join(" ");
   return (
     sheet.name.toLowerCase() === "eleves" ||
@@ -234,9 +234,30 @@ export function parseCreneaux(sheet: ImportResult): ColloscopeCreneau[] {
 }
 
 /** Feuille de classe exploitable : en-têtes contenant matière et jour. */
-function isClassSheet(sheet: ImportResult): boolean {
+export function isClassSheet(sheet: ImportResult): boolean {
   const keys = sheet.headers.map(resolveHeader).filter(Boolean);
   return keys.includes("matiere") && keys.includes("jour");
+}
+
+/** Classification d'une feuille pour la fenêtre de sélection d'import. */
+export type SheetKind = "eleves" | "classe" | "morte";
+
+/**
+ * Classe une feuille du fichier importé :
+ *  - `"eleves"` : liste des élèves (nom/prénom/classe/groupe) avec données ;
+ *  - `"classe"` : feuille de colloscope exploitable (matière+jour) avec au
+ *    moins une ligne de données ;
+ *  - `"morte"`  : feuille parasite ou inexploitable (à exclure d'office de la
+ *    fenêtre de sélection) — en-têtes non reconnus (« Column A »), feuille
+ *    vide, listes annexes (« All », « AFF MP », « Feuil1 »).
+ */
+export function classifySheet(sheet: ImportResult): SheetKind {
+  const hasData = sheet.rows.some((row) => row.some((c) => (c ?? "").trim() !== ""));
+  // Une feuille Eleves VIDE n'apporte aucun élève → morte.
+  if (isElevesSheet(sheet) && hasData) return "eleves";
+  if (!isClassSheet(sheet)) return "morte";
+  // Une feuille de classe sans aucune ligne de données est morte (ex. « AFF MP »).
+  return hasData ? "classe" : "morte";
 }
 
 /**
@@ -244,8 +265,16 @@ function isClassSheet(sheet: ImportResult): boolean {
  * La feuille `Eleves` fournit les élèves ; les feuilles de classe sont
  * identifiées par leur nom (utilisé comme identifiant de classe) et doivent
  * avoir les colonnes matière/colleur/jour/horaire/salle + rotation.
+ *
+ * @param opts.explicit — sélection MANUELLE des feuilles (fenêtre d'import) :
+ *   toute feuille de forme colloscope passée est une classe, SANS exiger que
+ *   son nom corresponde à une classe de la feuille Élèves (cas réel : feuille
+ *   « MPETOILE1 » pour la classe « MP*1 », ou colloscope sans liste d'élèves).
  */
-export function parseColloscope(sheets: ImportResult[]): ColloscopeData {
+export function parseColloscope(
+  sheets: ImportResult[],
+  opts?: { explicit?: boolean },
+): ColloscopeData {
   // Privilégier la feuille nommée « Eleves » (la détection par en-têtes peut
   // matcher une feuille parasite comme « Feuil1 » qui porte les mêmes titres).
   const elevesSheet =
@@ -265,10 +294,10 @@ export function parseColloscope(sheets: ImportResult[]): ColloscopeData {
     if (!isClassSheet(sheet)) continue;
     const name = sheet.name.trim();
     if (!name || classes.includes(name)) continue;
-    // Feuille de classe valide si elle correspond à une classe d'élèves —
-    // ou, à défaut de feuille Eleves, si elle a la forme d'un colloscope
-    // (ce qui laisse importer un colloscope sans liste d'élèves).
-    if (classesEleves.size > 0 && !classesEleves.has(name)) continue;
+    // Sélection manuelle (fenêtre d'import) : la feuille cochée est une classe
+    // voulue — pas de filtre par nom (elle peut être nommée différemment des
+    // classes de la feuille Élèves, ex. « MPETOILE1 » vs « MP*1 »).
+    if (!opts?.explicit && classesEleves.size > 0 && !classesEleves.has(name)) continue;
     classes.push(name);
   }
   classes.sort((a, b) => a.localeCompare(b, "fr"));
@@ -279,11 +308,26 @@ export function parseColloscope(sheets: ImportResult[]): ColloscopeData {
 // ── Expansion de l'année ───────────────────────────────────────────────────
 
 /**
+ * Date du lundi ≥ `iso` (elle-même si c'est déjà un lundi).
+ *
+ * `dateDebut` est la date de début de la période — souvent un lundi de rentrée,
+ * mais pas toujours (ex. un dimanche). La semaine d'enseignement 1 doit
+ * commencer au lundi de la semaine contenant dateDebut, sinon chaque créneau
+ * serait daté `lundi réel − 1` (un « Mardi » deviendrait un lundi…).
+ */
+function nextMonday(iso: string): string {
+  const t = isoToTime(iso);
+  const day = new Date(t).getUTCDay(); // 0 = dimanche … 6 = samedi
+  // (8 - day) % 7 : dim→+1, lun→0, mar→+6, mer→+5, jeu→+4, ven→+3, sam→+2
+  return timeToIso(t + ((8 - day) % 7) * DAYS_MS);
+}
+
+/**
  * Génère les lundis de début de semaine d'enseignement de dateDebut à dateFin
  * (pas de 7 jours), en EXCLUANT les semaines dont le lundi tombe dans une
  * période de vacances. L'index renvoyé est l'index CALENDAIRE (nombre de
- * semaines depuis dateDebut) : il continue à travers les vacances, ce qui
- * réalise « les colles reprennent là où elles se sont arrêtées ».
+ * semaines depuis le premier lundi) : il continue à travers les vacances, ce
+ * qui réalise « les colles reprennent là où elles se sont arrêtées ».
  */
 export function teachingMondays(
   dateDebut: string,
@@ -292,7 +336,7 @@ export function teachingMondays(
 ): Array<{ date: string; index: number }> {
   const out: Array<{ date: string; index: number }> = [];
   if (!dateDebut || !dateFin) return out;
-  let d = dateDebut;
+  let d = nextMonday(dateDebut);
   let index = 0;
   const fin = isoToTime(dateFin);
   while (isoToTime(d) <= fin) {
@@ -356,8 +400,9 @@ export function buildColloscope(
   dateDebut: string,
   dateFin: string,
   vacances: Array<{ start: string; end: string }>,
+  opts?: { explicit?: boolean },
 ): ColloscopeData {
-  const { eleves, classes } = parseColloscope(sheets);
+  const { eleves, classes } = parseColloscope(sheets, opts);
   const creneauxParClasse: Record<string, ColloscopeCreneau[]> = {};
   for (const sheet of sheets) {
     if (!classes.includes(sheet.name)) continue;

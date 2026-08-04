@@ -17,6 +17,12 @@ export interface UserProfile {
   role: UserRole;
   /** Nom abrégé d'identité colleur (identifiant dans le colloscope importé). */
   colleurName: string;
+  /**
+   * Mot de passe d'application Gmail (SMTP smtp.gmail.com:587) pour l'envoi
+   * des rapports de colles par email — généré dans le compte Google (2FA
+   * requis), jamais le mot de passe principal. Vide = envoi désactivé.
+   */
+  gmailAppPassword: string;
 }
 
 const DEFAULTS: UserProfile = {
@@ -24,6 +30,7 @@ const DEFAULTS: UserProfile = {
   email: "",
   role: "professeur",
   colleurName: "",
+  gmailAppPassword: "",
 };
 
 /**
@@ -36,6 +43,7 @@ function normalizeProfile(v: UserProfile): UserProfile {
     email: typeof v.email === "string" ? v.email : "",
     role: v.role === "eleve" ? "eleve" : "professeur",
     colleurName: typeof v.colleurName === "string" ? v.colleurName : "",
+    gmailAppPassword: typeof v.gmailAppPassword === "string" ? v.gmailAppPassword : "",
   };
 }
 

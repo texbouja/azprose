@@ -123,18 +123,30 @@
   <div class="colle-form__grid">
     {#each rubriques as r (r.id)}
       <label class="colle-form__row" title={r.label}>
-        <span class="colle-form__label">{r.label}</span>
-        <span class="colle-form__max">/ {r.maxScore}</span>
-        <input
-          class="colle-form__input"
-          type="text"
-          inputmode="decimal"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder={t("colle.rubriquePlaceholder")}
-          value={values[r.id] ?? ""}
-          oninput={(e) => handleInput(r.id, e.currentTarget.value)}
-        />
+        <span class="colle-form__label">
+          {r.label}
+        </span>
+        <span class="colle-form__wrap">
+          <input
+            class="colle-form__input"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
+            spellcheck="false"
+            value={values[r.id] ?? ""}
+            oninput={(e) => handleInput(r.id, e.currentTarget.value)}
+          />
+          {#if String(values[r.id] ?? "").trim()}
+            <!-- Suffixe « /max » au rendu : petit + grisé, visible dès saisie. -->
+            <span class="colle-form__unit">/{r.maxScore}</span>
+          {:else}
+            <!-- « sur max » : overlay DOM (champ vide) — même technique que le
+                 suffixe, PAS un placeholder natif : le placeholder natif était
+                 TRONQUÉ dans la zone de 20px (56px − padding-right 30px réservé
+                 au suffixe) et donc invisible. L'overlay n'est pas contraint. -->
+            <span class="colle-form__hint">sur {r.maxScore}</span>
+          {/if}
+        </span>
       </label>
     {/each}
   </div>
@@ -174,15 +186,21 @@
     color: var(--muted);
   }
   .colle-form__grid {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: grid;
+    /* Grid responsive : le nombre de colonnes dépend de la place disponible
+       (2 colonnes dans le side panel étroit, plus si la fenêtre est large).
+       minmax(150px, 1fr) : chaque cellule a au moins la largeur d'un label
+       « Exercice 1 » + champ, et s'étire à parts égales au-delà. */
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 4px 8px;
+    align-items: center;
   }
-  /* Une ligne par rubrique : libellé (flex) + max (muted) + champ numérique. */
+  /* Une rubrique par cellule : libellé (flex) + champ numérique. */
   .colle-form__row {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
     padding: 3px 6px;
     border-radius: 4px;
     cursor: text;
@@ -197,15 +215,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .colle-form__max {
+  /* Le libellé est un flex : le texte se tronque si le champ 56px prend la
+     place. Le maxScore vit dans le champ lui-même : PLACEHOLDER « sur 5 » quand
+     le champ est vide, suffixe « /5 » au rendu dès qu'une valeur est saisie
+     (petit + grisé — le padding-right de l'input lui réserve la place). */
+  .colle-form__wrap {
+    position: relative;
     flex-shrink: 0;
-    font-size: 11px;
-    color: var(--muted);
   }
   .colle-form__input {
-    flex-shrink: 0;
     width: 56px;
-    padding: 3px 6px;
+    box-sizing: border-box;
+    padding: 3px 30px 3px 6px;
     border-radius: 4px;
     border: 1px solid var(--border);
     background: var(--surface);
@@ -217,6 +238,24 @@
   }
   .colle-form__input:focus {
     border-color: var(--accent);
+  }
+  /* « sur 5 » : OVERLAY DOM du champ vide (pas un placeholder natif — il était
+     tronqué dans la zone de 20px et invisible). Même positionnement que le
+     suffixe « /5 », affiché en `{:else}` quand le champ est vide : disparaît
+     dès la frappe (values est $state). */
+  .colle-form__hint,
+  /* « /5 » au rendu : calé à droite du champ (après la valeur, alignée à
+     droite), minuscule et grisé, jamais cliquable. */
+  .colle-form__unit {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    line-height: 1;
+    color: var(--muted);
+    pointer-events: none;
+    white-space: nowrap;
   }
   .colle-form__obs {
     display: block;
@@ -245,5 +284,11 @@
   }
   .colle-form__obs-input:focus {
     border-color: var(--accent);
+  }
+  /* Placeholder du textarea : même garantie de visibilité (--muted) — le gris
+     natif est invisible sur --surface en thème sombre. */
+  .colle-form__obs-input::placeholder {
+    color: var(--muted);
+    opacity: 1;
   }
 </style>

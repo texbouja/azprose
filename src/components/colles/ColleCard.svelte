@@ -13,6 +13,7 @@
    * rien) et ne peut jamais être perdu dans un menu « … » d'overflow.
    */
   import { openUrl } from "@tauri-apps/plugin-opener";
+  import { onDestroy } from "svelte";
   import {
     renderMarkdown,
     decorateCodeBlocks,
@@ -38,7 +39,15 @@
   }: {
     planche: CollePlanche;
     filePath?: string | null;
-    onEval?: (index: number, keys: { notes?: Record<string, number | string> | null; observations?: string | null }) => void;
+    onEval?: (
+      index: number,
+      keys: {
+        notes?: Record<string, number | string> | null;
+        observations?: string | null;
+        programme?: string | null;
+      },
+      propagateProgramme?: boolean,
+    ) => void;
   } = $props();
 
   let t = $derived(getT($language));
@@ -94,10 +103,59 @@
     };
   });
 
+  // ── Mode preview de la section Métadonnées ────────────────────────────────
+  // Comme la carte Évaluation : icône œil → affichage « rigide » (lecture
+  // seule). Le champ Programme éditable (+ sa checkbox « Propager ») n'existe
+  // qu'en mode form — en preview il est affiché en texte, le checkbox disparaît.
+  let metaMode = $state<"form" | "preview">("form");
+
   // Pliage des trois sections. Par défaut tout est déplié (comportement hérité).
   let metaCollapsed = $state(false);
   let bodyCollapsed = $state(false);
   let formCollapsed = $state(false);
+
+  // ── Programme ─────────────────────────────────────────────────────────────
+  // Champ texte éditable dans la section Métadonnées de CHAQUE planche (chaque
+  // planche a son propre `programme` YAML, alimenté vide à la génération).
+  // État local initialisé au montage (le {#key} de CollePreview remonte la
+  // carte à chaque navigation → relecture du YAML) ; write-back débouncé
+  // 800 ms via le même canal `azprose:colle-eval` que le form (write-back
+  // ciblé par index de planche). Le timer est purgé au repli de la section
+  // (démontage) et au démontage de la carte.
+  //
+  // PROPAGATION volontaire : le programme d'un même créneau étant en général
+  // le même, la checkbox « Propager » (état local, visible en mode form
+  // uniquement) copie la valeur saisie vers les AUTRES planches du même
+  // créneau (date + créneau identiques, via `sameCreneau` dans CollePreview).
+  // Ne propage QUE si la valeur est non vide — un effacement volontaire ne
+  // doit jamais vider les programmes des planches voisines.
+  // svelte-ignore state_referenced_locally
+  let programmeVal = $state(planche.meta.programme ?? "");
+  let programmeDirty = $state(false);
+  let propagate = $state(false);
+  let programmeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function flushProgramme() {
+    if (programmeTimer) {
+      clearTimeout(programmeTimer);
+      programmeTimer = null;
+    }
+    if (!programmeDirty) return;
+    programmeDirty = false;
+    const value = programmeVal.trim();
+    onEval?.(planche.index, { programme: value || null }, propagate && value !== "");
+  }
+
+  function handleProgrammeInput(value: string) {
+    programmeVal = value;
+    programmeDirty = true;
+    if (programmeTimer) clearTimeout(programmeTimer);
+    programmeTimer = setTimeout(flushProgramme, 800);
+  }
+
+  onDestroy(() => {
+    flushProgramme();
+  });
 
   let bodyEl = $state<HTMLElement | undefined>();
   let cleanupCode: () => void = () => {};
@@ -214,17 +272,68 @@
       <button
         type="button"
         class="colle-sec__btn"
+        class:is-active={metaMode === "preview"}
+        title={metaMode === "preview" ? t("colle.metaForm") : t("colle.metaPreview")}
+        aria-label={metaMode === "preview" ? t("colle.metaForm") : t("colle.metaPreview")}
+        aria-pressed={metaMode === "preview"}
+        onclick={() => (metaMode = metaMode === "form" ? "preview" : "form")}
+      >
+        <i class="wxi-eye" aria-hidden="true"></i>
+      </button>
+      <button
+        type="button"
+        class="colle-sec__btn"
         title={metaCollapsed ? t("colle.expand") : t("colle.collapse")}
         aria-label={metaCollapsed ? t("colle.expand") : t("colle.collapse")}
         aria-expanded={!metaCollapsed}
         aria-controls="colle-sec-meta"
-        onclick={() => (metaCollapsed = !metaCollapsed)}
+        onclick={() => {
+          // La section est DÉMONTÉE au repli : purger le debounce du programme
+          // avant que le champ ne disparaisse (sinon saisie perdue).
+          flushProgramme();
+          metaCollapsed = !metaCollapsed;
+        }}
       >
         <i class="colle-sec__chevron {metaCollapsed ? 'wxi-chevron-right' : 'wxi-chevron-down'}" aria-hidden="true"></i>
       </button>
     </div>
     {#if !metaCollapsed}
       <dl id="colle-sec-meta" class="colle-sec__meta">
+        <div class="colle-sec__field colle-sec__field--programme">
+          <dt>{t("colle.programme")}</dt>
+          {#if metaMode === "preview"}
+            <!-- Mode « rigide » (œil) : le programme s'affiche en TEXTE sur la
+                 même ligne que le label (le champ éditable et la checkbox
+                 « Propager » disparaissent). Une seule ligne : ellipsis +
+                 titre complet au survol. -->
+            <dd
+              class="colle-sec__programme-text"
+              title={programmeVal.trim() || undefined}
+            >{programmeVal.trim() || "—"}</dd>
+          {:else}
+            <dd>
+              <div class="colle-sec__programme-row">
+                <input
+                  class="colle-sec__programme-input"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder={t("colle.programmePlaceholder")}
+                  value={programmeVal}
+                  oninput={(e) => handleProgrammeInput(e.currentTarget.value)}
+                />
+                <label class="colle-sec__propagate" title={t("colle.propagateHint")}>
+                  <input
+                    type="checkbox"
+                    bind:checked={propagate}
+                    aria-label={t("colle.propagate")}
+                  />
+                  <span>{t("colle.propagate")}</span>
+                </label>
+              </div>
+            </dd>
+          {/if}
+        </div>
         {#if planche.meta.colleur}
           <div class="colle-sec__field">
             <dt>{t("colle.colleur")}</dt>

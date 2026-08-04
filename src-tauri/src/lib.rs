@@ -13,6 +13,7 @@ use tauri::{Emitter, Manager};
 use tauri::RunEvent;
 
 mod terminal;
+mod mailer;
 use terminal::TerminalState;
 
 mod latex_engine;
@@ -532,6 +533,7 @@ pub fn run() {
             datagrid_db::datagrid_rename,
             stack_rules_db::datagrid_stack_rules_get,
             stack_rules_db::datagrid_stack_rules_save,
+            mailer::send_colle_emails,
         ])
         .setup(|_app| {
             #[cfg(target_os = "macos")]

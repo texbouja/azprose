@@ -46,7 +46,8 @@ async function handleSelectDate(date: string) {
   journal.selectDate(date);
   const exists = await journal.noteExists(date, rootPath, folder);
   if (!exists) {
-    const p = await journal.createNote(date, rootPath, folder);
+    const { ensureDailyNoteWithColles } = await import("@/colles/daily-note");
+    const p = await ensureDailyNoteWithColles(date, rootPath, folder);
     if (p) {
       onSelectFile(p);
       scrollToNote = p;

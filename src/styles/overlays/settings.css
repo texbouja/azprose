@@ -191,6 +191,26 @@ body:has(.mdv-overlay--settings) {
   white-space: nowrap;
 }
 
+/* Champ mot de passe d'application Gmail (profil) : input natif calqué sur
+   les vars d'input SVAR (même look que le composant Text des autres lignes). */
+.mdv-settings__password-input {
+  flex: 1;
+  max-width: 240px;
+  height: var(--wx-input-height, 28px);
+  padding: var(--wx-input-padding, 4px 8px);
+  font-family: var(--wx-input-font-family, var(--font-ui, system-ui));
+  font-size: var(--wx-input-font-size, 12px);
+  line-height: var(--wx-input-line-height, 20px);
+  color: var(--wx-input-font-color, var(--fg));
+  background: var(--wx-input-background, var(--bg));
+  border: var(--wx-input-border, 1px solid var(--border));
+  border-radius: var(--wx-input-border-radius, 4px);
+  outline: none;
+}
+.mdv-settings__password-input:focus {
+  border: var(--wx-input-border-focus, 1px solid var(--accent));
+}
+
 /* ── package grid ──────────────────────────────────── */
 .mdv-settings__pkg-grid {
   display: grid;

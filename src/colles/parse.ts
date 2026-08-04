@@ -113,6 +113,29 @@ export function splitPlanches(lines: string[], startLine: number): CollePlanche[
   return planches;
 }
 
+/**
+ * Clé d'un « créneau » de colle : `date :: creneau` (le legacy `creneaux` est
+ * replié sur la chaîne unique). Retourne null si la date OU le créneau
+ * manquent — sans eux on ne peut pas regrouper les planches de façon fiable.
+ */
+export function creneauKey(meta: ColleMeta): string | null {
+  const date = meta.date?.trim();
+  const creneau =
+    meta.creneau?.trim() || (meta.creneaux as string[] | undefined)?.join(", ")?.trim();
+  if (!date || !creneau) return null;
+  return `${date} :: ${creneau}`;
+}
+
+/**
+ * Deux planches appartiennent au même créneau (même date ET même créneau,
+ * tous deux renseignés). Sert à la PROPAGATION volontaire du programme :
+ * les planches d'un même créneau partagent en général le même programme.
+ */
+export function sameCreneau(a: ColleMeta, b: ColleMeta): boolean {
+  const ka = creneauKey(a);
+  return ka !== null && ka === creneauKey(b);
+}
+
 /** Découpe une daily note complète en planches de colles. */
 export function parsePlanches(source: string): CollesSection {
   const lines = source.split(/\r?\n/);

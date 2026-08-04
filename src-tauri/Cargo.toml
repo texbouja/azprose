@@ -30,6 +30,8 @@ fontdb = "0.23"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tokio = { version = "1", features = ["process", "fs"] }
 portable-pty = "0.9"
+lettre = "0.11"
+base64 = "0.22"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 window-vibrancy = "0.7"

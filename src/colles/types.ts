@@ -31,6 +31,19 @@ export interface ColleMeta {
   notes?: Record<string, number | string> | null;
   /** Observations du colleur (write-back depuis le preview). */
   observations?: string | null;
+  /**
+   * Email de l'élève (colonne « Email » de la feuille Élèves du colloscope,
+   * vide si absente). Jamais affiché dans CollePreview — sert de destination
+   * pour l'envoi des rapports par email (bouton Send).
+   */
+  email_eleve?: string;
+  /**
+   * Programme de la semaine de colle. Vide à la génération ; renseigné après
+   * par le colleur (champ dédié de la première carte, write-back `programme`).
+   * Mis en valeur dans la première carte de CollePreview et inclus dans les
+   * rapports envoyés par email. `null` = suppression de la clé au write-back.
+   */
+  programme?: string | null;
   /** Clés YAML libres supplémentaires (extensibilité). */
   [key: string]: unknown;
 }

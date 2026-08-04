@@ -8,6 +8,8 @@ import {
   isHrLine,
   isFenceOpen,
   isFenceClose,
+  creneauKey,
+  sameCreneau,
 } from "../src/colles/parse";
 import { writeBackColleKeys } from "../src/colles/write-back";
 import { matiereKey, rubriquesFor, sumMaxScore, sumNotes } from "../src/colles/rubrics";
@@ -381,6 +383,22 @@ describe("writeBackColleKeys", () => {
     const out = writeBackColleKeys(SAMPLE, 0, { note: "", observations: null });
     expect(out).toBe(SAMPLE);
   });
+
+  test("programme : écriture dans la fiche ciblée, préservation du reste, idempotence", () => {
+    const out = writeBackColleKeys(SAMPLE, 0, { programme: "Intégrales impropres" });
+    expect(out).not.toBe(SAMPLE);
+    const re = parsePlanches(out);
+    expect(re.planches[0].meta.programme).toBe("Intégrales impropres");
+    // le reste du bloc et la planche 2 sont intacts
+    expect(re.planches[0].meta.matiere).toBe("Maths");
+    expect(re.planches[1].meta.programme).toBeUndefined();
+    // idempotent : même valeur → source inchangé
+    expect(writeBackColleKeys(out, 0, { programme: "Intégrales impropres" })).toBe(out);
+    // effacement : null retire la clé
+    const cleared = writeBackColleKeys(out, 0, { programme: null });
+    const re2 = parsePlanches(cleared);
+    expect(re2.planches[0].meta.programme).toBeUndefined();
+  });
 });
 
 describe("writeBackColleKeys — dict notes (rubriques)", () => {
@@ -619,5 +637,44 @@ describe("rubrics — note globale calculée (jamais stockée)", () => {
       rubriques: RUBRIQUES,
     } as any);
     expect(normalizeCollesSettings(once)).toEqual(once);
+  });
+});
+
+describe("creneauKey / sameCreneau — regroupement des planches d'un même créneau", () => {
+  test("creneauKey = date :: creneau", () => {
+    expect(creneauKey({ date: "2026-05-04", creneau: "09:00-10:00" })).toBe(
+      "2026-05-04 :: 09:00-10:00",
+    );
+  });
+
+  test("creneauKey replie le legacy creneaux (tableau)", () => {
+    expect(
+      creneauKey({ date: "2026-05-04", creneaux: ["09:00-10:00", "10:00-11:00"] } as ColleMeta),
+    ).toBe("2026-05-04 :: 09:00-10:00, 10:00-11:00");
+  });
+
+  test("creneauKey retourne null si la date OU le créneau manque", () => {
+    expect(creneauKey({ date: "2026-05-04" })).toBeNull();
+    expect(creneauKey({ creneau: "09:00-10:00" })).toBeNull();
+    expect(creneauKey({})).toBeNull();
+  });
+
+  test("sameCreneau : même date + même créneau", () => {
+    const a: ColleMeta = { date: "2026-05-04", creneau: "09:00-10:00" };
+    const b: ColleMeta = { date: "2026-05-04", creneau: "09:00-10:00" };
+    const c: ColleMeta = { date: "2026-05-04", creneau: "10:00-11:00" };
+    const d: ColleMeta = { date: "2026-05-05", creneau: "09:00-10:00" };
+    expect(sameCreneau(a, b)).toBe(true);
+    expect(sameCreneau(a, c)).toBe(false);
+    expect(sameCreneau(a, d)).toBe(false);
+  });
+
+  test("sameCreneau : jamais de regroupement sans date ou créneau (fiable)", () => {
+    const a: ColleMeta = { date: "2026-05-04" };
+    const b: ColleMeta = { date: "2026-05-04" };
+    const c: ColleMeta = {};
+    const d: ColleMeta = {};
+    expect(sameCreneau(a, b)).toBe(false);
+    expect(sameCreneau(c, d)).toBe(false);
   });
 });

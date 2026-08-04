@@ -10,6 +10,7 @@ import { describe, expect, it } from "bun:test";
 import type { ImportResult } from "@/lib/spreadsheet/import";
 import {
   buildColloscope,
+  classifySheet,
   expandColloscope,
   inVacances,
   normalizeColleur,
@@ -113,6 +114,63 @@ describe("parseColloscope", () => {
     const { eleves } = parseColloscope([MPS1]);
     expect(eleves).toEqual([]);
   });
+
+  it("mode explicite : feuille de classe nommée différemment des classes élèves (MPETOILE1 vs MP*1)", () => {
+    // Cas RÉEL du fichier : la feuille est « MPETOILE1 » alors que la colonne
+    // CLASSE des élèves contient « MP*1 ». En mode normal, la feuille est
+    // ignorée (son nom ne correspond à aucune classe) ; en mode explicite
+    // (sélection manuelle), elle est importée telle quelle.
+    const eleves = sheet("Eleves", ["NOM", "PRENOM", "CLASSE", "GROUPE"], [
+      ["ACHRAF", "Yasmine", "MP*1", "G1"],
+    ]);
+    const classe = sheet(
+      "MPETOILE1",
+      ["Matière", "Nom Colleur", "Jour", "Horaire", "Salle", "Sem 1", "Sem 2"],
+      [["Mathématiques", "M. TAIBI", "Lundi", "12h-13h", "Salle 08", "G1", "G2"]],
+    );
+    const auto = parseColloscope([eleves, classe]);
+    expect(auto.classes).toEqual([]); // MPETOILE1 ∉ {MP*1} → ignorée
+
+    const explicite = parseColloscope([eleves, classe], { explicit: true });
+    expect(explicite.classes).toEqual(["MPETOILE1"]);
+  });
+
+  it("mode explicite : un colloscope sans feuille Eleves s'importe quand même", () => {
+    const data = parseColloscope([MPS1], { explicit: true });
+    expect(data.classes).toEqual(["MPs-1"]);
+    expect(data.eleves).toEqual([]);
+  });
+});
+
+// ── classifySheet ──────────────────────────────────────────────────────────
+
+describe("classifySheet", () => {
+  it("classe la feuille Eleves", () => {
+    expect(classifySheet(ELEVES)).toBe("eleves");
+  });
+
+  it("classe les feuilles de colloscope exploitables", () => {
+    expect(classifySheet(MPS1)).toBe("classe");
+  });
+
+  it("classe en morte les feuilles à en-têtes non reconnus (ex. « Column A »)", () => {
+    // Cas réel : en-têtes du rang 4 du xlsx (« Column A », « Column B », …)
+    // non résolus par resolveHeader.
+    const dead = sheet("MP1", ["Column A", "Column B", "Column C"], [
+      ["2025-09-15T00:00:00.000Z", "G1", "M. TAIBI"],
+    ]);
+    expect(classifySheet(dead)).toBe("morte");
+  });
+
+  it("classe en morte les feuilles de forme colloscope mais VIDES", () => {
+    // « AFF MP » : en-têtes reconnus mais aucune ligne de données.
+    expect(classifySheet(PARASITES[0])).toBe("morte");
+  });
+
+  it("classe en morte les listes annexes sans forme colloscope", () => {
+    expect(classifySheet(PARASITES[1])).toBe("morte"); // All
+    expect(classifySheet(PARASITES[2])).toBe("morte"); // Feuil1 (élèves sans forme eleves)
+  });
 });
 
 // ── teachingMondays ────────────────────────────────────────────────────────
@@ -144,6 +202,19 @@ describe("teachingMondays", () => {
     // L'index saute la semaine de vacances : les semaines après vacances
     // reprennent la rotation là où elle s'était arrêtée.
     expect(mondays.map((m) => m.index)).toEqual([0, 1, 2, 3, 5, 6]);
+  });
+
+  it("dateDebut non-lundi → la semaine 1 commence au lundi suivant (décision utilisateur round 9)", () => {
+    // 2026-09-13 est un DIMANCHE : les semaines doivent démarrer au lundi 14/09,
+    // sinon chaque créneau serait daté lundi réel − 1 (Mardi → lundi).
+    const mondays = teachingMondays("2026-09-13", "2026-10-05", []);
+    expect(mondays.map((m) => m.date)).toEqual([
+      "2026-09-14",
+      "2026-09-21",
+      "2026-09-28",
+      "2026-10-05",
+    ]);
+    expect(mondays.map((m) => m.index)).toEqual([0, 1, 2, 3]);
   });
 
   it("dates vide → liste vide", () => {
@@ -263,6 +334,24 @@ describe("expandColloscope", () => {
     };
     const seances = expandColloscope(creneaux, "2025-09-15", "2025-09-22", []);
     expect(seances.map((s) => s.date)).toEqual(["2025-09-16", "2025-09-19", "2025-09-23", "2025-09-26"]);
+  });
+
+  it("dateDebut dimanche (2026-09-13) : Mardi → 2026-09-15, Lundi → 2026-09-14 (pas de −1 jour)", () => {
+    const creneaux = {
+      "MPs-1": [
+        {
+          matiere: "Mathématiques",
+          colleur: "M. TAIBI",
+          jour: "Mardi",
+          horaire: "13h-14h",
+          salle: "MP*1",
+          rotation: ["G1", "G2"],
+        },
+      ],
+    };
+    const seances = expandColloscope(creneaux, "2026-09-13", "2026-09-22", []);
+    expect(seances.map((s) => s.date)).toEqual(["2026-09-15", "2026-09-22"]);
+    expect(seances.every((s) => s.jour === "Mardi")).toBe(true);
   });
 
   it("ignore les créneaux à jour inconnu ou sans rotation", () => {

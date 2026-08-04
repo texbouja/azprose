@@ -8,7 +8,7 @@
    * du tab main (même path) pour base — jamais le source du side tab (qui est
    * la dernière version SAUVÉE, pas le buffer non-sauvegardé de l'éditeur).
    */
-  import { parsePlanches } from "@/colles";
+  import { parsePlanches, sameCreneau } from "@/colles";
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import ColleCard from "./ColleCard.svelte";
@@ -75,10 +75,43 @@
     };
   });
 
-  function handleEval(index: number, keys: { notes?: Record<string, number | string> | null; observations?: string | null }) {
+  function handleEval(
+    index: number,
+    keys: {
+      notes?: Record<string, number | string> | null;
+      observations?: string | null;
+      programme?: string | null;
+    },
+    propagateProgramme = false,
+  ) {
+    const updates: Array<{
+      index: number;
+      keys: {
+        notes?: Record<string, number | string> | null;
+        observations?: string | null;
+        programme?: string | null;
+      };
+    }> = [{ index, keys }];
+
+    // Propagation VOLONTAIRE du programme : la checkbox « Propager » de la
+    // carte copie la valeur saisie (non vide) vers les autres planches du
+    // même créneau (date + créneau identiques). Un seul événement porte toutes
+    // les écritures — app.svelte les chaîne sur le même source (une seule
+    // sauvegarde, pas de course entre plusieurs événements successifs).
+    if (propagateProgramme) {
+      const value = keys.programme?.trim();
+      const current = planches[index];
+      if (value && current) {
+        for (const p of planches) {
+          if (p.index === index || !sameCreneau(p.meta, current.meta)) continue;
+          updates.push({ index: p.index, keys: { programme: value } });
+        }
+      }
+    }
+
     window.dispatchEvent(
       new CustomEvent("azprose:colle-eval", {
-        detail: { path: filePath, index, keys },
+        detail: { path: filePath, updates },
       }),
     );
   }
@@ -124,7 +157,11 @@
   {:else}
     {#key planches[current].index}
       <div class="colle-viewer__stage">
-        <ColleCard planche={planches[current]} {filePath} onEval={handleEval} />
+        <ColleCard
+          planche={planches[current]}
+          {filePath}
+          onEval={handleEval}
+        />
       </div>
     {/key}
   {/if}

@@ -232,6 +232,20 @@ let sideItems = $derived.by(() => {
       type: renderMode === "colle" ? "pressed" : "",
       handler: () => onToggleColles?.(),
     });
+    // Vue colles du side panel : envoi par email.
+    if (renderMode === "colle") {
+      items.push({
+        comp: "icon",
+        icon: "wxi-send",
+        text: t("colle.send"),
+        pinned: true,
+        handler: () =>
+          activeTab &&
+          window.dispatchEvent(
+            new CustomEvent("azprose:colle-send", { detail: { filePath: activeTab.path } }),
+          ),
+      });
+    }
   }
   if (isMd && !isDaily) {
     items.push({
