@@ -61,7 +61,7 @@
     "@prosemark/latex": "^0.0.4",
     "@prosemark/paste-rich-text": "^0.0.5",
     "@prosemark/render-html": "^0.0.10",
-    "@shikijs/core": "^4.3.0",
+    "@shikijs/core": "^4.4.1",
     "@svar-ui/svelte-calendar": "^2.6.0",
     "@svar-ui/svelte-excel-import": "^2.6.2",
     "@svar-ui/svelte-export-popup": "^2.6.0",
