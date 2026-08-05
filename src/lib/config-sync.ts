@@ -1,6 +1,6 @@
 import { saveProjectConfig, loadProjectConfig, type ProjectConfig } from "@/lib/project-config"
 import { generalSettings } from "@/stores/general-settings.svelte"
-import { proseMarkSettings, previewSettings, presentationSettings, DEFAULT_PROSE_MARK_STYLE, DEFAULT_PREVIEW_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte"
+import { proseMarkSettings, previewSettings, printSettings, presentationSettings, DEFAULT_PROSE_MARK_STYLE, DEFAULT_PREVIEW_STYLE, DEFAULT_PRINT_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte"
 import { slideSettings } from "@/stores/slide-settings.svelte"
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte"
 import { latexSettings } from "@/stores/latex-settings.svelte"
@@ -54,6 +54,11 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   const pvs = previewSettings.current;
   if (JSON.stringify(pvs) !== JSON.stringify(DEFAULT_PREVIEW_STYLE)) {
     cfg.preview = { style: pvs };
+  }
+
+  const prt = printSettings.current;
+  if (JSON.stringify(prt) !== JSON.stringify(DEFAULT_PRINT_STYLE)) {
+    cfg.print = { style: prt };
   }
 
   const prs = presentationSettings.current;
@@ -147,6 +152,7 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
 
   if (cfg.proseMark?.style) proseMarkSettings.patch(cfg.proseMark.style);
   if (cfg.preview?.style) previewSettings.patch(cfg.preview.style);
+  if (cfg.print?.style) printSettings.patch(cfg.print.style);
   if (cfg.presentation?.style) presentationSettings.patch(cfg.presentation.style);
   if (cfg.presentation?.slideMode) slideSettings.mode = cfg.presentation.slideMode;
   if (cfg.math?.preamble != null) mathJaxPreamble.current = cfg.math.preamble;

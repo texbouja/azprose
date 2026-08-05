@@ -35,6 +35,8 @@ import {
 } from "@/markdown";
 import { typesetMath } from "@/lib/typeset-math";
 import { toPng } from "html-to-image";
+import { printSettings } from "@/stores/markdown-settings.svelte";
+import { buildReportPrintCss } from "@/lib/prose-style-css";
 import { rubriquesFor, sumMaxScore, sumNotes } from "./rubrics";
 import type { CollePlanche, RubriquesParMatiere } from "./types";
 import {
@@ -112,7 +114,7 @@ async function renderFragment(markdown: string, opts: ColleReportOptions): Promi
 }
 
 /** Construit les données d'un rapport depuis une planche (fragments rendus). */
-async function buildReportData(
+export async function buildReportData(
   planche: CollePlanche,
   rubriques: RubriquesParMatiere,
   opts: ColleReportOptions,
@@ -149,12 +151,20 @@ async function buildReportData(
  * chaque slot `data-slot` reçoit le HTML de sa section (builders purs de
  * email.ts — même source de vérité que `buildReportContent`) et devient
  * visible ; les sections vides sont masquées (`hidden`).
+ *
+ * `includeSalle` (défaut true) : les rendus PNG (email + archivage) passent
+ * false — la Salle est retirée des images (retouche utilisateur round 18) ;
+ * la vue HTML de l'app la garde (elle n'utilise pas ce remplissage).
  */
-export function fillReportPage(page: HTMLElement, data: ColleReportData): void {
+export function fillReportPage(
+  page: HTMLElement,
+  data: ColleReportData,
+  includeSalle = true,
+): void {
   const m = data.meta;
   const sections: Array<[string, string]> = [
     ["head", buildReportHead(m)],
-    ["meta", buildReportMetaRows(m, data.colleur)],
+    ["meta", buildReportMetaRows(m, data.colleur, includeSalle)],
     ["programme", buildReportProgramme(data.programme)],
     ["enonce", buildReportEnonce(data.bodyHtml)],
     ["eval", buildReportEval(data.note, data.noteMax, data.rubricRows, data.observationsHtml)],
@@ -217,10 +227,22 @@ export async function renderReportImages(
     page.innerHTML = buildReportPageShell();
     mount.appendChild(page);
 
+    // Section « Printing » des réglages : le CSS typographique (polices,
+    // tailles, interligne, titres, listes + customCss) est injecté APRÈS le
+    // style du gabarit (dans `.rp`, le dernier bloc `<style>` gagne à
+    // spécificité égale) — s'applique aux blocs de contenu markdown (énoncé +
+    // observations), jamais au chrome du gabarit. Couvre email ET archivage
+    // (l'archivage passe par ce même `renderReportImages`).
+    const printStyle = document.createElement("style");
+    printStyle.textContent = buildReportPrintCss(printSettings.current);
+    page.appendChild(printStyle);
+
     const images: ColleReportImage[] = [];
     for (let i = 0; i < planches.length; i++) {
       const data = datas[i];
-      fillReportPage(page, data);
+      // PNG (email + archivage) : la Salle est retirée (retouche round 18) —
+      // le gabarit HTML de l'app la garde, pas l'image.
+      fillReportPage(page, data, false);
       // Un SEUL typeset par planche : les maths `\(…\)` des fragments ne sont
       // converties en SVG qu'ici (l'ancien typeset par fragment est supprimé).
       await typesetMath(page);

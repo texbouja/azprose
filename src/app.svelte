@@ -57,6 +57,7 @@ import { executeOxideCommand } from "@/lib/lsp/markdown-oxide";
 import { writeText } from "@/lib/files";
 import { writeBackColleKeys } from "@/colles/write-back";
 import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
+import CollePrintDialog from "@/components/colles/CollePrintDialog.svelte";
 import { extFromPath } from "@/lib/editor-languages";
 import { setOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
 import { saveSession, clearDraft, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
@@ -78,7 +79,7 @@ import {
   type ExternalChangeDeps,
 } from "@/lib/app-events";
 import { generalSettings, applyFontHinting } from "@/stores/general-settings.svelte";
-import { proseMarkSettings, previewSettings, presentationSettings } from "@/stores/markdown-settings.svelte";
+import { proseMarkSettings, previewSettings, printSettings, presentationSettings } from "@/stores/markdown-settings.svelte";
 import { setRootPath, getRootPath } from "@/stores/root-path.svelte";
 import { setActivePath } from "@/stores/active-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
@@ -339,6 +340,7 @@ $effect(() => {
   if (!configRoot) return;
   proseMarkSettings.current;
   previewSettings.current;
+  printSettings.current;
   presentationSettings.current;
   slideSettings.mode;
   generalSettings.defaultEditorMode;
@@ -1075,6 +1077,11 @@ let colleSendOpen = $state(false);
 let colleSendPath = $state<string | null>(null);
 let colleSendSource = $state<string | null>(null);
 
+// État du dialogue d'impression des planches de colles (ouvert par azprose:colle-print).
+let collePrintOpen = $state(false);
+let collePrintPath = $state<string | null>(null);
+let collePrintSource = $state<string | null>(null);
+
 const handleToggleConsole = () => {
   if (consoleOpen) {
     consoleOpen = false;
@@ -1106,6 +1113,29 @@ $effect(() => {
   };
   window.addEventListener("azprose:colle-send", onColleSend);
   return () => window.removeEventListener("azprose:colle-send", onColleSend);
+});
+
+/**
+ * Impression des planches de colles (TabActions → azprose:colle-print).
+ * Même pattern que l'envoi : la source est lue LIVE depuis l'onglet (main ou
+ * side) au moment du clic, pour inclure les write-backs non sauvegardés.
+ */
+$effect(() => {
+  const onCollePrint = (e: Event) => {
+    const detail = (e as CustomEvent).detail as { filePath?: string | null };
+    if (!detail.filePath) return;
+    const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
+    const target = norm(detail.filePath);
+    const mainTab = pm.main.tabs.find((t: any) => norm(t.path) === target);
+    const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
+    const source = mainTab?.source ?? sideTab?.source;
+    if (source === undefined) return;
+    collePrintPath = detail.filePath;
+    collePrintSource = source;
+    collePrintOpen = true;
+  };
+  window.addEventListener("azprose:colle-print", onCollePrint);
+  return () => window.removeEventListener("azprose:colle-print", onCollePrint);
 });
 
 /**
@@ -1542,6 +1572,13 @@ let cmds = $derived(
       colleSendOpen = false;
       overlays.showSettings();
     }}
+  />
+
+  <CollePrintDialog
+    open={collePrintOpen}
+    filePath={collePrintPath}
+    source={collePrintSource}
+    onClose={() => (collePrintOpen = false)}
   />
 
   <WelcomeOverlay

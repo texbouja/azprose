@@ -1,5 +1,9 @@
 import { persistedState } from "./persisted.svelte";
 import { STORAGE_KEYS } from "@/lib";
+// Les résolveurs de polices vivent dans un module PUR (lib/font-resolvers) —
+// testable sans la chaîne Svelte. Ré-exportés ici pour compatibilité (les
+// consommateurs continuent d'importer depuis ce store).
+export { resolveFontFamily, resolveMonoFont, resolveHeadingFont } from "@/lib/font-resolvers";
 
 export type TextAlign = "left" | "center" | "right";
 export type HeadingFont = "inherit" | "fira-sans" | "inter" | "ubuntu" | "system" | "custom";
@@ -44,6 +48,15 @@ export interface ProseMarkStyle {
 // ── Preview panel (independent copy — same shape as ProseMark) ──────────────
 
 export type PreviewStyle = ProseMarkStyle;
+
+// ── Printing (independent copy — same shape as Preview) ───────────────────
+// Section « Printing » des réglages : une copie indépendante de Preview qui
+// ne s'applique QU'AUX rendus d'impression (md→PDF, planches de colles PDF,
+// emails de colles et images archivées en PNG) — jamais à l'aperçu à l'écran
+// ni au mode prose. Même forme que PreviewStyle (décision : copie fidèle).
+// Le CSS est généré par `lib/prose-style-css.ts` (pur, testable).
+
+export type PrintStyle = PreviewStyle;
 
 // ── Presentation / SlideDeck ────────────────────────────────────────────────
 
@@ -109,6 +122,8 @@ export const DEFAULT_PROSE_MARK_STYLE: ProseMarkStyle = {
 
 export const DEFAULT_PREVIEW_STYLE: PreviewStyle = { ...DEFAULT_PROSE_MARK_STYLE };
 
+export const DEFAULT_PRINT_STYLE: PrintStyle = { ...DEFAULT_PREVIEW_STYLE };
+
 export const DEFAULT_PRESENTATION_STYLE: PresentationStyle = {
   fontFamily: "fira-sans",
   customFontName: "",
@@ -152,50 +167,6 @@ const DEFAULT_CSV_STYLE: CsvStyle = {
   lineHeight: 1.4,
 };
 
-// ── Font resolution helpers ─────────────────────────────────────────────────
-
-export function resolveFontFamily(key: BodyFont, customName?: string): string {
-  switch (key) {
-    case "fira-sans":
-      return "'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif";
-    case "inter":
-      return "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
-    case "ubuntu":
-      return "'Ubuntu', -apple-system, BlinkMacSystemFont, sans-serif";
-    case "ubuntu-condensed":
-      return "'Ubuntu Condensed', -apple-system, BlinkMacSystemFont, sans-serif";
-    case "custom":
-      return customName?.trim()
-        ? `'${customName.trim()}', -apple-system, BlinkMacSystemFont, sans-serif`
-        : "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    default:
-      return "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-  }
-}
-
-export function resolveMonoFont(key: MonoFont): string {
-  switch (key) {
-    case "fira-code":
-      return "'Fira Code', ui-monospace, SFMono-Regular, monospace";
-    case "jetbrains-mono":
-      return "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace";
-    case "ubuntu-mono":
-      return "'Ubuntu Mono', ui-monospace, SFMono-Regular, monospace";
-    default:
-      return "ui-monospace, SFMono-Regular, Menlo, monospace";
-  }
-}
-
-export function resolveHeadingFont(key: HeadingFont, customName: string): string {
-  if (key === "inherit") return "inherit";
-  if (key === "custom") {
-    return customName.trim()
-      ? `'${customName.trim()}', -apple-system, BlinkMacSystemFont, sans-serif`
-      : "inherit";
-  }
-  return resolveFontFamily(key as BodyFont);
-}
-
 // ── Store factory ───────────────────────────────────────────────────────────
 
 function gapFill<T extends object>(stored: T, defaults: T): T {
@@ -229,6 +200,16 @@ function createPreviewSettings() {
   };
 }
 
+function createPrintSettings() {
+  const stored = persistedState<PrintStyle>(STORAGE_KEYS.printStyle, { ...DEFAULT_PRINT_STYLE });
+  stored.current = gapFill(stored.current, DEFAULT_PRINT_STYLE);
+  return {
+    get current() { return stored.current; },
+    patch(partial: Partial<PrintStyle>) { stored.current = { ...stored.current, ...partial }; },
+    reset() { stored.current = { ...DEFAULT_PRINT_STYLE }; },
+  };
+}
+
 function createPresentationSettings() {
   const stored = persistedState<PresentationStyle>(STORAGE_KEYS.presentationStyle, { ...DEFAULT_PRESENTATION_STYLE });
   stored.current = gapFill(stored.current, DEFAULT_PRESENTATION_STYLE);
@@ -253,5 +234,6 @@ function createCsvSettings() {
 
 export const proseMarkSettings = createProseMarkSettings();
 export const previewSettings = createPreviewSettings();
+export const printSettings = createPrintSettings();
 export const presentationSettings = createPresentationSettings();
 export const csvSettings = createCsvSettings();

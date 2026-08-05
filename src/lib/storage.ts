@@ -30,6 +30,7 @@ export const STORAGE_KEYS = {
   typography: "mdview.typography",
   proseMarkStyle: "mdview.prosemark.style",
   previewStyle: "mdview.preview.style",
+  printStyle: "mdview.print.style",
   presentationStyle: "mdview.presentation.style",
   mathJaxPreamble: "mdview.mathjax.preamble",
   mathJaxPackages: "mdview.mathjax.packages",

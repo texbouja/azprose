@@ -29,12 +29,11 @@ const _mjPkgs: string[] = JSON.parse(
     enableComplexity: false,
     menuOptions: {
       settings: {
-        enrich: false,
-        speech: false,
-        braille: false,
-        assistiveMml: false,
-        voicing: false,
-      },
+            enrich: false,
+            speech: false,
+            braille: false,
+            assistiveMml: false,
+          },
     },
   },
 };

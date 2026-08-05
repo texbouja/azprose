@@ -213,6 +213,14 @@ describe("REPORT_PAGE_CSS (CSS embarqué du gabarit, round 15)", () => {
     expect(REPORT_PAGE_CSS).not.toContain(".rp-rubrics{display:grid");
     expect(REPORT_PAGE_CSS).not.toContain("table");
   });
+
+  it("couleur FIXE sur le contenu markdown (.rp-enonce-box/.rp-obs-content) — hors thème", () => {
+    // Sans `color`, le contenu héritait de `body { color: var(--fg) }` de l'app :
+    // en thème sombre le texte clair devenait INVISIBLE sur le fond clair fixe
+    // du gabarit dans les PNG (html-to-image copie les styles calculés).
+    expect(REPORT_PAGE_CSS).toMatch(/\.rp-enonce-box\s*\{[^}]*color:#111827/);
+    expect(REPORT_PAGE_CSS).toMatch(/\.rp-obs-content\s*\{[^}]*color:#111827/);
+  });
 });
 
 describe("buildReportPageShell (le gabarit réutilisé)", () => {
@@ -249,6 +257,16 @@ describe("builders de sections (round 15, une source de vérité)", () => {
     expect(dl).toContain("B12");
     expect(dl).toContain("M. Boujaida");
     expect(buildReportMetaRows({}, "")).toBe("");
+  });
+
+  it("buildReportMetaRows : includeSalle=false omet la Salle, garde les autres champs", () => {
+    const dl = buildReportMetaRows(base.meta, "M. Boujaida", false);
+    expect(dl).not.toContain("Salle");
+    expect(dl).not.toContain("B12");
+    // Les autres lignes subsistent (Date, Créneau, Classe, Colleur).
+    expect(dl).toContain("MPSI 1");
+    expect(dl).toContain("M. Boujaida");
+    expect(dl).toContain("<dt>Date</dt>");
   });
 
   it("buildReportProgramme : label + contenu sur UNE ligne, '' si absent, XSS échappé", () => {

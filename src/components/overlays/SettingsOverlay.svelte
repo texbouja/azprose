@@ -6,10 +6,12 @@ import { getT, language, setLanguage, LANGUAGE_CHOICES } from "@/lib/i18n";
 import {
   proseMarkSettings,
   previewSettings,
+  printSettings,
   presentationSettings,
   csvSettings,
   type ProseMarkStyle,
   type PreviewStyle,
+  type PrintStyle,
   type PresentationStyle,
   type TextAlign,
   type HeadingFont,
@@ -46,7 +48,7 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques";
+type ModuleId = "general" | "prose-writing" | "apercu" | "printing" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques";
 type SectionId = "markdown" | "general" | "latex" | "colles";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
@@ -68,6 +70,7 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "general",        labelKey: "settings.module.general" },
       { id: "prose-writing", labelKey: "settings.module.prose" },
       { id: "apercu",        labelKey: "settings.module.apercu" },
+      { id: "printing",      labelKey: "settings.module.printing" },
       { id: "presentation",  labelKey: "settings.module.presentation" },
       { id: "mathjax",       labelKey: "settings.module.mathjax" },
       { id: "callouts",      labelKey: "settings.module.callouts" },
@@ -258,6 +261,7 @@ function dateToIso(d: Date | null | undefined): string {
 // Explicit $derived so the template tracks settings reactively.
 let s = $derived(proseMarkSettings.current);
 let pvs = $derived(previewSettings.current);
+let prt = $derived(printSettings.current);
 let prs = $derived(presentationSettings.current);
 let csvStyle = $derived(csvSettings.current);
 
@@ -307,6 +311,7 @@ function fontFieldStyle(state: FontCheck): { inputStyle: string; error: boolean 
 let customFontState = $derived(s.fontFamily === "custom" ? checkFontName(s.customFontName) : null);
 let prsCustomFontState = $derived(prs.fontFamily === "custom" ? checkFontName(prs.customFontName) : null);
 let pvsCustomFontState = $derived(pvs.fontFamily === "custom" ? checkFontName(pvs.customFontName) : null);
+let prtCustomFontState = $derived(prt.fontFamily === "custom" ? checkFontName(prt.customFontName) : null);
 let editorCustomFontState = $derived(
   editorSettings.current.fontFamily === "custom" ? checkFontName(editorSettings.current.customFontName) : null
 );
@@ -563,6 +568,50 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
   </div>
 {/snippet}
 
+{#snippet policesSectionPrint()}
+  <p class="mdv-settings__section-title">{t("settings.fonts")}</p>
+  <div class="mdv-settings__fonts">
+    <div class="mdv-settings__font-row">
+      <span class="mdv-settings__font-label">{t("settings.fontMain")}</span>
+      <Combo
+        value={prt.fontFamily}
+        options={[
+          {id: "fira-sans", label: "Fira Sans"},
+          {id: "inter", label: "Inter"},
+          {id: "ubuntu", label: "Ubuntu"},
+          {id: "ubuntu-condensed", label: "Ubuntu Condensed"},
+          {id: "system", label: t("settings.fontSystem")},
+          {id: "custom", label: t("settings.fontCustom")},
+        ]}
+        onchange={(ev) => printSettings.patch({ fontFamily: ev.value as PrintStyle["fontFamily"] })}
+      />
+      {#if prt.fontFamily === "custom"}
+        {@const fs = fontFieldStyle(prtCustomFontState)}
+        <Text
+          value={prt.customFontName}
+          placeholder={t("settings.fontPlaceholder")}
+          inputStyle={fs.inputStyle}
+          error={fs.error}
+          onchange={(ev) => debounceInput("font-print", String(ev.value), (v) => printSettings.patch({ customFontName: v }))}
+        />
+      {/if}
+    </div>
+    <div class="mdv-settings__font-row">
+      <span class="mdv-settings__font-label">{t("settings.fontMono")}</span>
+      <Combo
+        value={prt.monoFont}
+        options={[
+          {id: "fira-code", label: "Fira Code"},
+          {id: "jetbrains-mono", label: "JetBrains Mono"},
+          {id: "ubuntu-mono", label: "Ubuntu Mono"},
+          {id: "system", label: t("settings.fontSystem")},
+        ]}
+        onchange={(ev) => printSettings.patch({ monoFont: ev.value as PrintStyle["monoFont"] })}
+      />
+    </div>
+  </div>
+{/snippet}
+
 {#snippet titresSection(showAlign: boolean, fontsFirst: boolean)}
   <p class="mdv-settings__section-title">{t("settings.headings")}</p>
   <!-- wrapper flex so CSS order can swap fonts ↔ table when fontsFirst -->
@@ -774,6 +823,76 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
   </div>
 {/snippet}
 
+{#snippet titresSectionPrint()}
+  <p class="mdv-settings__section-title">{t("settings.headings")}</p>
+  <div class="mdv-settings__titres-layout">
+    <div class="mdv-settings__heading-fonts">
+      {#each ([
+        { tag: "H1", key: "h1FontFamily", nameKey: "h1CustomFontName" },
+        { tag: "H2", key: "h2FontFamily", nameKey: "h2CustomFontName" },
+        { tag: "H3", key: "h3FontFamily", nameKey: "h3CustomFontName" },
+      ] as const) as row}
+        {@const isCustom = prt[row.key] === "custom"}
+        {@const fontName = prt[row.nameKey]}
+        {@const fontState = isCustom && fontName.trim() ? checkFontName(fontName) : null}
+        {@const fs = fontFieldStyle(fontState)}
+        <div class="mdv-settings__font-row">
+          <span class="mdv-settings__font-label mdv-settings__heading-tag">{row.tag}</span>
+          <Combo
+            value={prt[row.key]}
+            options={HEADING_FONT_OPTIONS.map(o => ({id: o.value, label: t(o.labelKey)}))}
+            onchange={(ev) => {
+              const val = ev.value as HeadingFont;
+              if (val === "custom" && !fontName.trim()) {
+                const fallback = prt.h1CustomFontName || prt.h2CustomFontName || prt.h3CustomFontName;
+                if (fallback) { printSettings.patch({ [row.key]: val, [row.nameKey]: fallback }); return; }
+              }
+              printSettings.patch({ [row.key]: val });
+            }}
+          />
+          {#if isCustom}
+            <Text
+              value={fontName}
+              placeholder={t("settings.fontPlaceholder")}
+              inputStyle={fs.inputStyle}
+              error={fs.error}
+              onchange={(ev) => debounceInput("heading-print-" + row.tag, String(ev.value), (v) => printSettings.patch({ [row.nameKey]: v }))}
+            />
+          {/if}
+        </div>
+      {/each}
+    </div>
+
+    <div class="mdv-settings__headings">
+      <div class="mdv-settings__heading-header">
+        <span></span>
+        <span>{t("settings.headingSize")}</span>
+        <span>{t("settings.headingAlign")}</span>
+        <span>{t("settings.headingMarginTop")}</span>
+        <span>{t("settings.headingMarginBottom")}</span>
+      </div>
+      {@render headingRow("H1",
+        prt.h1Size,    (v) => printSettings.patch({ h1Size: v }),
+        prt.h1Align,   (v) => printSettings.patch({ h1Align: v }),
+        prt.h1MarginTop,  (v) => printSettings.patch({ h1MarginTop: v }),
+        prt.h1MarginBottom, (v) => printSettings.patch({ h1MarginBottom: v }),
+      )}
+      {@render headingRow("H2",
+        prt.h2Size,    (v) => printSettings.patch({ h2Size: v }),
+        prt.h2Align,   (v) => printSettings.patch({ h2Align: v }),
+        prt.h2MarginTop,  (v) => printSettings.patch({ h2MarginTop: v }),
+        prt.h2MarginBottom, (v) => printSettings.patch({ h2MarginBottom: v }),
+      )}
+      {@render headingRow("H3",
+        prt.h3Size,    (v) => printSettings.patch({ h3Size: v }),
+        prt.h3Align,   (v) => printSettings.patch({ h3Align: v }),
+        prt.h3MarginTop,  (v) => printSettings.patch({ h3MarginTop: v }),
+        prt.h3MarginBottom, (v) => printSettings.patch({ h3MarginBottom: v }),
+      )}
+    </div>
+  </div>
+{/snippet}
+
 {#snippet listesSection()}
   <p class="mdv-settings__section-title">{t("settings.lists")}</p>
   <div class="mdv-settings__lists">
@@ -959,6 +1078,39 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <p class="mdv-settings__hint">{t("settings.customCssHint")}</p>
             <div style="font-family: var(--font-ui); font-size: 12px;">
               <TextArea value={pvs.customCss} onchange={(ev) => debounceInput("css-preview", ev.value, (v) => previewSettings.patch({ customCss: v }))} />
+            </div>
+          {/if}
+
+          {#if activeModule === "printing"}
+            <p class="mdv-settings__hint">{t("settings.printingHint")}</p>
+
+            {@render policesSectionPrint()}
+
+            <p class="mdv-settings__section-title">{t("settings.typography")}</p>
+            <div class="mdv-settings__sliders">
+              <div class="mdv-settings__slider-row">
+                <span class="mdv-settings__slider-label">{t("settings.fontSize")}</span>
+                <Slider min={12} max={24} step={1} value={prt.fontSize} onchange={(ev) => printSettings.patch({ fontSize: ev.value })} />
+                <span class="mdv-settings__slider-value">{prt.fontSize} px</span>
+              </div>
+              <div class="mdv-settings__slider-row">
+                <span class="mdv-settings__slider-label">{t("settings.lineHeight")}</span>
+                <Slider min={1.3} max={2.2} step={0.05} value={prt.lineHeight} onchange={(ev) => printSettings.patch({ lineHeight: ev.value })} />
+                <span class="mdv-settings__slider-value">{prt.lineHeight.toFixed(2)}</span>
+              </div>
+              <div class="mdv-settings__slider-row">
+                <span class="mdv-settings__slider-label">{t("settings.columnWidth")}</span>
+                <Slider min={500} max={1200} step={10} value={prt.maxWidth} onchange={(ev) => printSettings.patch({ maxWidth: ev.value })} />
+                <span class="mdv-settings__slider-value">{prt.maxWidth} px</span>
+              </div>
+            </div>
+
+            {@render titresSectionPrint()}
+
+            <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
+            <p class="mdv-settings__hint">{t("settings.customCssPrintHint")}</p>
+            <div style="font-family: var(--font-ui); font-size: 12px;">
+              <TextArea value={prt.customCss} onchange={(ev) => debounceInput("css-print", ev.value, (v) => printSettings.patch({ customCss: v }))} />
             </div>
           {/if}
 
@@ -1585,6 +1737,10 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           </button>
         {:else if activeModule === "apercu"}
           <button type="button" class="mdv-settings__reset" onclick={() => previewSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "printing"}
+          <button type="button" class="mdv-settings__reset" onclick={() => printSettings.reset()}>
             {t("settings.reset")}
           </button>
         {:else if activeModule === "presentation"}

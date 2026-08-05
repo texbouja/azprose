@@ -94,7 +94,7 @@ export const REPORT_PAGE_CSS = `
 .rp-prog-text{color:#111827;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .rp-block-title{font-weight:700;color:#111827;font-size:13px;margin:0 0 2px;}
 .rp-enonce{margin:0 0 8px;}
-.rp-enonce-box{background:#f8f9fa;border:1px solid #e2e5ea;border-radius:6px;padding:8px 12px;font-size:13px;line-height:1.5;}
+.rp-enonce-box{background:#f8f9fa;border:1px solid #e2e5ea;border-radius:6px;padding:8px 12px;font-size:13px;line-height:1.5;color:#111827;}
 .rp-enonce-box p{margin:0 0 8px;}
 .rp-enonce-box p:last-child{margin-bottom:0;}
 .rp-eval{background:#f8f9fa;border:1px solid #e2e5ea;border-radius:8px;padding:8px 12px;margin:0 0 8px;}
@@ -110,7 +110,7 @@ export const REPORT_PAGE_CSS = `
 .rp-rubric + .rp-rubric::before{content:"·";margin:0 7px;color:#6b7280;font-size:15px;vertical-align:-1px;}
 .rp-obs{margin-top:6px;}
 .rp-obs-title{font-weight:700;color:#111827;font-size:13px;margin-bottom:2px;}
-.rp-obs-content{background:#f8f9fa;border-left:3px solid #d1d5db;padding:5px 10px;border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.45;}
+.rp-obs-content{background:#f8f9fa;border-left:3px solid #d1d5db;padding:5px 10px;border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.45;color:#111827;}
 .rp-obs-content p{margin:0 0 6px;}
 .rp-obs-content p:last-child{margin-bottom:0;}
 .rp-sign{margin-top:auto;padding-top:6px;border-top:1px solid #e2e5ea;font-size:12px;color:#6b7280;line-height:1.4;}
@@ -170,12 +170,21 @@ export function buildReportHead(m: ColleMeta): string {
   );
 }
 
-/** Métadonnées colle sur UNE ligne compacte (dl rp-meta, flex wrap) — "" si aucune ligne. */
-export function buildReportMetaRows(m: ColleMeta, colleur: string): string {
+/**
+ * Métadonnées colle sur UNE ligne compacte (dl rp-meta, flex wrap) — "" si aucune ligne.
+ * `includeSalle` (défaut true) : la Salle est OMISE dans les rendus PNG (email,
+ * archivage) et PDF (retouche utilisateur round 18) — la vue HTML de l'app la
+ * garde (ColleCard lit `meta.salle` directement, pas ce builder).
+ */
+export function buildReportMetaRows(
+  m: ColleMeta,
+  colleur: string,
+  includeSalle = true,
+): string {
   const rows: Array<[string, string]> = [];
   if (m.date) rows.push(["Date", escHtml(formatReportDate(m.date))]);
   if (m.creneau) rows.push(["Créneau", escHtml(m.creneau)]);
-  if (m.salle) rows.push(["Salle", escHtml(m.salle)]);
+  if (includeSalle && m.salle) rows.push(["Salle", escHtml(m.salle)]);
   if (m.classe) rows.push(["Classe", escHtml(String(m.classe))]);
   if (m.groupe) rows.push(["Groupe", escHtml(String(m.groupe))]);
   if (colleur.trim()) rows.push(["Colleur", escHtml(colleur.trim())]);
@@ -303,8 +312,25 @@ export function buildReportPageShell(): string {
  *
  * Les fragments markdown (`bodyHtml`/`observationsHtml`) sont insérés tels
  * quels (produits par la pipeline : callouts, images, maths en SVG MathJax).
+ *
+ * `includeEval` (défaut true — rétro-compatible, l'email ne le passe pas) :
+ * l'impression des planches (round 18) peut OMETTRE la « troisième carte »
+ * (section Évaluation : notes + observations) — feuille d'examen pour les
+ * élèves (sans) vs archivage administration (avec).
+ *
+ * `includeSalle` (défaut true) : OMISE dans les rendus PNG/PDF (retouche
+ * round 18) — la vue HTML de l'app la garde.
+ *
+ * `includeSignature` (défaut true) : OMISE dans le rendu PDF (retouche
+ * round 18 — la feuille imprimée ne porte plus « Bien cordialement ») ;
+ * l'email la conserve.
  */
-export function buildReportContent(data: ColleReportData): string {
+export function buildReportContent(
+  data: ColleReportData,
+  includeEval = true,
+  includeSalle = true,
+  includeSignature = true,
+): string {
   const m = data.meta;
   return (
     `<div class="rp">` +
@@ -312,11 +338,13 @@ export function buildReportContent(data: ColleReportData): string {
     `<div class="rp-card">` +
     buildReportHead(m) +
     `<div class="rp-body">` +
-    buildReportMetaRows(m, data.colleur) +
+    buildReportMetaRows(m, data.colleur, includeSalle) +
     buildReportProgramme(data.programme) +
     buildReportEnonce(data.bodyHtml) +
-    buildReportEval(data.note, data.noteMax, data.rubricRows, data.observationsHtml) +
-    buildReportSignature(data.colleur) +
+    (includeEval
+      ? buildReportEval(data.note, data.noteMax, data.rubricRows, data.observationsHtml)
+      : "") +
+    (includeSignature ? buildReportSignature(data.colleur) : "") +
     `</div>` +
     `</div>` +
     `</div>`

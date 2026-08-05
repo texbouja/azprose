@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { joinPath } from "./files";
-import type { ProseMarkStyle, PreviewStyle, PresentationStyle } from "@/stores/markdown-settings.svelte";
+import type { ProseMarkStyle, PreviewStyle, PrintStyle, PresentationStyle } from "@/stores/markdown-settings.svelte";
 import type { SlideMode } from "@/stores/slide-settings.svelte";
 import type { DefaultEditorMode } from "@/stores/general-settings.svelte";
 import type { TypographySettings } from "./typography";
@@ -40,6 +40,10 @@ export interface PreviewConfig {
   style?: PreviewStyle | null;
 }
 
+export interface PrintConfig {
+  style?: PrintStyle | null;
+}
+
 export interface PresentationConfig {
   style?: PresentationStyle | null;
   slideMode?: SlideMode | null;
@@ -55,6 +59,7 @@ export interface ProjectConfig {
   editor?: EditorConfig;
   proseMark?: ProseMarkConfig;
   preview?: PreviewConfig;
+  print?: PrintConfig;
   presentation?: PresentationConfig;
   math?: MathConfig;
   callouts?: CalloutDef[] | null;
@@ -70,6 +75,7 @@ const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
   editor: { fontFamily: "string", customFontName: "string", fontSize: "number", tabSize: "number", lineNumbers: "boolean", lineWrapping: "boolean" },
   proseMark: { style: "object" },
   preview: { style: "object" },
+  print: { style: "object" },
   presentation: { style: "object", slideMode: "string" },
   math: { preamble: "string", packages: "object" },
   colles: { dateDebut: "string", dateFin: "string", vacances: "object", rubriques: "object", colloscope: "object" },
@@ -80,6 +86,7 @@ const CONFIG_SCHEMA: Record<string, string> = {
   editor: "object",
   proseMark: "object",
   preview: "object",
+  print: "object",
   presentation: "object",
   math: "object",
   callouts: "object",

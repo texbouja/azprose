@@ -45,13 +45,35 @@ function ensureMdExtension(target: string): string {
   return target.includes(".") ? target : `${target}.md`;
 }
 
-async function fileExists(path: string): Promise<boolean> {
+async function fileExists(fs: TransclusionFs, path: string): Promise<boolean> {
   try {
-    return await exists(path);
+    return await fs.exists(path);
   } catch {
     return false;
   }
 }
+
+/**
+ * Surface fs minimale injectable — les tests bun n'ont pas Tauri : ils passent
+ * un faux fs (Map en mémoire) au lieu de `mock.module` (process-global dans
+ * bun < 1.4, il empoisonne les autres fichiers de test qui importent
+ * `@tauri-apps/plugin-fs`).
+ */
+export interface TransclusionFs {
+  /** Lit un fichier texte (UTF-8). Doit rejeter si le fichier n'existe pas. */
+  readText(path: string): Promise<string>;
+  /** True si le fichier existe. */
+  exists(path: string): Promise<boolean>;
+}
+
+/** Implémentation réelle par défaut (plugin Tauri). */
+export const tauriTransclusionFs: TransclusionFs = {
+  async readText(path) {
+    const content = await readFile(path, { encoding: "utf-8" as never });
+    return typeof content === "string" ? content : new TextDecoder().decode(content as Uint8Array);
+  },
+  exists,
+};
 
 function extractSection(content: string, heading: string): string {
   const slug = slugify(heading);
@@ -107,41 +129,50 @@ export async function resolveTransclusions(
   ancestors: Set<string> = new Set(),
   rootPath?: string,
   ranges?: TransclusionRange[],
+  fs: TransclusionFs = tauriTransclusionFs,
+  getIndex: (rootPath: string) => Promise<Map<string, string>> = getFileIndex,
 ): Promise<string> {
   if (depth >= MAX_DEPTH) return src;
 
   const sep = filePath.includes("\\") ? "\\" : "/";
   const baseDir = dirname(filePath);
 
-  // Check for cycles
-  const resolved = new Set<string>();
-
-  // Collect all transclusion matches
-  const matches: Array<{ full: string; target: string }> = [];
+  // Collect all transclusion matches WITH their exact position in `src`.
+  // Le remplacement est POSITIONNEL (jamais `String.replace(pattern, …)`) :
+  // `replace` sur une chaîne touche la PREMIÈRE occurrence, ce qui cassait les
+  // documents transcluant le MÊME fichier plusieurs fois (sections différentes
+  // ou non) — seule la première était incluse, les suivantes restaient
+  // verbatim dans le HTML. L'ancien dedup `resolved` (par absTarget) est
+  // SUPPRIMÉ : la prévention des cycles est assurée par `ancestors` + MAX_DEPTH.
+  const matches: Array<{ full: string; target: string; index: number }> = [];
   TRANSLUDE_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = TRANSLUDE_RE.exec(src)) !== null) {
-    matches.push({ full: m[0], target: m[1].trim() });
+    matches.push({ full: m[0], target: m[1].trim(), index: m.index });
   }
   if (matches.length === 0) return src;
 
-  let result = src;
-  for (const { full, target } of matches) {
+  let result = "";
+  let cursor = 0;
+  for (const { full, target, index } of matches) {
+    result += src.slice(cursor, index);
+    cursor = index + full.length;
+
     // Parse target: file#section or file#^block
     const hashIdx = target.indexOf("#");
     const fileName = hashIdx >= 0 ? target.slice(0, hashIdx) : target;
     const fragment = hashIdx >= 0 ? target.slice(hashIdx + 1) : null;
 
-    if (!fileName) continue;
-
-    // PDF files can't be text-included — handled by pdf-rect-embed
-    if (fileName.toLowerCase().endsWith(".pdf")) continue;
+    if (!fileName || fileName.toLowerCase().endsWith(".pdf")) {
+      result += full; // PDF géré par pdf-rect-embed — laissé tel quel
+      continue;
+    }
 
     // Resolve absolute path — first try relative to current file
     let absTarget = resolveRelative(baseDir, ensureMdExtension(fileName), sep);
-    if (!(await fileExists(absTarget)) && rootPath) {
+    if (!(await fileExists(fs, absTarget)) && rootPath) {
       // Vault fallback: find file by basename
-      const index = await getFileIndex(rootPath);
+      const index = await getIndex(rootPath);
       // Index keys are basenames without extension ("reduc2"), strip ext for lookup
       const baseName = fileName.replace(/\.[^.]+$/, "");
       const vaultPath = index.get(baseName) ?? index.get(fileName) ?? index.get(ensureMdExtension(fileName));
@@ -149,18 +180,15 @@ export async function resolveTransclusions(
         absTarget = vaultPath;
       }
     }
-    if (resolved.has(absTarget)) continue; // already included in this pass
-    resolved.add(absTarget);
 
     // Cycle detection
     if (ancestors.has(absTarget)) {
-      result = result.replace(full, `<span class="transclusion-placeholder">cycle: ${fileName}</span>`);
+      result += `<span class="transclusion-placeholder">cycle: ${fileName}</span>`;
       continue;
     }
 
     try {
-      const content = await readFile(absTarget, { encoding: "utf-8" as never });
-      let included = typeof content === "string" ? content : new TextDecoder().decode(content as Uint8Array);
+      let included = await fs.readText(absTarget);
 
       // Extract section if fragment specified
       if (fragment) {
@@ -174,24 +202,23 @@ export async function resolveTransclusions(
       // Recurse into nested transclusions
       const childAncestors = new Set(ancestors);
       childAncestors.add(absTarget);
-      included = await resolveTransclusions(included, absTarget, depth + 1, childAncestors, rootPath);
+      included = await resolveTransclusions(included, absTarget, depth + 1, childAncestors, rootPath, undefined, fs, getIndex);
 
-      // Track transclusion range (only at depth 0 = top-level)
+      // Track transclusion range (only at depth 0 = top-level) — la position
+      // du marqueur est `result.length` AVANT d'ajouter le contenu.
       if (depth === 0 && ranges) {
-        const matchIdx = result.indexOf(full);
-        if (matchIdx >= 0) {
-          const startLine = result.slice(0, matchIdx).split("\n").length - 1;
-          const endLine = startLine + included.split("\n").length;
-          ranges.push({ startLine, endLine, filePath: absTarget });
-        }
+        const startLine = result.split("\n").length - 1;
+        const endLine = startLine + included.split("\n").length;
+        ranges.push({ startLine, endLine, filePath: absTarget });
       }
 
-      result = result.replace(full, included);
+      result += included;
     } catch {
       // File not found — leave a visible placeholder
-      result = result.replace(full, `<!-- transclusion: ${fileName} not found -->`);
+      result += `<!-- transclusion: ${fileName} not found -->`;
     }
   }
+  result += src.slice(cursor);
 
   return result;
 }

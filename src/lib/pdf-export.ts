@@ -13,10 +13,9 @@ import {
   updateCalloutIcons,
 } from "@/markdown";
 import {
-  previewSettings,
-  resolveFontFamily,
-  resolveMonoFont,
+  printSettings,
 } from "@/stores/markdown-settings.svelte";
+import { buildProseStyleCss } from "@/lib/prose-style-css";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
@@ -24,25 +23,13 @@ import type { Theme } from "./theme";
 
 // ── HTML assembly ────────────────────────────────────────────────────────────
 
+// CSS typographique du document imprimé : source = la section « Printing »
+// des réglages (`printSettings` — une copie indépendante de l'aperçu écran,
+// décision « Printing »). Le builder pur (lib/prose-style-css.ts) produit les
+// règles `.mdv-prose` ; le `customCss` utilisateur est ajouté tel quel.
 function buildProseCss(): string {
-  const s = previewSettings.current;
-  const fontFamily = resolveFontFamily(s.fontFamily, s.customFontName);
-  const monoFont = resolveMonoFont(s.monoFont);
-  const heading = (n: 1 | 2 | 3) => {
-    const size = s[`h${n}Size`] as number;
-    const align = s[`h${n}Align`] as string;
-    const mt = s[`h${n}MarginTop`] as number;
-    const mb = s[`h${n}MarginBottom`] as number;
-    return `.mdv-prose h${n}{font-size:${size}em;text-align:${align};margin:${mt}em 0 ${mb}em;}`;
-  };
-  return [
-    `.mdv-prose{font-family:${fontFamily};font-size:${s.fontSize}px;line-height:${s.lineHeight};max-width:${s.maxWidth}px;}`,
-    `.mdv-prose code,.mdv-prose pre{font-family:${monoFont};}`,
-    heading(1), heading(2), heading(3),
-    `.mdv-prose ol{list-style-type:${s.olLevel1};}`,
-    `.mdv-prose ol ol{list-style-type:${s.olLevel2};}`,
-    `.mdv-prose ol ol ol{list-style-type:${s.olLevel3};}`,
-  ].join("\n");
+  const s = printSettings.current;
+  return buildProseStyleCss(s, ".mdv-prose") + (s.customCss.trim() ? "\n" + s.customCss.trim() : "");
 }
 
 function buildPrintCss(): string {
@@ -64,7 +51,7 @@ function buildPrintCss(): string {
   `;
 }
 
-function buildMathJaxConfig(): string {
+export function buildMathJaxConfig(): string {
   const pkgs = mathJaxPackages.current;
   const loaderBlock = pkgs.length > 0
     ? `loader: { paths: { mathjax: 'https://cdn.jsdelivr.net/npm/mathjax@4' }, load: [${pkgs.map(p => `'[tex]/${p}'`).join(', ')}] },`
@@ -84,6 +71,28 @@ function buildMathJaxConfig(): string {
       },
       svg: { fontCache: 'global' },
       startup: { typeset: true },
+      // V4 active les extensions a11y par défaut (contrairement à V3) : chaque
+      // expression serait enrichie sémantiquement + dotée de speech/braille
+      // (SRE) — gonflement massif du HTML sur les documents chargés en maths,
+      // et coût de démarrage SRE inutile pour l'impression. Miroir du bloc
+      // déjà validé dans main.ts (app runtime) : les options enable* désactivent
+      // les extensions dans les documents autonomes (pas de ui/menu chargé),
+      // menuOptions.settings couvre le cas où le menu viendrait à exister.
+      options: {
+        enableEnrichment: false,
+        enableSpeech: false,
+        enableBraille: false,
+        enableExplorer: false,
+        enableComplexity: false,
+        menuOptions: {
+          settings: {
+            enrich: false,
+            speech: false,
+            braille: false,
+            assistiveMml: false,
+          },
+        },
+      },
     };
   `;
 }

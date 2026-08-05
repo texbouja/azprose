@@ -220,20 +220,24 @@ let sideItems = $derived.by(() => {
 
   items.push({ spacer: true });
 
-  // Right: colle toggle (daily notes only), presentation (non-daily md) + fullscreen.
+  // Right: impression + envoi (vue colles, daily notes), bascule « Colles »
+  // (daily notes), presentation (non-daily md) + fullscreen — dans cet ordre.
   // `pinned: true` = jamais basculés dans le menu « … » de débordement (l'overflow
   // SVAR masque tout ce qui ne tient pas — l'exception native est le pinning).
   if (isDaily) {
-    items.push({
-      comp: "icon",
-      icon: "wxi-star",
-      text: t("tabs.colles"),
-      pinned: true,
-      type: renderMode === "colle" ? "pressed" : "",
-      handler: () => onToggleColles?.(),
-    });
-    // Vue colles du side panel : envoi par email.
+    // Vue colles du side panel : Print puis Send (ordre demandé par l'utilisateur).
     if (renderMode === "colle") {
+      items.push({
+        comp: "icon",
+        icon: "wxi-printer",
+        text: t("colle.print"),
+        pinned: true,
+        handler: () =>
+          activeTab &&
+          window.dispatchEvent(
+            new CustomEvent("azprose:colle-print", { detail: { filePath: activeTab.path } }),
+          ),
+      });
       items.push({
         comp: "icon",
         icon: "wxi-send",
@@ -246,6 +250,14 @@ let sideItems = $derived.by(() => {
           ),
       });
     }
+    items.push({
+      comp: "icon",
+      icon: "wxi-star",
+      text: t("tabs.colles"),
+      pinned: true,
+      type: renderMode === "colle" ? "pressed" : "",
+      handler: () => onToggleColles?.(),
+    });
   }
   if (isMd && !isDaily) {
     items.push({
