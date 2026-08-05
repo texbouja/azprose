@@ -7,6 +7,7 @@
   let {
     config,
     onTree,
+    onStateChange,
     label,
     className = "mdv-tree",
     children,
@@ -18,6 +19,11 @@
     config: TreeConfig<T>;
     /** Called once the tree instance exists (for external state sync like auto-expand). */
     onTree?: (tree: TreeInstance<T>) => void;
+    /** Called after EVERY state change (focus, selection, expansion…), from
+        the same `bump()` that re-renders the items. The headless-tree state
+        is NOT reactive on its own — this is the only signal parents can
+        subscribe to for external sync (e.g. reporting the focused item). */
+    onStateChange?: (tree: TreeInstance<T>) => void;
     label?: string;
     className?: string;
     /** Renders the content of each treeitem `<li>`. */
@@ -40,6 +46,10 @@
     // but stops the mount effect from depending on it.
     untrack(() => {
       version++;
+      // Same untrack rationale: `tree` is a $state read, and bump() may be
+      // called from inside an effect (auto-expand). Reading it inside the
+      // untrack keeps that effect free of the dependency.
+      onStateChange?.(tree);
     });
   };
 

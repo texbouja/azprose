@@ -46,6 +46,10 @@
     onCancelNew,
   treeVersion = 0,
   dirtyPaths = [] as string[],
+  onFocusChange,
+  onFocusRoot,
+  pendingFocusPath = null,
+  onFocusAcknowledged,
 }: {
     rootPath: string;
     activePath: string | null;
@@ -67,6 +71,24 @@
   /** Paths whose parent folders must be re-listed after the treeVersion bump
       (from the watcher's event or the file-op that caused it). */
   dirtyPaths?: string[];
+  /** Reports the FOCUSED item (path + folder flag) on every focus change.
+      The parent uses it as the creation target — the toolbar and ⌘N create
+      in the focused folder / next to the focused file, never next to the
+      editor's active file (VS Code semantics). `null` when nothing in this
+      tree is focused (fallback: project root). */
+  onFocusChange?: (path: string | null, isFolder: boolean) => void;
+  /** Called when the user presses Escape: the tree focus returns to the root
+      folder header. The parent should move the DOM focus there so the
+      "creation target = root" is visible. */
+  onFocusRoot?: () => void;
+  /** Path of the item just created (VS Code semantics: after a validated
+      create, the created element gets the focus). The tree waits until the
+      re-listed parent makes the item visible, then focuses it and reports it
+      as the tree focus. `null` = nothing pending. */
+  pendingFocusPath?: string | null;
+  /** Called once the pending focus landed (or was skipped) — clears the
+      FileOpsManager's pendingFocusPath so it cannot fire again. */
+  onFocusAcknowledged?: () => void;
 } = $props();
 
   // Folders the user explicitly collapsed — auto-expand (active file / new entry)
@@ -74,6 +96,10 @@
   let userCollapsed = $state(new Set<string>());
   let loadError = $state<string | null>(null);
   let headlessTree = $state<TreeInstance<FileEntry> | null>(null);
+  // Last focused item reported to the parent (see syncFocusFromTree). Initial
+  // focusedItem is null → the parent falls back to the project root.
+  let focusedPath = $state<string | null>(null);
+  let focusedIsDir = $state(false);
 
   /** Builds the headless-tree config. Runs once per component instance — the
       parent keys this component by `rootPath`, so the config is stable. */
@@ -181,6 +207,26 @@
             onRenameRequest?.(item.getId());
           },
         },
+        // Escape returns the focus to the ROOT of this tree (VS Code-ish
+        // "collapse to root"): clear the focused item so no row is focused,
+        // report rootPath as the creation target, and ask the parent to move
+        // the DOM focus to the root folder header. focusedItem must be null
+        // (NOT rootItemId): the wrapper's focus-restore effect guards on a
+        // truthy focusedItem and would otherwise yank the focus back to the
+        // first row ~500ms later via updateDomFocus.
+        // NOTE: Escape is already bound by the drag feature's `cancelDrag`,
+        // but only while a drag is active (isEnabled) — the preset entry
+        // then wins (presets are merged before custom hotkeys), so Escape
+        // still cancels drags.
+        customfocusRoot: {
+          hotkey: "Escape",
+          preventDefault: true,
+          handler: (_e, tree) => {
+            tree.applySubStateUpdate("focusedItem", () => null);
+            onFocusChange?.(rootPath, true);
+            onFocusRoot?.();
+          },
+        },
       },
       indent: 12,
     };
@@ -197,6 +243,15 @@
   // the whole config object and merges the ENTIRE state (a stale config.state
   // would clobber focusedItem etc.). applySubStateUpdate only touches the
   // expandedItems slice — the doc-recommended way to change individual state.
+  //
+  // CRITICAL: applySubStateUpdate routes through setExpandedItems → setState
+  // → the wrapper's setState = bump() → version++ → {#key version} teardown
+  // of the ENTIRE item DOM. A focused EditableRow input (new-entry / rename)
+  // is destroyed by that teardown, the browser fires blur on the detached
+  // input, and onblur={submit} cancels the empty new-entry row — the toolbar
+  // buttons "new file"/"new folder" silently did nothing. So this effect must
+  // NOT call applySubStateUpdate when the expanded set is unchanged: compute
+  // `next` first, and only touch the tree state when it actually differs.
   $effect(() => {
     const tree = headlessTree;
     if (!tree) return;
@@ -207,22 +262,20 @@
       }
     }
     if (newEntry?.parent && newEntry.parent !== rootPath) target.add(newEntry.parent);
-    tree.applySubStateUpdate("expandedItems", (current) => {
-      const cur = current ?? [];
-      const merged = new Set(cur);
-      for (const p of target) merged.add(p);
-      for (const p of userCollapsed) merged.delete(p);
-      const next = [...merged];
-      // Rebuild only when the expanded set actually changed. rebuildTree
-      // triggers the wrapper's {#key version} re-render, which tears down the
-      // DOM and drops the keyboard focus — a no-op rebuild right after a
-      // chevron collapse (this effect re-runs because userCollapsed changed)
-      // would kill the focus the chevron handler just restored.
-      const same =
-        next.length === cur.length && next.every((id, i) => id === cur[i]);
-      if (!same) queueMicrotask(() => tree.rebuildTree());
-      return next;
-    });
+    const cur = tree.getState().expandedItems ?? [];
+    const merged = new Set(cur);
+    for (const p of target) merged.add(p);
+    for (const p of userCollapsed) merged.delete(p);
+    const next = [...merged];
+    // Rebuild only when the expanded set actually changed. rebuildTree
+    // triggers the wrapper's {#key version} re-render, which tears down the
+    // DOM and drops the keyboard focus — a no-op rebuild right after a
+    // chevron collapse (this effect re-runs because userCollapsed changed)
+    // would kill the focus the chevron handler just restored.
+    const same = next.length === cur.length && next.every((id, i) => id === cur[i]);
+    if (same) return;
+    tree.applySubStateUpdate("expandedItems", () => next);
+    queueMicrotask(() => tree.rebuildTree());
   });
 
   // Reload folder listings when the FS changes externally (treeVersion bump).
@@ -250,6 +303,75 @@
       .filter((d): d is FileEntry => !!d);
     onContextMenu?.(e, data, selection.length ? selection : [data]);
   }
+
+  // Reports the focused item to the parent whenever the tree state changes.
+  // headless-tree state is NOT reactive — this runs via the wrapper's
+  // onStateChange (every setState → bump), reading getState().focusedItem
+  // live. Equality guard: only report when the focus actually moved.
+  // NOTE: the wrapper also fires for expand/collapse/selection changes; the
+  // focused item read is cheap and unchanged → no report, no parent re-render.
+  function syncFocusFromTree() {
+    const tree = headlessTree;
+    if (!tree) return;
+    const id = tree.getState().focusedItem;
+    let isDir = false;
+    if (id) {
+      const item = tree.getItemInstance(id);
+      isDir = !!item?.isFolder();
+    }
+    if (id !== focusedPath || isDir !== focusedIsDir) {
+      focusedPath = id;
+      focusedIsDir = isDir;
+      onFocusChange?.(id, isDir);
+    }
+    // Focus the item just created (pendingFocusPath): the creation commits →
+    // onTreeChange → invalidatePaths re-lists the parent → this bump runs
+    // with the new item present in getItems(). Focus it in the next microtask
+    // so we are outside the bump's synchronous setState chain (calling
+    // setFocused here would re-enter applySubStateUpdate mid-bump).
+    const target = pendingFocusPath;
+    if (!target) return;
+    if (tree.getState().focusedItem === target) {
+      // Already focused (a second bump while pending was still set) — ack so
+      // the manager clears the stale pending.
+      onFocusAcknowledged?.();
+      return;
+    }
+    if (!tree.getItems().some((i) => i.getId() === target)) return; // not rendered yet
+    queueMicrotask(() => {
+      const t = headlessTree;
+      if (!t) return;
+      const item = t.getItemInstance(target);
+      if (!item) return;
+      // item.setFocused() is the ONLY state-mutating focus API in this
+      // version: tree.setFocusedItem() routes through makeStateUpdater whose
+      // updater the main setState ignores (it only fires the bump). The item
+      // instance is created on demand — it exists because getItems() has it.
+      item.setFocused();
+      // DOM focus on the row + report straight to the parent (no rebuildTree:
+      // no focus-driven row classes need a re-render, and the next bump would
+      // re-read the same focusedItem anyway).
+      t.updateDomFocus();
+      onFocusChange?.(target, item.isFolder());
+      onFocusAcknowledged?.();
+    });
+  }
+
+  // Rule "Escape during a pending create/rename cancels the action, nothing
+  // else": after the keyboard cancel (Escape / Enter on empty) the EditableRow
+  // input is destroyed and the DOM focus falls to <body>. Put it back on the
+  // row that was focused before the action — "the focus stays at its last
+  // position". If nothing was focused (focusedItem null), do nothing at all.
+  // The blur path (user clicked away) never calls this — the click target
+  // must keep the focus.
+  function restoreTreeFocus() {
+    queueMicrotask(() => {
+      const t = headlessTree;
+      if (!t) return;
+      if (!t.getState().focusedItem) return;
+      t.updateDomFocus();
+    });
+  }
 </script>
 
 <HeadlessTree
@@ -258,6 +380,7 @@
   onTree={(t) => {
     headlessTree = t;
   }}
+  onStateChange={syncFocusFromTree}
 >
   {#snippet children(item: ItemInstance<FileEntry>)}
     {#if editingPath === item.getId() && onSubmitRename && onCancelEdit}
@@ -266,7 +389,10 @@
         kind={item.isFolder() ? "folder" : "file"}
         initialValue={item.getItemName()}
         onSubmit={(name) => onSubmitRename(item.getId(), name)}
-        onCancel={onCancelEdit}
+        onCancel={(viaKeyboard) => {
+          onCancelEdit?.();
+          if (viaKeyboard) restoreTreeFocus();
+        }}
       />
     {:else if item.isFolder()}
       <div
@@ -314,7 +440,10 @@
           kind={newEntry.kind}
           initialValue=""
           onSubmit={(name) => onSubmitNew(newEntry.parent, newEntry.kind, name)}
-          onCancel={onCancelNew}
+          onCancel={(viaKeyboard) => {
+            onCancelNew?.();
+            if (viaKeyboard) restoreTreeFocus();
+          }}
         />
       {/if}
     {:else}
@@ -375,7 +504,10 @@
           kind={newEntry.kind}
           initialValue=""
           onSubmit={(name) => onSubmitNew(newEntry.parent, newEntry.kind, name)}
-          onCancel={onCancelNew}
+          onCancel={(viaKeyboard) => {
+            onCancelNew?.();
+            if (viaKeyboard) restoreTreeFocus();
+          }}
         />
       </li>
     {/if}

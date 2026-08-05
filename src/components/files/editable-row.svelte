@@ -12,7 +12,13 @@ let {
   kind: "file" | "folder";
   initialValue: string;
   onSubmit: (name: string) => void;
-  onCancel: () => void;
+  /** Cancels the pending create/rename. `viaKeyboard` is true when the cancel
+      is initiated from the keyboard (Escape, or Enter on an empty/unchanged
+      value) and false when the input blurred because the user clicked away.
+      The tree uses the distinction to restore the keyboard focus to its last
+      row on a keyboard cancel, and to leave the focus where the user put it
+      after a blur. */
+  onCancel: (viaKeyboard: boolean) => void;
 } = $props();
 
 let value = $state(initialValue);
@@ -27,22 +33,34 @@ $effect(() => {
   else input.select();
 });
 
-function submit() {
+function submit(viaKeyboard: boolean) {
   const trimmed = value.trim();
   if (!trimmed || trimmed === initialValue) {
-    onCancel();
+    onCancel(viaKeyboard);
     return;
   }
   onSubmit(trimmed);
 }
 
+function onBlur() {
+  // The wrapper's {#key version} teardown destroys this row's input while it
+  // is focused (any tree state change re-renders ALL rows). The browser
+  // fires blur on the detached element, but that is NOT a user action — the
+  // row is re-created by the same re-render with newEntry/editingPath still
+  // pending. Cancelling here would silently drop the new-entry row right
+  // after clicking the toolbar button. Skip the submit/cancel when the input
+  // is no longer connected to the document.
+  if (!inputRef?.isConnected) return;
+  submit(false);
+}
+
 function onKey(e: KeyboardEvent) {
   if (e.key === "Enter") {
     e.preventDefault();
-    submit();
+    submit(true);
   } else if (e.key === "Escape") {
     e.preventDefault();
-    onCancel();
+    onCancel(true);
   }
 }
 
@@ -70,7 +88,7 @@ let padLeft = $derived(8 + depth * 12 + (kind === "file" ? 4 : 0));
       bind:this={inputRef}
       class="mdv-tree__edit-input"
       bind:value={value}
-      onblur={submit}
+      onblur={onBlur}
       onkeydown={onKey}
       aria-label="{kind} name"
       spellcheck={false}

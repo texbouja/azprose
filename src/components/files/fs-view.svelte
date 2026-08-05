@@ -2,7 +2,7 @@
 import { Button } from "@/components/primitives";
 import { language, getT } from "@/lib/i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { dirname, type FileEntry } from "@/lib";
+import type { FileEntry } from "@/lib";
 import emptyTowerUrl from "@/assets/mascot/az-empty.svg";
 import type { NewEntry } from "./file-tree.svelte";
 import SearchResults from "./sidebar-search.svelte";
@@ -40,6 +40,9 @@ let {
   onCancelNew,
   treeVersion = 0,
   dirtyPaths = [] as string[],
+  onFocusChange,
+  pendingFocusPath = null,
+  onFocusAcknowledged,
 }: {
   rootPath: string | null;
   folders: readonly string[];
@@ -70,10 +73,16 @@ let {
   onCancelNew?: () => void;
   treeVersion?: number;
   dirtyPaths?: string[];
+  /** Focused item of whichever tree is active — the toolbar creates in the
+      focused folder / next to the focused file (FileOpsManager.createDir). */
+  onFocusChange?: (path: string | null, isFolder: boolean) => void;
+  /** Forwarded — focus target of the item just created (VS Code semantics). */
+  pendingFocusPath?: string | null;
+  /** Forwarded — clears the pending focus once it landed. */
+  onFocusAcknowledged?: () => void;
 } = $props();
 
 let t = $derived(getT($language));
-let activeDir = $derived(activePath ? dirname(activePath) : rootPath);
 
 let query = $state("");
 let searchOpen = $state(false);
@@ -150,7 +159,7 @@ function onHeaderMouseDown(e: MouseEvent) {
         <Button
           data-tooltip={t("menu.newFile")}
           aria-label={t("menu.newFile")}
-          onclick={() => onNewFile?.(activeDir ?? undefined)}
+          onclick={() => onNewFile?.()}
           icon={newFileIcon}
         />
         {#snippet newFolderIcon()}
@@ -159,7 +168,7 @@ function onHeaderMouseDown(e: MouseEvent) {
         <Button
           data-tooltip={t("menu.newFolder")}
           aria-label={t("menu.newFolder")}
-          onclick={() => onNewFolder?.(activeDir ?? undefined)}
+          onclick={() => onNewFolder?.()}
           icon={newFolderIcon}
         />
       {/if}
@@ -280,6 +289,9 @@ function onHeaderMouseDown(e: MouseEvent) {
             {onCancelNew}
             {treeVersion}
             {dirtyPaths}
+            {onFocusChange}
+            {pendingFocusPath}
+            {onFocusAcknowledged}
           />
         {/each}
       {/if}

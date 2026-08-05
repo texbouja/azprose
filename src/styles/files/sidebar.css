@@ -825,6 +825,15 @@
   text-align: left;
 }
 
+/* "Focus is on the root" (Escape in the tree): the root header row gets the
+   same thin accent frame as a focused tree row, so the creation target of the
+   toolbar buttons is visible. Driven by the tree's onFocusRoot (DOM focus),
+   never by a click on the header itself. */
+.mdv-rootfolder__toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: -1px;
+}
+
 .mdv-rootfolder__label {
   flex: 1;
   min-width: 0;

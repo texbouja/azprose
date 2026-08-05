@@ -27,6 +27,9 @@ let {
   onCancelNew,
   treeVersion = 0,
   dirtyPaths = [] as string[],
+  onFocusChange,
+  pendingFocusPath = null,
+  onFocusAcknowledged,
 }: {
   path: string;
   activePath: string | null;
@@ -49,6 +52,13 @@ let {
   onCancelNew?: () => void;
   treeVersion?: number;
   dirtyPaths?: string[];
+  /** Forwarded to the inner tree — reports the focused item so the toolbar
+      can create in the focused folder / next to the focused file. */
+  onFocusChange?: (path: string | null, isFolder: boolean) => void;
+  /** Forwarded — focus target of the item just created (VS Code semantics). */
+  pendingFocusPath?: string | null;
+  /** Forwarded — clears the pending focus once it landed. */
+  onFocusAcknowledged?: () => void;
 } = $props();
 
 let t = $derived(getT($language));
@@ -56,6 +66,13 @@ let t = $derived(getT($language));
 let open = $state(true);
 let isDropTarget = $state(false);
 let name = $derived(basename(path));
+let rootToggleRef = $state<HTMLButtonElement>();
+
+// Escape in the tree reports rootPath as the creation target AND asks to move
+// the DOM focus here — the header button is the visible "root" of this tree.
+function focusRootHeader() {
+  rootToggleRef?.focus();
+}
 
 $effect(() => {
   if (newEntry && newEntry.parent === path && !open) open = true;
@@ -91,7 +108,13 @@ function onDrop(e: DragEvent) {
     ondragleave={onDragLeave}
     ondrop={onDrop}
   >
-    <button type="button" class="mdv-rootfolder__toggle" onclick={() => open = !open} title={path}>
+    <button
+      type="button"
+      class="mdv-rootfolder__toggle"
+      bind:this={rootToggleRef}
+      onclick={() => open = !open}
+      title={path}
+    >
       <span class="mdv-tree__chevron{open ? ' is-open' : ''}">
         <i class="wxi-chevron-right" style="font-size:12px"></i>
       </span>
@@ -138,6 +161,10 @@ function onDrop(e: DragEvent) {
       {onCancelNew}
       {treeVersion}
       {dirtyPaths}
+      {onFocusChange}
+      onFocusRoot={focusRootHeader}
+      {pendingFocusPath}
+      {onFocusAcknowledged}
     />
   {/if}
 </section>

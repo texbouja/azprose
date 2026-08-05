@@ -43,6 +43,9 @@ let {
   treeVersion = 0,
   dirtyPaths = [] as string[],
   onOpenCalendar,
+  onFocusChange,
+  pendingFocusPath = null,
+  onFocusAcknowledged,
 }: {
   open: boolean;
   rootPath: string | null;
@@ -79,6 +82,12 @@ let {
   treeVersion?: number;
   dirtyPaths?: string[];
   onOpenCalendar?: () => void;
+  /** Focused item of the active file tree → FileOpsManager.setTreeFocus. */
+  onFocusChange?: (path: string | null, isFolder: boolean) => void;
+  /** Forwarded — focus target of the item just created (VS Code semantics). */
+  pendingFocusPath?: string | null;
+  /** Forwarded — clears the pending focus once it landed. */
+  onFocusAcknowledged?: () => void;
 } = $props();
 
 let dragging = $state(false);
@@ -150,6 +159,9 @@ function stopResize(e: PointerEvent) {
           {onCancelNew}
           {treeVersion}
           {dirtyPaths}
+          {onFocusChange}
+          {pendingFocusPath}
+          {onFocusAcknowledged}
         />
       {:else if sidebarView.current === "journal"}
         <JournalView

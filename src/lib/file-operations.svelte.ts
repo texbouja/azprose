@@ -29,10 +29,33 @@ export class FileOpsManager {
   treeDirtyPaths = $state<string[]>([]);
   favorites = persistedScopedState<string[]>(STORAGE_KEYS.favorites, []);
 
-  activeDir = $derived.by(() => {
-    const ap = this.deps.getActivePath();
-    const rp = this.deps.getRootPath();
-    return ap ? dirname(ap) : (rp ?? "");
+  /** Tree focus, reported by the file tree (see fs-view/sidebar). Creation
+      follows the FOCUS, never the editor's active file (VS Code semantics):
+      focused folder → create inside it, focused file → create next to it,
+      nothing focused (or after Escape) → project root. */
+  focusedPath = $state<string | null>(null);
+  focusedIsDir = $state(false);
+
+  /** Path of the item just created by submitNew — the tree must focus it once
+      the re-listed parent makes it visible (VS Code semantics: after a
+      validated create, the created element gets the focus). Cleared by the
+      tree via acknowledgePendingFocus once the focus landed. */
+  pendingFocusPath = $state<string | null>(null);
+
+  acknowledgePendingFocus = () => {
+    this.pendingFocusPath = null;
+  };
+
+  setTreeFocus = (path: string | null, isFolder: boolean) => {
+    this.focusedPath = path;
+    this.focusedIsDir = isFolder;
+  };
+
+  /** Resolved creation target for the toolbar buttons and the ⌘N command. */
+  createDir = $derived.by(() => {
+    const fp = this.focusedPath;
+    if (fp) return this.focusedIsDir ? fp : dirname(fp);
+    return this.deps.getRootPath() ?? "";
   });
 
   constructor(private deps: FileOpsDeps) {}
@@ -48,11 +71,13 @@ export class FileOpsManager {
   };
 
   newFile = (dir?: string) => {
-    this.newEntry = { parent: dir ?? this.activeDir, kind: "file" };
+    this.pendingFocusPath = null; // a fresh create supersedes any stale pending focus
+    this.newEntry = { parent: dir ?? this.createDir, kind: "file" };
   };
 
   newFolder = (dir?: string) => {
-    this.newEntry = { parent: dir ?? this.activeDir, kind: "folder" };
+    this.pendingFocusPath = null;
+    this.newEntry = { parent: dir ?? this.createDir, kind: "folder" };
   };
 
   submitNew = async (parent: string, kind: "file" | "folder", name: string) => {
@@ -75,6 +100,7 @@ export class FileOpsManager {
       });
     }
     this.deps.onTreeChange(createdPath ? [createdPath] : []);
+    this.pendingFocusPath = createdPath;
   };
 
   cancelNew = () => { this.newEntry = null; };
