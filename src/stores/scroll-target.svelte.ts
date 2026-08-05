@@ -11,3 +11,8 @@ export function consumeScrollTarget(): string | null {
   _target = null;
   return h;
 }
+
+/** Clears a pending target WITHOUT consuming it (used after an immediate scroll). */
+export function clearScrollTarget(): void {
+  _target = null;
+}

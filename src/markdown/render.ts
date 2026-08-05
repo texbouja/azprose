@@ -9,6 +9,7 @@ import { readFile } from "@tauri-apps/plugin-fs";
 import type { Theme } from "@/lib/theme";
 import { wikilinkPlugin } from "./wikilinks";
 import { resolveTransclusions, type TransclusionRange } from "./transclusion";
+import { shiftRangesToSource, unshiftTransclusionLine } from "./transclusion-lines";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import { slugify } from "./slugify";
 import { parseColleYaml, stripColleSeparators, type ColleMeta } from "@/colles";
@@ -340,6 +341,10 @@ export async function renderMarkdown(
   if (filePath) {
     content = await resolveTransclusions(content, filePath, 0, new Set(), rootPath, ranges);
   }
+  // Ranges are computed in BODY coordinates (front matter already stripped);
+  // data-sline is stamped in ORIGINAL source coordinates (map[0] + fmOffset).
+  // Align them so markTranscludedBlocks can compare and unshift correctly.
+  shiftRangesToSource(ranges, fmLineCount);
 
   const h = await getHighlighter();
   const shikiTheme = THEMES[theme] ?? theme;
@@ -411,6 +416,12 @@ export async function resolveLocalImages(article: HTMLElement, filePath: string)
  * a transclusion range. If so, replace data-sline/data-eline with
  * data-transcluded-from + data-transcluded-line so double-click opens the
  * original source file at the correct line.
+ *
+ * Ranges are in ORIGINAL source coordinates (renderMarkdown shifted them by
+ * the front matter line count). Host blocks BELOW a range keep a data-sline
+ * shifted by the expansion ((end - start - 1) extra lines per range) — those
+ * are unshifted back to the true raw source line so inverse sync and the
+ * [data-sline] queries land on the right line even after a ![[…]].
  */
 export function markTranscludedBlocks(article: HTMLElement, ranges: TransclusionRange[]): void {
   if (ranges.length === 0) return;
@@ -424,6 +435,18 @@ export function markTranscludedBlocks(article: HTMLElement, ranges: Transclusion
       el.removeAttribute("data-eline");
       el.setAttribute("data-transcluded-from", range.filePath);
       el.setAttribute("data-transcluded-line", String(line - range.startLine));
+      continue;
+    }
+    // Host block at or below the first expansion — unshift the stamped lines.
+    if (line >= ranges[0].startLine) {
+      const adjusted = unshiftTransclusionLine(line, ranges);
+      if (adjusted !== line) {
+        el.setAttribute("data-sline", String(adjusted));
+        const eLine = Number(el.dataset.eline);
+        if (Number.isFinite(eLine)) {
+          el.setAttribute("data-eline", String(unshiftTransclusionLine(eLine, ranges)));
+        }
+      }
     }
   }
 }

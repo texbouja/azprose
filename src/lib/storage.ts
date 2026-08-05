@@ -20,6 +20,7 @@ export const STORAGE_KEYS = {
   sidebarOpen: "mdview.sidebar.open",
   sidebarWidth: "mdview.sidebar.width",
   sidebarView: "mdview.sidebar.view",
+  sidebarSections: "mdview.sidebar.sections",
   lastFile: "mdview.lastFile",
   welcomed: "mdview.welcomed",
   lastSeenVersion: "mdview.lastSeenVersion",

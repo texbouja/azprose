@@ -19,6 +19,8 @@ import {
   mathFormulaTag,
 } from "@prosemark/core";
 import type { StreamParser } from "@codemirror/language";
+import type { CompletionSource } from "@codemirror/autocomplete";
+import type { Extension } from "@codemirror/state";
 
 const mathHighlight = syntaxHighlighting(HighlightStyle.define([
   { tag: mathDelimiterTag, color: "var(--syntax-keyword)" },
@@ -48,7 +50,10 @@ function csvParser(delimiter = ","): StreamParser<CsvState> {
   };
 }
 
-export function languageFromExt(ext: string): LanguageSupport {
+export function languageFromExt(
+  ext: string,
+  mdCompletions: CompletionSource[] = [],
+): LanguageSupport {
   switch (ext) {
     case "md":
     case "markdown":
@@ -60,7 +65,16 @@ export function languageFromExt(ext: string): LanguageSupport {
             : null,
         extensions: [mathMarkdownSyntaxExtension],
       });
-      return new LanguageSupport(md.language, [md.support, mathHighlight]);
+      const extras: Extension[] = [md.support, mathHighlight];
+      // Register extra completion sources through languageData (a cumulative
+      // facet) — the LSP client registers its own `autocomplete` source the
+      // same way, and CodeMirror merges all languageData sources into one
+      // popup. NEVER use `autocompletion({ override })` here: multiple
+      // `override` arrays throw a "Config merge conflict".
+      if (mdCompletions.length > 0) {
+        extras.push(md.language.data.of(mdCompletions.map((src) => ({ autocomplete: src }))));
+      }
+      return new LanguageSupport(md.language, extras);
     }
     case "html":
     case "htm":

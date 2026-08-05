@@ -53,6 +53,20 @@ export type CommandActions = {
   oxidYesterday: () => void;
   oxidTomorrow: () => void;
   oxidJump: () => void;
+  oxidNextMonday: () => void;
+  oxidNextTuesday: () => void;
+  oxidNextWednesday: () => void;
+  oxidNextThursday: () => void;
+  oxidNextFriday: () => void;
+  oxidNextSaturday: () => void;
+  oxidNextSunday: () => void;
+  oxidLastMonday: () => void;
+  oxidLastTuesday: () => void;
+  oxidLastWednesday: () => void;
+  oxidLastThursday: () => void;
+  oxidLastFriday: () => void;
+  oxidLastSaturday: () => void;
+  oxidLastSunday: () => void;
   isMdActive: boolean;
 
   // pdf export
@@ -91,6 +105,9 @@ export type CommandActions = {
 
   // SVAR Calendar (comparison)
   openSvarCalendar: () => void;
+
+  // Backlinks
+  openLinks: () => void;
 
   // Spreadsheet
   openSpreadsheet: () => void;
@@ -423,6 +440,132 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       action: actions.oxidJump,
     },
     {
+      id: "oxid-next-monday",
+      label: "Open next monday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "next", "monday", "journal"],
+      action: actions.oxidNextMonday,
+    },
+    {
+      id: "oxid-next-tuesday",
+      label: "Open next tuesday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "next", "tuesday", "journal"],
+      action: actions.oxidNextTuesday,
+    },
+    {
+      id: "oxid-next-wednesday",
+      label: "Open next wednesday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "next", "wednesday", "journal"],
+      action: actions.oxidNextWednesday,
+    },
+    {
+      id: "oxid-next-thursday",
+      label: "Open next thursday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "next", "thursday", "journal"],
+      action: actions.oxidNextThursday,
+    },
+    {
+      id: "oxid-next-friday",
+      label: "Open next friday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "next", "friday", "journal"],
+      action: actions.oxidNextFriday,
+    },
+    {
+      id: "oxid-next-saturday",
+      label: "Open next saturday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "next", "saturday", "journal"],
+      action: actions.oxidNextSaturday,
+    },
+    {
+      id: "oxid-next-sunday",
+      label: "Open next sunday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "next", "sunday", "journal"],
+      action: actions.oxidNextSunday,
+    },
+    {
+      id: "oxid-last-monday",
+      label: "Open last monday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "last", "monday", "journal"],
+      action: actions.oxidLastMonday,
+    },
+    {
+      id: "oxid-last-tuesday",
+      label: "Open last tuesday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "last", "tuesday", "journal"],
+      action: actions.oxidLastTuesday,
+    },
+    {
+      id: "oxid-last-wednesday",
+      label: "Open last wednesday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "last", "wednesday", "journal"],
+      action: actions.oxidLastWednesday,
+    },
+    {
+      id: "oxid-last-thursday",
+      label: "Open last thursday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "last", "thursday", "journal"],
+      action: actions.oxidLastThursday,
+    },
+    {
+      id: "oxid-last-friday",
+      label: "Open last friday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "last", "friday", "journal"],
+      action: actions.oxidLastFriday,
+    },
+    {
+      id: "oxid-last-saturday",
+      label: "Open last saturday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "last", "saturday", "journal"],
+      action: actions.oxidLastSaturday,
+    },
+    {
+      id: "oxid-last-sunday",
+      label: "Open last sunday's daily note",
+      hint: "markdown-oxide",
+      icon: "wxi-sun",
+      category: "view",
+      keywords: ["daily", "note", "last", "sunday", "journal"],
+      action: actions.oxidLastSunday,
+    },
+    {
       id: "open-journal-calendar",
       label: "Open journal calendar",
       hint: "journal",
@@ -448,6 +591,16 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       category: "calendar",
       keywords: ["calendar", "schedule", "event"],
       action: actions.openCalendarEditor,
+    },
+    // ── Links (backlinks + tags) ─────────────────────────────
+    {
+      id: "open-links",
+      label: t("command.openLinks"),
+      hint: t("command.openLinksHint"),
+      icon: "wxi-link",
+      category: "view",
+      keywords: ["links", "liens", "backlinks", "entrants", "incoming", "tags", "références", "references"],
+      action: actions.openLinks,
     },
     // ── Spreadsheet ─────────────────────────────────────────
     {

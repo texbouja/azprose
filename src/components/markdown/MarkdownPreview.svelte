@@ -10,6 +10,7 @@ import {
   updateCalloutIcons,
   stripAutoCalloutTitles,
   postRenderDom,
+  slugify,
 } from "@/markdown";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { subscribeMode, type Theme } from "@/lib/theme";
@@ -18,8 +19,8 @@ import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { previewSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PreviewStyle } from "@/stores/markdown-settings.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
-import { consumeScrollTarget } from "@/stores/scroll-target.svelte";
-import { consumeSyncLine } from "@/stores/sync-line.svelte";
+import { clearScrollTarget, consumeScrollTarget } from "@/stores/scroll-target.svelte";
+import { consumeSyncLine, setSyncLine } from "@/stores/sync-line.svelte";
 
 let {
   value = "",
@@ -228,10 +229,11 @@ $effect(() => {
       }
     }
 
-    // Scroll to editor cursor position after save
-    const syncLine = consumeSyncLine();
+    // Scroll to editor cursor position after save (line-bound pending jump —
+    // guarded by file path so an unrelated render never consumes it).
+    const syncLine = consumeSyncLine(filePath);
     if (syncLine != null && articleEl) {
-      const target = articleEl.querySelector<HTMLElement>(`[data-sline="${syncLine}"]`);
+      const target = findLineTarget(articleEl, syncLine);
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   });
@@ -243,6 +245,68 @@ $effect(() => {
 });
 
 onDestroy(() => clearRenderDiagnostics());
+
+// ── TOC jump: scroll to a source line on demand (sidebar TOC click) ───────
+// The editor jump is handled by app.svelte (azprose:jump-to-file). This
+// listener syncs the OPEN preview without waiting for a re-render (a TOC
+// click does not change `value`, so the syncLine consumed in the render
+// effect would never fire). Filtered by filePath so a preview of another
+// file stays put. When the block already exists we scroll and clear the
+// pending syncLine to avoid a double scroll at the next render.
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
+}
+
+/**
+ * Trouve le bloc rendu correspondant à une ligne source 0-based : le bloc qui
+ * CONTIENT la ligne (data-sline <= line < data-eline — le curseur est souvent
+ * au milieu d'un paragraphe, pas sur sa première ligne), sinon le bloc
+ * précédent le plus proche (ligne vide, ou curseur dans un bloc transclus dont
+ * le data-sline a été remplacé par data-transcluded-line). Les data-sline sont
+ * croissants dans l'ordre du document (valeurs source dés-décalées) → break.
+ */
+function findLineTarget(el: HTMLElement, line: number): HTMLElement | null {
+  let best: HTMLElement | null = null;
+  for (const b of el.querySelectorAll<HTMLElement>("[data-sline]")) {
+    const s = Number(b.dataset.sline);
+    if (!Number.isFinite(s)) continue;
+    if (s > line) break; // tout ce qui suit est sous le curseur
+    const e = Number(b.dataset.eline);
+    if (Number.isFinite(e) && e > line) return b; // le bloc contient la ligne
+    best = b;
+  }
+  return best; // curseur après le dernier bloc (ou aucun bloc)
+}
+
+$effect(() => {
+  // Read both runes synchronously so Svelte tracks them as dependencies —
+  // the listener closure would otherwise keep stale values forever.
+  const fp = filePath;
+  const el = articleEl;
+  const onJump = (e: Event) => {
+    const { path, line, heading } = (e as CustomEvent<{ path: string; line?: number; heading?: string }>).detail;
+    if (!path || !fp) return;
+    if (normalizePath(fp) !== normalizePath(path)) return;
+    // Prefer the heading id: immune to transclusion line shifts (data-sline of
+    // blocks below a ![[…]] expansion is shifted). Fall back to the 0-based
+    // data-sline for jumps without a heading (backlinks, tags, dbl-click).
+    let target: HTMLElement | null = null;
+    if (heading) {
+      target = el?.querySelector(`#${CSS.escape(slugify(heading))}`) ?? null;
+    }
+    if (!target && line != null) {
+      target = el ? findLineTarget(el, line) : null;
+    }
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      // The event scrolled already — cancel the pending render-time syncs.
+      setSyncLine(null);
+      clearScrollTarget();
+    }
+  };
+  window.addEventListener("azprose:preview-jump-line", onJump);
+  return () => window.removeEventListener("azprose:preview-jump-line", onJump);
+});
 
 $effect(() => {
   if (!articleEl) return;
@@ -325,14 +389,16 @@ $effect(() => {
     bind:this={articleEl}
     class="mdv-prose"
     ondblclick={(e) => {
-      // Transcluded block: open the original source file at the source line
+      // Transcluded block: open the original source file at the source line.
+      // data-transcluded-line is a 0-based offset; azprose:jump-to-file
+      // expects a 1-based source line.
       const transcluded = (e.target as HTMLElement).closest<HTMLElement>("[data-transcluded-from]");
       if (transcluded) {
         const path = transcluded.dataset.transcludedFrom;
         const line = Number(transcluded.dataset.transcludedLine);
         if (path) {
           window.dispatchEvent(new CustomEvent("azprose:jump-to-file", {
-            detail: { path, line: Number.isFinite(line) ? line : undefined },
+            detail: { path, line: Number.isFinite(line) ? line + 1 : undefined },
           }));
         }
         return;

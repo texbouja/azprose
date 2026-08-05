@@ -33,7 +33,6 @@ let {
   onToggleRenderMode,
   onToggleColles,
   onToggleSideColles,
-  collesOn = false,
   onToggleFullscreen,
   viewerFullscreenOn = false,
   onViewerFullscreen,
@@ -67,7 +66,6 @@ let {
   onToggleRenderMode?: () => void;
   onToggleColles?: () => void;
   onToggleSideColles?: () => void;
-  collesOn?: boolean;
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
@@ -123,7 +121,6 @@ function startResize(e: PointerEvent) {
     {onLatexBuild}
     {onExportPdf}
     {onToggleColles}
-    {collesOn}
     {onTabDoubleClick}
   />
   {#if sideVisible}

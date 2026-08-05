@@ -4,6 +4,7 @@ import type { NewEntry } from "@/components/files/file-tree.svelte";
 
 import FsView from "@/components/files/fs-view.svelte";
 import JournalView from "@/components/sidebar/journal-view.svelte";
+import LinksView from "@/components/links/LinksView.svelte";
 import { sidebarView } from "@/stores/sidebar-view.svelte";
 
 let {
@@ -11,6 +12,7 @@ let {
   rootPath,
   folders,
   activePath,
+  activeSource,
   width,
   onWidthChange,
   onAddFolder,
@@ -46,6 +48,7 @@ let {
   rootPath: string | null;
   folders: readonly string[];
   activePath: string | null;
+  activeSource: string;
   width: number;
   onWidthChange: (next: number) => void;
   onAddFolder: () => void;
@@ -157,6 +160,8 @@ function stopResize(e: PointerEvent) {
           {onOpenCalendar}
           {onDeleteEntry}
         />
+      {:else if sidebarView.current === "links"}
+        <LinksView filePath={activePath} source={activeSource} />
       {/if}
     </div>
   </div>

@@ -46,6 +46,7 @@ import Breadcrumb from "@/components/chrome/Breadcrumb.svelte";
 import StatusBar from "@/components/chrome/StatusBar.svelte";
 import SidebarContainer from "@/components/sidebar/sidebar-container.svelte";
 import ActivityBar from "@/components/sidebar/activity-bar.svelte";
+import { sidebarView } from "@/stores/sidebar-view.svelte";
 import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
@@ -53,7 +54,7 @@ import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
-import { executeOxideCommand } from "@/lib/lsp/markdown-oxide";
+import { executeOxideCommand, notifyMarkdownOxideFileChanged } from "@/lib/lsp/markdown-oxide";
 import { writeText } from "@/lib/files";
 import { writeBackColleKeys } from "@/colles/write-back";
 import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
@@ -84,6 +85,7 @@ import { setRootPath, getRootPath } from "@/stores/root-path.svelte";
 import { setActivePath } from "@/stores/active-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
+import { getCursorLine } from "@/stores/cursor-line.svelte";
 import { getCalendarStore } from "@/stores/calendar-store.svelte";
 import { navPush, navBack, navForward, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
 import {
@@ -516,7 +518,7 @@ $effect(() => {
 
 $effect(() => {
   const onJumpFile = async (e: Event) => {
-    const { path, line } = (e as CustomEvent<{ path: string; line?: number }>).detail;
+    const { path, line, heading } = (e as CustomEvent<{ path: string; line?: number; heading?: string }>).detail;
     if (!path) return;
     // Normalize path (same as handleInverseSync)
     const normFile = path.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
@@ -526,9 +528,28 @@ $effect(() => {
     } else {
       await pm.openInMain(normFile, { silent: true, preview: true });
     }
-    if (line != null) {
-      jumpToLine = line;
-      handleSetEditorMode("raw");
+    if (line != null || heading != null) {
+      // Line contract of azprose:jump-to-file is 1-BASED (TOC i+1, LSP +1).
+      // jumpToLine state and data-sline are 0-BASED (editor does line+1).
+      const line0 = line != null ? line - 1 : undefined;
+      if (line0 != null) {
+        jumpToLine = line0;
+        handleSetEditorMode("raw");
+      }
+      // Sync the side preview when it shows this file. Heading-id scroll is
+      // immune to transclusion line shifts, so prefer it; the line-based
+      // syncLine remains the fallback for jumps without a heading (backlinks,
+      // tags, transcluded dbl-click). The pending store covers a preview still
+      // rendering; the event covers an already-rendered preview (immediate
+      // scroll that clears the pending value).
+      if (heading != null) {
+        setScrollTarget(heading);
+      } else if (line0 != null) {
+        setSyncLine(line0, normFile);
+      }
+      window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", {
+        detail: { path: normFile, line: line0, heading },
+      }));
     }
   };
   window.addEventListener("azprose:jump-to-file", onJumpFile);
@@ -754,6 +775,24 @@ const handleSave = async () => {
     saveStatus = "saved";
     clearDraft(activePath);
     void trackMtime(activePath);
+    if (extFromPath(activePath) === "md") {
+      // Fraîcheur de la vue Links (backlinks + tags) : markdown-oxide
+      // reconstruit son index vault sur didChangeWatchedFiles (traitement
+      // séquentiel sur le même flux — la requête envoyée ensuite voit l'index
+      // à jour), puis les panneaux Backlinks et Tags rechargent via
+      // l'événement.
+      notifyMarkdownOxideFileChanged(activePath);
+      window.dispatchEvent(new CustomEvent("azprose:links-refresh"));
+      // La vue Preview (side) suit la position du curseur de l'éditeur après
+      // un save. La ligne est 0-based (même convention que data-sline) ; si
+      // aucun preview de ce fichier n'est ouvert, aucun écouteur ne réagit.
+      const cursorLine = getCursorLine(activePath);
+      if (cursorLine != null) {
+        window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", {
+          detail: { path: activePath, line: cursorLine },
+        }));
+      }
+    }
   } catch (err) {
     console.error("azprose: save failed", err);
     saveStatus = "dirty";
@@ -1062,16 +1101,6 @@ const handleToggleSideColles = () => {
   _panelVersion++;
 };
 
-// État pressé du bouton main : la vue colles du fichier main actif est ouverte.
-// (lit _panelVersion : les champs de PanelState ne sont pas $state, la
-// réactivité passe par le bump manuel — cf. activePath/tabs plus haut)
-const collesOn = $derived.by(() => {
-  _panelVersion;
-  if (!activePath) return false;
-  const target = normPath(activePath);
-  return pm.side.tabs.find((t: any) => normPath(t.path) === target)?.renderMode === "colle";
-});
-
 // État du dialogue d'envoi des rapports de colles (ouvert par azprose:colle-send).
 let colleSendOpen = $state(false);
 let colleSendPath = $state<string | null>(null);
@@ -1114,6 +1143,18 @@ $effect(() => {
   window.addEventListener("azprose:colle-send", onColleSend);
   return () => window.removeEventListener("azprose:colle-send", onColleSend);
 });
+
+// Bascule de la VUE sidebar Links (commande palette open-links). Convention
+// VSCode : si la vue est déjà active et la sidebar ouverte, on la ferme ;
+// sinon on active la vue et on ouvre la sidebar.
+const toggleLinksView = () => {
+  if (sidebarView.current === "links" && sidebarOpen.current) {
+    handleToggleSidebar();
+  } else {
+    sidebarView.current = "links";
+    if (!sidebarOpen.current) handleToggleSidebar();
+  }
+};
 
 /**
  * Impression des planches de colles (TabActions → azprose:colle-print).
@@ -1248,6 +1289,20 @@ let cmds = $derived(
     oxidYesterday: () => executeOxideCommand("yesterday"),
     oxidTomorrow: () => executeOxideCommand("tomorrow"),
     oxidJump: () => executeOxideCommand("jump"),
+    oxidNextMonday: () => executeOxideCommand("next monday"),
+    oxidNextTuesday: () => executeOxideCommand("next tuesday"),
+    oxidNextWednesday: () => executeOxideCommand("next wednesday"),
+    oxidNextThursday: () => executeOxideCommand("next thursday"),
+    oxidNextFriday: () => executeOxideCommand("next friday"),
+    oxidNextSaturday: () => executeOxideCommand("next saturday"),
+    oxidNextSunday: () => executeOxideCommand("next sunday"),
+    oxidLastMonday: () => executeOxideCommand("last monday"),
+    oxidLastTuesday: () => executeOxideCommand("last tuesday"),
+    oxidLastWednesday: () => executeOxideCommand("last wednesday"),
+    oxidLastThursday: () => executeOxideCommand("last thursday"),
+    oxidLastFriday: () => executeOxideCommand("last friday"),
+    oxidLastSaturday: () => executeOxideCommand("last saturday"),
+    oxidLastSunday: () => executeOxideCommand("last sunday"),
     isMdActive: activePath != null && extFromPath(activePath) === "md",
     exportPdf: handleExportPdf,
     isLatexActive: activePath != null && extFromPath(activePath) === "tex",
@@ -1292,6 +1347,7 @@ let cmds = $derived(
     openSvarCalendar: () => {
       pm.openCustomInSide("svar-calendar", "Calendar");
     },
+    openLinks: toggleLinksView,
     openSpreadsheet: handleOpenSpreadsheet,
     calendarExport: async () => {
       const { exportCalendar } = await import("@/lib/calendar-persistence");
@@ -1361,6 +1417,7 @@ let cmds = $derived(
       {rootPath}
       folders={folders.current}
       {activePath}
+      activeSource={source}
       width={sidebarWidth.current}
       onWidthChange={(next) => sidebarWidth.current = next}
       onAddFolder={handleAddFolder}
@@ -1435,7 +1492,6 @@ let cmds = $derived(
           onToggleRenderMode={handleToggleSideRenderMode}
           onToggleColles={handleToggleColles}
           onToggleSideColles={handleToggleSideColles}
-          collesOn={collesOn}
           onToggleFullscreen={toggleFullscreen}
           {viewerFullscreenOn}
           onViewerFullscreen={toggleViewerFullscreen}

@@ -11,10 +11,11 @@ let {
 } = $props();
 let t = $derived(getT($language));
 
-const items: { view: SidebarView; icon: string; label: string }[] = [
+let items = $derived([
   { view: "files",    icon: "wxi-folder",     label: "Explanateur" },
   { view: "journal",  icon: "wxi-calendar",   label: "Journal" },
-];
+  { view: "links",    icon: "wxi-link",       label: t("links.title") },
+] as { view: SidebarView; icon: string; label: string }[]);
 
 function setView(view: SidebarView) {
   if (sidebarView.current === view && isOpen) {

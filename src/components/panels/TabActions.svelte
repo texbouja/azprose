@@ -25,7 +25,6 @@ let {
   onExportPdf,
   onToggleRenderMode,
   onToggleColles,
-  collesOn = false,
   onToggleFullscreen,
   onCommand,
 }: {
@@ -39,7 +38,6 @@ let {
   onExportPdf?: () => void;
   onToggleRenderMode?: () => void;
   onToggleColles?: () => void;
-  collesOn?: boolean;
   onToggleFullscreen?: () => void;
   onCommand?: (cmd: string) => void;
 } = $props();
@@ -137,15 +135,6 @@ let mainItems = $derived.by(() => {
         type: (renderMode === "preview" || renderMode === "presentation") ? "pressed" : "",
         handler: () => onSetEditorMode?.("preview") },
     ];
-    // Daily notes uniquement : bouton « Colles » → vue planches dans le side panel
-    if (isDaily) {
-      items.push(
-        { comp: "separator" },
-        { comp: "button", icon: "wxi-star", text: t("tabs.colles"),
-          type: collesOn ? "pressed" : "",
-          handler: () => onToggleColles?.() },
-      );
-    }
     return items;
   }
   if (isTex) return [
