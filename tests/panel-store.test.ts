@@ -145,3 +145,60 @@ test("select triggers onSessionChange", () => {
   expect(data).not.toBeNull();
   expect(data.activePath).toBe("/b.md");
 });
+
+// ── Preview tab ↔ rendered file association ────────────────────────────────
+// The preview tab is not marked itself — the RENDERED file is. open() with
+// `preview: true` must reuse the existing preview tab (no fresh, unlinked tab),
+// and opening a path that is already open must only select it (the association
+// survives navigation — never a duplicate tab that would break the pairing).
+// The `existing` branch returns before the FS read, so these are testable
+// without Tauri; the tab-reuse branch (no FS) is not (readText fails in bun).
+
+test("open with preview on an already-open path keeps the same tab (association survives)", async () => {
+  const p = new PanelState("test");
+  p.tabs = [
+    { id: "pv", title: "a.md", path: "/a.md", source: "old", savedContent: "old", preview: true },
+    { id: "main", title: "b.md", path: "/b.md", source: "b", savedContent: "b" },
+  ];
+  p.activeTabId = "main";
+  await p.open("/a.md", { preview: true });
+  expect(p.tabs).toHaveLength(2);
+  expect(p.activeTabId).toBe("pv");
+  expect(p.tabs.find((t: any) => t.id === "pv")?.preview).toBe(true);
+});
+
+test("open without preview on an already-open preview tab selects it and drops the preview flag", async () => {
+  const p = new PanelState("test");
+  p.tabs = [
+    { id: "pv", title: "a.md", path: "/a.md", source: "old", savedContent: "old", preview: true },
+  ];
+  p.activeTabId = "pv";
+  await p.open("/a.md");
+  expect(p.tabs).toHaveLength(1);
+  expect(p.activeTabId).toBe("pv");
+  expect(p.tabs[0].preview).toBe(false);
+});
+
+test("open without preview on a path already open in a normal tab just selects it", async () => {
+  const p = new PanelState("test");
+  p.tabs = [
+    { id: "a", title: "a.md", path: "/a.md", source: "a", savedContent: "a" },
+    { id: "b", title: "b.md", path: "/b.md", source: "b", savedContent: "b" },
+  ];
+  p.activeTabId = "b";
+  await p.open("/a.md");
+  expect(p.tabs).toHaveLength(2);
+  expect(p.activeTabId).toBe("a");
+  expect(p.tabs[0].preview).toBeFalsy();
+});
+
+test("open with preview on a path already open in a normal tab selects it without marking it preview", async () => {
+  const p = new PanelState("test");
+  p.tabs = [
+    { id: "a", title: "a.md", path: "/a.md", source: "a", savedContent: "a" },
+  ];
+  p.activeTabId = "a";
+  await p.open("/a.md", { preview: true });
+  expect(p.tabs).toHaveLength(1);
+  expect(p.tabs[0].preview).toBeFalsy();
+});

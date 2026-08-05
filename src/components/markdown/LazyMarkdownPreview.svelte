@@ -9,7 +9,7 @@ let {
 }: {
   value?: string;
   filePath?: string | null;
-  onJumpToLine?: (line: number) => void;
+  onJumpToLine?: (line: number, path?: string) => void;
 } = $props();
 
 let t = $derived(getT($language));

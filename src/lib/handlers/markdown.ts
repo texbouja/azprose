@@ -40,47 +40,64 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       tick()
     }
 
-    // wikilink navigation from preview
+    // wikilink navigation from preview: in-place (re-uses the preview tab and
+    // re-associates it with the rendered file) unless Ctrl/Cmd+click, which
+    // opens a NEW tab via azprose:wikilink-open-new.
     void (async () => {
       const { resolveWikilink } = await import("@/lib/lsp/markdown-oxide")
       const { walkSupportedTextFiles } = await import("@/lib/files")
+
+      const resolveTarget = async (detail: { path?: string; target?: string }): Promise<string | null> => {
+        if (detail.path) return detail.path
+        const target = detail.target
+        if (!target) return null
+        const currentPath = ctx.activePath()
+        const sourceText = ctx.source()
+        if (currentPath && extFromPath(currentPath) === "md") {
+          const resolved = await resolveWikilink(currentPath, sourceText, target)
+          if (resolved) return resolved
+        }
+        const root = ctx.rootPath()
+        if (!root) return null
+        const files = await walkSupportedTextFiles(root)
+        const match = files.find((f) => {
+          const dot = f.name.lastIndexOf(".")
+          const base = dot > 0 ? f.name.slice(0, dot) : f.name
+          return base === target
+        })
+        return match?.path ?? null
+      }
+
       const onWikilinkNavigate = (e: Event) => {
         const detail = (e as CustomEvent).detail as { path?: string; target?: string; heading?: string | null }
         const heading = detail.heading ?? null
-
-        const resolve = (path: string) => {
+        void (async () => {
+          const path = await resolveTarget(detail)
+          if (!path) return
+          // Navigate IN PLACE: reuse the preview tab (preview: true), re-associate
+          // it with the rendered file. The tab is never a fresh, unlinked tab.
           if (ctx.sideActivePath()) ctx.navPush(ctx.sideActivePath()!)
           if (heading) ctx.setScrollTarget(heading)
           ctx.setSideVisible(true)
-          ctx.pm.openInSide(path).catch((err: any) => console.error("[azprose] wikilink open failed", err))
-        }
-        if (detail.path) {
-          resolve(detail.path)
-          return
-        }
-        const target = detail.target
-        if (!target) return
-
-        void (async () => {
-          const currentPath = ctx.activePath()
-          const sourceText = ctx.source()
-          if (currentPath && extFromPath(currentPath) === "md") {
-            const resolved = await resolveWikilink(currentPath, sourceText, target)
-            if (resolved) { resolve(resolved); return }
-          }
-          const root = ctx.rootPath()
-          if (!root) return
-          const files = await walkSupportedTextFiles(root)
-          const match = files.find((f) => {
-            const dot = f.name.lastIndexOf(".")
-            const base = dot > 0 ? f.name.slice(0, dot) : f.name
-            return base === target
-          })
-          if (match) resolve(match.path)
+          ctx.pm.openInSide(path, { preview: true }).catch((err: any) => console.error("[azprose] wikilink open failed", err))
         })()
       }
       window.addEventListener("azprose:wikilink-navigate", onWikilinkNavigate)
       cleanups.push(() => window.removeEventListener("azprose:wikilink-navigate", onWikilinkNavigate))
+
+      // Ctrl/Cmd+click: open in a NEW tab (dedup handled by PanelState.open —
+      // an already-open tab is activated, not duplicated).
+      const onWikilinkOpenNew = (e: Event) => {
+        const detail = (e as CustomEvent).detail as { path?: string; target?: string; heading?: string | null }
+        void (async () => {
+          const path = await resolveTarget(detail)
+          if (!path) return
+          ctx.openFileInTab(path, { silent: true }).catch((err: any) => console.error("[azprose] wikilink open-new failed", err))
+          if (detail.heading) ctx.setScrollTarget(detail.heading)
+        })()
+      }
+      window.addEventListener("azprose:wikilink-open-new", onWikilinkOpenNew)
+      cleanups.push(() => window.removeEventListener("azprose:wikilink-open-new", onWikilinkOpenNew))
     })()
 
     // PDF rect navigation from preview

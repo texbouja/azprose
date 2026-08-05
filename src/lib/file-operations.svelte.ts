@@ -66,8 +66,11 @@ export class FileOpsManager {
     if (file) await this.deps.onOpenFile(file);
   };
 
-  selectFile = (path: string, permanent?: boolean) => {
-    this.deps.onOpenFile(path, { preview: !permanent });
+  selectFile = (path: string) => {
+    // Simplified rule: a click on a text file in the FileTree always opens it
+    // in an editor tab (dedup handled by PanelState.open — already-open tabs
+    // are activated). No more preview/reuse semantics for tree clicks.
+    this.deps.onOpenFile(path);
   };
 
   newFile = (dir?: string) => {

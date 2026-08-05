@@ -53,7 +53,7 @@
 }: {
     rootPath: string;
     activePath: string | null;
-    onSelect: (path: string, permanent?: boolean) => void;
+    onSelect: (path: string) => void;
     onMove?: (src: string, dstParent: string) => void;
     onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
     stagedPaths?: readonly string[];
@@ -153,7 +153,7 @@
       getItemName: (item) => item.getItemData()?.name ?? basename(item.getId()),
       isItemFolder: (item) => item.getItemData()?.isDir ?? false,
       onPrimaryAction: (item) => {
-        if (!item.isFolder()) onSelect(item.getId(), false);
+        if (!item.isFolder()) onSelect(item.getId());
       },
       // File-system moves only: no sibling reordering, no foreign (OS) drops.
       canReorder: false,
@@ -453,7 +453,6 @@
         class="mdv-tree__row mdv-tree__row--file{activePath === item.getId() ? ' is-active' : ''}{stagedPaths.includes(item.getId()) ? ' is-staged' : ''}{item.isSelected() ? ' is-selected' : ''}{onToggleFavorite ? ' has-fav' : ''}"
         style="padding-left:{12 + (item.getItemMeta().level + 1) * 12}px"
         oncontextmenu={(e) => handleRowContextMenu(e, item)}
-        ondblclick={() => onSelect(item.getId(), true)}
         data-path={item.getId()}
         data-active={activePath === item.getId() ? "" : undefined}
         title={item.getId()}

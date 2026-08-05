@@ -29,7 +29,7 @@ let {
 }: {
   value?: string;
   filePath?: string | null;
-  onJumpToLine?: (line: number) => void;
+  onJumpToLine?: (line: number, path?: string) => void;
 } = $props();
 
 let articleEl: HTMLElement | undefined = $state();
@@ -335,6 +335,17 @@ $effect(() => {
     if (a.classList.contains("wikilink")) {
       const fullpath = a.getAttribute("data-wikilink-fullpath");
       const heading = a.getAttribute("data-wikilink-heading");
+      // Ctrl/Cmd+click = open in a NEW tab (editor for .md) instead of
+      // navigating the preview in place. The deduplication ("s'il n'est pas
+      // déjà ouvert") lives in PanelState.open — an existing tab is activated.
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const target = a.getAttribute("data-wikilink-target");
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-open-new", {
+          detail: { path: fullpath ?? undefined, target: target ?? undefined, heading },
+        }));
+        return;
+      }
       if (fullpath) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading } }));
@@ -389,27 +400,34 @@ $effect(() => {
     bind:this={articleEl}
     class="mdv-prose"
     ondblclick={(e) => {
-      // Transcluded block: open the original source file at the source line.
-      // data-transcluded-line is a 0-based offset; azprose:jump-to-file
-      // expects a 1-based source line.
+      // Transcluded block: jump to the original source file at the source
+      // line — the .md source IS opened in the editor (forced open, user
+      // rule), but always the TRANSCLUDED file, never an arbitrary active
+      // tab. data-transcluded-line is a 0-based offset and
+      // azprose:jump-to-line is 0-based too.
       const transcluded = (e.target as HTMLElement).closest<HTMLElement>("[data-transcluded-from]");
       if (transcluded) {
         const path = transcluded.dataset.transcludedFrom;
         const line = Number(transcluded.dataset.transcludedLine);
         if (path) {
-          window.dispatchEvent(new CustomEvent("azprose:jump-to-file", {
-            detail: { path, line: Number.isFinite(line) ? line + 1 : undefined },
+          window.dispatchEvent(new CustomEvent("azprose:jump-to-line", {
+            detail: { path, line: Number.isFinite(line) ? line : undefined },
           }));
         }
         return;
       }
-      // Normal inverse search: jump to line in current file
+      // Normal inverse search: jump to line in current file. The event carries
+      // the path of the RENDERED file (this preview tab's path — re-associated
+      // on every navigation), so app.svelte opens THAT .md in the editor
+      // (forced open, user rule) — never the tab that happens to be active.
       const block = (e.target as HTMLElement).closest<HTMLElement>("[data-sline]");
       if (!block) return;
       const line = Number(block.dataset.sline);
       if (Number.isFinite(line)) {
-        onJumpToLine?.(line);
-        window.dispatchEvent(new CustomEvent("azprose:jump-to-line", { detail: line }));
+        onJumpToLine?.(line, filePath ?? undefined);
+        window.dispatchEvent(new CustomEvent("azprose:jump-to-line", {
+          detail: { path: filePath, line },
+        }));
       }
     }}
   ></article>

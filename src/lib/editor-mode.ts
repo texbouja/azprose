@@ -140,17 +140,21 @@ export async function inverseSync(ctx: EditorModeDeps, file: string, line: numbe
   setEditorMode(ctx, "raw");
 }
 
-export function jumpToLine(ctx: EditorModeDeps, line: number) {
-  // Inverse search: ensure the side panel's previewed file is active in the main panel
-  // before jumping. Without this, the jump lands in whichever file happens to be
-  // active in the main panel — not the one the user double-clicked in the preview.
-  const sidePath = ctx.pm.side.activeTab?.path;
-  if (sidePath) {
-    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
-    const target = norm(sidePath);
-    const mainTab = ctx.pm.main.tabs.find(t => norm(t.path) === target);
+export async function jumpToLine(ctx: EditorModeDeps, line: number, path?: string | null) {
+  // Double-click in the preview: the jump targets the file that is RENDERED
+  // (the preview tab's path — the tab is re-associated on every navigation),
+  // never the file active in the main panel. The .md IS opened if it isn't
+  // already in the editor (forced open — user rule), but ALWAYS the rendered
+  // file, never an arbitrary active tab.
+  const target = path ?? ctx.pm.side.activeTab?.path;
+  if (target) {
+    const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
+    const normTarget = norm(target);
+    const mainTab = ctx.pm.main.tabs.find(t => norm(t.path) === normTarget);
     if (mainTab) {
       ctx.pm.main.select(mainTab.id);
+    } else {
+      await ctx.pm.openInMain(normTarget, { silent: true, preview: true }).catch(() => {});
     }
   }
   ctx.setJumpToLine(line);

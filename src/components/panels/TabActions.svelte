@@ -10,6 +10,7 @@ import { journalSettings } from "@/stores/journal-settings.svelte";
 import { isDailyNotePath } from "@/stores/journal-store.svelte";
 import SlideModeRadio from "./SlideModeRadio.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
+import { navHistory, getNavActions } from "@/stores/nav-history.svelte";
 
 // Register SlideModeRadio as a custom toolbar item
 registerToolbarItem("slide-mode-radio", SlideModeRadio);
@@ -155,6 +156,24 @@ let mainItems = $derived.by(() => {
 
 let sideItems = $derived.by(() => {
   const items: any[] = [];
+
+  // Left: preview navigation — back / forward (wikilink history) + home
+  // (rootPath/index.md), shown for the .md PREVIEW tab (the side tab whose
+  // rendered file it displays; the tab↔file association survives navigation).
+  // The side tab renders the preview by default (renderMode undefined/"raw"),
+  // so only the colle/presentation modes exclude these buttons.
+  if (!isMain && isMd && renderMode !== "colle" && renderMode !== "presentation") {
+    const hist = navHistory();
+    items.push(
+      { comp: "icon", icon: "wxi-arrow-left", text: t("preview.back"), pinned: true,
+        disabled: !hist.canGoBack, handler: () => getNavActions().goBack() },
+      { comp: "icon", icon: "wxi-arrow-right", text: t("preview.forward"), pinned: true,
+        disabled: !hist.canGoForward, handler: () => getNavActions().goForward() },
+      { comp: "icon", icon: "wxi-home", text: t("preview.home"), pinned: true,
+        handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-home")) },
+    );
+    items.push({ comp: "separator" });
+  }
 
   // Left: navigation colles (chevrons) — vue planches active dans le side panel
   if (renderMode === "colle") {

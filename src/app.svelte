@@ -511,9 +511,29 @@ function handleViewCrash(error: unknown) { handleViewCrashUtil(crashDeps, error)
 $effect(() => setupCrashListener(crashDeps));
 
 $effect(() => {
-  const onJump = (e: Event) => handleJumpToLine((e as CustomEvent<number>).detail);
+  const onJump = (e: Event) => {
+    const detail = (e as CustomEvent<{ path?: string; line: number }>).detail;
+    handleJumpToLine(detail.line, detail.path ?? null);
+  };
   window.addEventListener("azprose:jump-to-line", onJump);
   return () => window.removeEventListener("azprose:jump-to-line", onJump);
+});
+
+// Preview home button → open rootPath/index.md in the PREVIEW TAB (in place,
+// preserving the tab↔rendered-file association).
+$effect(() => {
+  const onHome = async () => {
+    const rp = getRootPath();
+    if (!rp) return;
+    const { joinPath } = await import("@/lib/files");
+    const indexPath = joinPath(rp, "index.md");
+    const { exists } = await import("@tauri-apps/plugin-fs");
+    const ok = await exists(indexPath).catch(() => false);
+    if (!ok) return; // no index.md at vault root → silent no-op
+    window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: indexPath } }));
+  };
+  window.addEventListener("azprose:preview-home", onHome);
+  return () => window.removeEventListener("azprose:preview-home", onHome);
 });
 
 $effect(() => {
@@ -1070,7 +1090,7 @@ const editorModeCtx: EditorModeDeps = {
   notify: notifications,
 };
 
-const handleJumpToLine = (line: number) => jumpToLineUtil(editorModeCtx, line);
+const handleJumpToLine = (line: number, path?: string | null) => jumpToLineUtil(editorModeCtx, line, path ?? undefined);
 const handleGutterClick = (line: number) => gutterClickUtil(editorModeCtx, line);
 const handleInverseSync = (file: string, line: number) => inverseSyncUtil(editorModeCtx, file, line);
 const handleConsoleJump = (line: number, col?: number | null) => consoleJumpUtil(editorModeCtx, line, col);
