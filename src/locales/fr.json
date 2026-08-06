@@ -416,7 +416,7 @@
   "colle.sendInProgress": "Envoi en cours…",
   "colle.archive": "Archiver les images",
   "colle.archiving": "Archivage des images… {done}/{total}",
-  "colle.archiveDone": "{count} image(s) archivée(s) dans {folder} (réutilisées par l'envoi).",
+  "colle.archiveDone": "{count} image(s) archivée(s) dans {folder}.",
   "colle.sendAllOk": "{count} rapport(s) envoyé(s) avec succès.",
   "colle.sendPartial": "{ok} envoyé(s), {failed} en échec.",
   "colle.sendRetry": "Réessayer les échecs",

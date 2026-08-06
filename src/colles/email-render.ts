@@ -153,9 +153,13 @@ function assembleReportHtml(data: ColleReportData): string {
 /**
  * Rend UN LOT de planches en images PNG : fragments markdown de TOUTES les
  * planches rendus en parallèle, puis pour chacune le document autonome est
- * assemblé et capturé par headless Chrome (commande Rust `render_report_png`).
+ * assemblé et capturé par headless Chrome (commande Rust `render_report_png`,
+ * process partagé — les captures restent SÉQUENTIELLES : un seul onglet
+ * réutilisé, le backend sérialise).
  * Retourne une image par planche (même ordre). `onProgress(done, total)`
- * après chaque capture.
+ * après chaque capture ; `onImage(i, img)` à chaque image capturée (permet au
+ * cache du dialogue Send de se remplir au fil de l'eau — Preview immédiat sur
+ * les planches déjà rendues).
  *
  * `signal` (optionnel) : si l'utilisateur annule, la boucle lève
  * `ReportRenderCancelled` ENTRE deux captures (la capture en cours n'est pas
@@ -166,6 +170,7 @@ export async function renderReportImages(
   rubriques: RubriquesParMatiere,
   opts: ColleReportOptions,
   onProgress?: (done: number, total: number) => void,
+  onImage?: (index: number, image: ColleReportImage) => void,
   signal?: AbortSignal,
 ): Promise<ColleReportImage[]> {
   if (!planches.length) return [];
@@ -183,31 +188,19 @@ export async function renderReportImages(
       html: assembleReportHtml(data),
       rootPath: opts.rootPath ?? null,
     });
-    images.push({
+    const img: ColleReportImage = {
       base64: captured.base64,
       mimeType: "image/png",
       width: captured.width,
       height: captured.height,
       subject: buildReportSubject(data),
       html: buildReportEmailHtml(data),
-    });
+    };
+    images.push(img);
+    onImage?.(i, img);
     onProgress?.(i + 1, planches.length);
   }
   return images;
-}
-
-/**
- * Prépare l'image du rapport d'UNE planche et retourne l'image prête pour
- * l'envoi (délègue au rendu par lot de `renderReportImages`).
- */
-export async function renderColleReportImage(
-  planche: CollePlanche,
-  rubriques: RubriquesParMatiere,
-  opts: ColleReportOptions,
-  signal?: AbortSignal,
-): Promise<ColleReportImage> {
-  const images = await renderReportImages([planche], rubriques, opts, undefined, signal);
-  return images[0];
 }
 
 export { buildReportEmailHtml, buildReportSubject };

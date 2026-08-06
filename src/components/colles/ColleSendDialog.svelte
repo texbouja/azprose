@@ -2,15 +2,19 @@
   /**
    * Dialogue d'envoi des rapports de colles par email.
    *
-    * À l'ouverture : parse les planches de la daily note (source LIVE) et
-    * liste les destinataires (`email_eleve`) — aucune image n'est rendue.
-    * Au clic Envoyer : chaque rapport est alors rendu en PNG (pipeline
-    * markdown + capture headless Chrome, rounds 10 + 19) et envoyé via
-    * `send_colle_emails` (Rust, SMTP Gmail STARTTLS,
-    * multipart/related + image inline `cid:rapport@azprose`) ; les échecs sont
-    * listés par destinataire. L'expéditeur (adresse + app password) vient du
-    * profil (SettingsOverlay).
-    */
+   * À l'ouverture : parse les planches de la daily note (source LIVE), liste
+   * les destinataires (`email_eleve`) ET lance le rendu de fond de TOUTES les
+   * images (round 20 : cache produit dès l'ouverture — Preview, envoi et
+   * archivage lisent cette source unique ; fraîcheur garantie par re-rendu
+   * systématique à chaque lancement du dialogue, plus de réutilisation
+   * d'archives disque, plus de hash).
+   * Au clic Envoyer : les messages sont construits depuis ce cache (plus de
+   * rendu à l'envoi) et envoyés via
+   * `send_colle_emails` (Rust, SMTP Gmail STARTTLS,
+   * multipart/related + image inline `cid:rapport@azprose`) ; les échecs sont
+   * listés par destinataire. L'expéditeur (adresse + app password) vient du
+   * profil (SettingsOverlay).
+   */
   import { tick } from "svelte";
   import { Button, Overlay } from "@/components/primitives";
   import { getT } from "@/lib/i18n";
@@ -18,18 +22,13 @@
   import { getRootPath } from "@/stores/root-path.svelte";
   import { collesSettings } from "@/stores/colles-settings.svelte";
   import { userProfile } from "@/stores/user-profile.svelte";
-  import { parsePlanches, type CollePlanche, type ColleWeek } from "@/colles";
+  import { parsePlanches, type CollePlanche } from "@/colles";
   import {
-    renderColleReportImage,
+    renderReportImages,
     ReportRenderCancelled,
     type ColleReportImage,
   } from "@/colles/email-render";
-  import {
-    archivePlancheImage,
-    loadColleWeeks,
-    readArchivedImage,
-    renderAndArchiveImages,
-  } from "@/colles/archive-render";
+  import { archiveImages } from "@/colles/archive-render";
   import { dirname } from "@/lib/files";
   import { sendColleEmails, type ColleEmailMessage, type SendFailure } from "@/colles/email-send";
   import { cancelWeekPrompt } from "@/colles/week-overrides.svelte";
@@ -73,31 +72,45 @@
 
   /** Résultat du dernier archivage : nombre d'images + dossier cible (relatif). */
   let archiveResult = $state<{ count: number; folder: string } | null>(null);
-  /** Progression de l'archivage en cours (images rendues + écrites). */
+  /** Progression de l'archivage en cours (écritures disque — les images sont déjà rendues). */
   let archiveProgress = $state<{ done: number; total: number } | null>(null);
 
   /**
-   * Cache des images par INDEX DE PLANCHE (avec ou sans email), partagé par le
-   * preview, l'envoi et l'archivage. null = pas encore rendue/réutilisée.
-   * Le preview navigue sur TOUTES les planches, indépendamment de l'adresse
-   * email de l'élève (retour utilisateur : l'aperçu était conditionné aux
-   * destinataires).
+   * Rendu de FOND lancé à l'ouverture du dialogue : source UNIQUE des images
+   * (`previewImages` — Preview, envoi et archivage la lisent). Le re-rendu
+   * systématique à chaque lancement garantit la fraîcheur par construction
+   * (décision utilisateur round 20 — pas de hash, pas de réutilisation
+   * d'archives disque).
+   */
+  let renderState = $state<"idle" | "rendering" | "done">("idle");
+  /** Progression du rendu de fond (captures headless séquentielles). */
+  let renderProgress = $state<{ done: number; total: number } | null>(null);
+  /** Promesse du rendu en cours (non réactive) — les boutons l'attendent. */
+  let renderPromise: Promise<ColleReportImage[]> | null = null;
+  /** Annulation du rendu de fond (fermeture du dialogue, relance). */
+  let renderAbort: AbortController | null = null;
+
+  /**
+   * Cache des images par INDEX DE PLANCHE (avec ou sans email), rempli par le
+   * rendu de fond au fil de l'eau. Une seule source pour preview/envoi/
+   * archivage.
    */
   let previewImages = $state<(ColleReportImage | null)[]>([]);
-  /** Contrôle d'annulation de l'opération en cours (préparation, archivage, rendu preview). */
+  /** Contrôle d'annulation de l'opération en cours (attente d'envoi, archivage). */
   let busyAbort = $state<AbortController | null>(null);
-  /** Vrai pendant le rendu de la planche courante du preview. */
-  let previewRendering = $state(false);
 
-  // Relance la préparation à CHAQUE ouverture avec la source courante.
-  // Seul le parse léger a lieu ici : les images sont rendues au clic Envoyer,
-  // pas à l'ouverture.
+  // Relance TOUTE la préparation à CHAQUE ouverture avec la source courante :
+  // parse léger + lancement du rendu de fond (les images arrivent au fil de
+  // l'eau, Preview/envoi/archivage lisent le cache).
   $effect(() => {
     if (!open || !source) {
-      // Fermeture (ou première ouverture sans source) : rejette toute demande
-      // de numéro de semaine en attente — l'archivage en cours échoue, jamais
-      // de Promise pendante qui bloquerait l'UI.
+      // Fermeture (ou première ouverture sans source) : annule le rendu de
+      // fond éventuel et rejette toute demande de numéro de semaine en
+      // attente — jamais de Promise pendante qui bloquerait l'UI.
       cancelWeekPrompt();
+      renderAbort?.abort();
+      renderAbort = null;
+      renderPromise = null;
       phase = "idle";
       return;
     }
@@ -113,34 +126,51 @@
     error = "";
     archiveResult = null;
     archiveProgress = null;
-    void (async () => {
-      try {
-        const section = parsePlanches(source);
-        const recips: { eleve: string; to: string }[] = [];
-        const miss: string[] = [];
-        for (const planche of section.planches) {
-          const to = (planche.meta.email_eleve ?? "").trim();
-          if (!to) {
-            miss.push(planche.meta.eleve?.trim() || `#${planche.index + 1}`);
-            continue;
+    renderState = "idle";
+    renderProgress = null;
+    renderPromise = null;
+    renderAbort = null;
+    // L'overlay s'affiche d'abord (premier paint avec `phase = "loading"`) ;
+    // le parse + le rendu de fond Chromium démarrent ENSUITE, différés par une
+    // macrotâche, HORS du contexte tracké de l'effet. Un $effect qui lit ET
+    // écrit le même $state (`planches`, via `startRender` → `planches.length`
+    // et la portion synchrone de `renderReportImages`) se re-planifie lui-même
+    // en boucle (schedule_possible_effect_self_invalidation) → flush_count >
+    // 1000 → effect_update_depth_exceeded (blocage total de l'app).
+    setTimeout(() => {
+      void (async () => {
+        try {
+          const section = parsePlanches(source);
+          const recips: { eleve: string; to: string }[] = [];
+          const miss: string[] = [];
+          for (const planche of section.planches) {
+            const to = (planche.meta.email_eleve ?? "").trim();
+            if (!to) {
+              miss.push(planche.meta.eleve?.trim() || `#${planche.index + 1}`);
+              continue;
+            }
+            recips.push({ eleve: planche.meta.eleve?.trim() || "", to });
           }
-          recips.push({ eleve: planche.meta.eleve?.trim() || "", to });
+          if (cancelled) return;
+          planches = section.planches;
+          previewImages = section.planches.map(() => null);
+          previewIndex = 0;
+          recipients = recips;
+          missing = miss;
+          phase = "ready";
+          // Rendu de FOND : démarre après l'affichage de l'overlay (décision
+          // utilisateur round 20 — le cache est produit au lancement du
+          // dialogue, pas au clic). Le dialogue reste utilisable ; `startRender`
+          // remplit `previewImages` au fil de l'eau. Les captures headless
+          // restent séquentielles (onglet unique partagé + backend sérialisé).
+          startRender();
+        } catch (err) {
+          if (cancelled) return;
+          error = err instanceof Error ? err.message : String(err);
+          phase = "error";
         }
-        if (cancelled) return;
-        planches = section.planches;
-        previewImages = section.planches.map(() => null);
-        previewIndex = 0;
-        busyAbort = null;
-        previewRendering = false;
-        recipients = recips;
-        missing = miss;
-        phase = "ready";
-      } catch (err) {
-        if (cancelled) return;
-        error = err instanceof Error ? err.message : String(err);
-        phase = "error";
-      }
-    })();
+      })();
+    }, 0);
     return () => {
       cancelled = true;
     };
@@ -155,66 +185,66 @@
   let failedCount = $state(0);
 
   /**
-   * Garantit l'image d'UNE planche (cache partagé preview/envoi/archivage).
-   * Réutilise l'image ARCHIVÉE sur disque (Colles/<année>/Semaine_XX/…) quand
-   * elle existe ; sinon rend via headless Chrome et ARCHIVE au passage
-   * (best-effort — un échec d'écriture ne bloque pas l'email). `signal` :
-   * si l'utilisateur annule, la boucle de rendu lève `ReportRenderCancelled`.
+   * Démarre le rendu de fond de TOUTES les planches (cache `previewImages`
+   * rempli au fil de l'eau via `onImage`). Idempotente : un rendu déjà en
+   * cours → sa promesse. Après un échec ou une annulation, la promesse est
+   * réinitialisée → un nouvel appel relance (le bouton Envoyer réessaye
+   * naturellement sans rouvrir le dialogue).
    */
-  async function ensureImageAt(
-    i: number,
-    weeks: ColleWeek[],
-    theme: string,
-    rootPath: string | null,
-    signal?: AbortSignal,
-  ): Promise<ColleReportImage> {
-    if (previewImages[i]) return previewImages[i]!;
-    const planche = planches[i];
-    const archived = await readArchivedImage(planche, rootPath, weeks);
-    if (archived) {
-      previewImages[i] = archived;
-      return archived;
-    }
-    const img = await renderColleReportImage(
-      planche,
+  function startRender(): Promise<ColleReportImage[]> {
+    if (renderPromise) return renderPromise;
+    const theme = document.documentElement.getAttribute("data-theme") ?? "latte";
+    const rootPath = getRootPath() ?? null;
+    const abort = new AbortController();
+    renderAbort = abort;
+    renderState = "rendering";
+    renderProgress = { done: 0, total: planches.length };
+    const p = renderReportImages(
+      planches,
       collesSettings.current.rubriques,
       { theme, filePath, rootPath },
-      signal,
+      (done, total) => (renderProgress = { done, total }),
+      (i, img) => (previewImages[i] = img),
+      abort.signal,
     );
-    // Archive la nouvelle image (annulation → images conservées). Best-effort
-    // ici : l'email est l'action principale — un échec d'écriture (ex. disque,
-    // ou planche hors période du colloscope) ne doit pas bloquer l'envoi
-    // (l'archivage EXPLICITE reste bruyant).
-    try {
-      await archivePlancheImage(img, planche, rootPath, weeks);
-    } catch (err) {
-      console.error("azprose: archive write at send failed (ignored)", err);
-    }
-    previewImages[i] = img;
-    return img;
+    renderPromise = p;
+    // Garde-fou anti-rejection-orpheline : le rendu tourne en fond, personne
+    // ne l'attend peut-être encore — l'erreur est remontée à l'UI ici, et les
+    // boutons (Envoi/Preview/Archiver) la verront aussi via leur await.
+    p.then(
+      () => {
+        renderState = "done";
+      },
+      (err) => {
+        renderState = "idle";
+        renderPromise = null; // permet la relance au prochain clic
+        if (err instanceof ReportRenderCancelled) return;
+        console.error("azprose: rendu des images de colles échoué", err);
+        error = err instanceof Error ? err.message : String(err);
+        phase = "error";
+      },
+    );
+    return p;
   }
 
   /**
-   * Rend les rapports en images PNG (headless Chrome) si ce n'est pas déjà
-   * fait (cache `previewImages`), puis construit les messages email pour les
-   * planches qui ont une adresse. Annulable via `signal`.
+   * Construit les messages email depuis le CACHE d'images (source unique —
+   * rendu de fond lancé à l'ouverture), en attendant la fin de ce rendu si
+   * nécessaire. `signal` : annulation de l'envoi par l'utilisateur pendant
+   * l'attente (le rendu de fond, lui, a son propre contrôleur et continue
+   * d'alimenter le cache).
    */
   async function ensurePrepared(signal?: AbortSignal): Promise<ColleEmailMessage[]> {
     if (messages.length) return messages;
-    const theme = document.documentElement.getAttribute("data-theme") ?? "latte";
-    const rootPath = getRootPath() ?? null;
-    // Semaines de colle du colloscope courant, résolues UNE fois pour toute la
-    // boucle (chaque planche ne relit pas le colloscope). Hors période → la
-    // réutilisation d'archive est neutralisée (null), l'écriture best-effort
-    // échoue sans bloquer l'email.
-    const weeks = await loadColleWeeks();
+    const images = await startRender();
     const msgs: ColleEmailMessage[] = [];
     for (let i = 0; i < planches.length; i++) {
       if (signal?.aborted) throw new ReportRenderCancelled();
       const planche = planches[i];
       const to = (planche.meta.email_eleve ?? "").trim();
       if (!to) continue;
-      const img = await ensureImageAt(i, weeks, theme, rootPath, signal);
+      const img = images[i];
+      if (!img) continue; // cache incomplet (impossible en pratique) — ne pas envoyer d'image vide
       msgs.push({
         to,
         subject: img.subject,
@@ -228,15 +258,13 @@
   }
 
   /**
-   * « Archiver les images » : rend TOUTES les planches (avec ou sans email)
-   * et les écrit dans Colles/<année>/Semaine_XX/. Indépendant du profil et de
-   * l'envoi — l'envoi pourra ensuite réutiliser ces images. Bouton « Annuler »
-   * / fermeture du dialogue → `abort.signal` → `ReportRenderCancelled` : les
+   * « Archiver les images » : PLACE les images du cache (rendu de fond lancé
+   * à l'ouverture) dans Colles/<année>/Semaine_XX/ — aucun re-rendu, source
+   * unique. Bouton « Annuler » / fermeture du dialogue → `abort.signal` → les
    * images déjà écrites restent sur disque, l'app redevient disponible.
    */
   async function handleArchive() {
     if (!planches.length) return;
-    const theme = document.documentElement.getAttribute("data-theme") ?? "latte";
     const rootPath = getRootPath() ?? null;
     archiveResult = null;
     archiveProgress = null;
@@ -244,10 +272,12 @@
     busyAbort = abort;
     phase = "archiving";
     try {
-      const { count, paths } = await renderAndArchiveImages(
+      // Les images viennent du cache (rendu de fond) — l'archivage ne fait
+      // que les écrire dans le FS utilisateur.
+      const images = await startRender();
+      const { count, paths } = await archiveImages(
+        images,
         planches,
-        collesSettings.current.rubriques,
-        { theme, filePath, rootPath },
         rootPath,
         (done, total) => (archiveProgress = { done, total }),
         abort.signal,
@@ -310,16 +340,18 @@
   // ── Preview ────────────────────────────────────────────────────────────────
   // Affiche l'image du rapport de CHAQUE planche (avec ou sans email — le
   // bouton Preview n'est plus conditionné aux destinataires, comme « Archiver
-  // les images »). Rendu PAIRESSEUX : seule la planche affichée est rendue
-  // (cache `previewImages` partagé avec l'envoi/archivage) — une navigation
-  // ← → instantanée sur les planches déjà rendues, bouton Annuler pendant un
-  // rendu. Échap → retour à la phase ready.
+  // les images »). Les images viennent du CACHE produit à l'ouverture du
+  // dialogue (rendu de fond) : navigation ← → instantanée, chaque planche
+  // s'affiche dès que son image est capturée (sinon « Préparation… »).
+  // Échap → retour à la phase ready.
   let previewIndex = $state(0);
 
   let previewMsg = $derived(previewImages[previewIndex] ?? null);
   let previewSrc = $derived(
     previewMsg ? `data:${previewMsg.mimeType};base64,${previewMsg.base64}` : "",
   );
+  /** L'image courante n'est pas encore dans le cache (rendu de fond en cours). */
+  let previewPending = $derived(renderState === "rendering" && !previewMsg);
 
   // Zoom d'affichage de l'image du preview : facteur multiplicateur de la
   // largeur du conteneur (1 = pleine largeur disponible, jamais de recadrage).
@@ -364,7 +396,6 @@
         // fenêtre principale le recevrait quand même (le focus y est resté).
         e.stopPropagation();
         e.preventDefault();
-        if (previewRendering) return;
         const dir = e.key === "ArrowLeft" ? -1 : 1;
         gotoPreview(previewIndex + dir);
       } else if (e.ctrlKey || e.metaKey) {
@@ -404,41 +435,14 @@
     // document (capture) complète la capture des flèches/Échap.
     await tick();
     document.querySelector<HTMLElement>(".colle-send__preview")?.focus();
-    await ensurePreviewIndex();
-  }
-
-  /** Rend (si nécessaire) l'image de la planche courante du preview. */
-  async function ensurePreviewIndex() {
-    const i = previewIndex;
-    if (previewImages[i]) return;
-    const theme = document.documentElement.getAttribute("data-theme") ?? "latte";
-    const rootPath = getRootPath() ?? null;
-    const weeks = await loadColleWeeks();
-    const abort = new AbortController();
-    busyAbort = abort;
-    previewRendering = true;
-    try {
-      await ensureImageAt(i, weeks, theme, rootPath, abort.signal);
-    } catch (err) {
-      if (err instanceof ReportRenderCancelled) {
-        phase = "ready";
-        return;
-      }
-      error = err instanceof Error ? err.message : String(err);
-      phase = "error";
-    } finally {
-      previewRendering = false;
-      busyAbort = null;
-    }
   }
 
   function gotoPreview(i: number) {
-    if (previewRendering || i < 0 || i >= planches.length) return;
+    if (i < 0 || i >= planches.length) return;
     previewIndex = i;
-    void ensurePreviewIndex();
   }
 
-  /** Annule l'opération en cours (préparation, archivage, rendu preview). */
+  /** Annule l'opération en cours (attente d'envoi, archivage). */
   function handleCancel() {
     busyAbort?.abort();
   }
@@ -506,17 +510,8 @@
         <span class="colle-send__preview-title">{planches[previewIndex]?.meta.eleve || ""}</span>
         <span class="colle-send__preview-count">{previewIndex + 1} / {planches.length}</span>
         <div class="colle-send__preview-actions">
-          {#if previewRendering}
+          {#if previewPending}
             <span class="colle-send__preview-rendering">{t("colle.sendPreparing")}</span>
-            <button
-              type="button"
-              class="colle-send__preview-btn"
-              aria-label={t("common.cancel")}
-              title={t("common.cancel")}
-              onclick={handleCancel}
-            >
-              <i class="wxi-close" aria-hidden="true"></i>
-            </button>
           {/if}
           {#snippet closePreviewIcon()}
             <i class="wxi-close" aria-hidden="true"></i>
@@ -547,7 +542,7 @@
           <button
             type="button"
             class="colle-send__preview-btn"
-            disabled={previewRendering || previewIndex <= 0}
+            disabled={previewIndex <= 0}
             aria-label={t("colle.sendPreviewPrev")}
             title={t("colle.sendPreviewPrev")}
             onclick={() => gotoPreview(previewIndex - 1)}
@@ -586,7 +581,7 @@
           <button
             type="button"
             class="colle-send__preview-btn"
-            disabled={previewRendering || previewIndex >= planches.length - 1}
+            disabled={previewIndex >= planches.length - 1}
             aria-label={t("colle.sendPreviewNext")}
             title={t("colle.sendPreviewNext")}
             onclick={() => gotoPreview(previewIndex + 1)}
@@ -634,7 +629,7 @@
           </Button>
         {/if}
       {:else if phase === "ready" || phase === "sending" || phase === "done"}
-        {#if phase !== "done"}
+          {#if phase !== "done"}
           <p class="colle-send__status">
             {t("colle.sendCount", { count: recipients.length })}
             {#if missing.length}
@@ -643,6 +638,12 @@
               </span>
             {/if}
           </p>
+          {#if renderState === "rendering"}
+            <p class="colle-send__status">
+              {t("colle.sendPreparing")}
+              {#if renderProgress}{renderProgress.done}/{renderProgress.total}{/if}
+            </p>
+          {/if}
           {#if archiveResult}
             <p class="colle-send__archive-done">
               {t("colle.archiveDone", { count: archiveResult.count, folder: archiveResult.folder })}
@@ -708,7 +709,7 @@
           <div class="colle-send__actions">
             <Button
               variant="ghost"
-              disabled={sending || !planches.length}
+              disabled={sending || !planches.length || renderState !== "done"}
               onclick={handleArchive}
             >
               {t("colle.archive")}
