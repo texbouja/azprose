@@ -20,7 +20,8 @@ export type {
 } from "./colloscope";
 export { importColloscope, readColloscope } from "./import-colloscope";
 export type { ColloscopeImportResult } from "./import-colloscope";
-export { buildCollesSection, ensureDailyNoteWithColles, fenceColle, seancesDuJour } from "./daily-note";
+export { buildCollesSection, fenceColle, seancesDuJour } from "./daily-note";
+export { ensureDailyNoteWithColles } from "./daily-note-io";
 export type { ColleFicheMeta } from "./daily-note";
 export {
   REPORT_CID,
@@ -31,16 +32,27 @@ export {
   buildReportEval,
   buildReportHead,
   buildReportMetaRows,
-  buildReportPageShell,
   buildReportProgramme,
-  buildReportSignature,
   buildReportSubject,
   escHtml,
   formatNoteValue,
   formatReportDate,
 } from "./email";
 export type { ColleReportData, ColleReportRubric } from "./email";
-export { fillReportPage, renderColleReportImage, renderReportImages, resetReportPage } from "./email-render";
+export {
+  DEFAULT_REPORT_LAYOUT,
+  REPORT_VARS,
+  buildReportObs,
+  buildReportRubrics,
+  normalizeReportLayout,
+  renderReportLayout,
+  renderReportLayoutCss,
+  renderReportSlotHtml,
+  renderReportZone,
+  resolveReportVar,
+} from "./report-layout";
+export type { ReportCssFile, ReportLayout, ReportZoneLayout } from "./report-layout";
+export { renderColleReportImage, renderReportImages } from "./email-render";
 export type { ColleReportImage, ColleReportOptions } from "./email-render";
 export {
   ARCHIVE_ROOT,

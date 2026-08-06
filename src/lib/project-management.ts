@@ -3,6 +3,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { isImagePath, isPdfPath, basename } from "@/lib";
+import { exportMarkdownPdf } from "@/lib/pdf-export";
 import { folderRelation } from "@/lib/paths";
 import { setSessionScope, saveDraft, saveGuests, loadGuests } from "@/lib/session";
 import type { PanelManager } from "@/lib/panel-manager";
@@ -114,13 +115,20 @@ export async function handleCloseFolder(ctx: ProjectManagementDeps, path: string
   ctx.saveSessionNow();
 }
 
-export async function handleExportPdf(ctx: { pm: PanelManager; activePath: string | null; extFromPath: (p: string) => string | null; themeResolved: string }) {
+export async function handleExportPdf(ctx: {
+  pm: PanelManager;
+  activePath: string | null;
+  extFromPath: (p: string) => string | null;
+  themeResolved: string;
+  notify: { setInfo: (msg: string) => void };
+  t: (key: string, params?: Record<string, string>) => string;
+}) {
   if (!ctx.activePath || ctx.extFromPath(ctx.activePath) !== "md") return;
   const tab = ctx.pm.main.tabs.find(t => t.id === ctx.pm.main.activeTabId);
   if (!tab || !tab.source) return;
-  const { exportMarkdownPdf } = await import("@/lib/pdf-export");
   try {
-    await exportMarkdownPdf(tab.source, ctx.themeResolved, tab.path);
+    const out = await exportMarkdownPdf(tab.source, ctx.themeResolved, tab.path);
+    if (out) ctx.notify.setInfo(ctx.t("pdf.exported", { path: out }));
   } catch (err) {
     console.error("PDF export failed:", err);
   }

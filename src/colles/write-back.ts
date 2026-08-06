@@ -17,6 +17,7 @@
  */
 import { stringify } from "yaml";
 import { findFichesSection, isFenceClose, isFenceOpen, parseColleYaml } from "./parse";
+import { isColleMetaFence, parseMetaFence } from "@/lib/doc-meta";
 import type { ColleMeta } from "./types";
 
 interface FenceRange {
@@ -26,21 +27,35 @@ interface FenceRange {
   end: number;
 }
 
-/** Localise le `index`-ième fence `colle` à partir de `startLine`. */
+/** Nom du fence (`colle` ou `meta`) d'une ligne d'ouverture. */
+function fenceLang(line: string): "colle" | "meta" {
+  return line.trim().startsWith("```colle") ? "colle" : "meta";
+}
+
+/**
+ * Localise le `index`-ième fence de COLLE à partir de `startLine`. Seuls les
+ * fences dont le TYPE est "colle" comptent (```` ```colle ````, ou ```` ```meta ````
+ * avec `type: colle`) — un ```` ```meta ```` de cours/exercices présent dans la
+ * section ne décale pas le comptage du write-back.
+ */
 function locateFence(lines: string[], startLine: number, index: number): FenceRange | null {
   const n = lines.length;
   let i = startLine;
   let seen = 0;
   while (i < n) {
     if (isFenceOpen(lines[i])) {
-      if (seen === index) {
-        let j = i + 1;
-        while (j < n && !isFenceClose(lines[j])) j++;
-        return { start: i, end: Math.min(j, n - 1) };
+      let j = i + 1;
+      while (j < n && !isFenceClose(lines[j])) j++;
+      const end = Math.min(j, n - 1);
+      const content = lines.slice(i + 1, end).join("\n");
+      if (isColleMetaFence(parseMetaFence(fenceLang(lines[i]), content))) {
+        if (seen === index) return { start: i, end };
+        seen++;
       }
-      seen++;
+      i = j; // saute le bloc entier (colle ou non)
+    } else {
+      i++;
     }
-    i++;
   }
   return null;
 }

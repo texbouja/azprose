@@ -4,7 +4,7 @@
  * Ce module est PUR (testable sans DOM ni Tauri) : il assemble le document
  * HTML d'impression. La partie DOM/IPC (rendu des fragments markdown + appel
  * du backend) vit dans `pdf-planches-render.ts` — séparée pour que les tests
- * bun n'importent jamais la chaîne Svelte (stores `$state`) ni html-to-image.
+ * bun n'importent jamais la chaîne Svelte (stores `$state`).
  *
  * Pattern : le PATTERN GÉNÉRAL md→PDF (src/lib/pdf-export.ts → mdprinter.rs) —
  * un document HTML auto-suffisant est confié à la commande Rust
@@ -27,7 +27,14 @@
  * et fournir aux élèves le jour de l'examen ; avec → archivage administration.
  * Les élèves reçoivent le compte rendu complet par email (volet existant).
  */
-import { buildReportContent, REPORT_PAGE_CSS, type ColleReportData } from "./email";
+import {
+  DEFAULT_REPORT_LAYOUT,
+  normalizeReportLayout,
+  renderReportLayout,
+  renderReportLayoutCss,
+  type ColleReportData,
+  type ReportLayout,
+} from "./report-layout";
 
 /** Options de rendu des planches pour l'impression. */
 export interface CollePrintOptions {
@@ -91,17 +98,21 @@ export function chunkPairs<T>(items: T[]): T[][] {
   return out;
 }
 
-/** Script de cycle de vie : imprime une fois MathJax terminé (pattern pdf-export). */
+/**
+ * Script de cycle de vie : signale au backend headless (mdprinter.rs) que le
+ * rendu est terminé en posant document.title sur le marqueur pollé par Rust.
+ * Plus de window.print() — le PDF est produit par print_to_pdf.
+ */
 const LIFECYCLE_SCRIPT = `<script>
 (function() {
-    function triggerPrint() { window.print(); }
+    function markReady() { document.title = "azprose-print-ready"; }
     if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
         window.MathJax.startup.promise.then(function() {
-            setTimeout(triggerPrint, 600);
-        }).catch(function() { triggerPrint(); });
+            setTimeout(markReady, 600);
+        }).catch(function() { markReady(); });
     } else {
         window.addEventListener('load', function() {
-            setTimeout(triggerPrint, 2000);
+            setTimeout(markReady, 2000);
         });
     }
 })();
@@ -148,14 +159,16 @@ const DEFAULT_MATHJAX_CONFIG = `
 /**
  * Assemble le document HTML d'impression — PUR (testable sans DOM) : A4
  * paysage, une paire de planches par page. Chaque planche =
- * `buildReportContent` (le gabarit `.rp` des emails) SANS son bloc `<style>`
- * embarqué (le CSS complet — REPORT_PAGE_CSS + PRINT_PAGE_CSS — est injecté
- * UNE seule fois dans le `<head>` ; MathJax CDN typeset les maths brutes
- * `\(…\)` produites par la pipeline markdown).
+ * `renderReportLayout` (le gabarit `.rp` des emails — moteur de layout de
+ * report-layout.ts) SANS son bloc `<style>` embarqué (le CSS complet —
+ * `renderReportLayoutCss` + PRINT_PAGE_CSS — est injecté UNE seule fois dans
+ * le `<head>` ; MathJax CDN typeset les maths brutes `\(…\)` produites par la
+ * pipeline markdown).
  *
  * Retouches round 18 : les planches sont rendues SANS la métadonnée « Salle »
- * et SANS la signature (« Bien cordialement ») — le PDF est une feuille
- * d'examen, pas un courrier (l'email conserve les deux).
+ * (le PDF est une feuille d'examen, pas un courrier — l'email la conserve).
+ * La signature « Bien cordialement » est supprimée du moteur de layout
+ * (décision utilisateur) — elle ne figure plus dans AUCUN rendu.
  *
  * `mathjaxConfig` : la config `window.MathJax = {...}` (défaut : constante
  * locale) — le module render transmet celle de pdf-export.ts (packs maths).
@@ -167,8 +180,11 @@ const DEFAULT_MATHJAX_CONFIG = `
  *
  * `printCss` : CSS typographique de la section « Printing » des réglages
  * (`lib/prose-style-css.ts` → `buildReportPrintCss`) — injecté APRÈS
- * REPORT_PAGE_CSS + PRINT_PAGE_CSS (à spécificité égale, le dernier bloc
- * gagne). Le module reste PUR : le CSS arrive en paramètre chaîne.
+ * `renderReportLayoutCss` + PRINT_PAGE_CSS (à spécificité égale, le dernier
+ * bloc gagne). Le module reste PUR : le CSS arrive en paramètre chaîne.
+ *
+ * `layout` : le gabarit configurable du rapport (réglages → Impression →
+ * Gabarit du rapport) — défaut : DEFAULT_REPORT_LAYOUT.
  */
 export function assemblePrintHtml(
   datas: ColleReportData[],
@@ -176,17 +192,16 @@ export function assemblePrintHtml(
   mathjaxConfig: string = DEFAULT_MATHJAX_CONFIG,
   preamble = "",
   printCss = "",
+  layout: ReportLayout = DEFAULT_REPORT_LAYOUT,
 ): string {
+  const L = normalizeReportLayout(layout);
   const content = chunkPairs(datas)
     .map(
       (pair) =>
         `<div class="pl-pair">` +
         pair
           .map((d) =>
-            buildReportContent(d, includeEval, false, false).replace(
-              `<style>${REPORT_PAGE_CSS}</style>`,
-              "",
-            ),
+            renderReportLayout(d, L, { includeEval, includeSalle: false }, { includeCss: false }),
           )
           .join("\n") +
         `</div>`,
@@ -205,7 +220,7 @@ export function assemblePrintHtml(
 <meta charset="utf-8">
 <title>Planches de colles</title>
 <style>
-${REPORT_PAGE_CSS}
+${renderReportLayoutCss(L)}
 ${PRINT_PAGE_CSS}
 ${printCssBlock}
 </style>

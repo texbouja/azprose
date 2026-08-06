@@ -1,6 +1,7 @@
 import { shortcuts } from "@/stores/shortcuts.svelte"
 import { overlays } from "@/stores/overlays.svelte"
 import { extFromPath } from "@/lib/editor-languages"
+import { handleLatexBuild } from "@/latex"
 import type { LatexState } from "@/latex"
 import type { PanelManager } from "@/lib/panel-manager"
 
@@ -54,7 +55,6 @@ export function handleKeydown(e: KeyboardEvent, ctx: KeyboardDeps) {
       const ext = extFromPath(ctx.activePath);
       if (ext === "tex") {
         void (async () => {
-          const { handleLatexBuild } = await import("@/latex");
           await handleLatexBuild(ctx.ls, ctx.activePath!, ctx.handleSave, ctx.handleSaveAll, () => ctx.setConsoleOpen(true), () => ctx.setConsoleTab("log"));
           if (ctx.ls.viewerPdfPath) {
             await ctx.pm.openInSide(ctx.ls.viewerPdfPath, { sourceType: "latex" });

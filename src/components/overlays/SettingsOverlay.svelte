@@ -30,11 +30,13 @@ import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.
 import { getRootPath } from "@/stores/root-path.svelte";
 import { notifications } from "@/stores/notifications.svelte";
 import { getFontStore, type FontCheck } from "@/stores/fonts.svelte";
-import { joinPath } from "@/lib/files";
+import { joinPath, pickCssFiles, readText, basename } from "@/lib/files";
+import { spreadsheetDelete } from "@/spreadsheet/store";
+import { initTexmf, rehashTexmf } from "@/latex";
 import { userProfile, type UserRole } from "@/stores/user-profile.svelte";
 import { exportCalendar, importCalendar, clearCalendar } from "@/lib/calendar-persistence";
 import { collesSettings, type CollesSettings } from "@/stores/colles-settings.svelte";
-import { MATIERE_KEYS, type ColleRubrique } from "@/colles";
+import { MATIERE_KEYS, REPORT_VARS, importColloscope, type ColleRubrique, type ReportCssFile, type ReportLayout, type ReportZoneLayout } from "@/colles";
 import type { ImportResult } from "@/lib/spreadsheet/import";
 import ColloscopeImportDialog from "@/components/settings/ColloscopeImportDialog.svelte";
 
@@ -151,6 +153,65 @@ function removeVacance(idx: number) {
   }));
 }
 
+// ── Gabarit du rapport de colle (PrintStyle.layout) ─────────────────────────
+// 5 zones d'ORDRE FIXE (titre, sousTitre, metadonnees, corps, evaluation),
+// chacune avec un template {{…}} et une classe CSS supplémentaire. L'écriture
+// est SYNCHRONE (pas de debounce) : la persistance config.json est déjà
+// débouncée dans config-sync, et un patch synchrone garde les boutons
+// d'insertion de variables cohérents avec le texte tapé (jamais de perte).
+const REPORT_ZONES = [
+  { key: "titre", labelKey: "settings.reportZone.titre" },
+  { key: "sousTitre", labelKey: "settings.reportZone.sousTitre" },
+  { key: "metadonnees", labelKey: "settings.reportZone.metadonnees" },
+  { key: "corps", labelKey: "settings.reportZone.corps" },
+  { key: "evaluation", labelKey: "settings.reportZone.evaluation" },
+] as const;
+type ReportZoneKey = (typeof REPORT_ZONES)[number]["key"];
+
+let layout = $derived(printSettings.current.layout);
+
+function patchLayout(patch: Partial<ReportLayout>) {
+  printSettings.patch({ layout: { ...layout, ...patch } });
+}
+
+function patchZone(zone: ReportZoneKey, patch: Partial<ReportZoneLayout>) {
+  const z = layout[zone] as ReportZoneLayout;
+  patchLayout({ [zone]: { ...z, ...patch } });
+}
+
+/** Insère `{{name}}` à la fin du template de la zone (pas de doublon). */
+function insertReportVar(zone: ReportZoneKey, name: string) {
+  const z = layout[zone] as ReportZoneLayout;
+  const token = `{{${name}}}`;
+  if (z.template.includes(token)) return;
+  const sep = z.template && !z.template.trimEnd().endsWith("{{") ? " " : "";
+  patchZone(zone, { template: z.template + sep + token });
+}
+
+/** Copie le contenu des fichiers CSS sélectionnés inline dans cfg.print. */
+let cssFilesLoading = $state(false);
+async function addCssFiles() {
+  const paths = await pickCssFiles();
+  if (!paths.length) return;
+  cssFilesLoading = true;
+  try {
+    const files: ReportCssFile[] = [];
+    for (const p of paths) {
+      files.push({ name: basename(p), content: await readText(p) });
+    }
+    patchLayout({ cssFiles: [...(layout.cssFiles ?? []), ...files] });
+  } catch (err) {
+    console.error("report css file read failed", err);
+    notifications.setInfo(`${t("settings.reportCssReadError")} : ${err}`);
+  } finally {
+    cssFilesLoading = false;
+  }
+}
+
+function removeCssFile(name: string) {
+  patchLayout({ cssFiles: (layout.cssFiles ?? []).filter((f) => f.name !== name) });
+}
+
 // ── Import du colloscope ───────────────────────────────────────────────────
 // Le fichier xlsx est importé une fois et expandu en tableaux spreadsheet
 // persistés dans data.db : « Élèves » (tel quel) + un « Colloscope — {classe} »
@@ -186,7 +247,6 @@ async function importColloscopeFromSheets(chosen: ImportResult[]) {
   colloscopePendingPath = "";
   colloscopePendingSheets = [];
   if (!path || chosen.length === 0) return;
-  const { importColloscope } = await import("@/colles/import-colloscope");
   colloscopeBusy = true;
   try {
     const res = await importColloscope(path, { sheets: chosen });
@@ -205,7 +265,6 @@ function resetColloscope() {
   const prev = cs.colloscope;
   if (!prev) return;
   void (async () => {
-    const { spreadsheetDelete } = await import("@/spreadsheet/store");
     const ids = new Set<string>([
       prev.elevesSpreadsheetId,
       ...Object.values(prev.colloscopeSpreadsheetIds ?? {}),
@@ -1107,6 +1166,59 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
 
             {@render titresSectionPrint()}
 
+            <p class="mdv-settings__section-title">{t("settings.reportLayout")}</p>
+            <p class="mdv-settings__hint">{t("settings.reportLayoutHint")}</p>
+            <p class="mdv-settings__hint">{t("settings.reportIfHint")}</p>
+
+            {#each REPORT_ZONES as z (z.key)}
+              {@const zone = layout[z.key] as ReportZoneLayout}
+              {@const vars = REPORT_VARS.filter((v) => v.zones.includes(z.key))}
+              <div class="mdv-settings__report-zone">
+                <div class="mdv-settings__report-zone-head">
+                  <span class="mdv-settings__report-zone-name">{t(z.labelKey)}</span>
+                  <label class="mdv-settings__report-zone-class">
+                    <span>{t("settings.reportZoneClass")}</span>
+                    <input
+                      type="text"
+                      value={zone.class}
+                      oninput={(e) => patchZone(z.key, { class: e.currentTarget.value })}
+                    />
+                  </label>
+                </div>
+                <div style="font-family: var(--font-ui); font-size: 12px;">
+                  <TextArea
+                    value={zone.template}
+                    title={t("settings.reportZoneTemplate")}
+                    onchange={(ev) => patchZone(z.key, { template: ev.value })}
+                  />
+                </div>
+                <div class="mdv-settings__report-vars">
+                  {#each vars as v (v.name)}
+                    <button
+                      type="button"
+                      class="mdv-settings__report-var"
+                      title={`${v.label} — ${t("settings.reportInsertVar")}`}
+                      onclick={() => insertReportVar(z.key, v.name)}
+                    >{("{{" + v.name + "}}")}</button>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+
+            <p class="mdv-settings__section-title">{t("settings.reportCssFiles")}</p>
+            <p class="mdv-settings__hint">{t("settings.reportCssFilesHint")}</p>
+            <div class="mdv-settings__report-cssfiles">
+              {#each layout.cssFiles ?? [] as f (f.name)}
+                <div class="mdv-settings__report-cssfile">
+                  <span class="mdv-settings__report-cssfile-name" title={f.name}>{f.name}</span>
+                  <button type="button" class="mdv-settings__colles-del" onclick={() => removeCssFile(f.name)}>{t("settings.reportRemoveCssFile")}</button>
+                </div>
+              {/each}
+              <button type="button" class="mdv-settings__report-css-add" onclick={addCssFiles} disabled={cssFilesLoading}>
+                {t("settings.reportAddCssFiles")}
+              </button>
+            </div>
+
             <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
             <p class="mdv-settings__hint">{t("settings.customCssPrintHint")}</p>
             <div style="font-family: var(--font-ui); font-size: 12px;">
@@ -1320,7 +1432,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                   const rp = getRootPath();
                   if (rp) {
                     const dir = joinPath(joinPath(rp, ".azprose"), "texmf");
-                    const { initTexmf } = await import("@/latex");
                     await initTexmf(rp);
                     const { invoke } = await import("@tauri-apps/api/core");
                     invoke("open_folder", { path: dir });
@@ -1332,7 +1443,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                 onclick={async () => {
                   const rp = getRootPath();
                   if (rp) {
-                    const { rehashTexmf } = await import("@/latex");
                     const msg = await rehashTexmf(rp);
                     notifications.setInfo(msg);
                   }

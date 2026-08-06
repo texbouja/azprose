@@ -166,60 +166,6 @@ button:focus-visible {
   background: color-mix(in srgb, var(--accent) 32%, transparent) !important;
 }
 
-/* print-to-pdf — body.mdv-print is added before window.print() so the DOM is
-   reshaped *before* the webview snapshots. WKWebView often renders the live
-   screen layout (not @media print) into the PDF; class-based is the reliable path. */
-body.mdv-print .mdv-titlebar,
-body.mdv-print .mdv-breadcrumb,
-body.mdv-print .mdv-statusbar,
-body.mdv-print .mdv-activity-bar,
-body.mdv-print .mdv-sidebar,
-body.mdv-print .mdv-tabs,
-body.mdv-print .mdv-toast,
-body.mdv-print .mdv-overlay,
-body.mdv-print .mdv-overlay__backdrop,
-body.mdv-print .mdv-drop,
-body.mdv-print .mdv-tooltip,
-body.mdv-print .mdv-popover {
-  display: none !important;
-}
-
-body.mdv-print,
-body.mdv-print .mdv-app,
-body.mdv-print .mdv-shell {
-  display: block !important;
-  height: auto !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  overflow: visible !important;
-  background: #ffffff !important;
-  color: #000000 !important;
-  padding: 0 !important;
-}
-
-body.mdv-print .mdv-split {
-  display: block !important;
-  height: auto !important;
-}
-body.mdv-print .mdv-split__pane {
-  display: block !important;
-  height: auto !important;
-}
-body.mdv-print .mdv-split__resize {
-  display: none !important;
-}
-
-body.mdv-print .mdv-prose {
-  max-width: 100% !important;
-  padding: 24px 32px !important;
-  color: #000000 !important;
-  background: #ffffff !important;
-}
-
-body.mdv-print .mdv-prose a {
-  color: #0a4d8c !important;
-}
-
 @media print {
   @page {
     margin: 16mm 16mm 20mm;

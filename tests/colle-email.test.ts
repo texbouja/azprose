@@ -1,9 +1,9 @@
 /**
  * Tests des gabarits email des rapports de colles (src/colles/email.ts).
  *
- * Depuis le round 10 le CORPS de l'email est une IMAGE PNG capturée par
- * html-to-image (le format SVG est supprimé au round 16) : les tests couvrent
- * donc les deux gabarits purs :
+ * Depuis le round 10 le CORPS de l'email est une IMAGE PNG (le format SVG
+ * est supprimé au round 16 ; la capture est faite par headless Chrome depuis
+ * le round 19) : les tests couvrent donc les deux gabarits purs :
  *  - `buildReportContent` : la PAGE du rapport (ce qui est capturé) —
  *    largeur 640px, styles 100 % inline, couleurs fixes, échappement de tout
  *    texte libre, note globale calculée au rendu (jamais stockée) ;
@@ -15,15 +15,14 @@ import { describe, expect, it } from "bun:test";
 import {
   REPORT_CID,
   REPORT_PAGE_CSS,
+  assembleReportImageHtml,
   buildReportContent,
   buildReportEmailHtml,
   buildReportEnonce,
   buildReportEval,
   buildReportHead,
   buildReportMetaRows,
-  buildReportPageShell,
   buildReportProgramme,
-  buildReportSignature,
   buildReportSubject,
   escHtml,
   formatNoteValue,
@@ -160,7 +159,7 @@ describe("buildReportContent (la page capturée en image)", () => {
 
   it("insère les fragments markdown verbatim (les maths SVG y vivent)", () => {
     // Contrairement au wrapper email, la page CAPTURÉE peut contenir des SVG
-    // MathJax : c'est elle que html-to-image transforme en image.
+    // MathJax : c'est elle que le navigateur headless transforme en image.
     const html = buildReportContent({ ...base, bodyHtml: "<p>a <mjx-container>b</mjx-container></p>" });
     expect(html).toContain("<mjx-container>b</mjx-container>");
   });
@@ -200,12 +199,13 @@ describe("REPORT_PAGE_CSS (CSS embarqué du gabarit, round 15)", () => {
   it("notes détaillées : INLINE (largeur libre, spans incassables, big dot)", () => {
     // Trois bugs évités : (1) une div wrapper par rubrique devenait la cellule
     // d'une grid → label et note collés sans espace ; (2) la grid des spans
-    // inline ne survit pas au clone html-to-image (display computed "inline" +
-    // gap perdus sous WebKitGTK) ; (3) la TABLE étirait chaque rubrique sur une
-    // ligne entière (une note par ligne dans les images — retour utilisateur).
-    // Solution : span inline-block + white-space:nowrap par rubrique (styles
-    // calculés RÉELS, le clone les inline), séparateur via pseudo-élément
-    // (html-to-image clone les ::before — option pseudoElements par défaut).
+    // inline ne survivait pas au clone html-to-image (display computed
+    // "inline" + gap perdus sous WebKitGTK — l'ère du clone est révolue, le
+    // choix est conservé pour la stabilité des rendus) ; (3) la TABLE étirait
+    // chaque rubrique sur une ligne entière (une note par ligne dans les
+    // images — retour utilisateur).
+    // Solution : span inline-block + white-space:nowrap par rubrique,
+    // séparateur via pseudo-élément « · ».
     expect(REPORT_PAGE_CSS).toMatch(/\.rp-rubric\s*\{[^}]*display:\s*inline-block/);
     expect(REPORT_PAGE_CSS).toMatch(/\.rp-rubric\s*\{[^}]*white-space:\s*nowrap/);
     expect(REPORT_PAGE_CSS).toContain(".rp-rubric-label");
@@ -217,27 +217,10 @@ describe("REPORT_PAGE_CSS (CSS embarqué du gabarit, round 15)", () => {
   it("couleur FIXE sur le contenu markdown (.rp-enonce-box/.rp-obs-content) — hors thème", () => {
     // Sans `color`, le contenu héritait de `body { color: var(--fg) }` de l'app :
     // en thème sombre le texte clair devenait INVISIBLE sur le fond clair fixe
-    // du gabarit dans les PNG (html-to-image copie les styles calculés).
+    // du gabarit dans les PNG (les rendus hors écran copient les styles
+    // calculés du document live — era html-to-image, comportement conservé).
     expect(REPORT_PAGE_CSS).toMatch(/\.rp-enonce-box\s*\{[^}]*color:#111827/);
     expect(REPORT_PAGE_CSS).toMatch(/\.rp-obs-content\s*\{[^}]*color:#111827/);
-  });
-});
-
-describe("buildReportPageShell (le gabarit réutilisé)", () => {
-  it("contient le CSS embarqué et tous les slots data-slot", () => {
-    const shell = buildReportPageShell();
-    expect(shell).toContain("<style>");
-    expect(shell).toContain("min-height:calc(var(--rp-w) * 16 / 10)");
-    for (const slot of ["head", "meta", "programme", "enonce", "eval", "signature"]) {
-      expect(shell).toContain(`data-slot="${slot}"`);
-    }
-  });
-
-  it("est une structure FIXE : aucun contenu de planche embarqué", () => {
-    const shell = buildReportPageShell();
-    expect(shell).not.toContain("Ahmed El Moujahid");
-    expect(shell).not.toContain("Énoncé");
-    expect(shell).not.toContain("Bien cordialement");
   });
 });
 
@@ -317,11 +300,63 @@ describe("builders de sections (round 15, une source de vérité)", () => {
     // Chaque rubrique est UN SEUL bloc incassable : pas de div wrapper interne.
     expect(e).not.toContain('<div class="rp-rubric"');
   });
+});
 
-  it("buildReportSignature : signature échappée, '' si absente", () => {
-    expect(buildReportSignature("M. Boujaida")).toContain("Bien cordialement");
-    expect(buildReportSignature("<x>")).toContain("&lt;x&gt;");
-    expect(buildReportSignature("")).toBe("");
+describe("assembleReportImageHtml (document autonome capturé par headless, round 19)", () => {
+  const DOC = assembleReportImageHtml(base);
+
+  it("est un document HTML complet auto-suffisant (head + body)", () => {
+    expect(DOC.startsWith("<!DOCTYPE html>")).toBe(true);
+    expect(DOC).toContain('<html lang="fr">');
+    expect(DOC).toContain("<head>");
+    expect(DOC).toContain("<body");
+  });
+
+  it("porte le CSS complet dans le <head> (gabarit + printCss en dernier)", () => {
+    const withPrint = assembleReportImageHtml(base, {
+      printCss: ".rp-enonce-box{font-size:16px}",
+    });
+    // Le style embarqué du gabarit est déplacé dans le head (includeCss false
+    // sur le bloc), le printCss est collé APRÈS (dernier bloc gagne).
+    const styleBlock = withPrint.match(/<style>([\s\S]*?)<\/style>/);
+    expect(styleBlock).not.toBeNull();
+    expect(styleBlock![1]).toContain(".rp{--rp-w:640px");
+    expect(styleBlock![1]).toContain(".rp-enonce-box{font-size:16px}");
+    // Le corps ne doit PAS re-porter son propre <style> embarqué.
+    const body = DOC.slice(DOC.indexOf("<body"));
+    expect(body).not.toContain("<style>");
+  });
+
+  it("charge MathJax (config + CDN tex-svg) seulement si la config est fournie", () => {
+    const withM = assembleReportImageHtml(base, {
+      mathjaxConfig: 'window.MathJax = { startuptypeset: true };',
+    });
+    expect(withM).toContain('window.MathJax = { startuptypeset: true };');
+    expect(withM).toContain('src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js"');
+    // Sans config : aucune ASSIGNATION window.MathJax ni CDN (défaut du
+    // document — le lifecycle script référence `window.MathJax`, pas ça).
+    expect(DOC).not.toContain("window.MathJax =");
+    expect(DOC).not.toContain("tex-svg.js");
+  });
+
+  it("injecte le préambule mathématique en span caché si fourni", () => {
+    const withP = assembleReportImageHtml(base, { preamble: "\\newcommand{\\R}{\\mathbb{R}}" });
+    expect(withP).toContain("$$\\newcommand{\\R}{\\mathbb{R}}$$");
+    expect(withP).toContain('left:-9999px');
+    expect(DOC).not.toContain("$$");
+  });
+
+  it("pose le marqueur de fin de rendu azprose-report-ready (pollé par Rust)", () => {
+    expect(DOC).toContain('document.title = "azprose-report-ready"');
+    // Le bloc <script> du lifecycle doit être FERMÉ dans le document final
+    // (le backslash d'échappement dans le source `<\/script>` résout en
+    // `</script>` — sinon headless Chrome avalerait le reste du body).
+    const idx = DOC.indexOf("azprose-report-ready");
+    expect(DOC.slice(idx)).toContain("</script>");
+  });
+
+  it("omet la Salle (contexte image — includeSalle false, retouche round 18)", () => {
+    expect(DOC).not.toContain("B12");
   });
 });
 

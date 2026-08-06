@@ -32,7 +32,6 @@
  * existante est ouverte telle quelle, jamais modifiée.
  */
 
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { stringify } from "yaml";
 
 import { seancesDuColleur } from "./colloscope";
@@ -133,39 +132,4 @@ export function buildCollesSection(
   if (fiches.length === 0) return null;
 
   return `---\n\n---\n\n${fiches.join("\n\n---\n\n")}\n`;
-}
-
-// ── Orchestration I/O (Tauri) ──────────────────────────────────────────────
-
-/**
- * Génère la note du jour si absente, en y injectant la section colles le cas
- * échéant. Une note existante est retournée telle quelle (jamais modifiée).
- */
-export async function ensureDailyNoteWithColles(
-  date: string,
-  rootPath: string | null,
-  folder: string,
-): Promise<string | null> {
-  const { journal } = await import("@/stores/journal-store.svelte");
-  const existed = await journal.noteExists(date, rootPath, folder);
-  const p = await journal.createNote(date, rootPath, folder);
-  if (p && !existed) {
-    const section = await buildCollesSectionForDate(date);
-    if (section) {
-      const content = await readTextFile(p);
-      await writeTextFile(p, `${content.trimEnd()}\n\n${section}`);
-    }
-  }
-  return p;
-}
-
-/** Lit le colloscope et construit la section pour une date (null si absent). */
-async function buildCollesSectionForDate(date: string): Promise<string | null> {
-  // Import dynamique : import-colloscope tire un store svelte (colles-settings)
-  // — le garder hors du module pur (testable sous bun sans runes).
-  const { readColloscope } = await import("./import-colloscope");
-  const data = await readColloscope();
-  if (!data) return null;
-  const { userProfile } = await import("@/stores/user-profile.svelte");
-  return buildCollesSection(data, date, userProfile.current.colleurName);
 }

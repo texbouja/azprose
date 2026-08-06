@@ -1,5 +1,8 @@
 import { persistedState } from "./persisted.svelte";
 import { STORAGE_KEYS } from "@/lib";
+// Le gabarit configurable du rapport de colle (moteur PUR) — normalisé en
+// profondeur au chargement (un layout hérité peut manquer des zones).
+import { DEFAULT_REPORT_LAYOUT, normalizeReportLayout, type ReportLayout } from "@/colles/report-layout";
 // Les résolveurs de polices vivent dans un module PUR (lib/font-resolvers) —
 // testable sans la chaîne Svelte. Ré-exportés ici pour compatibilité (les
 // consommateurs continuent d'importer depuis ce store).
@@ -55,8 +58,12 @@ export type PreviewStyle = ProseMarkStyle;
 // emails de colles et images archivées en PNG) — jamais à l'aperçu à l'écran
 // ni au mode prose. Même forme que PreviewStyle (décision : copie fidèle).
 // Le CSS est généré par `lib/prose-style-css.ts` (pur, testable).
+//
+// Depuis la refonte du gabarit, `layout` porte le gabarit CONFIGURABLE du
+// rapport de colle (5 zones à templates `{{…}}`, CSS du gabarit + fichiers
+// CSS copiés inline) — persiste dans `cfg.print.style` avec le reste.
 
-export type PrintStyle = PreviewStyle;
+export type PrintStyle = PreviewStyle & { layout: ReportLayout };
 
 // ── Presentation / SlideDeck ────────────────────────────────────────────────
 
@@ -122,7 +129,10 @@ export const DEFAULT_PROSE_MARK_STYLE: ProseMarkStyle = {
 
 export const DEFAULT_PREVIEW_STYLE: PreviewStyle = { ...DEFAULT_PROSE_MARK_STYLE };
 
-export const DEFAULT_PRINT_STYLE: PrintStyle = { ...DEFAULT_PREVIEW_STYLE };
+export const DEFAULT_PRINT_STYLE: PrintStyle = {
+  ...DEFAULT_PREVIEW_STYLE,
+  layout: DEFAULT_REPORT_LAYOUT,
+};
 
 export const DEFAULT_PRESENTATION_STYLE: PresentationStyle = {
   fontFamily: "fira-sans",
@@ -202,10 +212,16 @@ function createPreviewSettings() {
 
 function createPrintSettings() {
   const stored = persistedState<PrintStyle>(STORAGE_KEYS.printStyle, { ...DEFAULT_PRINT_STYLE });
-  stored.current = gapFill(stored.current, DEFAULT_PRINT_STYLE);
+  const filled = gapFill(stored.current, DEFAULT_PRINT_STYLE);
+  // Normalisation EN PROFONDEUR du gabarit : un layout hérité (avant la
+  // refonte, ou édité dans config.json) peut manquer des zones/champs —
+  // normalizeReportLayout complète avec le layout par défaut.
+  stored.current = { ...filled, layout: normalizeReportLayout(filled.layout) };
   return {
     get current() { return stored.current; },
-    patch(partial: Partial<PrintStyle>) { stored.current = { ...stored.current, ...partial }; },
+    patch(partial: Partial<PrintStyle>) {
+      stored.current = { ...stored.current, ...partial };
+    },
     reset() { stored.current = { ...DEFAULT_PRINT_STYLE }; },
   };
 }

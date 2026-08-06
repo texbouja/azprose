@@ -74,7 +74,7 @@
     const rootPath = getRootPath() ?? null;
     phase = "printing";
     try {
-      const ok = await exportPlanchesPdf({
+      const result = await exportPlanchesPdf({
         source,
         rubriques: collesSettings.current.rubriques,
         theme,
@@ -83,12 +83,17 @@
         colleur: userProfile.current.colleurName,
         includeEval,
       });
-      if (!ok) {
+      if (result === false) {
         error = t("colle.printEmpty");
         phase = "error";
         return;
       }
-      notifications.setInfo(t("colle.printLaunch"));
+      if (result === null) {
+        // L'utilisateur a annulé le dialogue de destination — rien à signaler.
+        onClose();
+        return;
+      }
+      notifications.setInfo(t("colle.printDone", { path: result }));
       onClose();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);

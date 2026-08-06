@@ -21,7 +21,7 @@
  * Ré-import : les tableaux précédents sont supprimés, puis recréés.
  */
 
-import { spreadsheetCreate, spreadsheetDelete } from "@/spreadsheet/store";
+import { spreadsheetCreate, spreadsheetDelete, spreadsheetGet } from "@/spreadsheet/store";
 import type { ColumnDef } from "@/spreadsheet/types";
 import type { ImportResult } from "@/lib/spreadsheet/import";
 import { buildColloscope, type ColloscopeData, type ColloscopeSeance } from "@/colles/colloscope";
@@ -187,7 +187,6 @@ async function deletePreviousColloscope(prev: { elevesSpreadsheetId: string; col
 export async function readColloscope(): Promise<ColloscopeData | null> {
   const cs = collesSettings.current;
   if (!cs.colloscope) return null;
-  const { spreadsheetGet } = await import("@/spreadsheet/store");
   try {
     const elevesTab = await spreadsheetGet(cs.colloscope.elevesSpreadsheetId);
     const eleves = elevesTab.data.map((r) => ({

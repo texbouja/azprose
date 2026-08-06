@@ -7,10 +7,8 @@
 //! part of the actual secret).
 //!
 //! Since round 10 the report body is an IMAGE (PNG — the SVG option was
-//! removed in round 16: html-to-image only produces `<foreignObject>` that
-//! render in browsers, blank in librsvg viewers, and the inlined styles
-//! bloated the files to ~10 Mo) captured in the frontend by `html-to-image`:
-//! the same rendering is guaranteed on every client. The email is a
+//! removed in round 16; captured by headless Chrome since round 19): the same
+//! rendering is guaranteed on every client. The email is a
 //! `multipart/related` built here: an HTML part that references the image as
 //! an inline attachment (`<img src="cid:rapport@azprose">`) + the image part
 //! itself (Content-ID `rapport@azprose`). This module only builds

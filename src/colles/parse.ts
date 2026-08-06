@@ -3,12 +3,19 @@
  *
  * Logique pure (pas de DOM) — réutilisable par le preview normal, CollePreview,
  * et la future vue DataFilter (table de métadonnées).
+ *
+ * Fences : ```` ```colle ```` est une SPÉCIALISATION du fence officiel
+ * ```` ```meta ```` (= ```` ```meta ```` + `type: colle`). Le nom du fence est
+ * AUTORITAIRE : ```` ```colle ```` force `type = "colle"` même si le YAML dit
+ * autre chose ou rien.
  */
 import { parse } from "yaml";
 import type { ColleMeta, CollePlanche, CollesSection } from "./types";
 
-/** Ligne d'ouverture d'un bloc colle (éventuellement suivie d'infos ignorées). */
-export const FENCE_OPEN_RE = /^```colle(?:[ \t]+.*)?$/;
+/** Ligne d'ouverture d'un bloc de métadonnées : ```meta ou ```colle
+ * (éventuellement suivi d'infos ignorées). ```colle est une spécialisation de
+ * ```meta (type forcé "colle"). */
+export const FENCE_OPEN_RE = /^```(?:colle|meta)(?:[ \t]+.*)?$/;
 /** Ligne de fermeture d'un fence. */
 export const FENCE_CLOSE_RE = /^```[ \t]*$/;
 /** Ligne de séparation de planches : ligne horizontale à tirets (convention
@@ -32,7 +39,14 @@ export function isHrLine(line: string): boolean {
   return HR_RE.test(line);
 }
 
-/** Parse le contenu YAML d'un bloc ```` ```colle ````. {} si vide, invalide ou non-objet. */
+/**
+ * Parse le contenu YAML d'un bloc ```` ```colle ```` en ColleMeta BRUTE (le
+ * dict `notes` et toute clé libre sont préservés pour le write-back — ne PAS
+ * passer par le parseur plat `parseMetaYaml`, il aplatirait les dicts).
+ * BRUT = aucune normalisation : la valeur `type` du YAML est conservée telle
+ * quelle ; le forçage `type = "colle"` (nom du fence autoritaire) est le rôle
+ * de `parseMetaFence` au rendu. {} si vide, invalide ou non-objet.
+ */
 export function parseColleYaml(blockSource: string): ColleMeta {
   const trimmed = blockSource.trim();
   if (!trimmed) return {};

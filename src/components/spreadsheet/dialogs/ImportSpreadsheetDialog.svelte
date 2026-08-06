@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Modal, Button } from "@svar-ui/svelte-core";
-  import { spreadsheetCreate, spreadsheetList } from "@/spreadsheet/store";
+  import { spreadsheetCreate, spreadsheetList, spreadsheetDelete } from "@/spreadsheet/store";
   import type { ColumnDef } from "@/spreadsheet/types";
   import type { ImportResult } from "@/lib/spreadsheet/import";
 
@@ -103,7 +103,6 @@
               (s) => s.name === name && s.name !== "Nouveau tableur",
             );
             if (match) {
-              const { spreadsheetDelete } = await import("@/spreadsheet/store");
               await spreadsheetDelete(match.id);
             }
           } catch { /* ignore */ }

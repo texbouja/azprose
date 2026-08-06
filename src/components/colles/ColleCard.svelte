@@ -263,7 +263,7 @@
   <!-- ── 1. Métadonnées ─────────────────────────────────────────── -->
   <section class="colle-sec">
     <div class="colle-sec__head">
-      <i class="colle-sec__icon wxi-user" aria-hidden="true"></i>
+      <i class="colle-sec__icon wxi-student" aria-hidden="true"></i>
       <span class="colle-sec__title">{planche.meta.eleve || t("colle.noEleve")}</span>
       {#if planche.meta.matiere}
         <span class="colle-sec__badge">{planche.meta.matiere}</span>

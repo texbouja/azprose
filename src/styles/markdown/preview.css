@@ -323,8 +323,28 @@
 .mdv-prose .callout[data-callout="bug"],         .azp-slide__content .callout[data-callout="bug"]         { border-left: 3px solid #e06464; }
 .mdv-prose .callout[data-callout="quote"],       .azp-slide__content .callout[data-callout="quote"]       { border-left: 3px solid var(--muted); }
 .mdv-prose .callout[data-callout="info"],        .azp-slide__content .callout[data-callout="info"]        { border-left: 3px solid #6b9eeb; }
+.mdv-prose .callout[data-callout="question"],    .azp-slide__content .callout[data-callout="question"]    { border-left: 3px solid #6b9eeb; }
 .mdv-prose .callout[data-callout="example"],     .azp-slide__content .callout[data-callout="example"]     { border-left: 3px solid #b496e6; }
 .mdv-prose .callout[data-callout="todo"],        .azp-slide__content .callout[data-callout="todo"]        { border-left: 3px solid #e6a94c; }
+/* Alias Obsidian — le plugin ne normalise PAS le nom dans data-callout (sa
+   carte d'alias ne sert qu'aux icônes) : chaque alias reçoit ici la couleur
+   de son type canonique, comme dans Obsidian. */
+.mdv-prose .callout[data-callout="hint"],        .azp-slide__content .callout[data-callout="hint"]        { border-left: 3px solid #72b886; }
+.mdv-prose .callout[data-callout="important"],   .azp-slide__content .callout[data-callout="important"]   { border-left: 3px solid #72b886; }
+.mdv-prose .callout[data-callout="check"],       .azp-slide__content .callout[data-callout="check"]       { border-left: 3px solid #72b886; }
+.mdv-prose .callout[data-callout="done"],        .azp-slide__content .callout[data-callout="done"]        { border-left: 3px solid #72b886; }
+.mdv-prose .callout[data-callout="caution"],     .azp-slide__content .callout[data-callout="caution"]     { border-left: 3px solid #e6a94c; }
+.mdv-prose .callout[data-callout="attention"],   .azp-slide__content .callout[data-callout="attention"]   { border-left: 3px solid #e6a94c; }
+.mdv-prose .callout[data-callout="error"],       .azp-slide__content .callout[data-callout="error"]       { border-left: 3px solid #e06464; }
+.mdv-prose .callout[data-callout="fail"],        .azp-slide__content .callout[data-callout="fail"]        { border-left: 3px solid #e06464; }
+.mdv-prose .callout[data-callout="failure"],     .azp-slide__content .callout[data-callout="failure"]     { border-left: 3px solid #e06464; }
+.mdv-prose .callout[data-callout="missing"],     .azp-slide__content .callout[data-callout="missing"]     { border-left: 3px solid #e06464; }
+.mdv-prose .callout[data-callout="help"],        .azp-slide__content .callout[data-callout="help"]        { border-left: 3px solid #6b9eeb; }
+.mdv-prose .callout[data-callout="faq"],         .azp-slide__content .callout[data-callout="faq"]         { border-left: 3px solid #6b9eeb; }
+.mdv-prose .callout[data-callout="cite"],        .azp-slide__content .callout[data-callout="cite"]        { border-left: 3px solid var(--muted); }
+.mdv-prose .callout[data-callout="abstract"],    .azp-slide__content .callout[data-callout="abstract"]    { border-left: 3px solid #6b9eeb; }
+.mdv-prose .callout[data-callout="summary"],     .azp-slide__content .callout[data-callout="summary"]     { border-left: 3px solid #6b9eeb; }
+.mdv-prose .callout[data-callout="tldr"],        .azp-slide__content .callout[data-callout="tldr"]        { border-left: 3px solid #6b9eeb; }
 
 /* Custom callout colors/counters/diamonds — dynamically injected via callout-settings.svelte.ts */
 
@@ -349,6 +369,11 @@
   list-style: none;
   display: flex;
   align-items: center;
+  cursor: pointer;
+}
+.mdv-prose details.callout > summary:hover,
+.azp-slide__content details.callout > summary:hover {
+  background: color-mix(in srgb, var(--surface) 45%, transparent);
 }
 .mdv-prose details.callout > summary::-webkit-details-marker,
 .azp-slide__content details.callout > summary::-webkit-details-marker { display: none; }

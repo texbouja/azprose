@@ -78,7 +78,6 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "codemirror-lang-latex": "^0.4.1",
     "ghostty-web": "^0.4.0",
-    "html-to-image": "^1.11.13",
     "i18next": "^26.3.0",
     "jspreadsheet-ce": "^5.0.4",
     "jsuites": "^6.4.2",

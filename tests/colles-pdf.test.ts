@@ -107,12 +107,15 @@ describe("assemblePrintHtml", () => {
     expect(html).toContain("break-inside: avoid");
   });
 
-  test("MathJax : config + CDN + cycle de vie d'impression automatique", () => {
+  test("MathJax : config + CDN + cycle de vie (signal prêt pour le backend headless)", () => {
     const html = assemblePrintHtml([data()], false);
     expect(html).toContain("window.MathJax = {");
     expect(html).toContain("mathjax@4/tex-svg.js");
     expect(html).toContain("window.MathJax.startup.promise.then");
-    expect(html).toContain("window.print()");
+    // Le backend Rust (mdprinter.rs) poll document.title jusqu'à ce marqueur
+    // avant de lancer print_to_pdf — plus de window.print() ni de dialogue.
+    expect(html).toContain('document.title = "azprose-print-ready"');
+    expect(html).not.toContain("window.print()");
     // Les extensions a11y (speech/braille/enrichissement SRE) sont désactivées
     // pour les documents autonomes chargés en maths (v4 les active par défaut).
     expect(html).toContain("enableEnrichment: false");

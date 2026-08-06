@@ -46,3 +46,15 @@ export {
   type FlatFileEntry,
 } from "./files";
 export { basename, dirname, joinPath } from "./paths-utils";
+export {
+  DOC_META_FIELDS,
+  DOC_TYPES,
+  humanizeDocType,
+  isColleMetaFence,
+  isDocType,
+  normalizeDocType,
+  parseMetaFence,
+  parseMetaYaml,
+  type DocType,
+  type ParsedMetaFence,
+} from "./doc-meta";

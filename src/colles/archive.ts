@@ -6,9 +6,8 @@
  *   Colles/<année>/Semaine_XX/<colleur>-<Nom_Prénom>-semXX.png
  * Exemple : Colles/2026/Semaine_01/Boujaida-El_Moujahid_Ahmed-sem01.png
  *
- * - Images TOUJOURS en PNG (l'option SVG a été retirée au round 16 —
- *   html-to-image ne produit que des `<foreignObject>` illisibles hors
- *   navigateur).
+ * - Images TOUJOURS en PNG (l'option SVG a été retirée au round 16 ;
+ *   capturées par headless Chrome depuis le round 19).
  *
  * - Dossier par ANNÉE (année calendaire de la date de la colle).
  * - Dossier par SEMAINE SANS date : « Semaine_XX » — numéro de SEMAINE DE
@@ -120,8 +119,7 @@ export function eleveNamePart(eleve: string): string {
 
 /**
  * Extension des images archivées : TOUJOURS `png` (l'option SVG est retirée
- * depuis le round 16 — html-to-image ne produit que des `<foreignObject>`
- * illisibles hors navigateur).
+ * depuis le round 16).
  */
 export const ARCHIVE_EXTENSION = "png";
 

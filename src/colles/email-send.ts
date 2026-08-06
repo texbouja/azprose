@@ -7,9 +7,9 @@
  * échec).
  *
  * Depuis le round 10 le corps du rapport est une IMAGE (PNG — l'option SVG a
- * été retirée au round 16) capturée par html-to-image : le mail est un
- * multipart/related (HTML wrapper + image inline `cid:rapport@azprose`)
- * construit par mailer.rs.
+ * été retirée au round 16 ; capturée par headless Chrome depuis le round 19) :
+ * le mail est un multipart/related (HTML wrapper + image inline
+ * `cid:rapport@azprose`) construit par mailer.rs.
  */
 import { invoke } from "@tauri-apps/api/core";
 

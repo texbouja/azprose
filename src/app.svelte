@@ -87,10 +87,16 @@ import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
 import { getCursorLine } from "@/stores/cursor-line.svelte";
 import { getCalendarStore } from "@/stores/calendar-store.svelte";
+import { journal } from "@/stores/journal-store.svelte";
+import { journalSettings } from "@/stores/journal-settings.svelte";
+import { ensureDailyNoteWithColles } from "@/colles/daily-note-io";
+import { spreadsheetGet, spreadsheetInitDb } from "@/spreadsheet/store";
+import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
 import { navPush, navBack, navForward, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
 import {
   createLatexState,
   cleanLatexAux, cleanLatexAuxAndOutput, cleanLatexAll,
+  handleLatexBuild,
 } from "@/latex";
 import { FileOpsManager } from "@/lib/file-operations.svelte";
 import ConsolePanel from "@/components/console/ConsolePanel.svelte";
@@ -184,9 +190,7 @@ $effect(() => {
     // Pre-warm SQLite database so the first spreadsheet open is fast —
     // avoids an intermittent Tauri IPC timeout when with_db() creates
     // the .azprose/data.db for the first time during a user interaction.
-    import("@/spreadsheet/store").then(({ spreadsheetInitDb }) => {
-      spreadsheetInitDb(rp);
-    });
+    spreadsheetInitDb(rp);
   }
 });
 
@@ -581,12 +585,9 @@ $effect(() => {
   const handler = async (e: Event) => {
     const { date } = (e as CustomEvent<{ date: string }>).detail;
     if (!date) return;
-    const { journal } = await import("@/stores/journal-store.svelte");
     const rp = getRootPath();
     if (!rp) return;
-    const { journalSettings } = await import("@/stores/journal-settings.svelte");
     const folder = journalSettings.current.journalFolder;
-    const { ensureDailyNoteWithColles } = await import("@/colles/daily-note");
     const p = await ensureDailyNoteWithColles(date, rp, folder);
     if (p) {
       await openFileInTab(p);
@@ -625,7 +626,6 @@ $effect(() => {
       return;
     }
     try {
-      const { spreadsheetGet } = await import("@/spreadsheet/store");
       const data = await spreadsheetGet(id);
       pm.openSpreadsheetInSide(id, data.name);
     } catch (err) {
@@ -684,7 +684,6 @@ $effect(() => {
     if (!spreadsheetIds?.length) return;
     try {
       const { datagridFindBySource, datagridCreateFromSpreadsheet, datagridRename } = await import("@/datagrid/store");
-      const { spreadsheetGet } = await import("@/spreadsheet/store");
       const gridIds: string[] = [];
       for (const spreadsheetId of spreadsheetIds) {
         // Le grid porte le nom de SON tableau source (jamais le nom de la pile
@@ -980,7 +979,7 @@ const handleAddFolder = () => handleAddFolderUtil(projectManagementCtx);
 const handleOpenProjectByPath = (f: string) => handleOpenProjectByPathUtil(projectManagementCtx, f);
 const handleInitProject = () => handleInitProjectUtil(projectManagementCtx);
 const handleCloseFolder = (path: string) => handleCloseFolderUtil(projectManagementCtx, path);
-const handleExportPdf = () => handleExportPdfUtil({ pm, activePath, extFromPath, themeResolved: theme.resolved });
+const handleExportPdf = () => handleExportPdfUtil({ pm, activePath, extFromPath, themeResolved: theme.resolved, notify: notifications, t });
 
 // Session restore, CLI open-file, CLI project-folder, single-instance open-project
 $effect(() => {
@@ -1341,13 +1340,11 @@ let cmds = $derived(
     editorMode,
     latexBuild: async () => {
       if (!activePath) return;
-      const { handleLatexBuild } = await import("@/latex");
       await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
       if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); sideVisible = true; }
     },
     latexViewPdf: async () => {
       if (!activePath) return;
-      const { handleLatexBuild } = await import("@/latex");
       if (!ls.viewerPdfPath) await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
       if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); if (!sideVisible) { sideVisible = true; pm.sideVisible = true; } }
     },
@@ -1370,11 +1367,9 @@ let cmds = $derived(
     openLinks: toggleLinksView,
     openSpreadsheet: handleOpenSpreadsheet,
     calendarExport: async () => {
-      const { exportCalendar } = await import("@/lib/calendar-persistence");
       await exportCalendar();
     },
     calendarImport: async () => {
-      const { importCalendar } = await import("@/lib/calendar-persistence");
       await importCalendar();
     },
     clearCalendarCache: async () => {
@@ -1502,12 +1497,10 @@ let cmds = $derived(
           buildRev={ls.buildRev}
           onSetEditorMode={activePath && (extFromPath(activePath) === "md" || extFromPath(activePath) === "csv" || extFromPath(activePath) === "tsv") ? handleSetEditorMode : undefined}
           onLatexViewer={activePath && extFromPath(activePath) === "tex" ? async () => {
-            const { handleLatexBuild } = await import("@/latex");
             if (!ls.viewerPdfPath) await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
             if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); if (!sideVisible) { sideVisible = true; pm.sideVisible = true; } }
           } : undefined}
           onLatexBuild={activePath && extFromPath(activePath) === "tex" ? async () => {
-            const { handleLatexBuild } = await import("@/latex");
             await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
             if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); sideVisible = true; }
           } : undefined}

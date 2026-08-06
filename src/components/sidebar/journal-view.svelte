@@ -1,6 +1,7 @@
 <script lang="ts">
 import { journalSettings } from "@/stores/journal-settings.svelte";
 import { createJournalState } from "@/stores/journal-store.svelte";
+import { ensureDailyNoteWithColles } from "@/colles/daily-note-io";
 import { joinPath, type FileEntry } from "@/lib/files";
 import JournalCalendar from "./journal-calendar.svelte";
 import VirtualTree from "./virtual-tree.svelte";
@@ -46,7 +47,6 @@ async function handleSelectDate(date: string) {
   journal.selectDate(date);
   const exists = await journal.noteExists(date, rootPath, folder);
   if (!exists) {
-    const { ensureDailyNoteWithColles } = await import("@/colles/daily-note");
     const p = await ensureDailyNoteWithColles(date, rootPath, folder);
     if (p) {
       onSelectFile(p);

@@ -1,6 +1,7 @@
 import type { HandlerContext, FileHandler } from "./types"
 import { extFromPath } from "@/lib/editor-languages"
 import { invoke } from "@tauri-apps/api/core"
+import { autoBuildIfDepChanged, clearLatexDeps, handleLatexBuild, setupLatexLogListener } from "@/latex"
 
 export function createLatexHandler(context: HandlerContext): FileHandler {
   const ctx = context
@@ -8,7 +9,6 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
   const timers: ReturnType<typeof setTimeout>[] = []
 
   async function onLatexBuild() {
-    const { handleLatexBuild } = await import("@/latex")
     await handleLatexBuild(
       ctx.ls,
       ctx.activePath(),
@@ -26,7 +26,6 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
   function setupEffects() {
     // LaTeX log listener
     void (async () => {
-      const { setupLatexLogListener } = await import("@/latex")
       const unlisten = setupLatexLogListener()
       cleanups.push(unlisten)
     })()
@@ -40,7 +39,7 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
           if (lastExt !== "tex") {
             ctx.ls.latexBuilding = false
             import("@/stores/diagnostics.svelte").then(m => m.diagnosticsStore.clear("latex"))
-            import("@/latex").then(m => m.clearLatexDeps(ctx.ls))
+            clearLatexDeps(ctx.ls)
           }
           lastExt = ext
         }
@@ -80,7 +79,6 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
           lastSaved = saved
           const path = ctx.activePath()
           if (path && extFromPath(path) === "tex") {
-            const { autoBuildIfDepChanged } = await import("@/latex")
             autoBuildIfDepChanged(ctx.ls, path, onLatexBuild)
           }
         }

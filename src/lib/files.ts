@@ -80,6 +80,17 @@ export async function pickXlsx(label = "fichier"): Promise<string | null> {
   return null;
 }
 
+/** Sélection multiple de fichiers CSS (gabarit du rapport de colle). */
+export async function pickCssFiles(): Promise<string[]> {
+  const result = await open({
+    multiple: true,
+    title: "Sélectionner des fichiers CSS",
+    filters: [{ name: "CSS", extensions: ["css"] }],
+  });
+  if (!result) return [];
+  return Array.isArray(result) ? result : [result];
+}
+
 export async function pickAnyFile(): Promise<string | null> {
   const result = await open({
     multiple: false,

@@ -32,6 +32,8 @@ tokio = { version = "1", features = ["process", "fs"] }
 portable-pty = "0.9"
 lettre = "0.11"
 base64 = "0.22"
+headless_chrome = { version = "1.0.22", features = ["fetch"] }
+url = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 window-vibrancy = "0.7"

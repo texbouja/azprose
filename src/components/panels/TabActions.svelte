@@ -260,7 +260,7 @@ let sideItems = $derived.by(() => {
     }
     items.push({
       comp: "icon",
-      icon: "wxi-star",
+      icon: "wxi-chalkboard-teacher",
       text: t("tabs.colles"),
       pinned: true,
       type: renderMode === "colle" ? "pressed" : "",

@@ -12,7 +12,8 @@ import { resolveTransclusions, type TransclusionRange } from "./transclusion";
 import { shiftRangesToSource, unshiftTransclusionLine } from "./transclusion-lines";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import { slugify } from "./slugify";
-import { parseColleYaml, stripColleSeparators, type ColleMeta } from "@/colles";
+import { stripColleSeparators } from "@/colles";
+import { humanizeDocType, parseMetaFence, type DocType } from "@/lib/doc-meta";
 
 // ── HTML escape utilities ────────────────────────────────
 export function escapeHtml(s: string): string {
@@ -179,23 +180,56 @@ md.use(callouts, calloutOptions);
 
 md.use(footnote);
 
-// ── Colle planches (```colle) — carte d'en-tête lisible dans le preview normal ──
+// ── Fences de métadonnées (```meta / ```colle) — carte d'en-tête lisible ────
 
-const COLLE_FIELD_LABELS: Array<[keyof ColleMeta, string]> = [
+/**
+ * Ordre d'affichage des champs dans la carte d'en-tête.
+ *  - COLLE : ordre historique (parité visuelle du rendu colle).
+ *  - générique : catalogue document, matière en tête, sans élève/colleur/salle.
+ */
+const COLLE_FIELD_LABELS: Array<[string, string]> = [
   ["matiere", "Matière"],
   ["colleur", "Colleur"],
   ["eleve", "Élève"],
   ["date", "Date"],
   ["creneau", "Créneau"],
   ["salle", "Salle"],
+  ["classe", "Classe"],
+  ["groupe", "Groupe"],
 ];
 
-function renderCollePlaceholder(index: number, meta: ColleMeta): string {
+const DOC_FIELD_LABELS: Array<[string, string]> = [
+  ["matiere", "Matière"],
+  ["classe", "Classe"],
+  ["date", "Date"],
+  ["creneau", "Créneau"],
+  ["centre", "Centre"],
+  ["ville", "Ville"],
+  ["filiere", "Filière"],
+  ["session", "Session"],
+  ["duree", "Durée"],
+  ["document", "Document"],
+  ["theme", "Thème"],
+  ["origine", "Origine"],
+  ["auteur", "Auteur"],
+  ["email", "Email"],
+  ["website", "Site web"],
+];
+
+function renderMetaPlaceholder(
+  index: number,
+  type: DocType,
+  meta: Record<string, string>,
+  isColle: boolean,
+): string {
   const metaJson = escapeAttr(JSON.stringify(meta));
-  const fields = COLLE_FIELD_LABELS
+  const labels = isColle
+    ? COLLE_FIELD_LABELS
+    : DOC_FIELD_LABELS;
+  const fields = labels
     .filter(([k]) => meta[k] != null && meta[k] !== "")
     .map(([k, label]) => {
-      const v = Array.isArray(meta[k]) ? (meta[k] as unknown[]).join(" · ") : String(meta[k]);
+      const v = meta[k];
       return (
         `<span class="colle-block__field">` +
         `<span class="colle-block__label">${escapeHtml(label)}</span>` +
@@ -204,12 +238,16 @@ function renderCollePlaceholder(index: number, meta: ColleMeta): string {
       );
     })
     .join("");
+  const badge = humanizeDocType(type);
+  const hint = isColle
+    ? `<p class="colle-block__hint">Fiche de colle — ouvrir la vue « Colles » pour l'évaluation</p>`
+    : "";
   return (
     `<div class="colle-block" data-colle-index="${index}" data-colle-meta="${metaJson}">` +
     `<div class="colle-block__head">` +
-    `<span class="colle-block__badge">Colle</span>${fields}` +
+    `<span class="colle-block__badge">${escapeHtml(badge)}</span>${fields}` +
     `</div>` +
-    `<p class="colle-block__hint">Fiche de colle — ouvrir la vue « Colles » pour l'évaluation</p>` +
+    hint +
     `</div>`
   );
 }
@@ -219,13 +257,14 @@ md.renderer.rules.fence = ((tokens, idx, _options, env, _self) => {
   const token = tokens[idx];
   const lang = (token.info.trim().split(/\s+/)[0]) || "text";
 
-  // ```colle — planche de colle : métadonnées YAML → carte d'en-tête lisible.
-  if (lang === "colle") {
-    const meta = parseColleYaml(token.content);
+  // ```colle / ```meta — métadonnées YAML → carte d'en-tête lisible. Un fence
+  // ```colle est une SPÉCIALISATION de ```meta (type forcé "colle").
+  if (lang === "colle" || lang === "meta") {
+    const fence = parseMetaFence(lang, token.content);
     const rEnv = env as Record<string, unknown>;
     const pIndex = (rEnv.colleIndex as number) ?? 0;
     rEnv.colleIndex = pIndex + 1;
-    return renderCollePlaceholder(pIndex, meta);
+    return renderMetaPlaceholder(pIndex, fence.type, fence.meta, fence.type === "colle");
   }
 
   if (!highlighter) return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
@@ -498,10 +537,33 @@ export function stripAutoCalloutTitles(container: HTMLElement): void {
   }
 }
 
+/** Build the right-side chevron SVG shown on every collapsible callout. */
+function createCalloutChevron(): SVGSVGElement {
+  const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  chevron.setAttribute("class", "callout-chevron");
+  chevron.setAttribute("width", "16");
+  chevron.setAttribute("height", "16");
+  chevron.setAttribute("viewBox", "0 0 24 24");
+  chevron.setAttribute("fill", "none");
+  chevron.setAttribute("stroke", "currentColor");
+  chevron.setAttribute("stroke-width", "2");
+  chevron.setAttribute("stroke-linecap", "round");
+  chevron.setAttribute("stroke-linejoin", "round");
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.innerHTML = CHEVRON_ICON;
+  return chevron;
+}
+
 /**
- * Post-render: convert all <div class="callout"> to <details>/<summary>
- * so every callout is collapsible with a chevron on the right.
- * Already-collapsible callouts (<details>) are left untouched.
+ * Post-render: make EVERY callout collapsible with a chevron on the right,
+ * matching the Obsidian convention (all callouts fold on a title click; the
+ * `+`/`-` fold marker only sets the default state).
+ *
+ * 1. Convert plain `<div class="callout">` (no fold marker) into
+ *    `<details open>`.
+ * 2. Callouts written with a fold marker (`[!note]+` / `[!note]-`) are already
+ *    rendered as `<details>` by markdown-it-obsidian-callouts — give their
+ *    empty `<div class="callout-fold">` the same chevron.
  */
 export function makeCalloutsCollapsible(article: HTMLElement): void {
   const divs = article.querySelectorAll<HTMLDivElement>("div.callout");
@@ -542,22 +604,26 @@ export function makeCalloutsCollapsible(article: HTMLElement): void {
       iconWrap.insertBefore(diamond, label);
     }
 
-    const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    chevron.setAttribute("class", "callout-chevron");
-    chevron.setAttribute("width", "16");
-    chevron.setAttribute("height", "16");
-    chevron.setAttribute("viewBox", "0 0 24 24");
-    chevron.setAttribute("fill", "none");
-    chevron.setAttribute("stroke", "currentColor");
-    chevron.setAttribute("stroke-width", "2");
-    chevron.setAttribute("stroke-linecap", "round");
-    chevron.setAttribute("stroke-linejoin", "round");
-    chevron.setAttribute("aria-hidden", "true");
-    chevron.innerHTML = CHEVRON_ICON;
-    summary.appendChild(chevron);
+    summary.appendChild(createCalloutChevron());
 
     details.appendChild(summary);
     details.appendChild(content);
     div.replaceWith(details);
+  }
+
+  // Fold-marker callouts ([!name]+ / [!name]-): the plugin leaves an empty
+  // `.callout-fold` div in the summary — swap it for the chevron. The divs
+  // converted above already carry one (guard skips them).
+  const details = article.querySelectorAll<HTMLDetailsElement>("details.callout");
+  for (const det of details) {
+    const summary = det.querySelector<HTMLElement>(":scope > summary");
+    if (!summary || summary.querySelector(".callout-chevron")) continue;
+    const fold = summary.querySelector<HTMLElement>(":scope > .callout-fold");
+    const chevron = createCalloutChevron();
+    if (fold) {
+      fold.replaceWith(chevron);
+    } else {
+      summary.appendChild(chevron);
+    }
   }
 }

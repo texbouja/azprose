@@ -1,31 +1,24 @@
 /**
- * Rendu DOM des rapports de colles pour email — capture en IMAGE via
- * html-to-image (décision utilisateur round 10) et GABARIT réutilisé
- * (décision utilisateur round 15).
+ * Rendu des rapports de colles pour email — capture en IMAGE PNG via headless
+ * Chrome (round 19 — remplace html-to-image, décisions utilisateur round 10 +
+ * round 19) et GABARIT réutilisé (décision utilisateur round 15).
  *
  * Le corps de l'email est une image PNG : affichage identique sur tous les
- * clients, garantie totale. (L'option SVG — `toSvg` — a été RETIRÉE au round 16 :
- * html-to-image encapsule le HTML dans un `<foreignObject>` qui ne s'affiche
- * que dans un navigateur — vide dans les visionneuses librsvg/Inkscape — et le
- * fichier inliné (≈300 propriétés CSS par élément) pesait ~10 Mo pour une
- * planche réelle.) `html-to-image` clone le node rendu (y compris les SVG
- * MathJax et les images locales déjà résolues par la pipeline) et le capture
- * en une seule opération — plus de rasterisation manuelle SVG→PNG, plus de
- * canvas, plus de tailles px explicites (les `ex` de MathJax sont résolus par
- * le layout du conteneur).
+ * clients, garantie totale. (L'option SVG — `toSvg` — a été RETIRÉE au round 16
+ * : html-to-image encapsule le HTML dans un `<foreignObject>` illisible hors
+ * navigateur, et les rendus étaient gonflés de styles inlinés.) Depuis le
+ * round 19, html-to-image est SUPPRIMÉ : le document HTML auto-suffisant
+ * (`assembleReportImageHtml` dans email.ts — MathJax CDN, CSS embarqué,
+ * lifecycle script) est confié à la commande Rust `render_report_png`, qui
+ * ouvre headless Chrome, attend le marqueur `azprose-report-ready` (typeset
+ * MathJax terminé), capture la page à l'échelle rétine 2× et retourne le PNG
+ * en base64 — plus de DOM monté dans l'app, plus de clone de styles, plus de
+ * layout hors écran.
  *
- * GABARIT (round 15) : la création des images est laborieuse — le shell de la
- * page (structure + CSS embarqué `<style>`) est rendu UNE seule fois dans le
- * conteneur hors écran, puis pour CHAQUE planche on ne change que le contenu
- * des slots (`fillReportPage`) avant la capture. Les fragments markdown de
- * TOUTES les planches sont rendus en parallèle au début (un seul typeset
- * MathJax par planche, au niveau de la page — plus de typeset par fragment).
- *
- * Le conteneur est caché MAIS mis en page (attaché à document.body, hors
- * écran à gauche, 640px de large) : typesetMath et html-to-image ont besoin
- * du layout (getBoundingClientRect). Attention : PAS de `visibility:hidden`
- * sur le node racine — html-to-image copie les styles calculés sur son clone
- * et une racine invisible produirait une image vide.
+ * Les fragments markdown de TOUTES les planches sont rendus en parallèle au
+ * début (`buildReportData`), puis chaque planche est assemblée en document
+ * autonome et capturée séquentiellement. Un seul typeset MathJax par planche,
+ * fait par le navigateur headless au chargement (plus de typeset dans l'app).
  */
 import {
   renderMarkdown,
@@ -33,25 +26,20 @@ import {
   makeCalloutsCollapsible,
   postRenderDom,
 } from "@/markdown";
-import { typesetMath } from "@/lib/typeset-math";
-import { toPng } from "html-to-image";
+import { invoke } from "@tauri-apps/api/core";
 import { printSettings } from "@/stores/markdown-settings.svelte";
+import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { buildReportPrintCss } from "@/lib/prose-style-css";
+import { buildMathJaxConfig } from "@/lib/pdf-export";
 import { rubriquesFor, sumMaxScore, sumNotes } from "./rubrics";
 import type { CollePlanche, RubriquesParMatiere } from "./types";
 import {
-  buildReportContent,
+  assembleReportImageHtml,
   buildReportEmailHtml,
-  buildReportEnonce,
-  buildReportEval,
-  buildReportHead,
-  buildReportMetaRows,
-  buildReportPageShell,
-  buildReportProgramme,
-  buildReportSignature,
   buildReportSubject,
   type ColleReportData,
 } from "./email";
+import { DEFAULT_REPORT_LAYOUT } from "./report-layout";
 
 export interface ColleReportOptions {
   theme: string;
@@ -59,6 +47,19 @@ export interface ColleReportOptions {
   rootPath?: string | null;
   /** Nom du colleur pour la signature (repli meta.colleur). */
   colleur?: string;
+}
+
+/**
+ * Levé quand une boucle de rendu est ANNULÉE par l'utilisateur (AbortSignal
+ * branché sur le bouton « Annuler » / la fermeture du dialogue). L'appelant
+ * le distingue d'une vraie erreur (retour silencieux à la phase prête, pas de
+ * message d'échec).
+ */
+export class ReportRenderCancelled extends Error {
+  constructor() {
+    super("Rendu annulé");
+    this.name = "ReportRenderCancelled";
+  }
 }
 
 /** Image capturée + wrapper email prêt pour l'envoi (mailer.rs). */
@@ -75,25 +76,18 @@ export interface ColleReportImage {
   html: string;
 }
 
-/**
- * Largeur CSS du rapport (px) — la sortie est rendue en pixelRatio 2×
- * (1280px). DOIT rester synchrone avec `--rp-w` dans REPORT_PAGE_CSS
- * (email.ts) : la hauteur minimale de la page est `calc(var(--rp-w) * 16 / 10)`
- * (ratio 16:10 → 2048px de haut en sortie image). Changer la largeur = modifier
- * CES DEUX valeurs (constante ici + variable CSS).
- */
-const REPORT_WIDTH = 640;
-/** Facteur de capture : 2× pour la rétine (sortie ≈ 1280px de large). */
-const REPORT_PIXEL_RATIO = 2;
-/** Fond de l'image (celui du body email) — évite la transparence. */
-const REPORT_BG = "#f0f2f5";
+/** Retour de la commande Rust `render_report_png` (serde camelCase). */
+interface ReportPng {
+  base64: string;
+  width: number;
+  height: number;
+}
 
 /**
  * Rend un fragment markdown (énoncé ou observations) : renvoie son innerHTML
  * une fois la pipeline passée (callouts, images locales). Détaché du DOM —
- * PAS de typeset ici : la page entière est typée UNE fois par planche dans
- * `renderReportImages` (les maths `\(…\)` brutes produites par la pipeline
- * sont converties en SVG à ce moment-là).
+ * PAS de typeset ici : les maths `\(…\)` brutes sont typées par MathJax dans
+ * le navigateur headless, au chargement du document autonome.
  */
 async function renderFragment(markdown: string, opts: ColleReportOptions): Promise<string> {
   const result = await renderMarkdown(
@@ -146,133 +140,75 @@ export async function buildReportData(
   };
 }
 
-/**
- * Remplit le gabarit (shell rendu une fois) avec les données d'UNE planche :
- * chaque slot `data-slot` reçoit le HTML de sa section (builders purs de
- * email.ts — même source de vérité que `buildReportContent`) et devient
- * visible ; les sections vides sont masquées (`hidden`).
- *
- * `includeSalle` (défaut true) : les rendus PNG (email + archivage) passent
- * false — la Salle est retirée des images (retouche utilisateur round 18) ;
- * la vue HTML de l'app la garde (elle n'utilise pas ce remplissage).
- */
-export function fillReportPage(
-  page: HTMLElement,
-  data: ColleReportData,
-  includeSalle = true,
-): void {
-  const m = data.meta;
-  const sections: Array<[string, string]> = [
-    ["head", buildReportHead(m)],
-    ["meta", buildReportMetaRows(m, data.colleur, includeSalle)],
-    ["programme", buildReportProgramme(data.programme)],
-    ["enonce", buildReportEnonce(data.bodyHtml)],
-    ["eval", buildReportEval(data.note, data.noteMax, data.rubricRows, data.observationsHtml)],
-    ["signature", buildReportSignature(data.colleur)],
-  ];
-  for (const [name, html] of sections) {
-    const slot = page.querySelector<HTMLElement>(`[data-slot="${name}"]`);
-    if (!slot) continue;
-    slot.innerHTML = html;
-    slot.hidden = !html;
-  }
-}
-
-/** Vide tous les slots du gabarit (entre deux planches). */
-export function resetReportPage(page: HTMLElement): void {
-  page.querySelectorAll<HTMLElement>("[data-slot]").forEach((slot) => {
-    slot.innerHTML = "";
-    slot.hidden = true;
+/** Assemble le document autonome d'UNE planche (MathJax + CSS + lifecycle). */
+function assembleReportHtml(data: ColleReportData): string {
+  return assembleReportImageHtml(data, {
+    mathjaxConfig: buildMathJaxConfig(),
+    preamble: mathJaxPreamble.current,
+    printCss: buildReportPrintCss(printSettings.current),
+    layout: printSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
   });
-}
-
-/** Capture la page (déjà remplie + typée) en PNG (rétine 2×). */
-async function capturePage(
-  page: HTMLElement,
-): Promise<Pick<ColleReportImage, "base64" | "mimeType" | "width" | "height">> {
-  const dataUrl = await toPng(page, {
-    backgroundColor: REPORT_BG,
-    width: REPORT_WIDTH,
-    pixelRatio: REPORT_PIXEL_RATIO,
-    cacheBust: true,
-  });
-  return {
-    base64: dataUrl.slice(dataUrl.indexOf(",") + 1),
-    mimeType: "image/png",
-    width: REPORT_WIDTH * REPORT_PIXEL_RATIO,
-    height: Math.round(page.getBoundingClientRect().height * REPORT_PIXEL_RATIO),
-  };
 }
 
 /**
  * Rend UN LOT de planches en images PNG : fragments markdown de TOUTES les
- * planches rendus en parallèle, puis pour chacune le gabarit (rendu une
- * seule fois) est rempli, typé et capturé. Retourne une image par planche
- * (même ordre). `onProgress(done, total)` après chaque capture.
+ * planches rendus en parallèle, puis pour chacune le document autonome est
+ * assemblé et capturé par headless Chrome (commande Rust `render_report_png`).
+ * Retourne une image par planche (même ordre). `onProgress(done, total)`
+ * après chaque capture.
+ *
+ * `signal` (optionnel) : si l'utilisateur annule, la boucle lève
+ * `ReportRenderCancelled` ENTRE deux captures (la capture en cours n'est pas
+ * interrompue — elle est atomique côté Rust).
  */
 export async function renderReportImages(
   planches: CollePlanche[],
   rubriques: RubriquesParMatiere,
   opts: ColleReportOptions,
   onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<ColleReportImage[]> {
   if (!planches.length) return [];
   const datas = await Promise.all(planches.map((p) => buildReportData(p, rubriques, opts)));
 
-  const mount = document.createElement("div");
-  mount.style.cssText = `position:absolute;left:-9999px;top:0;width:${REPORT_WIDTH}px;pointer-events:none;`;
-  document.body.appendChild(mount);
-  try {
-    const page = document.createElement("div");
-    page.innerHTML = buildReportPageShell();
-    mount.appendChild(page);
-
-    // Section « Printing » des réglages : le CSS typographique (polices,
-    // tailles, interligne, titres, listes + customCss) est injecté APRÈS le
-    // style du gabarit (dans `.rp`, le dernier bloc `<style>` gagne à
-    // spécificité égale) — s'applique aux blocs de contenu markdown (énoncé +
-    // observations), jamais au chrome du gabarit. Couvre email ET archivage
-    // (l'archivage passe par ce même `renderReportImages`).
-    const printStyle = document.createElement("style");
-    printStyle.textContent = buildReportPrintCss(printSettings.current);
-    page.appendChild(printStyle);
-
-    const images: ColleReportImage[] = [];
-    for (let i = 0; i < planches.length; i++) {
-      const data = datas[i];
-      // PNG (email + archivage) : la Salle est retirée (retouche round 18) —
-      // le gabarit HTML de l'app la garde, pas l'image.
-      fillReportPage(page, data, false);
-      // Un SEUL typeset par planche : les maths `\(…\)` des fragments ne sont
-      // converties en SVG qu'ici (l'ancien typeset par fragment est supprimé).
-      await typesetMath(page);
-      const captured = await capturePage(page);
-      images.push({
-        ...captured,
-        subject: buildReportSubject(data),
-        html: buildReportEmailHtml(data),
-      });
-      resetReportPage(page);
-      onProgress?.(i + 1, planches.length);
-    }
-    return images;
-  } finally {
-    mount.remove();
+  const images: ColleReportImage[] = [];
+  for (let i = 0; i < planches.length; i++) {
+    if (signal?.aborted) throw new ReportRenderCancelled();
+    const data = datas[i];
+    // PNG (email + archivage) : la Salle est retirée dans `assembleReportImageHtml`
+    // (includeSalle false — retouche round 18) — le gabarit HTML de l'app la
+    // garde, pas l'image. Un SEUL typeset par planche, fait par le navigateur
+    // headless au chargement (marqueur `azprose-report-ready`).
+    const captured = await invoke<ReportPng>("render_report_png", {
+      html: assembleReportHtml(data),
+      rootPath: opts.rootPath ?? null,
+    });
+    images.push({
+      base64: captured.base64,
+      mimeType: "image/png",
+      width: captured.width,
+      height: captured.height,
+      subject: buildReportSubject(data),
+      html: buildReportEmailHtml(data),
+    });
+    onProgress?.(i + 1, planches.length);
   }
+  return images;
 }
 
 /**
- * Prépare le DOM du rapport d'UNE planche et retourne l'image prête pour
+ * Prépare l'image du rapport d'UNE planche et retourne l'image prête pour
  * l'envoi (délègue au rendu par lot de `renderReportImages`).
  */
 export async function renderColleReportImage(
   planche: CollePlanche,
   rubriques: RubriquesParMatiere,
   opts: ColleReportOptions,
+  signal?: AbortSignal,
 ): Promise<ColleReportImage> {
-  const images = await renderReportImages([planche], rubriques, opts);
+  const images = await renderReportImages([planche], rubriques, opts, undefined, signal);
   return images[0];
 }
 
-export { buildReportContent, buildReportEmailHtml, buildReportSubject };
+export { buildReportEmailHtml, buildReportSubject };
 export type { ColleReportData };

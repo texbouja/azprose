@@ -180,18 +180,20 @@ async function assembleHtml(
     ? `<div style="position:absolute;left:-9999px" aria-hidden="true">$$${preamble}$$</div>`
     : "";
 
-  // Lifecycle script — waits for MathJax to finish, then opens print dialog
+  // Lifecycle script — waits for MathJax to finish, then signals readiness by
+  // setting document.title to the marker polled by the headless Rust backend
+  // (mdprinter.rs). No more window.print(): the PDF is produced by print_to_pdf.
   const lifecycleScript = `
 <script>
 (function() {
-    function triggerPrint() { window.print(); }
+    function markReady() { document.title = "azprose-print-ready"; }
     if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
         window.MathJax.startup.promise.then(function() {
-            setTimeout(triggerPrint, 600);
-        }).catch(function() { triggerPrint(); });
+            setTimeout(markReady, 600);
+        }).catch(function() { markReady(); });
     } else {
         window.addEventListener('load', function() {
-            setTimeout(triggerPrint, 2000);
+            setTimeout(markReady, 2000);
         });
     }
 })();
@@ -226,17 +228,34 @@ ${lifecycleScript}
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Export a markdown file to PDF via the system browser.
- * Assembles a self-contained HTML and delegates to the Rust backend
- * which selects the best browser per platform and injects print params.
+ * Export a markdown file to PDF via headless Chrome.
+ * Assembles a self-contained HTML, asks the user for the destination with a
+ * native save dialog, then delegates to the Rust backend which runs headless
+ * print_to_pdf and writes the PDF directly to disk.
+ *
+ * DECISION UTILISATEUR : headless print_to_pdf — the --app + native print
+ * dialog flow is gone; the page layout is decided by the app (A4 portrait,
+ * @page CSS margins).
+ *
+ * Returns the output path, or null when the user cancelled the save dialog.
  */
 export async function exportMarkdownPdf(
   src: string,
   theme: Theme,
   filePath: string,
-): Promise<void> {
+): Promise<string | null> {
   const rootPath = getRootPath();
   const html = await assembleHtml(src, theme, filePath, rootPath);
 
-  await invoke("export_markdown_pdf", { html });
+  // La destination est choisie AVANT le rendu headless (le backend écrit le
+  // PDF directement sur disque, plus de dialogue d'impression natif).
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const outputPath = await save({
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+    defaultPath: filePath.replace(/\.md$/i, ".pdf"),
+  });
+  if (!outputPath) return null;
+
+  await invoke("export_markdown_pdf", { html, outputPath, landscape: false, rootPath });
+  return outputPath;
 }

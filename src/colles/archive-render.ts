@@ -20,6 +20,7 @@ import { dirname, joinPath } from "@/lib/files";
 import {
   renderColleReportImage,
   renderReportImages,
+  ReportRenderCancelled,
   type ColleReportImage,
   type ColleReportOptions,
 } from "./email-render";
@@ -151,6 +152,7 @@ export async function renderAndArchiveImages(
   opts: ColleReportOptions,
   rootPath: string | null,
   onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<{ count: number; paths: string[] }> {
   // Échec BRUYANT : un rootPath manquant ferait de writeArchivedImage un no-op
   // silencieux → « N image(s) archivée(s) » sans AUCUN fichier sur disque
@@ -158,6 +160,7 @@ export async function renderAndArchiveImages(
   if (!rootPath) {
     throw new Error("rootPath introuvable : impossible d'archiver dans le vault");
   }
+  if (signal?.aborted) throw new ReportRenderCancelled();
   // Semaines de colle du colloscope courant, résolues UNE fois pour toutes les
   // planches. Une planche hors période déclenche le PROMPT manuel (une seule
   // demande par semaine — la valeur est mémorisée) ; une demande ANNULÉE fait
@@ -165,13 +168,17 @@ export async function renderAndArchiveImages(
   const weeks = await loadColleWeeks();
   const weekNums: number[] = [];
   for (let i = 0; i < planches.length; i++) {
+    if (signal?.aborted) throw new ReportRenderCancelled();
     weekNums.push(await resolveWeekNum(planches[i], weeks));
   }
   // Rendu par LOT (gabarit réutilisé — un seul shell + CSS rendus) puis
-  // écriture séquentielle des images PNG sur disque.
-  const images = await renderReportImages(planches, rubriques, opts, onProgress);
+  // écriture séquentielle des images PNG sur disque. `signal` : l'utilisateur
+  // peut ANNULER entre deux captures (ReportRenderCancelled) — le bouton
+  // « Annuler » du dialogue Send.
+  const images = await renderReportImages(planches, rubriques, opts, onProgress, signal);
   const paths: string[] = [];
   for (let i = 0; i < planches.length; i++) {
+    if (signal?.aborted) throw new ReportRenderCancelled();
     const rel = archiveRelativePath(planches[i], weekNums[i]);
     await writeArchivedImage(images[i].base64, rel, rootPath);
     paths.push(rel);
