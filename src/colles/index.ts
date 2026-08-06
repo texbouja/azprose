@@ -52,7 +52,7 @@ export {
   resolveReportVar,
 } from "./report-layout";
 export type { ReportCssFile, ReportLayout, ReportZoneLayout } from "./report-layout";
-export { renderColleReportImage, renderReportImages } from "./email-render";
+export { renderReportImages } from "./email-render";
 export type { ColleReportImage, ColleReportOptions } from "./email-render";
 export {
   ARCHIVE_ROOT,
@@ -82,12 +82,9 @@ export {
   setManualWeekNumber,
 } from "./week-overrides.svelte";
 export {
-  archivePlancheImage,
-  archiveReportImage,
+  archiveImages,
   loadColleWeeks,
   plancheWeekNumber,
-  readArchivedImage,
-  renderAndArchiveImages,
   writeArchivedImage,
 } from "./archive-render";
 export { assemblePrintHtml, chunkPairs, PRINT_PAGE_CSS } from "./pdf-planches";

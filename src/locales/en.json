@@ -445,7 +445,7 @@
   "colle.sendInProgress": "Sending…",
   "colle.archive": "Archive images",
   "colle.archiving": "Archiving images… {done}/{total}",
-  "colle.archiveDone": "{count} image(s) archived in {folder} (reused by sending).",
+  "colle.archiveDone": "{count} image(s) archived in {folder}.",
   "colle.sendAllOk": "{count} report(s) sent successfully.",
   "colle.sendPartial": "{ok} sent, {failed} failed.",
   "colle.sendRetry": "Retry failed",
