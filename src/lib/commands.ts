@@ -11,7 +11,6 @@ export type CommandCategory =
   | "view"
   | "calendar"
   | "spreadsheet"
-  | "opencode"
   | "theme"
   | "maintenance"
   | "help";
@@ -97,9 +96,6 @@ export type CommandActions = {
   // Calendar
   openCalendarEditor: () => void;
 
-  // OpenCode
-  showOpenCode: () => void;
-
   // Journal
   openJournalCalendar: () => void;
 
@@ -151,7 +147,6 @@ export const CATEGORY_ORDER: CommandCategory[] = [
   "view",
   "calendar",
   "spreadsheet",
-  "opencode",
   "theme",
   "maintenance",
   "help",
@@ -611,17 +606,6 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       category: "spreadsheet",
       keywords: ["spreadsheet", "nouveau", "new", "tableur", "créer", "create"],
       action: actions.openSpreadsheet,
-    },
-    // ── OpenCode ────────────────────────────────────────────
-    {
-      id: "show-opencode",
-      label: t("command.showOpenCode"),
-      hint: t("command.showOpenCodeHint"),
-      shortcut: "⌃⇧O",
-      icon: "wxi-sparkles",
-      category: "opencode",
-      keywords: ["opencode", "ai", "assistant", "terminal", "agent"],
-      action: actions.showOpenCode,
     },
     // ── Themes ──────────────────────────────────────────────
     ...THEME_COMMANDS.map(

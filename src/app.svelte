@@ -180,7 +180,8 @@ $effect(() => { setSessionScope(rootPath); });
 // Keep the rootPath store in sync for preview components (wikilink resolution).
 $effect(() => { setRootPath(rootPath); });
 
-// Keep the activePath store in sync for opencode panel (file context).
+// Keep the activePath store in sync (file context for the workspace view
+// and file-operations move detection).
 $effect(() => { setActivePath(activePath); });
 
 // Wire stores to rootPath and load on vault open.
@@ -1389,9 +1390,6 @@ let cmds = $derived(
     openCalendarEditor: () => {
       pm.openCustomInSide("calendar-editor", "Calendrier");
     },
-    showOpenCode: () => {
-      pm.openCustomInSide("opencode", "OpenCode");
-    },
     openJournalCalendar: () => {
       pm.openCustomInSide("journal-calendar", "Journal");
     },
@@ -1451,7 +1449,6 @@ let cmds = $derived(
     onToggleConsole={handleToggleConsole}
     viewPanelOpen={sideVisible}
     onToggleViewPanel={handleToggleViewPanel}
-    onOpenCode={() => pm.openCustomInSide("opencode", "OpenCode")}
     onOpenSvarCalendar={() => pm.openCustomInSide("svar-calendar", "Calendar")}
     onOpenSpreadsheet={handleOpenSpreadsheet}
     onOpenDataFilter={handleOpenDataFilter}

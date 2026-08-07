@@ -1,4 +1,5 @@
-/** Shared reactive activePath — set by app.svelte, read by opencode panel. */
+/** Shared reactive activePath — set by app.svelte, consumed by the workspace
+    view and file-operations move detection. */
 
 let _activePath: string | null = $state(null);
 

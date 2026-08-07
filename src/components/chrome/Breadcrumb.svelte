@@ -6,8 +6,6 @@
   import FileTree from "@/components/files/file-tree.svelte";
   import ThemeButton from "./ThemeButton.svelte";
   import exciteUrl from "@/assets/mascot/az-excite.svg";
-  import opencodeDarkSvg from "@/assets/opencode-logo-dark.svg";
-  import opencodeLightSvg from "@/assets/opencode-logo-light.svg";
 
   let {
     rootPath,
@@ -26,7 +24,6 @@
     onToggleConsole,
     viewPanelOpen,
     onToggleViewPanel,
-    onOpenCode,
     onOpenSvarCalendar,
     onOpenSpreadsheet,
     onOpenDataFilter,
@@ -49,7 +46,6 @@
     onToggleConsole?: () => void;
     viewPanelOpen?: boolean;
     onToggleViewPanel?: () => void;
-    onOpenCode?: () => void;
     onOpenSvarCalendar?: () => void;
     onOpenSpreadsheet?: () => void;
     onOpenDataFilter?: () => void;
@@ -58,21 +54,6 @@
   } = $props();
 
   let t = $derived(getT($language));
-
-  let themeIsDark = $state(true);
-
-  $effect(() => {
-    function sync() {
-      const cs = getComputedStyle(document.documentElement).getPropertyValue("color-scheme").trim();
-      themeIsDark = cs !== "light";
-    }
-    sync();
-    const obs = new MutationObserver(sync);
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => obs.disconnect();
-  });
-
-  let opencodeLogo = $derived(themeIsDark ? opencodeDarkSvg : opencodeLightSvg);
 
   const MAX_SEGMENTS = 4;
 
@@ -250,19 +231,8 @@
       {/if}
     </div>
 
-    {#if onOpenCode || onOpenSvarCalendar || onOpenSpreadsheet || onOpenDataFilter}
+    {#if onOpenSvarCalendar || onOpenSpreadsheet || onOpenDataFilter}
       <div class="mdv-breadcrumb__tools">
-        {#if onOpenCode}
-          <Button
-            data-tooltip={t("breadcrumb.openCode")}
-            aria-label={t("breadcrumb.openCode")}
-            onclick={onOpenCode}
-          >
-            {#snippet icon()}
-              <img src={opencodeLogo} alt="" aria-hidden width={14} height={14} draggable={false} class="mdv-breadcrumb__opencode" />
-            {/snippet}
-          </Button>
-        {/if}
         {#if onOpenSpreadsheet}
           <Button
             data-tooltip={t("breadcrumb.spreadsheet")}
@@ -350,11 +320,6 @@
 {/if}
 
 <style>
-  .mdv-breadcrumb__opencode {
-    display: block;
-    object-fit: contain;
-  }
-
   /* ── interactive segments ── */
 
   .mdv-breadcrumb__seg-row {

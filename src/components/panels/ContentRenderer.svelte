@@ -11,7 +11,6 @@ import LazyCollePreview from "@/components/colles/LazyCollePreview.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
 import LazyCalendarPanel from "@/components/calendar/LazyCalendarPanel.svelte";
-import LazyOpenCodePanel from "@/components/opencode/LazyOpenCodePanel.svelte";
 import LazyJournalCalendarPanel from "@/components/sidebar/LazyJournalCalendarPanel.svelte";
 import LazySvarCalendarPanel from "@/components/calendar/LazySvarCalendarPanel.svelte";
 import LazySpreadsheetViewer from "@/components/spreadsheet/LazySpreadsheetViewer.svelte";
@@ -64,8 +63,6 @@ let {
   <div class="mdv-empty-state" />
 {:else if tab.kind === "custom" && tab.panelId === "calendar-editor"}
   <LazyCalendarPanel />
-{:else if tab.kind === "custom" && tab.panelId === "opencode"}
-  <LazyOpenCodePanel />
 {:else if tab.kind === "custom" && tab.panelId === "journal-calendar"}
   <LazyJournalCalendarPanel />
 {:else if tab.kind === "custom" && tab.panelId === "svar-calendar"}
