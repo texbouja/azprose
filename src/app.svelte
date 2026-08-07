@@ -92,7 +92,8 @@ import { journalSettings } from "@/stores/journal-settings.svelte";
 import { ensureDailyNoteWithColles } from "@/colles/daily-note-io";
 import { spreadsheetGet, spreadsheetInitDb } from "@/spreadsheet/store";
 import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
-import { navPush, navBack, navForward, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
+import { navPush, navBack, navForwardStep, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
+import { followPreviewNavigation } from "@/lib/preview-follow";
 import {
   createLatexState,
   cleanLatexAux, cleanLatexAuxAndOutput, cleanLatexAll,
@@ -428,21 +429,47 @@ onMount(() => {
   // ── Latex log listener, oxide events, wikilink nav → handlers ──
 
   // — preview navigation history (back / forward) —
+  // The preview tab navigates AND the linked editor tab follows (the editor
+  // mirrors the preview — see followPreviewNavigation). Unsaved edits in the
+  // linked tab are parked (policy A) with a discreet notification.
   const navGoBack = () => {
     if (!sideActivePath) return;
     const prev = navBack();
     if (!prev) return;
     navPushForward(sideActivePath);
+    sideVisible = true;
+    pm.sideVisible = true;
     pm.openInSide(prev, { preview: true }).catch(() => {});
+    void followPreviewNavigation(pm, prev).then(r => {
+      if (r.parked) notifications.setInfo(t("preview.draftParked"));
+    });
   };
   const navGoForward = () => {
     if (!sideActivePath) return;
-    const next = navForward();
+    // navForwardStep pushes the current page onto back WITHOUT clearing the
+    // remaining forward entries (a plain navPush would break multi-step
+    // forward navigation).
+    const next = navForwardStep(sideActivePath);
     if (!next) return;
-    navPush(sideActivePath);
+    sideVisible = true;
+    pm.sideVisible = true;
     pm.openInSide(next, { preview: true }).catch(() => {});
+    void followPreviewNavigation(pm, next).then(r => {
+      if (r.parked) notifications.setInfo(t("preview.draftParked"));
+    });
   };
   setNavActions({ goBack: navGoBack, goForward: navGoForward });
+
+  // Unlink the editor↔preview pairing when the preview tab disappears (closed
+  // by the user): the link is re-established on the next preview launch. The
+  // effect depends on _panelVersion — PanelState is a plain class, not a rune.
+  $effect(() => {
+    _panelVersion;
+    const hasPreviewTab = pm.side.tabs.some(
+      t => t.preview || t.renderMode === "preview" || t.renderMode === "presentation" || t.renderMode === "colle",
+    );
+    if (!hasPreviewTab) pm.previewLinkedTabId = null;
+  });
 
   // ── File-type handlers (latex, markdown) — lazy-loaded ──
   const handlerCtx: HandlerContext = {
@@ -544,6 +571,10 @@ $effect(() => {
   const onJumpFile = async (e: Event) => {
     const { path, line, heading } = (e as CustomEvent<{ path: string; line?: number; heading?: string }>).detail;
     if (!path) return;
+    // User navigation (TOC / backlinks / tags click): record the current
+    // preview page in the back history BEFORE jumping (browser-like). The
+    // store dedupes consecutive duplicates (headings within the same file).
+    if (sideActivePath) navPush(sideActivePath);
     // Normalize path (same as handleInverseSync)
     const normFile = path.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
     const found = pm.findTabByPath(normFile);
@@ -588,6 +619,9 @@ $effect(() => {
     const rp = getRootPath();
     if (!rp) return;
     const folder = journalSettings.current.journalFolder;
+    // User navigation (journal calendar click): record the current preview
+    // page in the back history before opening the daily note.
+    if (sideActivePath) navPush(sideActivePath);
     const p = await ensureDailyNoteWithColles(date, rp, folder);
     if (p) {
       await openFileInTab(p);

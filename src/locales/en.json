@@ -468,6 +468,7 @@
   "preview.back": "Back",
   "preview.forward": "Forward",
   "preview.home": "Home",
+  "preview.draftParked": "Draft saved: your unsaved changes are restored when you navigate back.",
   "pdf.zoomOut": "Zoom out",
   "pdf.zoomIn": "Zoom in",
   "pdf.fitWidth": "Fit width",

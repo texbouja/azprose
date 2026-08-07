@@ -245,6 +245,63 @@ export class PanelState {
     this.tabs = this.tabs.map(t => t.id === tabId ? { ...t, source: next } : t);
   }
 
+  /**
+   * Re-point an EXISTING tab to another file (preview-follow navigation).
+   * Policy A (drafts): if the tab carries unsaved edits (source ≠ savedContent)
+   * they are PARKED in the drafts store BEFORE moving away — same mechanism as
+   * close()/hot-exit, so nothing is lost and the edits come back when the
+   * preview navigates back to this file (preferDraft restores them).
+   * The target is then read; with preferDraft a parked draft of the target
+   * wins over the disk state. The tab is cleared of its `preview` flag so it
+   * is never a reuse target for the jumpToLine preview-tab pool.
+   * On read failure the tab is left UNCHANGED and `ok` is false (the caller
+   * decides — never a half-repointed tab).
+   */
+  async repoint(
+    tabId: string,
+    path: string,
+    opts?: { preferDraft?: boolean; silent?: boolean },
+  ): Promise<{ ok: boolean; parked: boolean }> {
+    const idx = this.tabs.findIndex(t => t.id === tabId);
+    if (idx === -1) return { ok: false, parked: false };
+    const tab = this.tabs[idx];
+    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+    const normalized = norm(path);
+    if (!isOpenablePath(normalized)) return { ok: false, parked: false };
+    if (norm(tab.path) === normalized) return { ok: true, parked: false };
+
+    // Policy A: park unsaved edits BEFORE re-pointing away.
+    let parked = false;
+    if (tab.kind !== "custom" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+      saveDraft(tab.path, tab.source);
+      parked = true;
+    }
+
+    try {
+      const fileSource = await readText(normalized);
+      const draft = opts?.preferDraft ? loadDraft(normalized) : null;
+      const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
+      this.tabs = this.tabs.map(t =>
+        t.id === tabId
+          ? {
+              ...t,
+              path: normalized,
+              title: basename(normalized),
+              source: content,
+              savedContent: fileSource,
+              preview: false,
+            }
+          : t
+      );
+      this.cbs.onFileOpen?.(normalized);
+      this.notify();
+      return { ok: true, parked };
+    } catch (err) {
+      if (!opts?.silent) console.error(`panel ${this.id}: repoint failed`, err);
+      return { ok: false, parked };
+    }
+  }
+
   setRenderMode(tabId: string, mode: RenderMode): void {
     this.tabs = this.tabs.map(t => t.id === tabId ? { ...t, renderMode: mode } : t);
   }

@@ -16,6 +16,14 @@ export class PanelManager {
   splitRatio = 0.45;
   private savedSplitRatio = 0.55;
 
+  /** Id of the MAIN editor tab the side preview is linked to. Set when a
+   *  preview is launched from an editor tab (Preview button, wikilink-first-
+   *  click); every navigation inside the preview (wikilink, back/forward,
+   *  home, TOC) re-points THIS tab to the rendered file — the editor follows
+   *  the preview. Never persisted; re-established when the user re-launches
+   *  the preview. */
+  previewLinkedTabId: string | null = null;
+
   constructor(opts?: {
     onSessionChange?: (data: PanelManagerSession) => void;
     onFileOpen?: (path: string) => void;

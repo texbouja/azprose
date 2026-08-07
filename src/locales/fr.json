@@ -439,6 +439,7 @@
   "preview.back": "Précédent",
   "preview.forward": "Suivant",
   "preview.home": "Accueil",
+  "preview.draftParked": "Brouillon conservé : vos modifications non enregistrées sont restaurées au retour.",
   "pdf.zoomOut": "Zoom arrière",
   "pdf.zoomIn": "Zoom avant",
   "pdf.fitWidth": "Ajuster à la largeur",

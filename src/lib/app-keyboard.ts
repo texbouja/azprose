@@ -1,4 +1,5 @@
 import { shortcuts } from "@/stores/shortcuts.svelte"
+import { getNavActions } from "@/stores/nav-history.svelte"
 import { overlays } from "@/stores/overlays.svelte"
 import { extFromPath } from "@/lib/editor-languages"
 import { handleLatexBuild } from "@/latex"
@@ -88,6 +89,17 @@ export function handleKeydown(e: KeyboardEvent, ctx: KeyboardDeps) {
   if (shortcuts.matches(e, "settings")) {
     e.preventDefault();
     overlays.openSettings("general");
+    return;
+  }
+  // Preview navigation history (browser-like) — ⌘[ / ⌘] (Ctrl on other platforms)
+  if (shortcuts.matches(e, "navBack")) {
+    e.preventDefault();
+    getNavActions().goBack();
+    return;
+  }
+  if (shortcuts.matches(e, "navForward")) {
+    e.preventDefault();
+    getNavActions().goForward();
     return;
   }
 }

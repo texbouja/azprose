@@ -19,7 +19,9 @@ export type ShortcutAction =
   | "editorMode3"
   | "console"
   | "viewPanel"
-  | "settings";
+  | "settings"
+  | "navBack"
+  | "navForward";
 
 /** Mac-style glyph label (displayed in UI). */
 export type ShortcutDef = { key: string; shift?: boolean; alt?: boolean; ctrl?: boolean };
@@ -43,6 +45,8 @@ const MAC_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
   console:       { key: "c", shift: true },
   viewPanel:     { key: "\\" },
   settings:      { key: "," },
+  navBack:       { key: "[" },
+  navForward:    { key: "]" },
 };
 
 const OTHER_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
@@ -63,6 +67,8 @@ const OTHER_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
   console:       { key: "c", shift: true },
   viewPanel:     { key: "\\" },
   settings:      { key: "," },
+  navBack:       { key: "[" },
+  navForward:    { key: "]" },
 };
 
 function defaults(): Record<ShortcutAction, ShortcutDef> {

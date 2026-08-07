@@ -1,5 +1,6 @@
 import type { HandlerContext, FileHandler } from "./types"
 import { extFromPath } from "@/lib/editor-languages"
+import { followPreviewNavigation } from "@/lib/preview-follow"
 
 export function createMarkdownHandler(context: HandlerContext): FileHandler {
   const ctx = context
@@ -80,6 +81,19 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
           if (heading) ctx.setScrollTarget(heading)
           ctx.setSideVisible(true)
           ctx.pm.openInSide(path, { preview: true }).catch((err: any) => console.error("[azprose] wikilink open failed", err))
+          // Editor-follow (décision utilisateur) : le tab éditeur LIÉ suit la
+          // navigation du preview. Au PREMIER clic de la session, on établit le
+          // lien vers le tab éditeur actif (celui qui a lancé le browsing) —
+          // l'éditeur affiche déjà la source, rien à déplacer. Ensuite, chaque
+          // navigation re-pointe ce tab (politique A : edits parkés en brouillon
+          // avant le mouvement, notification discrète).
+          if (!ctx.pm.previewLinkedTabId) {
+            ctx.pm.previewLinkedTabId = ctx.pm.main.activeTabId
+          } else {
+            void followPreviewNavigation(ctx.pm, path).then(r => {
+              if (r.parked) ctx.notify.setInfo(ctx.t("preview.draftParked"))
+            })
+          }
         })()
       }
       window.addEventListener("azprose:wikilink-navigate", onWikilinkNavigate)
@@ -119,12 +133,17 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       cleanups.push(() => window.removeEventListener("azprose:pdf-region-copied", onPdfRegionCopied))
     })()
 
-    // oxide show-document listener
+    // oxide show-document listener (daily-note jumps from the LSP: today/
+    // yesterday/tomorrow/jump). User navigation → record the current preview
+    // page in the back history before opening the target.
     void (async () => {
       const { listen } = await import("@tauri-apps/api/event")
       const unlisten = await listen<{ path: string }>("azprose:oxide-show-document", (ev) => {
         const p = ev.payload.path
-        if (p) ctx.openFileInTab(p, { silent: true }).catch(() => {})
+        if (p) {
+          if (ctx.sideActivePath()) ctx.navPush(ctx.sideActivePath()!)
+          ctx.openFileInTab(p, { silent: true }).catch(() => {})
+        }
       })
       cleanups.push(unlisten)
     })()

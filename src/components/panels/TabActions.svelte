@@ -120,6 +120,11 @@ let isDaily = $derived(
 
 let mainItems = $derived.by(() => {
   if (isMd) {
+    // Navigation preview (back/forward) : réservée à la toolbar SIDE — les
+    // boutons de la toolbar main ont été retirés (décision utilisateur :
+    // « Je ne vois pas l'utilité d'ajouter des boutons de navigation dans
+    // l'éditeur »). L'éditeur suit désormais le preview (tab lié) ; les
+    // boutons ⌘[ / ⌘] restent disponibles globalement.
     const items: any[] = [
       { spacer: true },
       { comp: "button", icon: "wxi-code", text: t("tabs.raw"),

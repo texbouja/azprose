@@ -45,6 +45,9 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
       break;
     case "preview": {
       if (!isPreviewable) return;
+      // Link the side preview to the CURRENT editor tab: every navigation
+      // inside the preview re-points this tab (the editor follows the preview).
+      ctx.pm.previewLinkedTabId = ctx.pm.main.activeTabId;
       const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "preview");
@@ -64,6 +67,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
     case "presentation": {
       if (!isMd) return;
       ctx.setProsemarkOn(true);
+      ctx.pm.previewLinkedTabId = ctx.pm.main.activeTabId;
       const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "presentation");
@@ -84,6 +88,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
       if (!isMd) return;
       // Le main panel reste sur l'éditeur (règle structurelle) ; la vue colles
       // s'ouvre dans le side panel avec renderMode "colle".
+      ctx.pm.previewLinkedTabId = ctx.pm.main.activeTabId;
       const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "colle");
