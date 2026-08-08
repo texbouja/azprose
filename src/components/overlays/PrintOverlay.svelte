@@ -11,11 +11,22 @@
    *   - entête / pied de page (templates CDP, placeholders {title}/{date}/{page}/{pages}) ;
    *   - échelle + fond (print_background).
    *
-   * Persistance : `.azprose/print.json` (décision utilisateur — derniers
-   * réglages utilisés, chargés à l'ouverture, écrits à l'export).
+   * MODE « PLANCHES » (mode = "planches") : hérité du dialogue
+   * CollePrintDialog (décision utilisateur) — l'impression des planches de
+   * colles passe par CE overlay. Le gabarit (le rendu `.rp` est fixe) et
+   * l'expansion des wikilinks sont masqués ; s'ajoutent la checkbox
+   * « avec/sans évaluation » (`includeEval`, défaut SANS = feuille d'examen à
+   * découper) et le compteur de planches. La mise en page historiquement
+   * encodée en dur (A4 paysage 2 colonnes) devient des PARAMÈTRES — défauts
+   * = configuration actuelle (`DEFAULT_PLANCHES_PRINT_REQUEST`), persistés
+   * séparément (`print-planches.json`).
    *
-   * Machine à états : "idle" → "loading" (lecture print.json) → "ready"
-   * → "exporting" → "done" ; "error" sur échec.
+   * Persistance : `.azprose/print.json` (md→PDF) / `.azprose/print-planches.json`
+   * (planches) — derniers réglages utilisés, chargés à l'ouverture, écrits à
+   * l'export.
+   *
+   * Machine à états : "idle" → "loading" (lecture du fichier de réglages) →
+   * "ready" → "exporting" → "done" ; "error" sur échec (ou aucune planche).
    */
   import { Button, Overlay } from "@/components/primitives";
   import { getT } from "@/lib/i18n";
@@ -30,16 +41,30 @@
   } from "@/lib/print-request";
   import { getPrintTemplate } from "@/lib/print-templates";
   import { exportMarkdownPdf, previewMarkdownPdf } from "@/lib/pdf-export";
-  import { loadPrintRequest, savePrintRequest } from "@/stores/print-settings.svelte";
+  import {
+    loadPrintRequest,
+    savePrintRequest,
+    loadPlanchesPrintRequest,
+    savePlanchesPrintRequest,
+  } from "@/stores/print-settings.svelte";
   import { notifications } from "@/stores/notifications.svelte";
+  import { parsePlanches } from "@/colles";
+  import { exportPlanchesPdf, previewPlanchesPdf } from "@/colles/pdf-planches-render";
+  import type { CollePrintRequest } from "@/colles/pdf-planches-render";
+  import { collesSettings } from "@/stores/colles-settings.svelte";
+  import { userProfile } from "@/stores/user-profile.svelte";
+  import { getRootPath } from "@/stores/root-path.svelte";
 
   let {
     open,
+    mode = "markdown" as "markdown" | "planches",
     filePath = null as string | null,
     source = null as string | null,
     onClose,
   }: {
     open: boolean;
+    /** "markdown" = export md→PDF ; "planches" = planches de colles. */
+    mode?: "markdown" | "planches";
     filePath?: string | null;
     /** Source LIVE de la note active (lue par app.svelte). */
     source?: string | null;
@@ -53,20 +78,40 @@
   let error = $state("");
 
   // Requête d'impression éditée par l'overlay (clone des défauts puis merge
-  // avec les derniers réglages persistés).
+  // avec les derniers réglages persistés du MODE actif).
   let req = $state<PrintRequest>(structuredClone(DEFAULT_PRINT_REQUEST));
 
-  // Charge les derniers réglages à CHAQUE ouverture. Le $effect ne lit que
-  // `open` (jamais les états qu'il écrit — piège boucle d'effet Svelte 5).
+  // Mode planches : checkbox « avec/sans évaluation » + compteur.
+  let includeEval = $state(false);
+  let planchesCount = $state(0);
+  let planchesReady = $state(false);
+
+  // Charge les derniers réglages à CHAQUE ouverture (selon le mode). Le
+  // $effect ne lit que `open` et `mode` (jamais les états qu'il écrit — piège
+  // boucle d'effet Svelte 5). Le parse planches est SYNCHRONE (pipeline
+  // `parsePlanches` sans DOM) : pas de IIFE nécessaire.
   $effect(() => {
     if (!open) return;
+    const isPlanches = mode === "planches";
     phase = "loading";
     error = "";
+    includeEval = false;
+    planchesCount = 0;
+    planchesReady = false;
     let cancelled = false;
-    void loadPrintRequest().then((saved) => {
+    const loader = isPlanches ? loadPlanchesPrintRequest() : loadPrintRequest();
+    void loader.then((saved) => {
       if (cancelled) return;
       req = saved;
-      phase = "ready";
+      if (isPlanches && source) {
+        const n = parsePlanches(source).planches.length;
+        planchesCount = n;
+        planchesReady = n > 0;
+        phase = n ? "ready" : "error";
+        if (!n) error = t("colle.printEmpty");
+      } else {
+        phase = "ready";
+      }
     });
     return () => {
       cancelled = true;
@@ -97,6 +142,21 @@
     req = { ...req, margins: { ...req.margins, ...p } };
   }
 
+  /** Requête planches complète (mode "planches") à partir de l'overlay. */
+  function buildColleReq(): CollePrintRequest {
+    const theme = document.documentElement.getAttribute("data-theme") ?? "latte";
+    return {
+      source: source ?? "",
+      rubriques: collesSettings.current.rubriques,
+      theme,
+      filePath,
+      rootPath: getRootPath() ?? null,
+      colleur: userProfile.current.colleurName,
+      includeEval,
+      print: req,
+    };
+  }
+
   /**
    * Aperçu avant impression (chantier 3b, décision §3.4 de next_level.md) :
    * assemble le MÊME HTML que l'export puis l'ouvre dans une fenêtre Chromium
@@ -108,8 +168,12 @@
     phase = "previewing";
     error = "";
     try {
-      const theme = document.documentElement.getAttribute("data-theme") ?? "latte";
-      await previewMarkdownPdf(source, theme, filePath, req);
+      if (mode === "planches") {
+        await previewPlanchesPdf(buildColleReq());
+      } else {
+        const theme = document.documentElement.getAttribute("data-theme") ?? "latte";
+        await previewMarkdownPdf(source, theme, filePath, req);
+      }
       // L'aperçu reste ouvert — on revient à l'état prêt (les réglages
       // peuvent être ajustés et relancés).
       phase = "ready";
@@ -124,6 +188,24 @@
     phase = "exporting";
     error = "";
     try {
+      if (mode === "planches") {
+        const out = await exportPlanchesPdf(buildColleReq());
+        if (out === false) {
+          error = t("colle.printEmpty");
+          phase = "error";
+          return;
+        }
+        if (out === null) {
+          // Dialogue de destination annulé — on reste sur l'overlay.
+          phase = "ready";
+          return;
+        }
+        await savePlanchesPrintRequest(req);
+        notifications.setInfo(t("colle.printDone", { path: out }));
+        phase = "done";
+        onClose();
+        return;
+      }
       const theme = document.documentElement.getAttribute("data-theme") ?? "latte";
       const out = await exportMarkdownPdf(source, theme, filePath, req);
       if (out === null) {
@@ -145,14 +227,14 @@
 <Overlay
   open={open}
   onClose={onClose}
-  ariaLabel={t("print.title")}
+  ariaLabel={mode === "planches" ? t("colle.printTitle") : t("print.title")}
   variant="modal"
   width="auto"
 >
   <div class="print-overlay">
     <div class="print-overlay__head">
       <i class="wxi-printer" aria-hidden="true"></i>
-      <h2 class="print-overlay__title">{t("print.title")}</h2>
+      <h2 class="print-overlay__title">{mode === "planches" ? t("colle.printTitle") : t("print.title")}</h2>
       <button
         type="button"
         class="print-overlay__close"
@@ -173,15 +255,29 @@
       {:else if phase === "error"}
         <p class="print-overlay__error">{error}</p>
       {:else if phase === "ready"}
-        <!-- Gabarit -->
-        <label class="print-overlay__field">
-          <span class="print-overlay__label">{t("print.template")}</span>
-          <Combo
-            value={req.template}
-            options={TEMPLATE_OPTIONS}
-            onchange={(ev) => patch({ template: ev.value as PrintTemplateId })}
-          />
-        </label>
+        {#if mode === "planches"}
+          <!-- Planches : avec/sans évaluation + compteur -->
+          <label class="print-overlay__checkbox">
+            <input type="checkbox" bind:checked={includeEval} />
+            <span class="print-overlay__checkbox-label">{t("colle.printIncludeEval")}</span>
+          </label>
+          <p class="print-overlay__hint">{t("colle.printHintEval")}</p>
+          <p class="print-overlay__count">
+            {t("colle.printCount", { count: planchesCount })}
+          </p>
+        {/if}
+
+        {#if mode === "markdown"}
+          <!-- Gabarit -->
+          <label class="print-overlay__field">
+            <span class="print-overlay__label">{t("print.template")}</span>
+            <Combo
+              value={req.template}
+              options={TEMPLATE_OPTIONS}
+              onchange={(ev) => patch({ template: ev.value as PrintTemplateId })}
+            />
+          </label>
+        {/if}
 
         <!-- Papier + orientation -->
         <div class="print-overlay__grid">
@@ -309,16 +405,18 @@
               onchange={(ev) => patch({ printBackground: ev.value })}
             />
           </label>
-          <label class="print-overlay__field print-overlay__switch">
-            <span class="print-overlay__label">{t("print.expandLinks")}</span>
-            <Switch
-              value={req.expandLinks}
-              onchange={(ev) => patch({ expandLinks: ev.value })}
-            />
-          </label>
+          {#if mode === "markdown"}
+            <label class="print-overlay__field print-overlay__switch">
+              <span class="print-overlay__label">{t("print.expandLinks")}</span>
+              <Switch
+                value={req.expandLinks}
+                onchange={(ev) => patch({ expandLinks: ev.value })}
+              />
+            </label>
+          {/if}
         </div>
 
-        {#if req.expandLinks}
+        {#if mode === "markdown" && req.expandLinks}
           <p class="print-overlay__hint">{t("print.expandLinksHint")}</p>
         {/if}
         <p class="print-overlay__hint">{t("print.mathHint")}</p>
@@ -328,7 +426,7 @@
     {#if phase === "ready" || phase === "error"}
       <div class="print-overlay__actions">
         <Button variant="ghost" onclick={onClose}>{t("common.cancel")}</Button>
-        {#if phase === "ready"}
+        {#if phase === "ready" && (mode === "markdown" || planchesReady)}
           <Button variant="outline" onclick={handlePreview}>{t("print.preview")}</Button>
           <Button variant="solid" onclick={handleExport}>{t("print.export")}</Button>
         {/if}
@@ -443,6 +541,23 @@
     color: var(--fg-muted);
     font-size: 12px;
     line-height: 1.5;
+  }
+  .print-overlay__checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .print-overlay__checkbox input {
+    accent-color: var(--accent);
+    width: 15px;
+    height: 15px;
+    margin: 0;
+  }
+  .print-overlay__count {
+    margin: 0;
+    color: var(--fg-muted);
   }
   .print-overlay__actions {
     display: flex;

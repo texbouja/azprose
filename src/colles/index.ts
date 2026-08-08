@@ -87,7 +87,7 @@ export {
   plancheWeekNumber,
   writeArchivedImage,
 } from "./archive-render";
-export { assemblePrintHtml, chunkPairs, PRINT_PAGE_CSS } from "./pdf-planches";
+export { assemblePrintHtml, buildPlanchesPrintCss, chunkPairs, PRINT_PAGE_CSS } from "./pdf-planches";
 export type { CollePrintOptions } from "./pdf-planches";
-export { exportPlanchesPdf } from "./pdf-planches-render";
+export { exportPlanchesPdf, previewPlanchesPdf } from "./pdf-planches-render";
 export type { CollePrintRequest } from "./pdf-planches-render";

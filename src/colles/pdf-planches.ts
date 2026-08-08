@@ -8,19 +8,19 @@
  *
  * Pattern : le PATTERN GÉNÉRAL md→PDF (src/lib/pdf-export.ts → mdprinter.rs) —
  * un document HTML auto-suffisant est confié à la commande Rust
- * `export_markdown_pdf`, qui ouvre le navigateur système (Chrome/Firefox)
- * avec le dialogue d'impression NATIF → l'utilisateur choisit « Enregistrer en
- * PDF ». PAS de jspdf/html2canvas (abandonnés au round 17 : raster + coût CPU
- * énorme — l'app se figeait) : le PDF final est VECTORIEL (le navigateur
- * imprime le HTML — texte sélectionnable, maths MathJax en SVG, reflow au
- * format de papier choisi) et le coût côté app est nul.
+ * `export_markdown_pdf` (headless Chrome `print_to_pdf` — le PDF est écrit
+ * DIRECTEMENT sur disque par le backend, plus de dialogue d'impression natif).
+ * PAS de jspdf/html2canvas (abandonnés au round 17 : raster + coût CPU énorme
+ * — l'app se figeait) : le PDF final est VECTORIEL (texte sélectionnable,
+ * maths MathJax en SVG, reflow au format de papier choisi) et le coût côté
+ * app est nul.
  *
- * Mise en page : A4 PAYSAGE à choisir dans le dialogue du navigateur (PAS de
- * règle `@page size` — Chromium masquerait la section papiers du dialogue, voir
- * PRINT_PAGE_CSS), DEUX colonnes par page, UNE planche par colonne (feuille
- * d'examen à découper). Chaque planche réutilise le GABARIT du rapport d'email
- * (`.rp` / REPORT_PAGE_CSS — le même rendu que l'archivage image), une seule
- * source de vérité.
+ * Mise en page : paramétrée depuis le PrintOverlay (mode « planches ») — par
+ * défaut A4 PAYSAGE, DEUX planches par page (une par colonne, feuille
+ * d'examen à découper), via `buildPlanchesPrintCss(req)` + les options CDP
+ * (`buildPrintCdpOptions`). Chaque planche réutilise le GABARIT du rapport
+ * d'email (`.rp` / REPORT_PAGE_CSS — le même rendu que l'archivage image),
+ * une seule source de vérité.
  *
  * `includeEval` : sans évaluation (défaut du dialogue) la « troisième carte »
  * (section Évaluation — notes + observations) est omise → feuille à découper
@@ -35,6 +35,11 @@ import {
   type ColleReportData,
   type ReportLayout,
 } from "./report-layout";
+import {
+  DEFAULT_PLANCHES_PRINT_REQUEST,
+  HEADER_FOOTER_RESERVE_MM,
+  type PrintRequest,
+} from "@/lib/print-request";
 
 /** Options de rendu des planches pour l'impression. */
 export interface CollePrintOptions {
@@ -48,40 +53,47 @@ export interface CollePrintOptions {
 }
 
 /**
- * CSS d'impression : deux colonnes par page (une planche par colonne —
- * `.pl-pair` regroupe les planches 2 à 2 et `break-inside: avoid` garde la
- * paire sur la MÊME page : 2 planches par page, côte à côte, quand elles
- * tiennent). Les réglages `.rp*` sont des SURCHARGES du gabarit email :
- * la planche remplit sa colonne (width 100 %), hauteur NATURELLE (plus de
- * min-height au ratio 16:10 — l'image d'email a besoin d'un ratio, la page
- * imprimée non), fond blanc sans marge externe (le gris `#f0f2f5` et le
- * padding servaient à la capture).
+ * CSS de mise en page d'impression des planches (mode « planches » du
+ * PrintOverlay). Paramétré par `req` (défaut = DEFAULT_PLANCHES_PRINT_REQUEST :
+ * A4 paysage, marges 10 mm, DEUX planches par page côte à côte — feuille
+ * d'examen à découper). `.pl-pair` regroupe les planches par rangée de
+ * `req.columns` et `break-inside: avoid` garde la rangée sur la MÊME page.
+ *
+ * Les réglages `.rp*` sont des SURCHARGES du gabarit email : la planche
+ * remplit sa colonne (width 100 %), hauteur NATURELLE (plus de min-height au
+ * ratio 16:10 — l'image d'email a besoin d'un ratio, la page imprimée non),
+ * fond blanc sans marge externe (le gris `#f0f2f5` et le padding servaient à
+ * la capture).
  *
  * `!important` obligatoire : le bloc `<style>` embarqué du gabarit `.rp` serait
  * rendu DANS LE CORPS, APRÈS ce bloc `<head>` — à spécificité égale c'est le
  * dernier qui gagne, le gabarit écraserait la mise en page d'impression.
  *
- * PAS de `@page { size: ... }` : quand Chromium RECONNAÎT une taille @page
- * (A4 l'est), il verrouille le format/l'orientation ET masque la section
- * papiers du dialogue d'impression (« More options » disparaît — c'est
- * exactement la différence constatée avec le flux md→PDF, qui n'a aucune
- * règle @page). On garde seulement `margin: 10mm` (la marge n'influence pas
- * la reconnaissance) : l'utilisateur choisit A4 + paysage dans le dialogue,
- * comme pour une export md→PDF. Source : MDN compatibility data @page/size.
- *
- * Retouches round 18 : `gap` réduit à 4 mm entre les colonnes (avant : 8 mm —
- * le texte des deux planches était trop écarté) et `.rp-body` surchargé avec
- * un padding resserré (8px 10px au lieu de 12px 20px du gabarit email).
+ * PAS de `@page { size: ... }` : l'orientation et le format de papier sont
+ * portés par les options CDP (`buildPrintCdpOptions` → print_to_pdf, pattern
+ * md→PDF). La marge `@page` reste la source de vérité du contenu ; quand
+ * `req.header`/`req.footer` sont demandés, le rendu CDP dessine le texte DANS
+ * la zone de marge → on réserve ~10 mm (HEADER_FOOTER_RESERVE_MM) au haut/bas
+ * pour que le contenu ne soit pas chevauché.
  */
-export const PRINT_PAGE_CSS = `
-@page { margin: 10mm; }
+export function buildPlanchesPrintCss(req: PrintRequest = DEFAULT_PLANCHES_PRINT_REQUEST): string {
+  const m = req.margins;
+  const top = m.top + (req.header.trim() !== "" ? HEADER_FOOTER_RESERVE_MM : 0);
+  const bottom = m.bottom + (req.footer.trim() !== "" ? HEADER_FOOTER_RESERVE_MM : 0);
+  const cols = clampColumns(req.columns);
+  const gap =
+    typeof req.columnGap === "number" && Number.isFinite(req.columnGap) && req.columnGap >= 0
+      ? req.columnGap
+      : 4;
+  return `
+@page { margin: ${top}mm ${m.right}mm ${bottom}mm ${m.left}mm; }
 html, body { margin: 0; padding: 0; }
 body { background: #fff; }
 .pl-doc { padding: 0; }
 .pl-pair {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4mm;
+  grid-template-columns: repeat(${cols}, 1fr);
+  gap: ${gap}mm;
   margin-bottom: 8mm;
   break-inside: avoid;
   page-break-inside: avoid;
@@ -90,11 +102,21 @@ body { background: #fff; }
 .pl-doc .rp-card { width: 100% !important; margin: 0 !important; }
 .pl-doc .rp-body { padding: 8px 10px !important; }
 `;
+}
 
-/** Regroupe les éléments par paires (deux colonnes par page d'impression). */
-export function chunkPairs<T>(items: T[]): T[][] {
+/** CSS d'impression PAR DÉFAUT (A4 paysage, 2 colonnes, gap 4 mm). */
+export const PRINT_PAGE_CSS = buildPlanchesPrintCss();
+
+/** Nombre de colonnes valide (1–4) ; défaut 2 = la configuration actuelle. */
+function clampColumns(v: number | undefined): number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 4 ? v : 2;
+}
+
+/** Regroupe les éléments par rangées de `cols` colonnes (2 par défaut). */
+export function chunkPairs<T>(items: T[], cols = 2): T[][] {
+  const n = clampColumns(cols);
   const out: T[][] = [];
-  for (let i = 0; i < items.length; i += 2) out.push(items.slice(i, i + 2));
+  for (let i = 0; i < items.length; i += n) out.push(items.slice(i, i + n));
   return out;
 }
 
@@ -157,13 +179,13 @@ const DEFAULT_MATHJAX_CONFIG = `
   `;
 
 /**
- * Assemble le document HTML d'impression — PUR (testable sans DOM) : A4
- * paysage, une paire de planches par page. Chaque planche =
+ * Assemble le document HTML d'impression — PUR (testable sans DOM) : une
+ * rangée de `req.columns` planches par page (2 par défaut). Chaque planche =
  * `renderReportLayout` (le gabarit `.rp` des emails — moteur de layout de
  * report-layout.ts) SANS son bloc `<style>` embarqué (le CSS complet —
- * `renderReportLayoutCss` + PRINT_PAGE_CSS — est injecté UNE seule fois dans
- * le `<head>` ; MathJax CDN typeset les maths brutes `\(…\)` produites par la
- * pipeline markdown).
+ * `renderReportLayoutCss` + `buildPlanchesPrintCss(req)` — est injecté UNE
+ * seule fois dans le `<head>` ; MathJax CDN typeset les maths brutes `\(…\)`
+ * produites par la pipeline markdown).
  *
  * Retouches round 18 : les planches sont rendues SANS la métadonnée « Salle »
  * (le PDF est une feuille d'examen, pas un courrier — l'email la conserve).
@@ -180,11 +202,16 @@ const DEFAULT_MATHJAX_CONFIG = `
  *
  * `printCss` : CSS typographique de la section « Printing » des réglages
  * (`lib/prose-style-css.ts` → `buildReportPrintCss`) — injecté APRÈS
- * `renderReportLayoutCss` + PRINT_PAGE_CSS (à spécificité égale, le dernier
- * bloc gagne). Le module reste PUR : le CSS arrive en paramètre chaîne.
+ * `renderReportLayoutCss` + la mise en page planches (à spécificité égale, le
+ * dernier bloc gagne). Le module reste PUR : le CSS arrive en paramètre chaîne.
  *
  * `layout` : le gabarit configurable du rapport (réglages → Impression →
  * Gabarit du rapport) — défaut : DEFAULT_REPORT_LAYOUT.
+ *
+ * `req` : mise en page complète (mode « planches » du PrintOverlay) — papier,
+ * orientation, marges, nombre de colonnes, écart, entête/pied, échelle…
+ * Défaut : DEFAULT_PLANCHES_PRINT_REQUEST (A4 paysage, 2 colonnes, gap 4 mm —
+ * la configuration actuelle).
  */
 export function assemblePrintHtml(
   datas: ColleReportData[],
@@ -193,9 +220,11 @@ export function assemblePrintHtml(
   preamble = "",
   printCss = "",
   layout: ReportLayout = DEFAULT_REPORT_LAYOUT,
+  req: PrintRequest = DEFAULT_PLANCHES_PRINT_REQUEST,
 ): string {
   const L = normalizeReportLayout(layout);
-  const content = chunkPairs(datas)
+  const pageCss = buildPlanchesPrintCss(req);
+  const content = chunkPairs(datas, req.columns)
     .map(
       (pair) =>
         `<div class="pl-pair">` +
@@ -221,7 +250,7 @@ export function assemblePrintHtml(
 <title>Planches de colles</title>
 <style>
 ${renderReportLayoutCss(L)}
-${PRINT_PAGE_CSS}
+${pageCss}
 ${printCssBlock}
 </style>
 <script>

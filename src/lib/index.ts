@@ -81,5 +81,10 @@ export {
   getPrintTemplate,
   renderPrintTemplate,
   printTitleFromPath,
+  resolveLogoValue,
   type PrintTemplate,
+  type PrintTemplateContext,
+  type ImageReader,
 } from "./print-templates";
+export { parseFrontMatter, type FrontMatter } from "./front-matter";
+export { imgMime, uint8ToBase64 } from "./image-uri";

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["CONTEXT.md"],
+  "agent": {
+    "build": {
+      "prompt": "You are helping work on an AZprose project — a vault of Markdown/LaTeX/PDF/CSV files. Markdown uses Obsidian flavor ([[wikilinks]], callouts, hashtags, transclusion). Read CONTEXT.md for project structure and conventions. Respect existing file formats and naming."
+    }
+  },
+  "watcher": {
+    "ignore": ["node_modules/**", "dist/**", "target/**", "*.lock"]
+  }
+}

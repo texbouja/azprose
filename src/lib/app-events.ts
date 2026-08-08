@@ -125,8 +125,8 @@ export interface FsWatcherDeps {
 /** True when `p` lives under a hidden (dotfile) directory of the vault
     (e.g. `.azprose/`, `.git/`). The FS view never shows those entries
     (`isVisibleTreeEntryName`), so a change there must not reload the tree —
-    the app's own writes to `.azprose/` (session mirror, config.json, data.db,
-    opencode data…) would otherwise trigger a full tree reload on every write. */
+    the app's own writes to `.azprose/` (session mirror, config.json, data.db)
+    would otherwise trigger a full tree reload on every write. */
 function isHiddenPath(rootPath: string, p: string): boolean {
   const prefix = rootPath.endsWith("/") ? rootPath : rootPath + "/";
   const rel = p.startsWith(prefix) ? p.slice(prefix.length) : p;

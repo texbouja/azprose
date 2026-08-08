@@ -58,7 +58,6 @@ import { executeOxideCommand, notifyMarkdownOxideFileChanged } from "@/lib/lsp/m
 import { writeText } from "@/lib/files";
 import { writeBackColleKeys } from "@/colles/write-back";
 import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
-import CollePrintDialog from "@/components/colles/CollePrintDialog.svelte";
 import PrintOverlay from "@/components/overlays/PrintOverlay.svelte";
 import { extFromPath } from "@/lib/editor-languages";
 import { setOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
@@ -1016,10 +1015,13 @@ const handleInitProject = () => handleInitProjectUtil(projectManagementCtx);
 const handleCloseFolder = (path: string) => handleCloseFolderUtil(projectManagementCtx, path);
 const handleExportPdf = async () => {
   // Phase 3 : ⌘P ouvre le PrintOverlay (configuration) au lieu d'exporter
-  // directement — la source LIVE est capturée à l'ouverture.
+  // directement — la source LIVE est capturée à l'ouverture. Le mode est
+  // réinitialisé à "markdown" (le dernier mode utilisé — planches — ne doit
+  // pas survivre à une ouverture ⌘P).
   if (!activePath || extFromPath(activePath) !== "md") return;
   printOverlayPath = activePath;
   printOverlaySource = source;
+  printOverlayMode = "markdown";
   printOverlayOpen = true;
 };
 
@@ -1167,14 +1169,11 @@ let colleSendOpen = $state(false);
 let colleSendPath = $state<string | null>(null);
 let colleSendSource = $state<string | null>(null);
 
-// État du dialogue d'impression des planches de colles (ouvert par azprose:colle-print).
-let collePrintOpen = $state(false);
-let collePrintPath = $state<string | null>(null);
-let collePrintSource = $state<string | null>(null);
-
-// État du PrintOverlay (Phase 3) : l'export md→PDF passe par l'overlay de
-// configuration (gabarit, papier, marges, colonnes, entêtes/pieds).
+// État du PrintOverlay (Phase 3) : l'export md→PDF ET l'impression des
+// planches de colles passent par l'overlay de configuration (gabarit, papier,
+// marges, colonnes, entêtes/pieds). `mode` distingue les deux rendus.
 let printOverlayOpen = $state(false);
+let printOverlayMode = $state<"markdown" | "planches">("markdown");
 let printOverlayPath = $state<string | null>(null);
 let printOverlaySource = $state<string | null>(null);
 
@@ -1227,6 +1226,8 @@ const toggleLinksView = () => {
  * Impression des planches de colles (TabActions → azprose:colle-print).
  * Même pattern que l'envoi : la source est lue LIVE depuis l'onglet (main ou
  * side) au moment du clic, pour inclure les write-backs non sauvegardés.
+ * Depuis l'intégration au PrintOverlay (mode « planches »), l'ouverture
+ * réutilise le même état d'overlay — mode positionné ici.
  */
 $effect(() => {
   const onCollePrint = (e: Event) => {
@@ -1238,9 +1239,10 @@ $effect(() => {
     const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
     const source = mainTab?.source ?? sideTab?.source;
     if (source === undefined) return;
-    collePrintPath = detail.filePath;
-    collePrintSource = source;
-    collePrintOpen = true;
+    printOverlayPath = detail.filePath;
+    printOverlaySource = source;
+    printOverlayMode = "planches";
+    printOverlayOpen = true;
   };
   window.addEventListener("azprose:colle-print", onCollePrint);
   return () => window.removeEventListener("azprose:colle-print", onCollePrint);
@@ -1690,15 +1692,9 @@ let cmds = $derived(
     }}
   />
 
-  <CollePrintDialog
-    open={collePrintOpen}
-    filePath={collePrintPath}
-    source={collePrintSource}
-    onClose={() => (collePrintOpen = false)}
-  />
-
   <PrintOverlay
     open={printOverlayOpen}
+    mode={printOverlayMode}
     filePath={printOverlayPath}
     source={printOverlaySource}
     onClose={() => (printOverlayOpen = false)}

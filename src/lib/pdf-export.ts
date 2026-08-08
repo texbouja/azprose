@@ -27,7 +27,9 @@ import {
   DEFAULT_PRINT_REQUEST,
   type PrintRequest,
 } from "@/lib/print-request";
-import { getPrintTemplate, renderPrintTemplate, printTitleFromPath } from "@/lib/print-templates";
+import { getPrintTemplate, renderPrintTemplate, printTitleFromPath, resolveLogoValue } from "@/lib/print-templates";
+import { parseFrontMatter } from "@/lib/front-matter";
+import { readFile } from "@tauri-apps/plugin-fs";
 
 // ── HTML assembly ────────────────────────────────────────────────────────────
 
@@ -164,11 +166,18 @@ async function assembleHtml(
   const dir = filePath.slice(0, lastSep);
   const baseUrl = `file://${dir}/`;
 
-  // 5. Coquille du gabarit d'impression (variables {{content}}/{{title}}/{{date}})
+  // 5. Coquille du gabarit d'impression (variables {{content}}/{{title}}/{{date}}
+  //    + {{logo}}/{{altlogo}} issus du front matter YAML du document)
   const template = getPrintTemplate(req.template);
   const title = printTitleFromPath(filePath);
   const date = new Date().toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" });
-  const body = renderPrintTemplate(template, { content: tmp.innerHTML, title, date });
+  // logo = chemin d'image → data URI (relatif au document, absolu, URL ou
+  // data URI — `resolveLogoValue` gère les 4, lecteur Tauri injecté).
+  // altlogo = simple texte alternatif, jamais résolu comme une image.
+  const fm = parseFrontMatter(src);
+  const logo = await resolveLogoValue(fm.meta.logo, filePath, readFile);
+  const altlogo = (fm.meta.altlogo ?? "").trim() || null;
+  const body = renderPrintTemplate(template, { content: tmp.innerHTML, title, date, logo, altlogo });
 
   // 6. Assemble
   const proseCss = buildProseCss();

@@ -400,7 +400,7 @@
   "colle.printIncludeEval": "Avec évaluation (notes et observations)",
   "colle.printHintEval": "Sans cette option, les notes et observations sont masquées — idéal pour distribuer l'énoncé aux élèves le jour de la colle.",
   "colle.printing": "Préparation de l'impression…",
-  "colle.printCount": "{count} planche(s) — une page A4 paysage peut contenir deux planches côte à côte.",
+  "colle.printCount": "{count} planche(s) dans cette note. La mise en page (format, orientation, nombre de colonnes par page) se règle ci-dessous.",
   "colle.printEmpty": "Aucune planche de colle dans cette note.",
   "colle.printDone": "PDF généré : {path}",
   "colle.sendCount": "{count} rapport(s) à envoyer.",

@@ -14,6 +14,8 @@ import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import { slugify } from "./slugify";
 import { stripColleSeparators } from "@/colles";
 import { humanizeDocType, parseMetaFence, type DocType } from "@/lib/doc-meta";
+import { parseFrontMatter } from "@/lib/front-matter";
+import { imgMime, uint8ToBase64 } from "@/lib/image-uri";
 
 // ── HTML escape utilities ────────────────────────────────
 export function escapeHtml(s: string): string {
@@ -305,35 +307,8 @@ export async function ensurePreviewReady(): Promise<void> {
 }
 
 // ── YAML front matter ──────────────────────────────────────────────────────
-
-const FM_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
-
-interface FrontMatter {
-  meta: Record<string, string>;
-  body: string;
-  /** Number of lines the front matter occupies in the original source (0 if none). */
-  fmLineCount: number;
-}
-
-function parseFrontMatter(src: string): FrontMatter {
-  const m = FM_RE.exec(src);
-  if (!m) return { meta: {}, body: src, fmLineCount: 0 };
-
-  const meta: Record<string, string> = {};
-  for (const line of m[1].split(/\r?\n/)) {
-    const colon = line.indexOf(":");
-    if (colon < 1) continue;
-    const key = line.slice(0, colon).trim();
-    // Strip optional surrounding quotes from value
-    const raw = line.slice(colon + 1).trim();
-    meta[key] = raw.replace(/^["']|["']$/g, "");
-  }
-  // Count lines consumed by the front matter block so that data-sline
-  // values (relative to the body) can be shifted back to absolute
-  // positions in the original source.
-  const fmLineCount = (m[0].match(/\r?\n/g) || []).length;
-  return { meta, body: src.slice(m[0].length), fmLineCount };
-}
+// Le parsing vit dans src/lib/front-matter.ts (module PUR testable) ;
+// renderMarkdown n'en retient que l'en-tête lisible et le décalage de lignes.
 
 function renderFrontMatterHeader(meta: Record<string, string>): string {
   const { title, subtitle, author, date } = meta;
@@ -403,25 +378,8 @@ export async function renderMarkdown(
 }
 
 // ── Post-render DOM helpers ────────────────────────────────────────────────
-
-function imgMime(ext: string): string {
-  switch (ext.toLowerCase()) {
-    case "jpg": case "jpeg": return "image/jpeg";
-    case "png": return "image/png";
-    case "gif": return "image/gif";
-    case "webp": return "image/webp";
-    case "svg": return "image/svg+xml";
-    default: return "image/png";
-  }
-}
-
-function uint8ToBase64(bytes: Uint8Array): string {
-  const chunks: string[] = [];
-  const CHUNK = 8192;
-  for (let i = 0; i < bytes.byteLength; i += CHUNK)
-    chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
-  return btoa(chunks.join(""));
-}
+// `imgMime`/`uint8ToBase64` vivent dans src/lib/image-uri.ts (PUR partagé
+// avec les gabarits d'impression — resolveLogoValue).
 
 // Resolve relative image paths to data URIs so Tauri's WebView can display them.
 /** Inline local images as data URLs. Returns the relative srcs that couldn't be

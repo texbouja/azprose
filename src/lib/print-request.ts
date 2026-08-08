@@ -104,6 +104,22 @@ export const DEFAULT_PRINT_REQUEST: PrintRequest = {
   expandLinks: false,
 };
 
+/**
+ * Défauts d'impression des PLANCHES DE COLLES (mode « planches » du
+ * PrintOverlay) : la configuration ACTUELLE historiquement encodée en dur
+ * dans pdf-planches.ts — A4 paysage, marges 10 mm, deux planches par page
+ * côte à côte (une par colonne), écart 4 mm entre colonnes. Le gabarit
+ * `.rp` (course/dense/simple) est ignoré par l'assembleur planches ; la
+ * persistance est SÉPARÉE de celle du md (`print-planches.json`).
+ */
+export const DEFAULT_PLANCHES_PRINT_REQUEST: PrintRequest = {
+  ...DEFAULT_PRINT_REQUEST,
+  orientation: "landscape",
+  margins: { top: 10, bottom: 10, left: 10, right: 10 },
+  columns: 2,
+  columnGap: 4,
+};
+
 /** Dimensions CDP en pouces (toujours en portrait — rotation par `landscape`). */
 export function paperToInches(req: PrintRequest): { width: number; height: number } {
   const fmt =

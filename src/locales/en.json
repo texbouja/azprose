@@ -430,7 +430,7 @@
   "colle.printIncludeEval": "With evaluation (grades and comments)",
   "colle.printHintEval": "Without this option, grades and comments are hidden — ideal to hand out the exercise sheet to students on exam day.",
   "colle.printing": "Preparing print…",
-  "colle.printCount": "{count} sheet(s) — an A4 landscape page can hold two sheets side by side.",
+  "colle.printCount": "{count} sheet(s) in this note. The layout (paper, orientation, columns per page) is set below.",
   "colle.printEmpty": "No oral exam sheet in this note.",
   "colle.printDone": "PDF generated: {path}",
   "colle.sendCount": "{count} report(s) to send.",

@@ -7,6 +7,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   DEFAULT_PRINT_REQUEST,
+  DEFAULT_PLANCHES_PRINT_REQUEST,
   PAPER_FORMATS,
   MM_TO_INCH,
   HEADER_FOOTER_RESERVE_MM,
@@ -21,7 +22,31 @@ import {
   getPrintTemplate,
   renderPrintTemplate,
   printTitleFromPath,
+  resolveLogoValue,
 } from "@/lib/print-templates";
+
+describe("DEFAULT_PLANCHES_PRINT_REQUEST", () => {
+  it("reproduit la configuration actuelle des planches : A4 paysage, marges 10 mm, 2 colonnes, gap 4 mm", () => {
+    expect(DEFAULT_PLANCHES_PRINT_REQUEST.orientation).toBe("landscape");
+    expect(DEFAULT_PLANCHES_PRINT_REQUEST.paper).toBe("a4");
+    expect(DEFAULT_PLANCHES_PRINT_REQUEST.margins).toEqual({ top: 10, bottom: 10, left: 10, right: 10 });
+    expect(DEFAULT_PLANCHES_PRINT_REQUEST.columns).toBe(2);
+    expect(DEFAULT_PLANCHES_PRINT_REQUEST.columnGap).toBe(4);
+  });
+
+  it("paysage en CDP : landscape true + mêmes dimensions A4", () => {
+    const o = buildPrintCdpOptions(DEFAULT_PLANCHES_PRINT_REQUEST);
+    expect(o.landscape).toBe(true);
+    expect(o.paperWidth).toBeCloseTo(8.27, 2);
+    expect(o.paperHeight).toBeCloseTo(11.69, 2);
+  });
+
+  it("diffère du défaut md→PDF (orientation et marges)", () => {
+    expect(DEFAULT_PLANCHES_PRINT_REQUEST.orientation).not.toBe(DEFAULT_PRINT_REQUEST.orientation);
+    expect(DEFAULT_PLANCHES_PRINT_REQUEST.columns).toBe(2);
+    expect(DEFAULT_PRINT_REQUEST.columns).toBe(1);
+  });
+});
 
 describe("paperToInches", () => {
   it("A4 portrait → 8.27 × 11.69 pouces", () => {
@@ -209,10 +234,11 @@ describe("print-templates", () => {
     expect(getPrintTemplate("nope").id).toBe("simple");
   });
 
-  it("simple : coquille .mdv-prose, pas de CSS spécifique", () => {
+  it("simple : coquille .mdv-prose avec logo conditionnel, CSS du logo", () => {
     const t = getPrintTemplate("simple");
     expect(t.html).toContain('class="mdv-prose"');
-    expect(t.css).toBe("");
+    expect(t.html).toContain("{{#if logo}}");
+    expect(t.css).toContain(".pl-logo");
   });
 
   it("course : bloc couverture + contenu, titre/date échappés", () => {
@@ -238,5 +264,80 @@ describe("print-templates", () => {
     expect(printTitleFromPath("/vault/notes/Chapitre 1.md")).toBe("Chapitre 1");
     expect(printTitleFromPath("sans-ext")).toBe("sans-ext");
     expect(printTitleFromPath("/a/b/C.D.md")).toBe("C.D");
+  });
+
+  it("logo absent → aucun bloc <img> rendu (variable invisible)", () => {
+    const t = getPrintTemplate("simple");
+    const html = renderPrintTemplate(t, { content: "<p>c</p>", title: "t", date: "d" });
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("pl-logo");
+    expect(html).toContain("<p>c</p>");
+  });
+
+  it("logo présent → bloc <img> avec src et alt, src échappé", () => {
+    const t = getPrintTemplate("course");
+    const html = renderPrintTemplate(t, {
+      content: "<p>c</p>",
+      title: "t",
+      date: "d",
+      logo: "data:image/png;base64,QUJD",
+      altlogo: 'Logo "AMP" & co',
+    });
+    expect(html).toContain('<img class="pl-cover__logo"');
+    expect(html).toContain('src="data:image/png;base64,QUJD"');
+    expect(html).toContain('alt="Logo &quot;AMP&quot; &amp; co"');
+  });
+
+  it("altlogo absent → attribut alt vide (décoratif)", () => {
+    const t = getPrintTemplate("simple");
+    const html = renderPrintTemplate(t, { content: "x", title: "t", date: "d", logo: "L" });
+    expect(html).toContain('alt="">');
+    expect(html).not.toContain("{{");
+  });
+});
+
+describe("resolveLogoValue", () => {
+  const fakeRead = async (abs: string) => {
+    if (abs.endsWith("missing.png")) throw new Error("ENOENT");
+    return new TextEncoder().encode("ABC"); // "ABC" → base64 QUJD
+  };
+
+  it("vide / espaces → null", async () => {
+    expect(await resolveLogoValue(undefined, "/v/m.md", fakeRead)).toBeNull();
+    expect(await resolveLogoValue("   ", "/v/m.md", fakeRead)).toBeNull();
+  });
+
+  it("URL distante et data URI → pass-through", async () => {
+    expect(await resolveLogoValue("https://ex.com/logo.png", "/v/m.md", fakeRead)).toBe("https://ex.com/logo.png");
+    expect(await resolveLogoValue("data:image/png;base64,AAAA", "/v/m.md", fakeRead)).toBe("data:image/png;base64,AAAA");
+  });
+
+  it("chemin relatif → résolu contre le dossier du document, data URI", async () => {
+    const seen: string[] = [];
+    const read = async (abs: string) => { seen.push(abs); return new Uint8Array([65, 66, 67]); };
+    const src = await resolveLogoValue("assets/logo.png", "/vault/notes/cours.md", read);
+    expect(seen).toEqual(["/vault/notes/assets/logo.png"]);
+    expect(src).toBe("data:image/png;base64,QUJD");
+  });
+
+  it("chemin absolu → lu tel quel, MIME selon extension", async () => {
+    const src = await resolveLogoValue("/etc/logo.svg", "/v/m.md", fakeRead);
+    expect(src).toBe("data:image/svg+xml;base64,QUJD");
+  });
+
+  it("chemin Windows (\\ dans le document) → jointure cohérente", async () => {
+    const seen: string[] = [];
+    const read = async (abs: string) => { seen.push(abs); return new Uint8Array([1]); };
+    await resolveLogoValue("imgs\\logo.png", "C:\\vault\\cours.md", read);
+    expect(seen).toEqual(["C:\\vault\\imgs\\logo.png"]);
+  });
+
+  it("fichier illisible → null (jamais de <img> cassé)", async () => {
+    expect(await resolveLogoValue("missing.png", "/v/m.md", fakeRead)).toBeNull();
+  });
+
+  it("lecture vide → null", async () => {
+    const read = async () => new Uint8Array(0);
+    expect(await resolveLogoValue("a.png", "/v/m.md", read)).toBeNull();
   });
 });

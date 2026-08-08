@@ -364,6 +364,22 @@ let sideItems = $derived.by(() => {
     background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(6px);
     border-bottom: 1px solid var(--border);
+    /* Manque d'espace horizontal → scroll, jamais de retour à la ligne */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--border) 75%, transparent) transparent;
+  }
+  /* Scrollbar fine (WebKit/WebKitGTK) */
+  .ta-wrap::-webkit-scrollbar {
+    height: 6px;
+  }
+  .ta-wrap::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .ta-wrap::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--border) 75%, transparent);
+    border-radius: 3px;
   }
   .ta-wrap--main {
     display: flex;
@@ -376,6 +392,18 @@ let sideItems = $derived.by(() => {
   }
 
   /* ── Override SVAR Toolbar internals ──────────────────── */
+
+  /* `overflow="wrap"` garde les items visibles (jamais cachés dans un menu
+     « … »), mais le wrap est NEUTRALISÉ : la barre scrolle horizontalement
+     (overflow-x: auto sur .ta-wrap) au lieu de passer à la ligne. */
+  .ta-wrap :global(.wx-toolbar.wx-wrap) {
+    flex-wrap: nowrap;
+  }
+
+  /* Les boutons ne rétrécissent jamais — le débordement est géré par le scroll */
+  .ta-wrap :global(.wx-toolbar .wx-button) {
+    flex-shrink: 0;
+  }
 
   /* Remove default toolbar bg/border — our .ta-wrap provides them */
   .ta-wrap :global(.wx-toolbar) {

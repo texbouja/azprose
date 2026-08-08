@@ -40,7 +40,6 @@ The `.azprose/` directory stores project-specific data:
 ├── csv-cache/               # Spreadsheet rendering cache (auto-managed)
 ├── pdf/
 │   └── rectangle/           # Cropped PDF region images (auto-managed)
-└── opencode/data/           # OpenCode session data (isolated per project)
 ```
 
 ### config.json
