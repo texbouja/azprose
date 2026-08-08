@@ -522,3 +522,48 @@
   font-style: italic;
   color: var(--muted);
 }
+
+/* ── Documentation intégrée (DocPreview) : footer précédent/suivant ────── */
+/* Classes injectées au runtime (appendDocNav) → CSS global obligatoire. */
+
+.mdv-docnav {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mdv-docnav__link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 45%;
+  color: var(--fg);
+  text-decoration: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  transition: background 120ms ease;
+}
+
+.mdv-docnav__link:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.mdv-docnav__link--next {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.mdv-docnav__dir {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.mdv-docnav__title {
+  font-weight: 600;
+  color: var(--accent);
+}

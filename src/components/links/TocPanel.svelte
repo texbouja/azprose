@@ -8,14 +8,22 @@
     type TocFileNode,
     type TocNode,
   } from "@/lib/toc-forest";
+  import { buildHelpForest } from "@/help/help-toc";
+  import { isHelpPath, helpDir } from "@/lib/help-install";
 
   let {
     /** Racine du vault (borne la remontée index.md du fichier affiché). */
     rootPath = null as string | null,
-    /** Fichier de référence : tab viewer md actif, sinon .md actif éditeur. */
+    /** Fichier de référence : tab viewer md actif, sinon .md actif éditeur.
+     *  En mode aide (chemin sous `.azprose/help/`), c'est la RACINE index.md —
+     *  la TOC affiche alors le CATALOGUE complet, quel que soit l'article. */
     filePath = null as string | null,
-    /** Contenu LIVE du fichier de référence (frappes non sauvegardées). */
-    source = "" as string,
+    /** Contenu LIVE du fichier de référence (frappes non sauvegardées).
+     *  `null` = à lire sur disque (racine de la doc intégrée). */
+    source = null as string | null,
+    /** Mode aide : article de la doc intégrée ACTUELLEMENT affiché dans le
+     *  lecteur (surbrillance de sa branche + dépli par défaut). */
+    helpActivePath = null as string | null,
     /** Remontée de l'état pour le header de section (badge). */
     onStateChange = null as ((s: { total: number; loading: boolean }) => void) | null,
     /** Remontée de l'état du mode « plan condensé » (repli tout niveau ≥ 3) —
@@ -26,9 +34,15 @@
 
   let t = $derived(getT($language));
 
-  /** Forêt affichée (racine du fichier « home » + branches transcluses). */
+  /** Forêt affichée (racine du fichier « home » + branches transcluses, ou
+   *  catalogue complet de la doc intégrée en mode aide). */
   let forest = $state<{ root: TocFileNode | null; displayPath: string } | null>(null);
   let error = $state(false);
+
+  /** Mode AIDE : le fichier de référence vit sous `.azprose/help/` — la TOC
+   *  reflète alors le CATALOGUE complet (arbre de site statique), quel que
+   *  soit l'article affiché. Dérivé : ne dépend que de filePath/rootPath. */
+  let helpMode = $derived(!!filePath && !!rootPath && isHelpPath(filePath, rootPath));
 
   /** Nœuds repliés, par identité (`path#ligne` headings, `file:path` branches). */
   let collapsed = $state<Set<string>>(new Set());
@@ -106,19 +120,28 @@
     // milieu de phrase, et on évite une reconstruction par caractère.
     const timer = setTimeout(async () => {
       try {
-        const f = await buildTocForest({
-          rootPath: rp,
-          referencePath: fp,
-          referenceSource: src,
-          readText,
-          getIndex: getFileIndex,
-        });
+        const f = helpMode
+          ? await buildHelpForest({ helpDir: helpDir(rp), readText })
+          : await buildTocForest({
+              rootPath: rp,
+              referencePath: fp,
+              referenceSource: src ?? undefined,
+              readText,
+              getIndex: getFileIndex,
+            });
         if (version !== buildVersion) return; // requête obsolète
         forest = f;
+        // Mode aide : la TOC se présente repliée comme le sommaire d'un
+        // manuel — seules la racine index.md (jamais repliée) et la branche de
+        // l'article courant sont dépliées par défaut.
+        if (helpMode && f.root) seedHelpDefaults(f.root);
         // Pas de ré-application du mode condensé ici : c'est un filtre de
         // rendu (`hiddenInOutline`), il s'applique au nouvel arbre de lui-même.
         error = false;
-        onStateChange?.({ total: countHeadings(f.root), loading: false });
+        onStateChange?.({
+          total: helpMode ? countArticles(f.root) : countHeadings(f.root),
+          loading: false,
+        });
       } catch {
         if (version !== buildVersion) return;
         forest = null;
@@ -141,6 +164,83 @@
     };
     walk(node.children);
     return n;
+  }
+
+  /** Nombre d'ARTICLES de la forêt d'aide (branches fichier hors racine) — le
+   *  badge du header affiche « N articles » en mode aide, soit le nombre de
+   *  CHAPITRES (la racine index.md, page de garde, n'est pas comptée). */
+  function countArticles(node: TocFileNode | null): number {
+    if (!node) return 0;
+    let n = 0;
+    const walk = (children: TocNode[]) => {
+      for (const c of children) {
+        if (c.kind === "file") {
+          if (!c.root) n++;
+          walk(c.children);
+        } else {
+          walk(c.children);
+        }
+      }
+    };
+    walk(node.children);
+    return n;
+  }
+
+  /** Clé de repli d'une branche fichier par chemin (mode aide : `filePath`
+   *  est la racine index.md, pas la branche de l'article courant). */
+  function fileKeyOfPath(path: string): string {
+    return `file:${path}`;
+  }
+
+  /** Clés des branches fichier sur le chemin menant à `current` (lui inclus) —
+   *  utilisé pour déplier l'article courant (le chemin passe par la racine,
+   *  jamais repliée). */
+  function collectExpandKeys(node: TocFileNode | null, current: string | null): Set<string> {
+    const out = new Set<string>();
+    if (!node || !current) return out;
+    const walk = (children: TocNode[], chain: TocFileNode[]): boolean => {
+      for (const c of children) {
+        if (c.kind !== "file") continue;
+        const nextChain = [...chain, c];
+        if (c.path === current) {
+          for (const f of nextChain) out.add(fileKey(f));
+          return true;
+        }
+        if (walk(c.children, nextChain)) return true;
+      }
+      return false;
+    };
+    walk(node.children, []);
+    return out;
+  }
+
+  /** Toutes les clés de branches fichier (pour l'inverse du seed : replier
+   *  TOUT sauf le chemin courant). */
+  function collectAllFileKeys(node: TocFileNode | null): string[] {
+    const out: string[] = [];
+    const walk = (children: TocNode[]) => {
+      for (const c of children) {
+        if (c.kind === "file") {
+          out.push(fileKey(c));
+          walk(c.children);
+        } else {
+          walk(c.children);
+        }
+      }
+    };
+    if (node) walk(node.children);
+    return out;
+  }
+
+  /** Seed du repli en mode aide : tout est replié SAUF la branche de l'article
+   *  courant (et ses ancêtres). La racine index.md, elle, n'est jamais dans la
+   *  liste des clés repliables (`collectAllFileKeys` ne la parcourt pas) — la
+   *  page de garde du manuel reste toujours ouverte. */
+  function seedHelpDefaults(root: TocFileNode): void {
+    const expand = collectExpandKeys(root, helpActivePath);
+    if (filePath) expand.add(fileKeyOfPath(filePath));
+    const all = collectAllFileKeys(root);
+    collapsed = new Set(all.filter((k) => !expand.has(k)));
   }
 
   // Indentation relative au premier titre de la forêt (h4 en tête → 0).
@@ -198,8 +298,11 @@
     );
   }
 
-  /** Saut vers le début du fichier d'une branche transcluse. */
+  /** Saut vers le début du fichier d'une branche transcluse (ou d'un article
+   *  de la doc intégrée). En mode aide, ouvrir un article déplie aussi sa
+   *  branche (navigation de site statique). */
   function navigateFile(node: TocFileNode): void {
+    if (helpMode && collapsed.has(fileKey(node))) toggle(fileKey(node));
     navigate(node.path, 1);
   }
 </script>
@@ -219,7 +322,13 @@
           >
             <i class="wxi {isCollapsed(fileKey(node)) ? "wxi-chevron-right" : "wxi-chevron-down"}"></i>
           </button>
-          <button type="button" class="toc__branch-label" onclick={() => navigateFile(node)} title={node.path}>
+          <button
+            type="button"
+            class="toc__branch-label"
+            class:is-current={node.path === helpActivePath}
+            onclick={() => navigateFile(node)}
+            title={node.path}
+          >
             <i class="wxi wxi-file-text"></i>
             <span class="toc__text">{node.label}</span>
           </button>
@@ -245,7 +354,9 @@
             title={node.entry.text}
           >
             <span class="toc__text">{node.entry.text}</span>
-            <span class="toc__line">L{node.entry.line}</span>
+            {#if !helpMode}
+              <span class="toc__line">L{node.entry.line}</span>
+            {/if}
           </button>
         {/if}
       </div>
@@ -278,11 +389,21 @@
       <p>{t("toc.empty")}</p>
     </div>
   {:else}
-    <ul class="toc__list">
-      {#each forest.root.children as child (keyOf(child))}
-        {@render renderNode(child, 0)}
-      {/each}
-    </ul>
+    {#if helpMode}
+      <!-- Mode aide : un VRAI sommaire de manuel — la racine index.md (page de
+           garde + sommaire) est rendue comme PREMIÈRE rangée, ses enfants sont
+           les chapitres (chacun portant ses sections H2+). La racine n'est
+           jamais repliée par défaut et redevient cliquable (retour au sommaire). -->
+      <ul class="toc__list">
+        {@render renderNode(forest.root, 0)}
+      </ul>
+    {:else}
+      <ul class="toc__list">
+        {#each forest.root.children as child (keyOf(child))}
+          {@render renderNode(child, 0)}
+        {/each}
+      </ul>
+    {/if}
   {/if}
 </div>
 
@@ -386,6 +507,10 @@
   }
   .toc__branch-label:hover {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  /* Article de la doc intégrée actuellement affiché dans le lecteur. */
+  .toc__branch-label.is-current {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
   }
   .toc__branch-label .wxi {
     font-size: 12px;

@@ -110,6 +110,16 @@ export class PanelManager {
     this.side.openCustom(panelId, title);
   }
 
+  /** Ouvre (ou ré-affecte) l'onglet d'aide intégrée (DocPreview) dans le SIDE
+   *  panel — lecture seule, tab UNIQUE (`kind: "doc"`). Le panneau principal
+   *  reste réservé EXCLUSIVEMENT à CodeMirror : il n'existe volontairement
+   *  aucun `openDocInMain`. */
+  openDoc(docPath: string, opts?: { silent?: boolean }): Promise<void> {
+    this.side.visible = true;
+    this.layout = "main+side";
+    return this.side.openDoc(docPath, opts);
+  }
+
   /** Ouvre (ou active) un tableur dans le SIDE panel. Le panneau principal
    *  est réservé EXCLUSIVEMENT à CodeMirror — il n'existe volontairement
    *  aucun `openSpreadsheetInMain`/`openCustomInMain` : la règle est

@@ -175,6 +175,8 @@
   "command.tutorialHint": "replay the six-step onboarding guide",
   "command.checkUpdates": "check for updates",
   "command.checkUpdatesHint": "see if there's a newer version of AZprose",
+  "command.openHelp": "open help",
+  "command.openHelpHint": "open the built-in documentation (Help)",
   "command.about": "about AZprose",
   "command.aboutHint": "version, license, links",
   "command.toggleFavorite": "toggle favorite",
@@ -647,5 +649,11 @@
   "print.export": "Export",
   "settings.printTemplate.simple": "Plain document",
   "settings.printTemplate.course": "Course",
-  "settings.printTemplate.dense": "Dense"
+  "settings.printTemplate.dense": "Dense",
+  "statusbar.untitled": "untitled",
+  "statusbar.words": "{count} words",
+  "statusbar.minRead": "{minutes} min read",
+  "statusbar.help": "Help (⌘/)",
+  "doc.prev": "Previous article",
+  "doc.next": "Next article"
 }

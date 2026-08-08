@@ -157,6 +157,8 @@
   "command.tutorial": "afficher le tutoriel · welcome",
   "command.tutorialHint": "rouvrir le modal d'accueil",
   "command.checkUpdatesHint": "voir s'il existe une nouvelle version de AZprose",
+  "command.openHelp": "ouvrir l'aide",
+  "command.openHelpHint": "ouvrir la documentation intégrée (Aide)",
   "command.aboutHint": "version, licence, liens",
   "command.toggleFavorite": "basculer le favori",
   "command.toggleFavoriteHint": "ajouter ou retirer le fichier actuel de vos favoris",
@@ -629,5 +631,11 @@
   "print.export": "Exporter",
   "settings.printTemplate.simple": "Document simple",
   "settings.printTemplate.course": "Cours",
-  "settings.printTemplate.dense": "Dense"
+  "settings.printTemplate.dense": "Dense",
+  "statusbar.untitled": "sans titre",
+  "statusbar.words": "{count} mots",
+  "statusbar.minRead": "{minutes} min",
+  "statusbar.help": "Aide (⌘/)",
+  "doc.prev": "Article précédent",
+  "doc.next": "Article suivant"
 }

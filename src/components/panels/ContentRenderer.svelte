@@ -1,6 +1,6 @@
 <script lang="ts">
 import { extFromPath } from "@/lib/editor-languages";
-import { isPdfPath, isImagePath } from "@/lib";
+import { isPdfPath, isImagePath, isMarkdownPath } from "@/lib";
 import type { Tab } from "@/lib/panel-store";
 import Editor from "@/components/editor/Editor.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
@@ -9,6 +9,7 @@ import LazyProseMark from "@/components/markdown/LazyProseMark.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import LazyCollePreview from "@/components/colles/LazyCollePreview.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
+import LazyDocPreview from "@/components/markdown/LazyDocPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
 import LazyCalendarPanel from "@/components/calendar/LazyCalendarPanel.svelte";
 import LazyJournalCalendarPanel from "@/components/sidebar/LazyJournalCalendarPanel.svelte";
@@ -67,6 +68,11 @@ let {
   <LazyJournalCalendarPanel />
 {:else if tab.kind === "custom" && tab.panelId === "svar-calendar"}
   <LazySvarCalendarPanel />
+{:else if tab.kind === "doc" && isMarkdownPath(tab.path)}
+  <LazyDocPreview
+    value={tab.source}
+    filePath={tab.path}
+  />
 {:else if isPdfPath(tab.path)}
   <LazyPdfViewer
     path={tab.path}

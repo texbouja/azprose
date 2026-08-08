@@ -1,4 +1,4 @@
-# Aide-mémoire des raccourcis
+# 2. Les raccourcis
 
 Les raccourcis sont donnés pour macOS (`⌘` = Commande). Sur Windows et Linux, remplacez `⌘` par `Ctrl`.
 
@@ -33,6 +33,7 @@ Les raccourcis sont donnés pour macOS (`⌘` = Commande). Sur Windows et Linux,
 | Explorateur (barre latérale gauche) | `⌘B` |
 | Console | `⌘⇧C` |
 | Réglages | `⌘,` |
+| Aide (documentation intégrée) | `⌘/` |
 | Plein écran | `⌃⌘F` (ou `F11`) |
 | Compiler le document LaTeX (.tex) | `⌘⌥B` |
 
@@ -41,11 +42,11 @@ Les raccourcis sont donnés pour macOS (`⌘` = Commande). Sur Windows et Linux,
 - **Double-clic dans l'aperçu** : ramène l'éditeur à la ligne correspondante.
 - **`⌘S`** : après un enregistrement, l'aperçu se place automatiquement sur la ligne du curseur.
 - **Clic sur un lien** : ouvre la note dans le panneau d'aperçu (`⌘\`).
-- **`Alt + glisser` sur un PDF** : sélectionne une zone rectangulaire et copie son lien (voir [[wikilinks]]).
+- **`Alt + glisser` sur un PDF** : sélectionne une zone rectangulaire et copie son lien (voir le chapitre 3, [[03-wikilinks|Les liens entre notes]]).
 
 ## Voir aussi
 
-- La prise en main complète : [[commencer]]
-- Les liens entre notes : [[wikilinks]]
+- La prise en main complète : chapitre 1, [[01-prise-en-main|Prise en main]]
+- Les liens entre notes : chapitre 3, [[03-wikilinks|Les liens entre notes]]
 
 #guide #raccourcis

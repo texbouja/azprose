@@ -34,6 +34,7 @@ export type CommandActions = {
   showWelcome: () => void;
   showAbout: () => void;
   loadDemo: () => void;
+  openHelp: () => void;
   undoFileOp: () => void | Promise<void>;
   checkForUpdates: () => void | Promise<void>;
 
@@ -666,6 +667,15 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       action: actions.clearCalendarCache,
     },
     // ── Help ────────────────────────────────────────────────
+    {
+      id: "open-help",
+      label: t("command.openHelp"),
+      hint: t("command.openHelpHint"),
+      icon: "wxi-circle-help",
+      category: "help",
+      keywords: ["help", "documentation", "aide", "manuel", "guide", "docs"],
+      action: actions.openHelp,
+    },
     {
       id: "demo",
       label: t("command.demo"),

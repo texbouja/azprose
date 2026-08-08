@@ -58,6 +58,11 @@ import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { executeOxideCommand, notifyMarkdownOxideFileChanged } from "@/lib/lsp/markdown-oxide";
 import { writeText } from "@/lib/files";
+import { ensureHelpInstalled, helpIndexPath, isHelpPath } from "@/lib/help-install";
+// Import STATIQUE (jamais mélangé avec du dynamique) : index-home est déjà
+// dans le chunk principal via LinksView → TocPanel → toc-forest — un dynamic
+// import ici ne découperait AUCUN chunk (avertissement INEFFECTIVE_DYNAMIC_IMPORT).
+import { findLinkedIndexMd } from "@/lib/index-home";
 import { writeBackColleKeys } from "@/colles/write-back";
 import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
 import PrintOverlay from "@/components/overlays/PrintOverlay.svelte";
@@ -185,6 +190,13 @@ $effect(() => { setRootPath(rootPath); });
 // and file-operations move detection).
 $effect(() => { setActivePath(activePath); });
 
+// Matérialise la documentation intégrée dans <racine>/.azprose/help/ (stamp
+// de version) — idempotent, jamais bloquant.
+$effect(() => {
+  const rp = rootPath;
+  if (rp) void ensureHelpInstalled(rp);
+});
+
 // Wire stores to rootPath and load on vault open.
 $effect(() => {
   const rp = rootPath;
@@ -249,15 +261,29 @@ let sideActivePath = $derived.by(() => { _panelVersion; return pm.side.activePat
 
 // Référence de la TOC sidebar : tab viewer md actif (side), sinon .md actif
 // de l'éditeur (main). Source = buffer live du fichier retenu.
+// Tab doc (aide intégrée) → la TOC est TOUJOURS celle de la racine index.md,
+// quel que soit l'article consulté (décision utilisateur) — source lue sur
+// disque (le buffer ne contient que l'article courant).
 let tocRefPath = $derived.by(() => {
   _panelVersion;
+  if (pm.side.activeTab?.kind === "doc" && rootPath) return helpIndexPath(rootPath);
   if (pm.side.activePath && extFromPath(pm.side.activePath) === "md") return pm.side.activePath;
   if (pm.main.activePath && extFromPath(pm.main.activePath) === "md") return pm.main.activePath;
   return null;
 });
 let tocRefSource = $derived.by(() => {
   _panelVersion;
+  if (pm.side.activeTab?.kind === "doc") return null;
   return tocRefPath === pm.side.activePath ? pm.side.source : pm.main.source;
+});
+
+// Mode aide : l'article de la doc intégrée actuellement affiché dans le
+// lecteur (tab side kind === "doc", chemin = l'article courant après openDoc).
+// Transmis à la TOC sidebar pour la surbrillance de la branche + le dépli par
+// défaut de l'article courant (l'arbre de l'aide reflète TOUT le catalogue).
+let helpActivePath = $derived.by(() => {
+  _panelVersion;
+  return pm.side.activeTab?.kind === "doc" ? pm.side.activePath : null;
 });
 
 $effect(() => {
@@ -607,7 +633,6 @@ $effect(() => {
     const rp = getRootPath();
     const cur = pm.side.activePath ?? activePath;
     if (!rp || !cur) return;
-    const { findLinkedIndexMd } = await import("@/lib/index-home");
     const target = await findLinkedIndexMd({ rootPath: rp, currentFilePath: cur, readText });
     if (!target) return; // aucun index lié → no-op silencieux
     window.dispatchEvent(new CustomEvent(
@@ -682,10 +707,60 @@ $effect(() => {
   return () => window.removeEventListener("azprose:preview-reload", onReload);
 });
 
+// ── Documentation intégrée (DocPreview) ─────────────────────────────────────
+// Ouvre (ou ré-affecte) le tab doc unique en side panel avec le contenu d'un
+// article .azprose/help. Lecture seule : `source` = contenu disque, jamais de
+// draft. Après l'ouverture, un saut d'en-tête est délégué au preview via le
+// mécanisme scroll-target existant (doc.navigate).
+let docArticleOpen = false; // garde : l'effet d'écoute est monté une fois
+$effect(() => {
+  if (docArticleOpen) return;
+  docArticleOpen = true;
+  const onDocNavigate = async (e: Event) => {
+    const { path, heading } = (e as CustomEvent<{ path: string; heading?: string }>).detail;
+    if (!path || !isHelpPath(path, getRootPath())) return;
+    await openDocArticle(path, heading);
+  };
+  window.addEventListener("azprose:doc-navigate", onDocNavigate);
+  return () => window.removeEventListener("azprose:doc-navigate", onDocNavigate);
+});
+
+async function openDocArticle(path: string, heading?: string): Promise<void> {
+  const rp = getRootPath();
+  if (!rp || !isHelpPath(path, rp)) return;
+  // Le store lit le contenu depuis le disque (.azprose/help, matérialisé par
+  // ensureHelpInstalled) — source = savedContent, lecture seule, jamais de draft.
+  await pm.openDoc(path, { silent: true });
+  // Sauvegardé dans l'historique de navigation comme une vraie page.
+  if (sideActivePath) navPush(sideActivePath);
+  if (heading) {
+    setScrollTarget(heading);
+    window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", {
+      detail: { path, line: null, heading },
+    }));
+  }
+}
+
+/** Ouvre la racine de la documentation intégrée dans un tab doc (side). */
+async function openHelp(): Promise<void> {
+  const rp = getRootPath();
+  if (!rp) return;
+  const index = helpIndexPath(rp);
+  const existing = pm.side.tabs.find((t) => t.kind === "doc" && t.path === index);
+  if (existing) pm.side.select(existing.id);
+  else await openDocArticle(index);
+}
+
 $effect(() => {
   const onJumpFile = async (e: Event) => {
     const { path, line, heading } = (e as CustomEvent<{ path: string; line?: number; heading?: string }>).detail;
     if (!path) return;
+    // Chemin de la documentation intégrée → navigation dans le DocPreview
+    // (jamais dans l'éditeur main : tab doc = lecture seule).
+    if (isHelpPath(path, getRootPath())) {
+      await openDocArticle(path, heading);
+      return;
+    }
     // User navigation (TOC / backlinks / tags click): record the current
     // preview page in the back history BEFORE jumping (browser-like). The
     // store dedupes consecutive duplicates (headings within the same file).
@@ -1235,6 +1310,7 @@ $effect(() => {
     handleSaveAll,
     handleExportPdf,
     handleSetEditorMode,
+    onShowHelp: openHelp,
     sidebarOpen,
     notify: notifications,
     t,
@@ -1507,6 +1583,7 @@ let cmds = $derived(
     toggleSidebar: handleToggleSidebar,
     showWelcome: overlays.showWelcome,
     showAbout: overlays.showAbout,
+    openHelp,
     loadDemo: async () => {
       const { demoFile } = await import("@/lib/demo");
       const path = await demoFile();
@@ -1648,6 +1725,7 @@ let cmds = $derived(
       {activePath}
       tocRefPath={tocRefPath}
       tocRefSource={tocRefSource}
+      helpActivePath={helpActivePath}
       width={sidebarWidth.current}
       onWidthChange={(next) => sidebarWidth.current = next}
       onAddFolder={handleAddFolder}
@@ -1758,6 +1836,7 @@ let cmds = $derived(
     {words}
     {minutes}
     {buildLabel}
+    onHelp={openHelp}
   />
 
   <ContextMenu

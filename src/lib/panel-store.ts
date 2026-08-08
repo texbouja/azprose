@@ -4,7 +4,7 @@ import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation" | "colle";
 export type TabSource = "latex";
-export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter";
+export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter" | "doc";
 
 export type Tab = {
   id: string;
@@ -59,7 +59,8 @@ export function pickOpenTarget(
     if (active && !active.kind) return { id: active.id, isFallback: true };
   }
   if (wantPreview) {
-    const reuse = tabs.find(t => t.preview);
+    // Le tab doc (aide intégrée) n'est JAMAIS ré-affecté par un preview normal.
+    const reuse = tabs.find(t => t.preview && t.kind !== "doc");
     if (reuse) return { id: reuse.id, isFallback: false };
   }
   return { id: null, isFallback: false };
@@ -170,7 +171,56 @@ export class PanelState {
   }
 
   /**
-   * Ouvre `path` dans le tab ACTIF du panel (clic sidebar « tab actif »).
+   * Ouvre un article de la documentation intégrée dans un tab UNIQUE
+   * (`kind: "doc"`) : si un tab doc existe déjà, il est ré-affecté à l'article
+   * demandé ; sinon un nouveau tab doc est créé. Lecture seule — jamais de
+   * brouillon, jamais ré-affecté par `open`/`openInActiveTab`.
+   */
+  async openDoc(path: string, opts?: { silent?: boolean }): Promise<void> {
+    if (!isOpenablePath(path)) {
+      if (!opts?.silent) {
+        this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
+      }
+      return;
+    }
+    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+    const normalized = norm(path);
+    const existingSame = this.tabs.find(t => t.kind === "doc" && norm(t.path) === normalized);
+    if (existingSame) {
+      this.activeTabId = existingSame.id;
+      this.notify();
+      return;
+    }
+    const existingDoc = this.tabs.find(t => t.kind === "doc");
+    const title = basename(normalized);
+    const id = existingDoc?.id ?? crypto.randomUUID();
+    if (existingDoc) {
+      this.tabs = this.tabs.map(t => t.id === id
+        ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, kind: "doc" }
+        : t);
+    } else {
+      this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: true, kind: "doc" }];
+    }
+    this.activeTabId = id;
+    this.cbs.onFileOpen?.(normalized);
+    this.notify();
+
+    try {
+      const fileSource = await readText(normalized);
+      this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: fileSource, savedContent: fileSource } : t);
+    } catch (err) {
+      this.tabs = this.tabs.filter(t => t.id !== id);
+      if (this.activeTabId === id) {
+        this.activeTabId = this.tabs[this.tabs.length - 1]?.id ?? null;
+      }
+      this.notify();
+      if (!opts?.silent) throw err;
+      return;
+    }
+    this.notify();
+  }
+
+  /**
    * - si un tab du panel affiche déjà `path` → simple activation (dédup) ;
    * - sinon RE-POINTE le tab actif vers `path` : le brouillon non enregistré
    *   du tab est PARKÉ avant le mouvement (mécanique `repoint`), la cible est
@@ -198,7 +248,10 @@ export class PanelState {
     }
 
     const active = this.activeTab;
-    const previous = active ? { ...active } : null;
+    // Le tab doc (aide intégrée) n'est jamais ré-affecté par une navigation
+    // « tab actif » : un clic sidebar pendant la lecture de l'aide ne doit
+    // pas détruire le lecteur — on crée un onglet dédié à la place.
+    const previous = active && active.kind !== "doc" ? { ...active } : null;
     const id = previous?.id ?? crypto.randomUUID();
 
     // Park du brouillon du tab actif AVANT de le ré-affecter (mécanique repoint).

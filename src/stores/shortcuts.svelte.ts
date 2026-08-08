@@ -19,6 +19,7 @@ export type ShortcutAction =
   | "console"
   | "viewPanel"
   | "settings"
+  | "help"
   | "navBack"
   | "navForward";
 
@@ -43,6 +44,7 @@ const MAC_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
   console:       { key: "c", shift: true },
   viewPanel:     { key: "\\" },
   settings:      { key: "," },
+  help:          { key: "/" },
   navBack:       { key: "[" },
   navForward:    { key: "]" },
 };
@@ -64,6 +66,7 @@ const OTHER_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
   console:       { key: "c", shift: true },
   viewPanel:     { key: "\\" },
   settings:      { key: "," },
+  help:          { key: "/" },
   navBack:       { key: "[" },
   navForward:    { key: "]" },
 };

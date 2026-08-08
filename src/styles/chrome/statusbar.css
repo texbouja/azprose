@@ -64,6 +64,31 @@
   flex-shrink: 0;
 }
 
+.mdv-statusbar__help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.mdv-statusbar__help:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+
+.mdv-statusbar__help:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 @keyframes mdv-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }

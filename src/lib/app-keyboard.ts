@@ -19,6 +19,7 @@ export interface KeyboardDeps {
   handleSaveAll: (deps: string[]) => Promise<void>
   handleExportPdf: () => Promise<void>
   handleSetEditorMode: (mode: "raw" | "prose" | "preview" | "presentation") => void
+  onShowHelp?: () => void
   sidebarOpen: { current: boolean }
   notify: { setInfo: (msg: string) => void }
   t: (key: string, params?: Record<string, string>) => string
@@ -84,6 +85,11 @@ export function handleKeydown(e: KeyboardEvent, ctx: KeyboardDeps) {
   if (shortcuts.matches(e, "settings")) {
     e.preventDefault();
     overlays.openSettings("general");
+    return;
+  }
+  if (shortcuts.matches(e, "help")) {
+    e.preventDefault();
+    ctx.onShowHelp?.();
     return;
   }
   // Preview navigation history (browser-like) — ⌘[ / ⌘] (Ctrl on other platforms)

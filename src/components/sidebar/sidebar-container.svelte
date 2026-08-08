@@ -13,7 +13,10 @@ let {
   folders,
   activePath,
   tocRefPath,
+
   tocRefSource,
+
+  helpActivePath,
   width,
   onWidthChange,
   onAddFolder,
@@ -52,9 +55,13 @@ let {
   rootPath: string | null;
   folders: readonly string[];
   activePath: string | null;
-  /** Référence de la TOC : tab viewer md actif, sinon .md actif éditeur. */
+  /** Référence de la TOC : tab viewer md actif, sinon .md actif éditeur.
+   *  `null` = à lire sur disque (racine de la doc intégrée, index.md). */
   tocRefPath: string | null;
-  tocRefSource: string;
+  tocRefSource: string | null;
+  /** Mode aide : article de la doc intégrée affiché dans le lecteur —
+   *  transmis à la TOC (surbrillance + dépli par défaut). */
+  helpActivePath: string | null;
   width: number;
   onWidthChange: (next: number) => void;
   onAddFolder: () => void;
@@ -176,7 +183,12 @@ function stopResize(e: PointerEvent) {
           {onDeleteEntry}
         />
       {:else if sidebarView.current === "links"}
-        <LinksView filePath={tocRefPath} source={tocRefSource} rootPath={rootPath} />
+        <LinksView
+          filePath={tocRefPath}
+          source={tocRefSource}
+          rootPath={rootPath}
+          helpActivePath={helpActivePath}
+        />
       {/if}
     </div>
   </div>
