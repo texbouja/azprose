@@ -31,7 +31,6 @@ export type CommandActions = {
   openFolder: () => void | Promise<void>;
   save: () => void;
   toggleSidebar: () => void;
-  showHelp: () => void;
   showWelcome: () => void;
   showAbout: () => void;
   loadDemo: () => void;
@@ -667,16 +666,6 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
       action: actions.clearCalendarCache,
     },
     // ── Help ────────────────────────────────────────────────
-    {
-      id: "help",
-      label: t("command.showHelp"),
-      hint: t("command.showHelpHint"),
-      shortcut: "⌘/",
-      icon: "wxi-circle-help",
-      category: "help",
-      keywords: ["help", "how to", "shortcuts", "manual"],
-      action: actions.showHelp,
-    },
     {
       id: "demo",
       label: t("command.demo"),

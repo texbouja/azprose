@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { Button } from "@/components/primitives";
-  import { shortcutLabel } from "@/lib";
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
 
@@ -10,14 +8,12 @@
     fileName,
     words,
     minutes,
-    onShowHelp,
     vimMode,
     buildLabel,
   }: {
     fileName?: string;
     words: number;
     minutes: number;
-    onShowHelp: () => void;
     vimMode?: "normal" | "insert" | "visual" | "replace" | null;
     buildLabel?: string | null;
   } = $props();
@@ -54,15 +50,5 @@
     <span>{t("statusbar.words", { count: words })}</span>
     <span>·</span>
     <span>{t("statusbar.minRead", { minutes })}</span>
-    <Button
-      class="mdv-statusbar__help"
-      data-tooltip={shortcutLabel(t("statusbar.howToUse") + " (⌘/)")}
-      aria-label={t("statusbar.howToUse")}
-      onclick={onShowHelp}
-    >
-      {#snippet icon()}
-        <i class="wxi-circle-help" style="font-size:12px"></i>
-      {/snippet}
-    </Button>
   </div>
 </footer>

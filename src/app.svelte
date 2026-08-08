@@ -39,7 +39,6 @@ import {
 import Toast from "@/components/overlays/Toast.svelte";
 import DropOverlay from "@/components/overlays/DropOverlay.svelte";
 import CommandPalette from "@/components/overlays/CommandPalette.svelte";
-import HelpOverlay from "@/components/overlays/HelpOverlay.svelte";
 import AboutOverlay from "@/components/overlays/AboutOverlay.svelte";
 import SettingsOverlay from "@/components/overlays/SettingsOverlay.svelte";
 import WelcomeOverlay from "@/components/overlays/WelcomeOverlay.svelte";
@@ -1506,7 +1505,6 @@ let cmds = $derived(
     openFolder: handleAddFolder,
     save: handleSave,
     toggleSidebar: handleToggleSidebar,
-    showHelp: overlays.showHelp,
     showWelcome: overlays.showWelcome,
     showAbout: overlays.showAbout,
     loadDemo: async () => {
@@ -1759,7 +1757,6 @@ let cmds = $derived(
     fileName={activePath ? basename(activePath) : undefined}
     {words}
     {minutes}
-    onShowHelp={overlays.showHelp}
     {buildLabel}
   />
 
@@ -1832,13 +1829,6 @@ let cmds = $derived(
     open={overlays.paletteOpen}
     onClose={() => overlays.setPaletteOpen(false)}
     commands={cmds}
-  />
-
-  <HelpOverlay
-    open={overlays.helpOpen}
-    onClose={() => overlays.setHelpOpen(false)}
-    onReplayTutorial={overlays.showWelcome}
-    onCheckForUpdates={handleManualUpdateCheck}
   />
 
   <AboutOverlay

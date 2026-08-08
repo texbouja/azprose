@@ -33,7 +33,6 @@ Les raccourcis sont donnés pour macOS (`⌘` = Commande). Sur Windows et Linux,
 | Explorateur (barre latérale gauche) | `⌘B` |
 | Console | `⌘⇧C` |
 | Réglages | `⌘,` |
-| Aide | `⌘/` |
 | Plein écran | `⌃⌘F` (ou `F11`) |
 | Compiler le document LaTeX (.tex) | `⌘⌥B` |
 

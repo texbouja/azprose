@@ -12,7 +12,6 @@ export type ShortcutAction =
   | "undoFileOp"
   | "fullscreen"
   | "exportPdf"
-  | "help"
   | "build"
   | "editorMode1"
   | "editorMode2"
@@ -37,7 +36,6 @@ const MAC_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
   undoFileOp:    { key: "z", alt: true },
   fullscreen:    { key: "f", ctrl: true },
   exportPdf:     { key: "p" },
-  help:          { key: "/" },
   build:         { key: "b", alt: true },
   editorMode1:   { key: "1" },
   editorMode2:   { key: "2" },
@@ -59,7 +57,6 @@ const OTHER_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
   undoFileOp:    { key: "z", alt: true },
   fullscreen:    { key: "F11" },
   exportPdf:     { key: "p" },
-  help:          { key: "/" },
   build:         { key: "b", alt: true },
   editorMode1:   { key: "1" },
   editorMode2:   { key: "2" },

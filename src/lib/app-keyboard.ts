@@ -45,11 +45,6 @@ export function handleKeydown(e: KeyboardEvent, ctx: KeyboardDeps) {
     ctx.sidebarOpen.current = !ctx.sidebarOpen.current;
     return;
   }
-  if (shortcuts.matches(e, "help")) {
-    e.preventDefault();
-    overlays.showHelp();
-    return;
-  }
   if (shortcuts.matches(e, "build")) {
     e.preventDefault();
     if (ctx.activePath) {

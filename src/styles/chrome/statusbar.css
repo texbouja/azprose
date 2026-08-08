@@ -17,18 +17,6 @@
   gap: 12px;
 }
 
-.mdv-statusbar__help {
-  height: 18px;
-  padding: 0 5px;
-  margin-left: 4px;
-  color: var(--muted);
-}
-
-.mdv-statusbar__help:hover {
-  color: var(--accent);
-  background: transparent;
-}
-
 .mdv-vim-pill {
   display: inline-flex;
   align-items: center;
