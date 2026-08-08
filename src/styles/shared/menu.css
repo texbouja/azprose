@@ -23,6 +23,17 @@
   color: var(--fg);
 }
 
+.mdv-btn--outline {
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.mdv-btn--outline:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .mdv-btn--solid {
   background: var(--accent);
   color: #fff;

@@ -218,9 +218,13 @@ button:focus-visible {
     background: #ffffff !important;
   }
 
-  /* Page breaks */
+  /* Page breaks — saut automatique sur h1 (sauf premier) ; saut EXPLICITE
+     via <div class="page-break"></div> ; annulation d'UN h1 via
+     <h1 class="no-page-break"> (break-before: auto) */
   .mdv-prose h1 { break-before: page; break-after: avoid; }
   .mdv-prose h1:first-child { break-before: avoid; }
+  .mdv-prose h1.no-page-break { break-before: auto; }
+  .mdv-prose .page-break { break-after: page; }
   .mdv-prose h2,
   .mdv-prose h3 { break-after: avoid; }
   .mdv-prose pre,

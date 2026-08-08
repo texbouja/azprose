@@ -19,7 +19,15 @@ import { buildProseStyleCss } from "@/lib/prose-style-css";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
+import { expandWikilinksForPrint } from "@/markdown/print-expand";
 import type { Theme } from "./theme";
+import {
+  buildPrintBaseCss,
+  buildPrintCdpOptions,
+  DEFAULT_PRINT_REQUEST,
+  type PrintRequest,
+} from "@/lib/print-request";
+import { getPrintTemplate, renderPrintTemplate, printTitleFromPath } from "@/lib/print-templates";
 
 // ── HTML assembly ────────────────────────────────────────────────────────────
 
@@ -32,23 +40,8 @@ function buildProseCss(): string {
   return buildProseStyleCss(s, ".mdv-prose") + (s.customCss.trim() ? "\n" + s.customCss.trim() : "");
 }
 
-function buildPrintCss(): string {
-  return `
-    @page { margin: 32px 48px; }
-    body { background: #fff; color: #000; margin: 0; padding: 0; }
-    .mdv-prose { max-width: 100%; }
-    .mdv-prose h1 { break-before: page; break-after: avoid; }
-    .mdv-prose h1:first-child { break-before: avoid; }
-    .mdv-prose h2, .mdv-prose h3 { break-after: avoid; }
-    .mdv-prose pre, .mdv-prose table, .mdv-prose figure, .mdv-prose img { break-inside: avoid; }
-    .mdv-prose p, .mdv-prose li { orphans: 3; widows: 3; }
-    .mdv-prose a { color: #0a4d8c; }
-    .mdv-prose details.callout { display: block !important; }
-    .mdv-prose details.callout > summary { list-style: none; cursor: default; }
-    .mdv-prose details.callout > summary::-webkit-details-marker { display: none; }
-    .mdv-prose details.callout .callout-chevron { display: none !important; }
-    .mdv-prose details.callout[open] { display: block; }
-  `;
+function buildPrintCss(req: PrintRequest): string {
+  return buildPrintBaseCss(req);
 }
 
 export function buildMathJaxConfig(): string {
@@ -137,11 +130,16 @@ async function assembleHtml(
   theme: Theme,
   filePath: string,
   rootPath: string | null,
+  req: PrintRequest,
 ): Promise<string> {
   await ensurePreviewReady();
 
   // 1. Render markdown → HTML
   updateCalloutIcons(calloutSettings.current);
+  // 1b. (Phase 4, chantier 4) Wikilinks block-level → transclusions récursives.
+  //     L'expansion produit des `![[…]]` que `resolveTransclusions` traite dans
+  //     `renderMarkdown`. Jamais appliquée au preview normal (défaut off).
+  if (req.expandLinks) src = expandWikilinksForPrint(src);
   const result = await renderMarkdown(src, theme, filePath, rootPath ?? undefined);
 
   // 2. Post-process callouts (strip auto-titles, make collapsible)
@@ -166,11 +164,17 @@ async function assembleHtml(
   const dir = filePath.slice(0, lastSep);
   const baseUrl = `file://${dir}/`;
 
-  // 5. Assemble
+  // 5. Coquille du gabarit d'impression (variables {{content}}/{{title}}/{{date}})
+  const template = getPrintTemplate(req.template);
+  const title = printTitleFromPath(filePath);
+  const date = new Date().toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" });
+  const body = renderPrintTemplate(template, { content: tmp.innerHTML, title, date });
+
+  // 6. Assemble
   const proseCss = buildProseCss();
   const calloutBaseCss = buildCalloutBaseCss();
   const calloutDynCss = generateCalloutCss(calloutSettings.current);
-  const printCss = buildPrintCss();
+  const printCss = buildPrintCss(req) + "\n" + template.css;
   const mathjaxConfig = buildMathJaxConfig();
 
   // Inject preamble as hidden display math — MathJax will process it during typesetting
@@ -216,10 +220,8 @@ ${mathjaxConfig}
 <script src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js" async><\/script>
 </head>
 <body>
-<div class="mdv-prose">
 ${preambleBlock}
-${tmp.innerHTML}
-</div>
+${body}
 ${lifecycleScript}
 </body>
 </html>`;
@@ -237,15 +239,21 @@ ${lifecycleScript}
  * dialog flow is gone; the page layout is decided by the app (A4 portrait,
  * @page CSS margins).
  *
+ * Phase 3 : `req` décrit la mise en page complète (papier, orientation,
+ * marges, gabarit, colonnes, entête/pied, échelle). Il est converti en
+ * options CDP (pouces) par `buildPrintCdpOptions` et transmis au backend
+ * qui applique `print_to_cdp` (serde camelCase → `PrintOptions`).
+ *
  * Returns the output path, or null when the user cancelled the save dialog.
  */
 export async function exportMarkdownPdf(
   src: string,
   theme: Theme,
   filePath: string,
+  req: PrintRequest = DEFAULT_PRINT_REQUEST,
 ): Promise<string | null> {
   const rootPath = getRootPath();
-  const html = await assembleHtml(src, theme, filePath, rootPath);
+  const html = await assembleHtml(src, theme, filePath, rootPath, req);
 
   // La destination est choisie AVANT le rendu headless (le backend écrit le
   // PDF directement sur disque, plus de dialogue d'impression natif).
@@ -256,6 +264,35 @@ export async function exportMarkdownPdf(
   });
   if (!outputPath) return null;
 
-  await invoke("export_markdown_pdf", { html, outputPath, landscape: false, rootPath });
+  await invoke("export_markdown_pdf", {
+    html,
+    outputPath,
+    rootPath,
+    options: buildPrintCdpOptions(req),
+  });
   return outputPath;
+}
+
+/**
+ * Aperçu avant impression (décision §3.4 de next_level.md) : assemble le
+ * MÊME document HTML que l'export (mêmes réglages `req`) et l'affiche dans
+ * une FENÊTRE Chromium VISIBLE via la commande Rust `preview_print` —
+ * browser non-headless DÉDIÉ (séparé du browser headless partagé).
+ *
+ * Le backend écrit le HTML dans `.azprose/tmp/print-preview-<ts>.html` (le
+ * cache du vault) et ne le supprime PAS — l'aperçu reste consultable. La
+ * fenêtre reste ouverte après le retour ; sa fermeture libère la connexion
+ * (le prochain aperçu rouvre une fenêtre).
+ *
+ * Returns the path to the preview HTML file written in the vault cache.
+ */
+export async function previewMarkdownPdf(
+  src: string,
+  theme: Theme,
+  filePath: string,
+  req: PrintRequest = DEFAULT_PRINT_REQUEST,
+): Promise<string> {
+  const rootPath = getRootPath();
+  const html = await assembleHtml(src, theme, filePath, rootPath, req);
+  return await invoke<string>("preview_print", { html, rootPath });
 }

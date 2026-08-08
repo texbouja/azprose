@@ -78,8 +78,8 @@ export async function exportPlanchesPdf(
   await invoke("export_markdown_pdf", {
     html,
     outputPath,
-    landscape: true,
     rootPath: getRootPath() ?? null,
+    options: { landscape: true },
   });
   return outputPath;
 }

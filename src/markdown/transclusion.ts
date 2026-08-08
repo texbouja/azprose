@@ -1,6 +1,8 @@
 import { readFile, exists } from "@tauri-apps/plugin-fs";
 import { getFileIndex } from "@/lib/vault-index";
-import { slugify } from "./slugify";
+import { extractBlock, extractSection } from "./transclusion-sections";
+
+export { extractBlock, extractSection }; // ré-export pour compat
 
 /**
  * Pre-processes ![[file]] transclusion syntax before markdown-it rendering.
@@ -74,53 +76,6 @@ export const tauriTransclusionFs: TransclusionFs = {
   },
   exists,
 };
-
-function extractSection(content: string, heading: string): string {
-  const slug = slugify(heading);
-  const lines = content.split("\n");
-
-  // Find the heading line
-  let start = -1;
-  let level = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(#{1,6})\s+(.+)/);
-    if (m && slugify(m[2]) === slug) {
-      start = i;
-      level = m[1].length;
-      break;
-    }
-  }
-  if (start < 0) return `<!-- transclusion: heading "${heading}" not found -->`;
-
-  // Find end: next heading at same or higher level
-  for (let i = start + 1; i < lines.length; i++) {
-    const m = lines[i].match(/^(#{1,6})\s+/);
-    if (m && m[1].length <= level) {
-      return lines.slice(start, i).join("\n");
-    }
-  }
-  return lines.slice(start).join("\n");
-}
-
-function extractBlock(content: string, blockId: string): string {
-  const lines = content.split("\n");
-  const anchor = `^${blockId}`;
-
-  // Find the block marker
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(anchor)) {
-      // Return from this line (minus the anchor) until next heading or EOF
-      const text = lines[i].replace(new RegExp(`\\s*\\S*${anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), "").trimEnd();
-      for (let j = i + 1; j < lines.length; j++) {
-        if (/^#{1,6}\s+/.test(lines[j])) {
-          return text + "\n" + lines.slice(i + 1, j).join("\n");
-        }
-      }
-      return text + "\n" + lines.slice(i + 1).join("\n");
-    }
-  }
-  return `<!-- transclusion: block ^${blockId} not found -->`;
-}
 
 export async function resolveTransclusions(
   src: string,

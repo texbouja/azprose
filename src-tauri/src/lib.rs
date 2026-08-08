@@ -483,6 +483,7 @@ pub fn run() {
             reveal_in_file_manager,
             mdprinter::export_markdown_pdf,
             mdprinter::render_report_png,
+            mdprinter::preview_print,
             read_project_config,
             write_project_config,
             read_project_session,

@@ -36,10 +36,68 @@ use headless_chrome::protocol::cdp::Emulation::SetDeviceMetricsOverride;
 use headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption;
 use headless_chrome::types::PrintToPdfOptions;
 use headless_chrome::{Browser, LaunchOptions};
+use serde::Deserialize;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::command;
+
+/// Options d'impression transmises par le frontend (PrintOverlay — chantier 3
+/// de next_level.md). Tous les champs sont OPTIONNELS : `None` = comportement
+/// actuel (A4 portrait, fond imprimé, pas d'entête/pied).
+///
+/// Coordination marges CSS / CDP (décision documentée §3.1) : le frontend
+/// écrit TOUJOURS les marges dans le `@page` CSS généré (c'est la source de
+/// vérité — avec `prefer_css_page_size: true`, le CSS gagne sur les marges
+/// CDP). Les champs `margin_*` ne sont transmis que dans le cas « marges
+/// système » (phase 2, `prefer_css_page_size` désactivé). Les entêtes/pieds
+/// sont des templates CDP (classes réservées `.title`, `.date`, `.url`,
+/// `.pageNumber`, `.totalPages`) dessinés DANS la zone de marge CSS (le
+/// frontend réserve ~10 mm quand ils sont activés).
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PrintOptions {
+    pub landscape: Option<bool>,
+    /// Échelle CDP 0.5–2.0 (défaut 1.0).
+    pub scale: Option<f64>,
+    /// Pouces — défaut 8.27 (A4).
+    pub paper_width: Option<f64>,
+    /// Pouces — défaut 11.69 (A4).
+    pub paper_height: Option<f64>,
+    pub margin_top: Option<f64>,
+    pub margin_bottom: Option<f64>,
+    pub margin_left: Option<f64>,
+    pub margin_right: Option<f64>,
+    pub display_header_footer: Option<bool>,
+    pub header_template: Option<String>,
+    pub footer_template: Option<String>,
+    pub print_background: Option<bool>,
+}
+
+/// Mappe les options frontend vers les `PrintToPdfOptions` CDP. PUR (testable) :
+/// `None`/champ absent → les défauts = comportement actuel (A4 portrait,
+/// print_background, pas d'entête/pied, `prefer_css_page_size` — le CSS @page
+/// de l'assembleur reste la source de vérité des marges).
+fn print_to_cdp(options: Option<PrintOptions>) -> PrintToPdfOptions {
+    let o = options.unwrap_or_default();
+    let mut opts = PrintToPdfOptions::default();
+    opts.print_background = o.print_background.or(Some(true));
+    opts.prefer_css_page_size = Some(true);
+    opts.display_header_footer = o.display_header_footer.or(Some(false));
+    opts.landscape = o.landscape.or(Some(false));
+    // A4 — letter est le défaut CDP, l'app est française.
+    opts.paper_width = o.paper_width.or(Some(8.27));
+    opts.paper_height = o.paper_height.or(Some(11.69));
+    opts.scale = o.scale;
+    opts.margin_top = o.margin_top;
+    opts.margin_bottom = o.margin_bottom;
+    opts.margin_left = o.margin_left;
+    opts.margin_right = o.margin_right;
+    opts.header_template = o.header_template;
+    opts.footer_template = o.footer_template;
+    opts
+}
 
 /// Title set by the assembled lifecycle scripts once rendering finished
 /// (pdf-export.ts / pdf-planches.ts use `azprose-print-ready`, email.ts
@@ -53,6 +111,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(300);
 /// seul process, un seul onglet, navigué à chaque rendu). Conservé entre les
 /// invocations : le cache HTTP (MathJax CDN) survit d'une planche à l'autre.
 static SHARED_BROWSER: Mutex<Option<(Browser, Arc<Tab>)>> = Mutex::new(None);
+
+/// Browser d'APERÇU NON-HEADLESS DÉDIÉ (décision §3.4 de next_level.md) —
+/// STRICTEMENT séparé du `SHARED_BROWSER` (qui a un idle timeout 300 s et un
+/// onglet réutilisé ; la fenêtre d'aperçu doit rester ouverte). Conservé ici
+/// pour que la fenêtre survive au retour de la commande — leçon round 19 :
+/// dropper le `Browser` ferme la connexion CDP et le process Chromium.
+/// Remplacé (drop → fermeture propre) à la prochaine ouverture d'aperçu.
+static PREVIEW_BROWSER: Mutex<Option<(Browser, Arc<Tab>)>> = Mutex::new(None);
 
 /// Sérialise les opérations de rendu : le navigateur ET l'onglet sont
 /// partagés, deux commandes simultanées (ex. ⌘P pendant un archivage)
@@ -181,8 +247,8 @@ fn navigate_shared(tab: &Tab, temp_path: &Path) -> Result<(), String> {
 pub fn export_markdown_pdf(
     html: String,
     output_path: String,
-    landscape: Option<bool>,
     root_path: Option<String>,
+    options: Option<PrintOptions>,
 ) -> Result<String, String> {
     let _guard = RENDER_LOCK
         .lock()
@@ -197,25 +263,20 @@ pub fn export_markdown_pdf(
         temp_path.display(),
         html.len()
     );
-
-    let result = with_browser(|_browser, tab| {
-        navigate_shared(tab, &temp_path)?;
+    // `temp_path`/`options` sont clonés : le retry de `with_browser` re-joue
+    // `f` (un `move` qui consommerait les valeurs casserait le second passage)
+    // et le nettoyage final a besoin de `temp_path` après le closure.
+    let temp_for_closure = temp_path.clone();
+    let result = with_browser(move |_browser, tab| {
+        navigate_shared(tab, &temp_for_closure)?;
 
         if let Err(e) = wait_for_title(tab, PRINT_READY_TITLE) {
             return Err(e);
         }
 
-        let mut opts = PrintToPdfOptions::default();
-        opts.print_background = Some(true);
-        opts.prefer_css_page_size = Some(true); // @page margins of the assembled CSS win
-        opts.display_header_footer = Some(false);
-        opts.landscape = Some(landscape.unwrap_or(false));
-        // A4 — letter is the CDP default, the app is French.
-        opts.paper_width = Some(8.27);
-        opts.paper_height = Some(11.69);
-
+        let print_opts = print_to_cdp(options.clone());
         let data = tab
-            .print_to_pdf(Some(opts))
+            .print_to_pdf(Some(print_opts))
             .map_err(|e| format!("print_to_pdf: {e}"))?;
 
         // Ceinture + bretelles : la navigation de la planche suivante
@@ -358,6 +419,177 @@ pub struct ReportPng {
     pub height: u32,
 }
 
+/// Aperçu avant impression (décision §3.4 de next_level.md) : affiche le
+/// document HTML (celui qui sera exporté — le frontend assemble le même HTML
+/// que l'export) dans une FENÊTRE Chromium VISIBLE (non-headless).
+///
+/// - Le HTML est écrit dans le CACHE du vault (`.azprose/tmp/print-preview-<ts>.html`,
+///   décision utilisateur : pas de pollution /tmp) et **n'est PAS supprimé** —
+///   l'aperçu reste consultable (chemin retourné au frontend).
+/// - Browser NON-headless DÉDIÉ (PAS le `SHARED_BROWSER` — il a un idle
+///   timeout 300 s et un onglet réutilisé ; la fenêtre d'aperçu doit rester
+///   ouverte) : instance séparée, idle timeout long, fenêtre 1024×768, en
+///   mode FENÊTRE D'APPLICATION (`--app=<url>` — pas de barre d'adresse, pas
+///   d'onglets, pas de menus : « ne pas trahir sa nature de fenêtre d'un
+///   browser », décision utilisateur).
+/// - Nav + `wait_for_title("azprose-print-ready")` (même marqueur que
+///   l'export) → la fenêtre AFFICHE le document avec le CSS print appliqué
+///   (le navigateur applique les `@page`/media print au rendu).
+/// - Cycle de vie : la fenêtre reste ouverte après le retour de la commande
+///   (le Browser est conservé dans `PREVIEW_BROWSER`) ; sa fermeture par
+///   l'utilisateur tue le process — la prochaine ouverture détecte la
+///   connexion morte et relance.
+/// - Repli documenté (risque Linux : X11/Wayland requis) : si l'aperçu
+///   fenêtré échoue, le frontend peut ouvrir le PDF dans le viewer existant
+///   (`transfer_mode: base64` — l'infra `viewerPdfPath` existe).
+#[command(async)]
+pub fn preview_print(html: String, root_path: Option<String>) -> Result<String, String> {
+    let _guard = RENDER_LOCK
+        .lock()
+        .map_err(|e| format!("mdprinter lock: {e}"))?;
+
+    // Le HTML d'aperçu vit dans le cache du vault et n'est PAS supprimé
+    // (l'utilisateur peut le rouvrir / l'inspecter) — contrairement aux
+    // fichiers jetables des rendus headless.
+    let temp_path = temp_html_path(root_path.as_deref(), "print-preview")?;
+    std::fs::write(&temp_path, &html)
+        .map_err(|e| format!("write preview html: {e}"))?;
+    eprintln!(
+        "mdprinter: preview html written {} ({} bytes)",
+        temp_path.display(),
+        html.len()
+    );
+
+    // `temp_path` est cloné pour le retry : `with_preview_browser` re-joue le
+    // closure en cas de connexion morte (fenêtre fermée entre deux aperçus).
+    // L'URL file:// est aussi passée : au premier lancement, `--app=<url>`
+    // ouvre DIRECTEMENT la fenêtre app sur ce document.
+    let file_url = url::Url::from_file_path(&temp_path)
+        .map_err(|_| format!("invalid file path: {}", temp_path.display()))?;
+    let file_url_str = file_url.to_string();
+    let temp_for_closure = temp_path.clone();
+    let result = with_preview_browser(&file_url_str, move |_browser, tab| {
+        // Re-navigation systématique (idempotente) : au premier lancement
+        // c'est un simple reload de l'URL déjà chargée par `--app=` ; elle
+        // couvre la réutilisation du browser (aperçu suivant) et le retry.
+        navigate_shared(tab, &temp_for_closure)?;
+        wait_for_title(tab, PRINT_READY_TITLE)?;
+        // Aucun titre orphelin sur l'onglet d'aperçu : la page affiche le
+        // document, le marqueur dans l'onglet ne gêne pas l'affichage.
+        eprintln!(
+            "mdprinter: preview ready — fenêtre app ouverte sur {}",
+            temp_for_closure.display()
+        );
+        Ok(temp_for_closure.display().to_string())
+    });
+
+    // PAS de remove_file ici : le fichier d'aperçu reste consultable.
+    result
+}
+
+/// Lance un NOUVEAU browser Chromium NON-headless en mode FENÊTRE
+/// D'APPLICATION (`--app=<url>`) pour l'aperçu avant impression.
+///
+/// DÉCISION UTILISATEUR : la fenêtre d'aperçu ne doit avoir NI barre
+/// d'adresse, NI onglets, NI menus — juste le contenu, pour ne pas trahir
+/// sa nature de fenêtre d'un browser. `--app=<url>` est le mode app window
+/// de Chrome (fenêtre sans chrome : pas d'URL, pas d'onglets, pas de menu).
+///
+/// Options dédiées, distinctes de `launch_browser()` (headless) : idle
+/// timeout LONG (la fenêtre reste ouverte pendant la consultation), fenêtre
+/// 1024×768. `--no-default-browser-check` évite le dialogue « Chrome n'est
+/// pas votre navigateur par défaut » ; `--enable-automation` (DEFAULT_ARGS,
+/// infobande jaune « contrôlé par un logiciel de test ») est IGNORÉ.
+fn launch_preview_browser(url: &str) -> Result<Browser, String> {
+    let app_flag = format!("--app={url}");
+    let options = LaunchOptions::default_builder()
+        .headless(false) // fenêtre visible — décision §3.4
+        .window_size(Some((1024, 768)))
+        .args(vec![
+            OsStr::new(&app_flag),
+            OsStr::new("--no-default-browser-check"),
+        ])
+        .ignore_default_args(vec![OsStr::new("--enable-automation")])
+        // L'idle timeout du shared (300 s) tuerait la fenêtre d'aperçu
+        // pendant une consultation longue — celui-ci est bien plus long.
+        .idle_browser_timeout(Duration::from_secs(3600))
+        .build()
+        .map_err(|e| format!("preview launch options: {e}"))?;
+
+    Browser::new(options).map_err(|e| format!("launch preview chrome: {e}"))
+}
+
+/// Attend le tab INITIAL du browser d'aperçu (créé au lancement avec
+/// `--app=`) — polling de `get_tabs()`. On ne crée JAMAIS de nouveau tab
+/// (`new_tab()` ouvrirait une fenêtre navigateur NORMALE à côté de la
+/// fenêtre app ; `wait_for_initial_tab()` du crate replie justement sur
+/// `new_tab()` — d'où ce poll maison).
+fn wait_initial_tab(browser: &Browser) -> Result<Arc<Tab>, String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let tabs = browser
+            .get_tabs()
+            .lock()
+            .map_err(|e| format!("mdprinter tabs lock: {e}"))?;
+        if let Some(tab) = tabs.first().cloned() {
+            return Ok(tab);
+        }
+        drop(tabs);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Err("preview: no initial tab after 10 s".into())
+}
+
+/// Récupère le browser d'aperçu DÉDIÉ (non-headless, mode app) ; en lance un
+/// premier exemplaire si aucun n'est vivant. Une fenêtre fermée par
+/// l'utilisateur tue le process → la connexion est morte → on détruit
+/// l'ancien et on relance (le prochain aperçu ouvre une nouvelle fenêtre).
+fn acquire_preview_browser(url: &str) -> Result<(Browser, Arc<Tab>), String> {
+    let mut guard = PREVIEW_BROWSER
+        .lock()
+        .map_err(|e| format!("mdprinter preview lock: {e}"))?;
+    if let Some(pair) = guard.as_ref() {
+        return Ok((pair.0.clone(), pair.1.clone()));
+    }
+    let browser = launch_preview_browser(url)?;
+    let tab = wait_initial_tab(&browser)?;
+    guard.replace((browser.clone(), tab.clone()));
+    Ok((browser, tab))
+}
+
+/// Détruit le browser d'aperçu (drop → `Browser::close` → ferme la fenêtre et
+/// le process Chromium). Utilisé pour remplacer une fenêtre morte.
+fn reset_preview_browser() {
+    if let Ok(mut guard) = PREVIEW_BROWSER.lock() {
+        guard.take();
+    }
+}
+
+/// Exécute `f` avec le browser d'aperçu. Si la connexion est morte (fenêtre
+/// fermée par l'utilisateur entre deux aperçus — erreur « connection is
+/// closed »), détruit l'ancien et relance une fois.
+fn with_preview_browser<T>(
+    url: &str,
+    f: impl Fn(&Browser, &Tab) -> Result<T, String>,
+) -> Result<T, String> {
+    match attempt_preview(url, &f) {
+        Err(e) if !is_title_timeout(&e) => {
+            eprintln!("mdprinter: {e}\n→ réouverture de la fenêtre d'aperçu");
+            reset_preview_browser();
+            attempt_preview(url, &f)
+        }
+        r => r,
+    }
+}
+
+fn attempt_preview<T>(
+    url: &str,
+    f: &impl Fn(&Browser, &Tab) -> Result<T, String>,
+) -> Result<T, String> {
+    let (browser, tab) = acquire_preview_browser(url)?;
+    f(&browser, &tab)
+}
+
 /// Poll the tab title until the lifecycle script signals the document is
 /// ready to render (it sets `document.title = title` once MathJax finished
 /// and the fallback paths fire on load/error — never hangs).
@@ -420,6 +652,78 @@ mod tests {
         assert!(!is_title_timeout("navigate: Unable to make method calls because underlying connection is closed"));
     }
 
+    #[test]
+    fn print_options_none_keeps_current_defaults() {
+        // `None` (appelant legacy) → comportement exact du flux actuel :
+        // A4 portrait, fond imprimé, pas d'entête/pied, CSS @page prioritaire.
+        let o = print_to_cdp(None);
+        assert_eq!(o.landscape, Some(false));
+        assert_eq!(o.print_background, Some(true));
+        assert_eq!(o.display_header_footer, Some(false));
+        assert_eq!(o.prefer_css_page_size, Some(true));
+        assert_eq!(o.paper_width, Some(8.27));
+        assert_eq!(o.paper_height, Some(11.69));
+        assert_eq!(o.scale, None);
+        assert_eq!(o.header_template, None);
+        assert_eq!(o.footer_template, None);
+        // Pas de marges CDP par défaut — le CSS @page est la source de vérité.
+        assert_eq!(o.margin_top, None);
+    }
+
+    #[test]
+    fn print_options_map_to_cdp() {
+        let opts = PrintOptions {
+            landscape: Some(true),
+            scale: Some(1.2),
+            paper_width: Some(5.83),  // A5 paysage (148 mm)
+            paper_height: Some(8.27),
+            margin_top: Some(0.4),
+            margin_bottom: Some(0.4),
+            margin_left: Some(0.5),
+            margin_right: Some(0.5),
+            display_header_footer: Some(true),
+            header_template: Some("<div>{{title}}</div>".into()),
+            footer_template: Some("<span class=\"pageNumber\"></span>".into()),
+            print_background: Some(false),
+        };
+        let o = print_to_cdp(Some(opts));
+        assert_eq!(o.landscape, Some(true));
+        assert_eq!(o.scale, Some(1.2));
+        assert_eq!(o.paper_width, Some(5.83));
+        assert_eq!(o.paper_height, Some(8.27));
+        assert_eq!(o.margin_top, Some(0.4));
+        assert_eq!(o.margin_bottom, Some(0.4));
+        assert_eq!(o.margin_left, Some(0.5));
+        assert_eq!(o.margin_right, Some(0.5));
+        assert_eq!(o.display_header_footer, Some(true));
+        assert_eq!(o.header_template.as_deref(), Some("<div>{{title}}</div>"));
+        assert_eq!(
+            o.footer_template.as_deref(),
+            Some("<span class=\"pageNumber\"></span>")
+        );
+        assert_eq!(o.print_background, Some(false));
+        // Les valeurs explicites priment sur les défauts — JAMAIS l'inverse.
+        let full = print_to_cdp(Some(PrintOptions {
+            print_background: Some(false),
+            ..PrintOptions::default()
+        }));
+        assert_eq!(full.print_background, Some(false));
+    }
+
+    #[test]
+    fn print_options_partial_fields_default_back() {
+        // Un champ absent (None) retombe sur le défaut, les autres sont
+        // préservés — comportement attendu d'un formulaire partiellement rempli.
+        let o = print_to_cdp(Some(PrintOptions {
+            paper_width: Some(7.0),
+            ..PrintOptions::default()
+        }));
+        assert_eq!(o.paper_width, Some(7.0));
+        assert_eq!(o.paper_height, Some(11.69)); // défaut conservé
+        assert_eq!(o.landscape, Some(false));
+        assert_eq!(o.display_header_footer, Some(false));
+    }
+
     /// E2E manuel (lent — lance un vrai Chromium, `fetch` feature) : deux
     /// rendus PNG séquentiels sur le process PARTAGÉ. Vérifie les magics PNG
     /// et affiche les timings (le 2ᵉ rendu ne relance pas le process).
@@ -449,5 +753,26 @@ mod tests {
             (t2 - t1).as_secs_f32()
         );
         reset_shared();
+    }
+
+    /// E2E manuel (lent — ouvre une VRAIE fenêtre Chromium sur l'écran) :
+    /// `preview_print` écrit le HTML dans le cache du vault (`print-preview-*`),
+    /// le laisse sur disque (consultable) et signale la fenêtre prête.
+    /// Fermeture propre du browser d'aperçu à la fin (sinon la fenêtre reste).
+    #[test]
+    #[ignore = "lent : ouvre une fenêtre Chromium visible (validation manuelle)"]
+    fn preview_print_writes_cache_html_and_opens_window() {
+        let html = "<!doctype html><html><head><meta charset=\"utf-8\">\
+                    <script>document.title = \"azprose-print-ready\";</script>\
+                    </head><body><h1>Aperçu</h1><p>Le CSS print s'applique.</p></body></html>";
+        let root = "/tmp/opencode/preview-e2e";
+        let path = preview_print(html.into(), Some(root.into())).expect("aperçu");
+        // Le fichier vit dans le cache du vault et n'est PAS supprimé.
+        assert!(path.contains(".azprose/tmp/print-preview-"), "chemin cache: {path}");
+        assert!(std::path::Path::new(&path).is_file(), "fichier présent: {path}");
+        eprintln!("  → aperçu ouvert sur {path}");
+        // Ferme la fenêtre proprement (le test ne doit pas laisser de process).
+        reset_preview_browser();
+        let _ = std::fs::remove_dir_all("/tmp/opencode/preview-e2e/.azprose");
     }
 }

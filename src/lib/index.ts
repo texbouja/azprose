@@ -58,3 +58,28 @@ export {
   type DocType,
   type ParsedMetaFence,
 } from "./doc-meta";
+export {
+  DEFAULT_PRINT_REQUEST,
+  PAPER_FORMATS,
+  MM_TO_INCH,
+  HEADER_FOOTER_RESERVE_MM,
+  buildPrintBaseCss,
+  buildCdpHeaderFooterTemplate,
+  buildPrintCdpOptions,
+  hasHeaderFooter,
+  paperToInches,
+  type PrintRequest,
+  type PrintMargins,
+  type CustomPaper,
+  type PrintTemplateId,
+  type PaperFormat,
+  type PrintOrientation,
+  type PrintCdpOptions,
+} from "./print-request";
+export {
+  PRINT_TEMPLATES,
+  getPrintTemplate,
+  renderPrintTemplate,
+  printTitleFromPath,
+  type PrintTemplate,
+} from "./print-templates";

@@ -11,7 +11,7 @@ let {
   class: className = "",
   ...rest
 }: {
-  variant?: "ghost" | "solid";
+  variant?: "ghost" | "outline" | "solid";
   size?: "sm" | "md";
   icon?: Snippet;
   iconRight?: Snippet;

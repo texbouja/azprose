@@ -59,6 +59,7 @@ import { writeText } from "@/lib/files";
 import { writeBackColleKeys } from "@/colles/write-back";
 import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
 import CollePrintDialog from "@/components/colles/CollePrintDialog.svelte";
+import PrintOverlay from "@/components/overlays/PrintOverlay.svelte";
 import { extFromPath } from "@/lib/editor-languages";
 import { setOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
 import { saveSession, clearDraft, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
@@ -119,7 +120,6 @@ import {
   handleOpenProjectByPath as handleOpenProjectByPathUtil,
   handleCloseFolder as handleCloseFolderUtil,
   handleInitProject as handleInitProjectUtil,
-  handleExportPdf as handleExportPdfUtil,
   type ProjectManagementDeps,
 } from "@/lib/project-management";
 import { setupSessionRestore, type SessionRestoreDeps } from "@/lib/session-restore";
@@ -1014,7 +1014,14 @@ const handleAddFolder = () => handleAddFolderUtil(projectManagementCtx);
 const handleOpenProjectByPath = (f: string) => handleOpenProjectByPathUtil(projectManagementCtx, f);
 const handleInitProject = () => handleInitProjectUtil(projectManagementCtx);
 const handleCloseFolder = (path: string) => handleCloseFolderUtil(projectManagementCtx, path);
-const handleExportPdf = () => handleExportPdfUtil({ pm, activePath, extFromPath, themeResolved: theme.resolved, notify: notifications, t });
+const handleExportPdf = async () => {
+  // Phase 3 : ⌘P ouvre le PrintOverlay (configuration) au lieu d'exporter
+  // directement — la source LIVE est capturée à l'ouverture.
+  if (!activePath || extFromPath(activePath) !== "md") return;
+  printOverlayPath = activePath;
+  printOverlaySource = source;
+  printOverlayOpen = true;
+};
 
 // Session restore, CLI open-file, CLI project-folder, single-instance open-project
 $effect(() => {
@@ -1164,6 +1171,12 @@ let colleSendSource = $state<string | null>(null);
 let collePrintOpen = $state(false);
 let collePrintPath = $state<string | null>(null);
 let collePrintSource = $state<string | null>(null);
+
+// État du PrintOverlay (Phase 3) : l'export md→PDF passe par l'overlay de
+// configuration (gabarit, papier, marges, colonnes, entêtes/pieds).
+let printOverlayOpen = $state(false);
+let printOverlayPath = $state<string | null>(null);
+let printOverlaySource = $state<string | null>(null);
 
 const handleToggleConsole = () => {
   if (consoleOpen) {
@@ -1682,6 +1695,13 @@ let cmds = $derived(
     filePath={collePrintPath}
     source={collePrintSource}
     onClose={() => (collePrintOpen = false)}
+  />
+
+  <PrintOverlay
+    open={printOverlayOpen}
+    filePath={printOverlayPath}
+    source={printOverlaySource}
+    onClose={() => (printOverlayOpen = false)}
   />
 
   <WelcomeOverlay
