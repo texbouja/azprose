@@ -32,6 +32,39 @@ export type PanelCallbacks = {
   onError?: (title: string, message: string) => void;
 };
 
+/**
+ * Décide du tab à ré-affecter lors d'un `open(path, { preview: true })`.
+ * (fonction PURE — testable sans Tauri/fs ; consommée par `PanelState.open`).
+ *
+ * Priorités :
+ * 1. `fallbackToActive` (navigation « tab actif » : wikilink du viewer, sidebar
+ *    maximisée, back & forward) → re-pointe le tab ACTIF du panneau (le clic a
+ *    lieu dans le tab visible), pourvu que ce soit un tab de FICHIER (kind non
+ *    défini — un tab custom/spreadsheet/datafilter ne peut pas être ré-affecté).
+ *    C'est le comportement « clic simple = tab actif », indépendant du flag
+ *    `preview` (perdu par un restore de session ou une ré-affectation
+ *    openInActiveTab) — sans lui, chaque clic créait un NOUVEL onglet.
+ * 2. sinon, un tab existant marqué `preview: true` (mécanique historique de
+ *    ré-affectation en place).
+ * 3. sinon → nouveau tab (`id: null`).
+ */
+export function pickOpenTarget(
+  tabs: Tab[],
+  activeTabId: string | null,
+  wantPreview: boolean,
+  fallbackToActive: boolean | undefined,
+): { id: string | null; isFallback: boolean } {
+  if (wantPreview && fallbackToActive) {
+    const active = tabs.find(t => t.id === activeTabId);
+    if (active && !active.kind) return { id: active.id, isFallback: true };
+  }
+  if (wantPreview) {
+    const reuse = tabs.find(t => t.preview);
+    if (reuse) return { id: reuse.id, isFallback: false };
+  }
+  return { id: null, isFallback: false };
+}
+
 export class PanelState {
   readonly id: string;
   visible: boolean = true;
@@ -64,7 +97,7 @@ export class PanelState {
     this.cbs.onSessionChange?.(this.toJSON());
   }
 
-  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource }): Promise<void> {
+  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; fallbackToActive?: boolean }): Promise<void> {
     if (!isOpenablePath(path)) {
       if (!opts?.silent) {
         this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
@@ -86,10 +119,28 @@ export class PanelState {
       return;
     }
 
-    const reuse = wantPreview ? this.tabs.find(t => t.preview) : undefined;
+    // Navigation « tab actif » (wikilink du viewer / sidebar maximisée / back &
+    // forward) : on re-pointe le tab ACTIF (dédup déjà traitée ci-dessus) — le
+    // clic a forcément lieu dans le tab visible, donc le tab actif. C'est le
+    // comportement attendu « clic simple = tab actif », indépendant du flag
+    // `preview` (qui peut être perdu : restore de session, ré-affectations
+    // openInActiveTab). Le flag preview est CONSERVÉ (le tab reste un preview ;
+    // l'éditeur lié suit via previewLinkedTabId) et le brouillon éventuel est
+    // parké avant ré-affectation (politique A, même mécanique que openInActiveTab).
+    const targetInfo = pickOpenTarget(this.tabs, this.activeTabId, wantPreview, opts?.fallbackToActive);
+    const target = targetInfo.id != null ? this.tabs.find(t => t.id === targetInfo.id) : undefined;
     const title = basename(normalized);
-    const id = reuse?.id ?? crypto.randomUUID();
-    if (reuse) {
+    const id = target?.id ?? crypto.randomUUID();
+    if (target) {
+      if (
+        targetInfo.isFallback &&
+        target.kind !== "custom" &&
+        !isPdfPath(target.path) &&
+        !isImagePath(target.path) &&
+        target.source !== target.savedContent
+      ) {
+        saveDraft(target.path, target.source);
+      }
       this.tabs = this.tabs.map(t => t.id === id ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, sourceType: opts?.sourceType } : t);
     } else {
       this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType }];
@@ -115,6 +166,79 @@ export class PanelState {
       }
     }
 
+    this.notify();
+  }
+
+  /**
+   * Ouvre `path` dans le tab ACTIF du panel (clic sidebar « tab actif »).
+   * - si un tab du panel affiche déjà `path` → simple activation (dédup) ;
+   * - sinon RE-POINTE le tab actif vers `path` : le brouillon non enregistré
+   *   du tab est PARKÉ avant le mouvement (mécanique `repoint`), la cible est
+   *   lue (avec `preferDraft` éventuel), et le tab perd son flag `preview`.
+   * L'ancien onglet reste accessible via back/forward du preview (il vient
+   * d'être remplacé dans le tab actif, pas fermé).
+   * PDF/images : pas de lecture texte — source vide, viewer dédié.
+   * Sans tab actif, se comporte comme `open` (nouveau tab).
+   */
+  async openInActiveTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; sourceType?: TabSource }): Promise<void> {
+    if (!isOpenablePath(path)) {
+      if (!opts?.silent) {
+        this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
+      }
+      return;
+    }
+    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
+    const normalized = norm(path);
+    // Dédup : un tab affiche déjà le fichier → activation simple (comme `open`).
+    const existing = this.tabs.find(t => norm(t.path) === normalized);
+    if (existing) {
+      this.activeTabId = existing.id;
+      this.notify();
+      return;
+    }
+
+    const active = this.activeTab;
+    const previous = active ? { ...active } : null;
+    const id = previous?.id ?? crypto.randomUUID();
+
+    // Park du brouillon du tab actif AVANT de le ré-affecter (mécanique repoint).
+    if (previous && previous.kind !== "custom" && !isPdfPath(previous.path) && !isImagePath(previous.path) && previous.source !== previous.savedContent) {
+      saveDraft(previous.path, previous.source);
+    }
+
+    if (previous) {
+      this.tabs = this.tabs.map(t =>
+        t.id === id
+          ? { ...t, path: normalized, title: basename(normalized), source: "", savedContent: "", preview: false, sourceType: opts?.sourceType }
+          : t,
+      );
+    } else {
+      this.tabs = [...this.tabs, { id, title: basename(normalized), path: normalized, source: "", savedContent: "", preview: false, sourceType: opts?.sourceType }];
+    }
+    this.activeTabId = id;
+    this.cbs.onFileOpen?.(normalized);
+    this.notify();
+
+    if (!isPdfPath(normalized) && !isImagePath(normalized)) {
+      try {
+        const fileSource = await readText(normalized);
+        const draft = opts?.preferDraft ? loadDraft(normalized) : null;
+        const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
+        this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: content, savedContent: fileSource } : t);
+      } catch (err) {
+        // Échec de lecture : restaure l'état précédent du tab (le brouillon
+        // parké reste intact — l'utilisateur ne perd rien).
+        if (previous) {
+          this.tabs = this.tabs.map(t => t.id === id ? previous : t);
+        } else {
+          this.tabs = this.tabs.filter(t => t.id !== id);
+          this.activeTabId = this.tabs[this.tabs.length - 1]?.id ?? null;
+        }
+        this.notify();
+        if (!opts?.silent) throw err;
+        return;
+      }
+    }
     this.notify();
   }
 
@@ -277,29 +401,40 @@ export class PanelState {
       parked = true;
     }
 
-    try {
-      const fileSource = await readText(normalized);
-      const draft = opts?.preferDraft ? loadDraft(normalized) : null;
-      const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
-      this.tabs = this.tabs.map(t =>
-        t.id === tabId
-          ? {
-              ...t,
-              path: normalized,
-              title: basename(normalized),
-              source: content,
-              savedContent: fileSource,
-              preview: false,
-            }
-          : t
-      );
-      this.cbs.onFileOpen?.(normalized);
-      this.notify();
-      return { ok: true, parked };
-    } catch (err) {
-      if (!opts?.silent) console.error(`panel ${this.id}: repoint failed`, err);
-      return { ok: false, parked };
+    if (!isPdfPath(normalized) && !isImagePath(normalized)) {
+      try {
+        const fileSource = await readText(normalized);
+        const draft = opts?.preferDraft ? loadDraft(normalized) : null;
+        const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
+        this.tabs = this.tabs.map(t =>
+          t.id === tabId
+            ? {
+                ...t,
+                path: normalized,
+                title: basename(normalized),
+                source: content,
+                savedContent: fileSource,
+                preview: false,
+              }
+            : t
+        );
+        this.cbs.onFileOpen?.(normalized);
+        this.notify();
+        return { ok: true, parked };
+      } catch (err) {
+        if (!opts?.silent) console.error(`panel ${this.id}: repoint failed`, err);
+        return { ok: false, parked };
+      }
     }
+    // PDF/images : pas de contenu texte — re-point immédiat (viewer dédié).
+    this.tabs = this.tabs.map(t =>
+      t.id === tabId
+        ? { ...t, path: normalized, title: basename(normalized), source: "", savedContent: "", preview: false }
+        : t
+    );
+    this.cbs.onFileOpen?.(normalized);
+    this.notify();
+    return { ok: true, parked };
   }
 
   setRenderMode(tabId: string, mode: RenderMode): void {

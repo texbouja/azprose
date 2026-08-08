@@ -36,6 +36,7 @@ export {
   isImagePath,
   isPdfPath,
   isOpenablePath,
+  isMarkdownPath,
   createFile,
   createFolder,
   renameEntry,

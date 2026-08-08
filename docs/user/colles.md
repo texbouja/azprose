@@ -89,7 +89,7 @@ La magie opère dans la **vue Liens** (voir [[backlinks]]) :
 Le module colles de l'application propose en plus :
 
 - **l'import du colloscope** — les listes d'élèves par classe et les créneaux, transformés en tableaux de travail ;
-- **l'export en PDF** — les planches de colles imprimables ;
+- **l'export en PDF** — les planches de colles imprimables, voir [[planches]] ;
 - **l'envoi par email** — le rapport de colle de chaque élève (note, rubriques, observations) envoyé directement à sa famille, avec copie archivée dans le coffre.
 
 ## Voir aussi

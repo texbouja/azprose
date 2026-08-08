@@ -18,7 +18,7 @@ let {
   title: string;
   emptyLabel: string;
   removeLabel: string;
-  onSelect: (path: string) => void;
+  onSelect: (path: string, newTab?: boolean) => void;
   onToggleFavorite: (path: string) => void;
   onReorder: (from: number, to: number) => void;
   onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
@@ -77,7 +77,7 @@ const DRAG_MIME = "application/x-azprose-path";
               draggable="true"
               class="mdv-tree__row mdv-tree__row--file has-fav{activePath === path ? ' is-active' : ''}"
               style="padding-left:12px"
-              onclick={() => onSelect(path)}
+              onclick={(e) => onSelect(path, e.altKey)}
               oncontextmenu={(e) => {
                 if (!onContextMenu) return;
                 e.preventDefault();

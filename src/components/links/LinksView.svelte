@@ -9,9 +9,25 @@
   let {
     filePath = null as string | null,
     source = "",
+    rootPath = null as string | null,
   } = $props();
 
   let t = $derived(getT($language));
+
+  // Référence au composant TOC pour piloter le mode « plan condensé » depuis le
+  // bouton du header (pattern bind:this + export function, cf. Spreadsheet).
+  let tocPanel: TocPanel;
+  let tocOutlineActive = $state(false);
+
+  function handleTocOutline() {
+    tocOutlineActive = tocPanel?.toggleOutline() ?? false;
+  }
+
+  // Le mode est désactivé par TocPanel lors d'un changement de fichier : le
+  // header doit refléter l'état réel (bouton non actif).
+  function handleTocOutlineChange(active: boolean) {
+    tocOutlineActive = active;
+  }
 
   // État remonté par les panneaux (badge + désactivation du refresh pendant un
   // chargement). Callbacks stables (const du composant) : pas de re-render
@@ -56,6 +72,10 @@
 
   function handleToggle(id: string) {
     openId = openId === id ? null : id;
+    // Si la section TOC se ferme, le mode condensé n'a plus de panneau pour
+    // l'appliquer : on le désactive pour que l'état du bouton reste honnête à
+    // la réouverture (TocPanel est démonté — bind:this remis à null).
+    if (openId !== "toc") tocOutlineActive = false;
     const rec: Record<string, boolean> = {};
     for (const s of SECTION_ORDER) rec[s] = s !== openId;
     sidebarSections.update((cur) => ({ ...cur, ...rec }));
@@ -78,8 +98,16 @@
     badge={tocTotal > 0 ? tocTotal : null}
     collapsed={openId !== "toc"}
     onToggle={() => handleToggle("toc")}
+    actions={openId === "toc" ? tocOutlineAction : null}
   >
-    <TocPanel {filePath} {source} onStateChange={handleTocState} />
+    <TocPanel
+      {filePath}
+      {source}
+      {rootPath}
+      onStateChange={handleTocState}
+      onOutlineChange={handleTocOutlineChange}
+      bind:this={tocPanel}
+    />
   </SidebarSection>
 
   <SidebarSection
@@ -123,6 +151,25 @@
   </button>
 {/snippet}
 
+{#snippet tocOutlineAction()}
+  <button
+    type="button"
+    class="blv__icon-btn"
+    class:is-active={tocOutlineActive}
+    onclick={handleTocOutline}
+    aria-pressed={tocOutlineActive}
+    aria-label={t("toc.collapseBelowH2")}
+    title={t("toc.collapseBelowH2")}
+  >
+    <!-- Chevrons up/down = « replier au-delà de H2 » ; inversés (down/up) quand
+         le mode condensé est actif — le plan repassera à tous les niveaux. -->
+    <i
+      class="wxi {tocOutlineActive ? "wxi-chevrons-down-up" : "wxi-chevrons-up-down"}"
+      aria-hidden="true"
+    ></i>
+  </button>
+{/snippet}
+
 {#snippet tagsRefreshAction()}
   <button
     type="button"
@@ -163,6 +210,12 @@
   .blv__icon-btn:hover {
     background: color-mix(in srgb, var(--fg) 8%, transparent);
     color: var(--fg);
+  }
+  /* État pressé du mode « plan condensé » : les chevrons wxi-chevrons-down-up
+     (inversés) restent accentués tant que seuls H1/H2 sont visibles. */
+  .blv__icon-btn.is-active {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
   }
   .blv__icon-btn:disabled {
     opacity: 0.4;

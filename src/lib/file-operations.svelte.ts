@@ -17,6 +17,11 @@ export interface FileOpsDeps {
   onTreeChange: (paths: string[]) => void;
   onPanelChange: () => void;
   getT: () => (key: string, vars?: Record<string, string | number>) => string;
+  /** Clic sidebar (FileTree, favoris, recherche, journal, breadcrumb) :
+   *  `onSidebarFileSelect(path, newTab)` — l'app décide du panel/tab
+   *  (état maximisé, preview-follow). Séparé d'`onOpenFile` car la sémantique
+   *  diffère : tab actif vs activation dédup. */
+  onSidebarFileSelect: (path: string, newTab: boolean) => void;
 }
 
 export class FileOpsManager {
@@ -66,11 +71,12 @@ export class FileOpsManager {
     if (file) await this.deps.onOpenFile(file);
   };
 
-  selectFile = (path: string) => {
-    // Simplified rule: a click on a text file in the FileTree always opens it
-    // in an editor tab (dedup handled by PanelState.open — already-open tabs
-    // are activated). No more preview/reuse semantics for tree clicks.
-    this.deps.onOpenFile(path);
+  selectFile = (path: string, newTab = false) => {
+    // Le clic sidebar délègue la décision (panel/tab) à l'app : clic simple
+    // → tab actif du bon panel, alt+clic → nouvel onglet, avec routage
+    // particulier quand un preview est maximisé. Déduplication gérée par les
+    // méthodes PanelState (open/openInActiveTab).
+    this.deps.onSidebarFileSelect(path, newTab);
   };
 
   newFile = (dir?: string) => {

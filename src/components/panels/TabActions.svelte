@@ -67,6 +67,25 @@ let t = $derived(getT($language));
 
 function fire(cmd: string) { onCommand?.(cmd); }
 
+// Alt+clic sur Home = ouvrir dans un NOUVEL onglet (même logique que les liens
+// du preview). Le handler SVAR ne reçoit pas l'événement — interception en
+// phase CAPTURE sur le conteneur : `stopPropagation` empêche le handler du
+// bouton (bubble) de déclencher la navigation in-place.
+$effect(() => {
+  if (!toolbarEl) return;
+  const el = toolbarEl;
+  const onAltClick = (e: MouseEvent) => {
+    if (!e.altKey) return;
+    const home = (e.target as HTMLElement).closest('[data-id=":home"]');
+    if (!home) return;
+    e.preventDefault();
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent("azprose:preview-home", { detail: { newTab: true } }));
+  };
+  el.addEventListener("click", onAltClick, true);
+  return () => el.removeEventListener("click", onAltClick, true);
+});
+
 // ── Navigation colles (chevrons) — état rapporté par CollePreview ────────
 let colleNav = $state({ index: 0, total: 0 });
 
@@ -133,10 +152,8 @@ let mainItems = $derived.by(() => {
       { comp: "button", icon: "wxi-edit", text: t("tabs.prose"),
         type: renderMode === "prose" ? "pressed" : "",
         handler: () => onSetEditorMode?.("prose") },
-      { comp: "separator" },
       { comp: "button", icon: "wxi-file-down", text: t("tabs.exportPdf"),
         handler: () => onExportPdf?.() },
-      { comp: "separator" },
       { comp: "button", icon: "wxi-eye", text: t("tabs.preview"),
         type: (renderMode === "preview" || renderMode === "presentation") ? "pressed" : "",
         handler: () => onSetEditorMode?.("preview") },
@@ -147,7 +164,6 @@ let mainItems = $derived.by(() => {
     { spacer: true },
     { comp: "button", icon: "wxi-file-down", text: t("tabs.build"),
       handler: () => onLatexBuild?.() },
-    { comp: "separator" },
     { comp: "button", icon: "wxi-file-text", text: t("tabs.viewPdf"),
       handler: () => onLatexViewer?.() },
   ];
@@ -167,17 +183,17 @@ let sideItems = $derived.by(() => {
   // rendered file it displays; the tab↔file association survives navigation).
   // The side tab renders the preview by default (renderMode undefined/"raw"),
   // so only the colle/presentation modes exclude these buttons.
+  // Home est LE bouton le plus à gauche de la toolbar side (décision utilisateur).
   if (!isMain && isMd && renderMode !== "colle" && renderMode !== "presentation") {
     const hist = navHistory();
     items.push(
+      { comp: "icon", icon: "wxi-home", id: "home", text: t("preview.home"), pinned: true,
+        handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-home")) },
       { comp: "icon", icon: "wxi-arrow-left", text: t("preview.back"), pinned: true,
         disabled: !hist.canGoBack, handler: () => getNavActions().goBack() },
       { comp: "icon", icon: "wxi-arrow-right", text: t("preview.forward"), pinned: true,
         disabled: !hist.canGoForward, handler: () => getNavActions().goForward() },
-      { comp: "icon", icon: "wxi-home", text: t("preview.home"), pinned: true,
-        handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-home")) },
     );
-    items.push({ comp: "separator" });
   }
 
   // Left: navigation colles (chevrons) — vue planches active dans le side panel
@@ -213,6 +229,13 @@ let sideItems = $derived.by(() => {
       { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", pinned: true, handler: () => fire("zoom-out") },
       { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", pinned: true, handler: () => fire("zoom-reset") },
       { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", pinned: true, handler: () => fire("zoom-in") },
+      // Recharger : même procédure que le save éditeur (conflit externe → dialog
+      // de décision ; sinon save + re-rendu du preview). Agit sur le fichier
+      // AFFICHÉ par le tab side (activeTab), pas forcément le tab main actif.
+      { comp: "icon", icon: "wxi-refresh", text: t("preview.reload"), pinned: true,
+        handler: () => activeTab && window.dispatchEvent(
+          new CustomEvent("azprose:preview-reload", { detail: { path: activeTab.path } }),
+        ) },
     );
   } else if (isMd && renderMode === "presentation") {
     for (const sm of SLIDE_MODES) {
@@ -224,7 +247,6 @@ let sideItems = $derived.by(() => {
       });
     }
     items.push(
-      { comp: "separator" },
       { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", pinned: true, handler: () => fire("zoom-out") },
       { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", pinned: true, handler: () => fire("zoom-reset") },
       { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", pinned: true, handler: () => fire("zoom-in") },
@@ -281,7 +303,6 @@ let sideItems = $derived.by(() => {
       type: renderMode === "presentation" ? "pressed" : "",
       handler: () => onToggleRenderMode?.(),
     });
-    items.push({ comp: "separator" });
   }
   items.push(
     { comp: "icon", icon: "wxi-fullscreen", text: "Fullscreen", pinned: true, handler: () => onToggleFullscreen?.() },
@@ -489,14 +510,6 @@ let sideItems = $derived.by(() => {
   .ta-wrap--side :global(.wx-toolbar .wx-button) {
     width: 28px;
     height: 28px;
-  }
-
-  /* ── Separators ───────────────────────────────────────── */
-  .ta-wrap :global(.wx-toolbar .wx-separator) {
-    background: var(--border);
-    width: 1px;
-    height: 20px;
-    margin: 0 4px;
   }
 
   /* ── Spacers ──────────────────────────────────────────── */

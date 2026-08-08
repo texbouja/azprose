@@ -66,6 +66,17 @@ export class PanelManager {
     return this.main.open(path, opts);
   }
 
+  /** Ouvre `path` dans le tab ACTIF du MAIN panel (clic sidebar simple) :
+   *  dédup (un tab affichant déjà le fichier est activé), sinon re-point du
+   *  tab actif — le brouillon non enregistré est parké, l'onglet courant
+   *  reste accessible via back/forward. */
+  openInMainActiveTab(
+    path: string,
+    opts?: { preferDraft?: boolean; silent?: boolean; sourceType?: TabSource },
+  ): Promise<void> {
+    return this.main.openInActiveTab(path, opts);
+  }
+
   openInSide(
     path: string,
     opts?: {
@@ -73,11 +84,24 @@ export class PanelManager {
       silent?: boolean;
       preview?: boolean;
       sourceType?: TabSource;
+      fallbackToActive?: boolean;
     },
   ): Promise<void> {
     this.side.visible = true;
     this.layout = "main+side";
     return this.side.open(path, opts);
+  }
+
+  /** Ouvre `path` dans le tab ACTIF du SIDE panel (clic sidebar simple sur
+   *  PDF/image) : dédup sinon re-point du tab actif. Force la visibilité du
+   *  side panel. */
+  openInSideActiveTab(
+    path: string,
+    opts?: { preferDraft?: boolean; silent?: boolean },
+  ): Promise<void> {
+    this.side.visible = true;
+    this.layout = "main+side";
+    return this.side.openInActiveTab(path, opts);
   }
 
   openCustomInSide(panelId: string, title: string): void {

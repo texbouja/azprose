@@ -53,7 +53,9 @@
 }: {
     rootPath: string;
     activePath: string | null;
-    onSelect: (path: string) => void;
+    /** Clic simple sur un fichier (ou Entrée) : `onSelect(path)` — tab actif.
+     *  Alt+clic : `onSelect(path, true)` — nouvel onglet. */
+    onSelect: (path: string, newTab?: boolean) => void;
     onMove?: (src: string, dstParent: string) => void;
     onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
     stagedPaths?: readonly string[];
@@ -125,7 +127,9 @@
         // so the auto-expand effect never re-opens user-collapsed folders;
         // svelteProps remaps React prop names to Svelte.
         fsInvalidationFeature,
-        mdvRowClickFeature<FileEntry>(),
+        mdvRowClickFeature<FileEntry>({
+          onAltAction: (item) => onSelect(item.getId(), true),
+        }),
         mdvExpansionTrackerFeature<FileEntry>((item, nowExpanded) => {
           const id = item.getId();
           if (nowExpanded) userCollapsed.delete(id);

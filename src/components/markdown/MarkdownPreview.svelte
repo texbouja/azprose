@@ -36,6 +36,12 @@ let articleEl: HTMLElement | undefined = $state();
 let ready = $state(false);
 let zoom = $state(100);
 
+// Compteur de re-rendu FORCÉ : incrémenté par le bouton « Recharger » de la
+// toolbar side (azprose:preview-force-rerender, filtré par fichier). Le
+// `$effect` de rendu le lit → il re-rend même si `value` n'a pas changé
+// (transclusion ou réglages changés sur disque avec contenu hôte identique).
+let forceRenderRev = $state(0);
+
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
 
 function zoomIn() {
@@ -165,10 +171,27 @@ $effect(() => {
   }
 });
 
+// Re-rendu forcé (bouton « Recharger » de la toolbar side). Filtré par fichier :
+// un preview d'un autre fichier ne doit pas se re-rendre. La fonction normalise
+// les chemins comme le fait la synchro transclusion (léger décalage anti-slash).
+$effect(() => {
+  const onForce = (e: Event) => {
+    const d = (e as CustomEvent<{ path?: string }>).detail;
+    if (!d?.path) return;
+    const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
+    if (filePath != null && norm(d.path) === norm(filePath)) {
+      forceRenderRev++;
+    }
+  };
+  window.addEventListener("azprose:preview-force-rerender", onForce);
+  return () => window.removeEventListener("azprose:preview-force-rerender", onForce);
+});
+
 $effect(() => {
   if (!ready) return;
   const src = value;
   const theme = currentTheme;
+  void forceRenderRev; // dépendance : incrémenter force un re-rendu même si src est identique
   let cancelled = false;
   let cleanupCode = () => {};
 
@@ -335,10 +358,10 @@ $effect(() => {
     if (a.classList.contains("wikilink")) {
       const fullpath = a.getAttribute("data-wikilink-fullpath");
       const heading = a.getAttribute("data-wikilink-heading");
-      // Ctrl/Cmd+click = open in a NEW tab (editor for .md) instead of
-      // navigating the preview in place. The deduplication ("s'il n'est pas
-      // déjà ouvert") lives in PanelState.open — an existing tab is activated.
-      if (e.ctrlKey || e.metaKey) {
+      // Alt+clic = open in a NEW tab (editor for .md) instead of navigating
+      // the preview in place. The deduplication ("s'il n'est pas déjà ouvert")
+      // lives in PanelState.open — an existing tab is activated.
+      if (e.altKey) {
         e.preventDefault();
         const target = a.getAttribute("data-wikilink-target");
         window.dispatchEvent(new CustomEvent("azprose:wikilink-open-new", {

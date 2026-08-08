@@ -50,7 +50,7 @@
     onOpenSpreadsheet?: () => void;
     onOpenDataFilter?: () => void;
     onOpenPalette?: () => void;
-    onSelectFile?: (path: string) => void;
+    onSelectFile?: (path: string, newTab?: boolean) => void;
   } = $props();
 
   let t = $derived(getT($language));
@@ -122,9 +122,9 @@
 
   function closeDropdown() { openIdx = null; }
 
-  function handleSelectFile(p: string) {
+  function handleSelectFile(p: string, newTab?: boolean) {
     openIdx = null;
-    onSelectFile?.(p);
+    onSelectFile?.(p, newTab);
   }
 
   /* click-outside + Escape */

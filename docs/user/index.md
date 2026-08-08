@@ -23,6 +23,13 @@ Bienvenue dans le guide d'AZprose ! Ce guide vous accompagne pas à pas dans la 
 - [[journal]] — les notes quotidiennes (les **daily notes**)
 - [[colles]] — cas d'usage : préparer et suivre des colles avec le wiki
 
+### Impression
+- [[impression]] — convertir une note en PDF : le principe de la chaîne
+- [[gabarits]] — les gabarits d'impression (*templates*) et le logo en tête de document
+- [[reglages]] — les réglages d'impression (polices, titres, gabarit du rapport de colle)
+- [[print-overlay]] — le dialogue d'impression pas à pas
+- [[planches]] — cas particulier : imprimer les planches de colles
+
 > [!tip] Par où commencer ?
 > Si vous ne savez pas par où commencer, suivez [[commencer]]. La lecture complète du guide prend une vingtaine de minutes, mais vous pouvez aussi l'utiliser comme référence à la demande.
 
@@ -44,6 +51,7 @@ Au fil des pages, vous découvrirez aussi comment :
 - créer vos propres types d'encadrés ([[callouts]] — section *Ajouter un callout personnalisé*) ;
 - tirer parti du **front matter** YAML pour attacher des données à vos notes ([[front-matter]]) ;
 - combiner tags, liens et notes quotidiennes pour un cas réel : le suivi des colles ([[colles]]).
+- produire un **PDF fidèle à l'écran**, de la simple note aux planches de colles ([[impression]]).
 
 > [!note] Le jargon en anglais
 > Chaque concept technique important est présenté avec son nom d'origine anglais, en italique — par exemple *wikilinks*, *callouts*, *tags*, *backlinks*, *front matter*, *transclusion*, *daily note*. Ne vous en faites pas : ces mots désignent des gestes simples, et chaque page les explique en français.

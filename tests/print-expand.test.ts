@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { expandWikilinksForPrint } from "../src/markdown/print-expand";
+import { expandWikilinksForPrint, findBlockWikilinks } from "../src/markdown/print-expand";
 
 /**
  * Tests du chantier 4 : expansion des wikilinks block-level à l'impression.
@@ -83,6 +83,15 @@ describe("expandWikilinksForPrint", () => {
   test("alias `[[cible|alias]]` → target seul (alias ignoré)", () => {
     const src = "\n[[chapitre|Voir le chapitre]]\n\ntexte\n";
     expect(expandWikilinksForPrint(src)).toBe("\n![[chapitre]]\n\ntexte\n");
+  });
+
+  test("findBlockWikilinks expose l'alias (label de branche TOC)", () => {
+    const src = "\n[[chapitre|Voir le chapitre]]\n\n[[simple]]\n";
+    const hits = findBlockWikilinks(src);
+    expect(hits).toHaveLength(2);
+    // alias présent uniquement sur le lien `[[cible|alias]]` ; target reste nu.
+    expect(hits[0]).toEqual({ line: 2, indent: "", target: "chapitre", alias: "Voir le chapitre" });
+    expect(hits[1]).toEqual({ line: 4, indent: "", target: "simple" });
   });
 
   test("fragment `[[fichier#section]]` → conservé dans la transclusion", () => {

@@ -42,7 +42,7 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
     }
 
     // wikilink navigation from preview: in-place (re-uses the preview tab and
-    // re-associates it with the rendered file) unless Ctrl/Cmd+click, which
+    // re-associates it with the rendered file) unless Alt+click, which
     // opens a NEW tab via azprose:wikilink-open-new.
     void (async () => {
       const { resolveWikilink } = await import("@/lib/lsp/markdown-oxide")
@@ -77,10 +77,13 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
           if (!path) return
           // Navigate IN PLACE: reuse the preview tab (preview: true), re-associate
           // it with the rendered file. The tab is never a fresh, unlinked tab.
+          // fallbackToActive: si le flag preview a été perdu (restore de session,
+          // ré-affectation openInActiveTab), on re-pointe le tab ACTIF au lieu de
+          // créer un nouvel onglet — « clic simple = tab actif ».
           if (ctx.sideActivePath()) ctx.navPush(ctx.sideActivePath()!)
           if (heading) ctx.setScrollTarget(heading)
           ctx.setSideVisible(true)
-          ctx.pm.openInSide(path, { preview: true }).catch((err: any) => console.error("[azprose] wikilink open failed", err))
+          ctx.pm.openInSide(path, { preview: true, fallbackToActive: true }).catch((err: any) => console.error("[azprose] wikilink open failed", err))
           // Editor-follow (décision utilisateur) : le tab éditeur LIÉ suit la
           // navigation du preview. Au PREMIER clic de la session, on établit le
           // lien vers le tab éditeur actif (celui qui a lancé le browsing) —
@@ -99,7 +102,7 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       window.addEventListener("azprose:wikilink-navigate", onWikilinkNavigate)
       cleanups.push(() => window.removeEventListener("azprose:wikilink-navigate", onWikilinkNavigate))
 
-      // Ctrl/Cmd+click: open in a NEW tab (dedup handled by PanelState.open —
+      // Alt+clic: open in a NEW tab (dedup handled by PanelState.open —
       // an already-open tab is activated, not duplicated).
       const onWikilinkOpenNew = (e: Event) => {
         const detail = (e as CustomEvent).detail as { path?: string; target?: string; heading?: string | null }

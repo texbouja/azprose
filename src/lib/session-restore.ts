@@ -64,6 +64,11 @@ export function setupSessionRestore(
                 if (cancelled) break;
                 await ctx.pm.openInSide(tab.path, { silent: true, sourceType: tab.sourceType });
               }
+              // Les tabs du side panel sont des previews : stamp le flag `preview`
+              // APRÈS la boucle (le passer à open() ré-affecterait les onglets
+              // précédemment restaurés au lieu d'en créer un par entrée). Le flag
+              // sert à la ré-affectation en place des navigations open(…, { preview: true }).
+              ctx.pm.side.tabs = ctx.pm.side.tabs.map(t => ({ ...t, preview: true }));
               if (!cancelled && session.side.activePath) {
                 const sideTab = ctx.findTabByPath(session.side.activePath);
                 if (sideTab) ctx.pm.side.select(sideTab.id);

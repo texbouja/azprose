@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { PanelState } from "../src/lib/panel-store";
+import { PanelState, pickOpenTarget } from "../src/lib/panel-store";
 
 test("starts empty", () => {
   const p = new PanelState("main");
@@ -201,4 +201,118 @@ test("open with preview on a path already open in a normal tab selects it withou
   await p.open("/a.md", { preview: true });
   expect(p.tabs).toHaveLength(1);
   expect(p.tabs[0].preview).toBeFalsy();
+});
+
+// ── openInActiveTab (clic sidebar « tab actif ») ────────────────────────────
+// La branche dédup retourne avant toute lecture FS (testable) ; la branche
+// re-point lit le fichier → en bun la lecture échoue et (silencieusement)
+// restaure l'état précédent. Les chemins PDF/images SONT re-pointés sans
+// lecture texte — intégralement testable sans Tauri.
+
+test("openInActiveTab on an already-open path just activates it (dedup)", async () => {
+  const p = new PanelState("test");
+  p.tabs = [
+    { id: "a", title: "a.md", path: "/a.md", source: "a", savedContent: "a" },
+    { id: "b", title: "b.md", path: "/b.md", source: "b", savedContent: "b" },
+  ];
+  p.activeTabId = "b";
+  await p.openInActiveTab("/a.md");
+  expect(p.tabs).toHaveLength(2);
+  expect(p.activeTabId).toBe("a");
+});
+
+test("openInActiveTab re-points the ACTIVE tab (no duplicate tab)", async () => {
+  const p = new PanelState("test");
+  p.tabs = [
+    { id: "a", title: "a.md", path: "/a.md", source: "a", savedContent: "a" },
+    { id: "b", title: "b.md", path: "/b.md", source: "b", savedContent: "b" },
+  ];
+  p.activeTabId = "b";
+  await p.openInActiveTab("/c.pdf", { silent: true });
+  // PDF : pas de lecture texte → re-point réussi, toujours 2 tabs.
+  expect(p.tabs).toHaveLength(2);
+  expect(p.activeTabId).toBe("b");
+  expect(p.tabs[1].path).toBe("/c.pdf");
+  expect(p.tabs[1].title).toBe("c.pdf");
+  expect(p.tabs[1].source).toBe("");
+  expect(p.tabs[0].path).toBe("/a.md"); // l'autre tab intact
+});
+
+test("openInActiveTab on a text file whose read fails restores the previous tab", async () => {
+  const p = new PanelState("test");
+  p.tabs = [
+    { id: "a", title: "a.md", path: "/a.md", source: "a", savedContent: "a" },
+    { id: "b", title: "b.md", path: "/b.md", source: "b", savedContent: "b" },
+  ];
+  p.activeTabId = "b";
+  await p.openInActiveTab("/c.md", { silent: true });
+  // La lecture échoue (pas de Tauri) → état précédent restauré, aucun tab perdu.
+  expect(p.tabs).toHaveLength(2);
+  expect(p.activeTabId).toBe("b");
+  expect(p.tabs[1].path).toBe("/b.md");
+  expect(p.tabs[1].source).toBe("b");
+});
+
+test("openInActiveTab without active tab falls back to open (new tab, removed on read failure)", async () => {
+  const p = new PanelState("test");
+  await p.openInActiveTab("/c.md", { silent: true });
+  expect(p.tabs).toHaveLength(0);
+  expect(p.activeTabId).toBeNull();
+});
+
+// ── pickOpenTarget : navigation « tab actif » (fallbackToActive) ────────────
+// Le bug corrigé : « le clic sur un lien dans Viewer ouvre toujours un nouveau
+// tab ». La cause : la ré-affectation en place du preview reposait sur le flag
+// `preview`, perdu par un restore de session ou une ré-affectation
+// openInActiveTab → `open(…, { preview: true })` créait un NOUVEL onglet.
+// `pickOpenTarget` (pure) décide du tab à ré-affecter : le tab ACTIF d'abord
+// (si fallbackToActive), sinon un tab marqué preview, sinon aucun (nouvel onglet).
+
+const mkTab = (id: string, path: string, extra: Record<string, unknown> = {}) => ({
+  id, title: path.split("/").pop()!, path, source: "", savedContent: "", ...extra,
+});
+
+test("pickOpenTarget: fallbackToActive re-points the ACTIVE file tab even without any preview flag (bug fix)", () => {
+  const tabs = [
+    mkTab("a", "/a.md"),
+    mkTab("b", "/b.md"), // tab actif, flag preview ABSENT (restore de session)
+  ];
+  const r = pickOpenTarget(tabs, "b", true, true);
+  expect(r).toEqual({ id: "b", isFallback: true });
+});
+
+test("pickOpenTarget: without fallbackToActive, an existing preview tab is reused (historic mechanics)", () => {
+  const tabs = [
+    mkTab("a", "/a.md", { preview: true }),
+    mkTab("b", "/b.md"),
+  ];
+  const r = pickOpenTarget(tabs, "b", true, undefined);
+  expect(r).toEqual({ id: "a", isFallback: false });
+});
+
+test("pickOpenTarget: fallbackToActive wins over the preview-flag reuse (re-point the tab the user clicked in)", () => {
+  const tabs = [
+    mkTab("pv", "/pv.md", { preview: true }),
+    mkTab("active", "/active.md"),
+  ];
+  const r = pickOpenTarget(tabs, "active", true, true);
+  expect(r).toEqual({ id: "active", isFallback: true });
+});
+
+test("pickOpenTarget: a CUSTOM tab is never re-pointed by the fallback (kind set)", () => {
+  const tabs = [mkTab("custom", "/datafilter://stack", { kind: "datafilter" })];
+  const r = pickOpenTarget(tabs, "custom", true, true);
+  expect(r.id).toBeNull();
+});
+
+test("pickOpenTarget: no active tab → preview reuse or new tab (id null)", () => {
+  expect(pickOpenTarget([], null, true, true).id).toBeNull();
+  expect(pickOpenTarget([mkTab("pv", "/pv.md", { preview: true })], null, true, true))
+    .toEqual({ id: "pv", isFallback: false });
+});
+
+test("pickOpenTarget: plain open (no preview) never re-points — new tab", () => {
+  const tabs = [mkTab("a", "/a.md")];
+  const r = pickOpenTarget(tabs, "a", false, true);
+  expect(r.id).toBeNull();
 });

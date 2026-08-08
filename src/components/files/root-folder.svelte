@@ -34,7 +34,7 @@ let {
   path: string;
   activePath: string | null;
   isPrimary?: boolean;
-  onSelect: (path: string) => void;
+  onSelect: (path: string, newTab?: boolean) => void;
   onMove?: (src: string, dstParent: string) => void;
   onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
   onClose: (path: string) => void;

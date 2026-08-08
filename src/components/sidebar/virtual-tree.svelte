@@ -33,7 +33,9 @@
     noteDates: Set<string>;
     rootPath: string | null;
     activePath: string | null;
-    onSelect: (path: string) => void;
+    /** Clic simple (ou Entrée) : `onSelect(path)` — tab actif. Alt+clic :
+     *  `onSelect(path, true)` — nouvel onglet. */
+    onSelect: (path: string, newTab?: boolean) => void;
     onDelete?: (entry: FileEntry) => void;
     scrollToPath: string | null;
   } = $props();
@@ -116,7 +118,9 @@
         // remapped to Svelte prop names — see file-tree.svelte for the same
         // trio. No onFolderToggle here: the journal has no user-collapsed
         // tracking (all months stay expanded until manually collapsed).
-        mdvRowClickFeature<VNode>(),
+        mdvRowClickFeature<VNode>({
+          onAltAction: (item) => onSelect(item.getId(), true),
+        }),
         sveltePropsFeature,
       ],
       dataLoader: {

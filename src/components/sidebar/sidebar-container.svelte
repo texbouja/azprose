@@ -12,7 +12,8 @@ let {
   rootPath,
   folders,
   activePath,
-  activeSource,
+  tocRefPath,
+  tocRefSource,
   width,
   onWidthChange,
   onAddFolder,
@@ -51,7 +52,9 @@ let {
   rootPath: string | null;
   folders: readonly string[];
   activePath: string | null;
-  activeSource: string;
+  /** Référence de la TOC : tab viewer md actif, sinon .md actif éditeur. */
+  tocRefPath: string | null;
+  tocRefSource: string;
   width: number;
   onWidthChange: (next: number) => void;
   onAddFolder: () => void;
@@ -60,7 +63,7 @@ let {
   onCloseFolder: (path: string) => void;
   onOpenProject: (path: string) => void;
   onProjectFromFolder: () => void;
-  onSelectFile: (path: string) => void;
+  onSelectFile: (path: string, newTab?: boolean) => void;
   onMove?: (src: string, dstParent: string) => void;
   onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
   stagedPaths?: readonly string[];
@@ -173,7 +176,7 @@ function stopResize(e: PointerEvent) {
           {onDeleteEntry}
         />
       {:else if sidebarView.current === "links"}
-        <LinksView filePath={activePath} source={activeSource} />
+        <LinksView filePath={tocRefPath} source={tocRefSource} rootPath={rootPath} />
       {/if}
     </div>
   </div>

@@ -34,21 +34,41 @@ function isFenceLine(line: string): boolean {
   return t.startsWith("```") || t.startsWith("~~~");
 }
 
+/** Un wikilink block-level conforme à la convention d'impression. */
+export interface BlockWikilink {
+  /** Ligne 1-based du wikilink dans `src`. */
+  line: number;
+  /** Indentation (0-3 espaces) de la ligne. */
+  indent: string;
+  /** Cible « nue » : alias retiré (`[[cible|alias]]` → `cible`), fragment
+   *  conservé. Correspond exactement au contenu du `![[…]]` produit. */
+  target: string;
+  /** Alias (`[[cible|alias]]`) — présent UNIQUEMENT si la syntaxe `|` a été
+   *  utilisée. Ignoré à l'impression (l'expansion construit `![[target]]`) ;
+   *  utilisé par la TOC transcluse comme label de branche. */
+  alias?: string;
+}
+
 /**
- * Récrit les wikilinks block-level conformes à la convention en `![[…]]`.
- * Module PUR : aucune dépendance (ni Tauri, ni fichiers) — testable sous bun.
+ * Identifie les wikilinks block-level CONFORMES à la convention d'impression
+ * (décision utilisateur) : seul sur sa ligne, encadré de lignes vides, hors
+ * liste, hors fence (indentation 0-3 espaces tolérée), fichier non-PDF.
+ *
+ * Source de vérité UNIQUE de la convention — consommée par
+ * `expandWikilinksForPrint` (réécriture syntaxique `[[x]]` → `![[x]]`) ET par
+ * la TOC transcluse (les cibles conformes deviennent des branches de l'arbre).
+ * Module PUR : aucune dépendance — testable sous bun.
  */
-export function expandWikilinksForPrint(src: string): string {
+export function findBlockWikilinks(src: string): BlockWikilink[] {
   const lines = src.split("\n");
+  const out: BlockWikilink[] = [];
   let inFence = false;
-  const out: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
     if (isFenceLine(line)) {
       inFence = !inFence;
-      out.push(line);
       continue;
     }
 
@@ -57,20 +77,40 @@ export function expandWikilinksForPrint(src: string): string {
       const prevEmpty = i === 0 || lines[i - 1].trim() === "";
       const nextEmpty = i === lines.length - 1 || lines[i + 1].trim() === "";
       if (prevEmpty && nextEmpty) {
-        const indent = m[1];
         const target = m[2].trim();
-        // Ignore l'alias (`[[cible|alias]]` → cible seule).
-        const bare = target.includes("|") ? target.slice(0, target.indexOf("|")) : target;
+        // Sépare l'alias (`[[cible|alias]]` → cible + alias). À l'impression
+        // seul `target` est utilisé (`![[cible]]`) ; l'alias est conservé pour
+        // la TOC transcluse (label de branche).
+        const pipe = target.indexOf("|");
+        const bare = pipe >= 0 ? target.slice(0, pipe) : target;
+        const alias = pipe >= 0 ? target.slice(pipe + 1).trim() : undefined;
         const fileName = bare.split("#")[0].trim();
         if (!fileName.toLowerCase().endsWith(".pdf")) {
-          out.push(`${indent}![[${bare.trim()}]]`);
-          continue;
+          out.push({
+            line: i + 1,
+            indent: m[1],
+            target: bare.trim(),
+            ...(alias ? { alias } : {}),
+          });
         }
       }
     }
-
-    out.push(line);
   }
 
+  return out;
+}
+
+/**
+ * Récrit les wikilinks block-level conformes à la convention en `![[…]]`.
+ * Module PUR : aucune dépendance (ni Tauri, ni fichiers) — testable sous bun.
+ */
+export function expandWikilinksForPrint(src: string): string {
+  const lines = src.split("\n");
+  const hits = new Map(findBlockWikilinks(src).map((h) => [h.line - 1, h]));
+  const out = lines.map((line, i) => {
+    const h = hits.get(i);
+    if (h) return `${h.indent}![[${h.target}]]`;
+    return line;
+  });
   return out.join("\n");
 }

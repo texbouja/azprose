@@ -20,6 +20,9 @@ import {
   isImagePath,
   isPdfPath,
   isOpenablePath,
+  isMarkdownPath,
+  readText,
+  getMtime,
   basename,
   dirname,
   buildCommands,
@@ -226,6 +229,13 @@ let _panelVersion = $state(0);
 let sideVisible = $state(pm.sideVisible);
 let splitRatio = $state(pm.splitRatio);
 
+// État maximisé d'un panneau — signalé par le PanelManager via splitRatio :
+// toggleExpandPanel pose 1 (MAIN plein écran) / 0 (SIDE plein écran) et
+// restaure savedSplitRatio. Déduit ici pour le routage des clics sidebar.
+let expandedPanel = $derived(
+  splitRatio >= 0.99 ? "main" : splitRatio <= 0.01 ? "side" : null,
+);
+
 // Main panel reactive views
 let tabs = $derived.by(() => { _panelVersion; return pm.main.tabs; });
 let activeTabId = $derived.by(() => { _panelVersion; return pm.main.activeTabId; });
@@ -237,6 +247,19 @@ let activePath = $derived.by(() => { _panelVersion; return pm.main.activePath; }
 let sideTabs = $derived.by(() => { _panelVersion; return pm.side.tabs; });
 let sideActiveTabId = $derived.by(() => { _panelVersion; return pm.side.activeTabId; });
 let sideActivePath = $derived.by(() => { _panelVersion; return pm.side.activePath; });
+
+// Référence de la TOC sidebar : tab viewer md actif (side), sinon .md actif
+// de l'éditeur (main). Source = buffer live du fichier retenu.
+let tocRefPath = $derived.by(() => {
+  _panelVersion;
+  if (pm.side.activePath && extFromPath(pm.side.activePath) === "md") return pm.side.activePath;
+  if (pm.main.activePath && extFromPath(pm.main.activePath) === "md") return pm.main.activePath;
+  return null;
+});
+let tocRefSource = $derived.by(() => {
+  _panelVersion;
+  return tocRefPath === pm.side.activePath ? pm.side.source : pm.main.source;
+});
 
 $effect(() => {
   if (sideTabs.length === 0 && sideVisible) {
@@ -384,6 +407,29 @@ async function trackMtime(path: string) { await trackMtimeUtil(extChangeState, p
 async function reloadFile(path: string) { await reloadFileUtil(extChangeState, extChangeDeps, path); }
 async function checkExternalChanges() { await checkExternalChangesUtil(extChangeState, extChangeDeps); }
 
+/** Rafraîchit le tab SIDE preview du fichier (si ouvert) depuis le disque.
+    `reloadFile` ne touche que les tabs main — sans ce rafraîchissement, le
+    preview side resterait sur l'ancien contenu après un reload externe. */
+async function syncSideTabFromDisk(path: string) {
+  const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
+  const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === norm(path));
+  if (!sideTab) return;
+  try {
+    const fresh = await readText(path);
+    pm.side.setTabSource(sideTab.id, fresh);
+    _panelVersion++;
+  } catch { /* fichier illisible — conserve l'état courant */ }
+}
+
+/** « Recharger (ignorer mes modifications) » du dialog de conflit : relecture
+    disque dans le tab main + rafraîchissement du tab side preview + re-rendu
+    forcé (même contenu identique). */
+async function reloadFileFromConflict(path: string) {
+  await reloadFile(path);
+  await syncSideTabFromDisk(path);
+  window.dispatchEvent(new CustomEvent("azprose:preview-force-rerender", { detail: { path } }));
+}
+
 onMount(() => {
   // Safety net: never trap the splash if config/theme load hangs.
   const splashSafety = setTimeout(() => { themeBootDone = true; }, 2000);
@@ -439,7 +485,7 @@ onMount(() => {
     navPushForward(sideActivePath);
     sideVisible = true;
     pm.sideVisible = true;
-    pm.openInSide(prev, { preview: true }).catch(() => {});
+    pm.openInSide(prev, { preview: true, fallbackToActive: true }).catch(() => {});
     void followPreviewNavigation(pm, prev).then(r => {
       if (r.parked) notifications.setInfo(t("preview.draftParked"));
     });
@@ -453,7 +499,7 @@ onMount(() => {
     if (!next) return;
     sideVisible = true;
     pm.sideVisible = true;
-    pm.openInSide(next, { preview: true }).catch(() => {});
+    pm.openInSide(next, { preview: true, fallbackToActive: true }).catch(() => {});
     void followPreviewNavigation(pm, next).then(r => {
       if (r.parked) notifications.setInfo(t("preview.draftParked"));
     });
@@ -550,21 +596,91 @@ $effect(() => {
   return () => window.removeEventListener("azprose:jump-to-line", onJump);
 });
 
-// Preview home button → open rootPath/index.md in the PREVIEW TAB (in place,
-// preserving the tab↔rendered-file association).
+// Preview home button → HOME dynamique du preview : `findLinkedIndexMd` remonte
+// depuis le fichier courant pour trouver l'`index.md` lié (≤ 3 niveaux, borné au
+// vault), repli `rootPath/index.md`, sinon no-op silencieux. Clic simple =
+// navigation IN-PLACE du tab preview (azprose:wikilink-navigate — l'association
+// tab↔fichier est conservée par previewLinkedTabId) ; alt+clic = NOUVEL onglet
+// (azprose:wikilink-open-new, même logique que les liens du viewer).
 $effect(() => {
-  const onHome = async () => {
+  const onHome = async (e: Event) => {
+    const newTab = !!(e as CustomEvent<{ newTab?: boolean }>).detail?.newTab;
     const rp = getRootPath();
-    if (!rp) return;
-    const { joinPath } = await import("@/lib/files");
-    const indexPath = joinPath(rp, "index.md");
-    const { exists } = await import("@tauri-apps/plugin-fs");
-    const ok = await exists(indexPath).catch(() => false);
-    if (!ok) return; // no index.md at vault root → silent no-op
-    window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: indexPath } }));
+    const cur = pm.side.activePath ?? activePath;
+    if (!rp || !cur) return;
+    const { findLinkedIndexMd } = await import("@/lib/index-home");
+    const target = await findLinkedIndexMd({ rootPath: rp, currentFilePath: cur, readText });
+    if (!target) return; // aucun index lié → no-op silencieux
+    window.dispatchEvent(new CustomEvent(
+      newTab ? "azprose:wikilink-open-new" : "azprose:wikilink-navigate",
+      { detail: { path: target } },
+    ));
   };
   window.addEventListener("azprose:preview-home", onHome);
   return () => window.removeEventListener("azprose:preview-home", onHome);
+});
+
+// Bouton « Recharger » de la toolbar side (preview) — même procédure que le
+// save éditeur (méthode officielle VSCode) : changement EXTERNE + buffer non
+// sauvegardé → dialog de décision (fileConflict existant, l'utilisateur choisit
+// recharger-en-ignorant ou annuler) ; sinon save (si dirty) puis relecture
+// disque + re-rendu FORCÉ du preview (même si le contenu est identique —
+// transclusion ou réglages changés sur disque). Agit sur le fichier AFFICHÉ
+// par le tab side (détail.path), pas forcément le tab main actif.
+$effect(() => {
+  const onReload = async (e: Event) => {
+    const path = (e as CustomEvent<{ path?: string }>).detail?.path;
+    if (!path || extFromPath(path) !== "md") return;
+    const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
+    const normPath = norm(path);
+    // pm.main.tabs lu DIRECTEMENT (pas le $derived `tabs`) : le closure du
+    // listener ne doit pas capturer une liste de tabs périmée.
+    const mainTab = pm.main.tabs.find((t: any) => norm(t.path) === normPath) ?? null;
+    const dirty = mainTab != null && mainTab.source !== mainTab.savedContent;
+
+    // 1. Détection de changement externe (mtime de référence suivi au save).
+    const oldMtime = mtimeMap.get(path);
+    let externalChanged = false;
+    if (oldMtime != null) {
+      const current = await getMtime(path);
+      externalChanged = current != null && current > oldMtime;
+    }
+
+    // 2. Conflit : changement externe + edits non sauvegardés → dialog de
+    //    décision (le preview n'est pas rechargé — décision en attente).
+    if (externalChanged && dirty) {
+      fileConflict = path;
+      return;
+    }
+
+    // 3. Changement externe sans edits locaux → relecture disque dans le tab main.
+    if (externalChanged && mainTab) {
+      await reloadFile(path);
+    } else if (!externalChanged && dirty) {
+      // 4. Pas de changement externe mais buffer non sauvegardé → save (même
+      //    procédure que handleSave : écriture disque + savedContent + oxide).
+      try {
+        await writeText(path, mainTab!.source);
+        pm.main.tabs = pm.main.tabs.map((t: any) =>
+          t.id === mainTab!.id ? { ...t, savedContent: mainTab!.source } : t,
+        );
+        _panelVersion++;
+        clearDraft(path);
+        notifyMarkdownOxideFileChanged(path);
+        window.dispatchEvent(new CustomEvent("azprose:links-refresh"));
+      } catch (err) {
+        console.error("azprose: preview-reload save failed", err);
+        return;
+      }
+    }
+
+    // 5. Rafraîchit le tab side preview depuis le disque + re-rendu forcé.
+    await syncSideTabFromDisk(path);
+    await trackMtime(path);
+    window.dispatchEvent(new CustomEvent("azprose:preview-force-rerender", { detail: { path } }));
+  };
+  window.addEventListener("azprose:preview-reload", onReload);
+  return () => window.removeEventListener("azprose:preview-reload", onReload);
 });
 
 $effect(() => {
@@ -788,11 +904,65 @@ function closeTab(id: string) {
   pm.main.close(id);
 }
 
+/**
+ * Clic sidebar (FileTree, favoris, recherche, journal, breadcrumb).
+ * Clic simple → tab ACTIF du bon panel ; alt+clic → NOUVEAU tab.
+ * Routage maximisé : quand le SIDE preview est plein écran, un clic simple
+ * sur un .md navigue le preview IN-PLACE (comme un wikilink, via
+ * followPreviewNavigation — le tab side reste unique, l'éditeur lié suit
+ * via previewLinkedTabId) au lieu d'empiler un onglet éditeur en main.
+ * PDF/images passent toujours par le side (même maximisé).
+ */
+async function handleSidebarFileSelect(path: string, newTab = false) {
+  if (!isOpenablePath(path)) {
+    notifications.setLoadError({ title: "Format", message: t("app.unsupportedFormat", { name: basename(path) }) });
+    return;
+  }
+  if (isImagePath(path) || isPdfPath(path)) {
+    if (newTab) await pm.openInSide(path);
+    else await pm.openInSideActiveTab(path);
+    sideVisible = true;
+    void trackMtime(path);
+    return;
+  }
+  if (newTab) {
+    await pm.openInMain(path);
+    void trackMtime(path);
+    return;
+  }
+  // Clic simple sur du texte : routage maximisé du preview md — navigation
+  // IN-PLACE du tab preview (comme un wikilink), l'éditeur lié suit via
+  // followPreviewNavigation (au premier clic, le lien s'établit vers le tab
+  // éditeur actif).
+  const sideTab = pm.side.activeTab;
+  if (
+    expandedPanel === "side" &&
+    isMarkdownPath(path) &&
+    sideTab &&
+    isMarkdownPath(sideTab.path) &&
+    (sideTab.renderMode === "preview" || sideTab.renderMode === "colle" || sideTab.renderMode === "presentation")
+  ) {
+    if (sideActivePath) navPush(sideActivePath);
+    await pm.openInSide(path, { preview: true, fallbackToActive: true });
+    if (!pm.previewLinkedTabId) {
+      pm.previewLinkedTabId = pm.main.activeTabId;
+    } else {
+      const r = await followPreviewNavigation(pm, path);
+      if (r.parked) notifications.setInfo(t("preview.draftParked"));
+    }
+    void trackMtime(path);
+    return;
+  }
+  await pm.openInMainActiveTab(path);
+  void trackMtime(path);
+}
+
 const fo = new FileOpsManager({
   pm,
   getRootPath: () => rootPath,
   getActivePath: () => activePath,
   onOpenFile: openFileInTab,
+  onSidebarFileSelect: handleSidebarFileSelect,
   onTabClose: closeTab,
   onTreeChange: (paths: string[]) => { fo.treeDirtyPaths = paths; fo.treeVersion++; },
   onPanelChange: () => { _panelVersion++; },
@@ -1468,7 +1638,7 @@ let cmds = $derived(
     onOpenSpreadsheet={handleOpenSpreadsheet}
     onOpenDataFilter={handleOpenDataFilter}
     onOpenPalette={() => overlays.setPaletteOpen(true)}
-    onSelectFile={fo.selectFile}
+    onSelectFile={handleSidebarFileSelect}
   />
 
   <main class="mdv-shell">
@@ -1478,14 +1648,15 @@ let cmds = $derived(
       {rootPath}
       folders={folders.current}
       {activePath}
-      activeSource={source}
+      tocRefPath={tocRefPath}
+      tocRefSource={tocRefSource}
       width={sidebarWidth.current}
       onWidthChange={(next) => sidebarWidth.current = next}
       onAddFolder={handleAddFolder}
       onNewFile={fo.newFile}
       onNewFolder={fo.newFolder}
       onCloseFolder={handleCloseFolder}
-      onSelectFile={fo.selectFile}
+      onSelectFile={handleSidebarFileSelect}
       onContextMenu={fo.buildContextMenu}
       editingPath={fo.editingPath}
       onRenameRequest={(path) => (fo.editingPath = path)}
@@ -1638,7 +1809,7 @@ let cmds = $derived(
     variant="error"
     durationMs={null}
     onDismiss={() => fileConflict = null}
-    action={{ label: t("app.reloadDiscard"), onClick: () => { const p = fileConflict; fileConflict = null; if (p) reloadFile(p); } }}
+    action={{ label: t("app.reloadDiscard"), onClick: () => { const p = fileConflict; fileConflict = null; if (p) void reloadFileFromConflict(p); } }}
   />
 
   <Toast

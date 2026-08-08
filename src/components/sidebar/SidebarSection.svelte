@@ -27,7 +27,8 @@
     title?: string;
     icon?: string;
     badge?: string | number | null;
-    /** Rendu dans la zone d'actions (à droite du titre, hors du bouton toggle). */
+    /** Rendu dans la zone d'actions (à droite du titre, hors du bouton toggle,
+     *  À GAUCHE du badge — « bouton puis nombre », pattern VSCode). */
     actions?: Snippet | null;
     defaultCollapsed?: boolean;
     collapsed?: boolean | null;
@@ -59,13 +60,13 @@
       <i class="wxi mdv-sb-section__chevron" class:wxi-chevron-down={!isCollapsed} class:wxi-chevron-right={isCollapsed} aria-hidden="true"></i>
       {#if icon}<i class="{icon} mdv-sb-section__icon" aria-hidden="true"></i>{/if}
       <span class="mdv-sb-section__title">{title}</span>
-      {#if badge != null}<span class="mdv-sb-section__badge">{badge}</span>{/if}
     </button>
     {#if actions}
       <div class="mdv-sb-section__actions">
         {@render actions()}
       </div>
     {/if}
+    {#if badge != null}<span class="mdv-sb-section__badge">{badge}</span>{/if}
   </div>
   {#if !isCollapsed}
     <div class="mdv-sb-section__body">
