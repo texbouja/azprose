@@ -30,7 +30,8 @@ import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.
 import { getRootPath } from "@/stores/root-path.svelte";
 import { notifications } from "@/stores/notifications.svelte";
 import { getFontStore, type FontCheck } from "@/stores/fonts.svelte";
-import { joinPath, pickCssFiles, readText, basename } from "@/lib/files";
+import { joinPath, pickCssFiles, pickXlsx, readText, basename } from "@/lib/files";
+import { invoke } from "@tauri-apps/api/core"; // statique : déjà chargé en eager par le graphe
 import { spreadsheetDelete } from "@/spreadsheet/store";
 import { initTexmf, rehashTexmf } from "@/latex";
 import { userProfile, type UserRole } from "@/stores/user-profile.svelte";
@@ -224,7 +225,6 @@ let colloscopePendingSheets: ImportResult[] = $state([]);
 let colloscopePendingPath = $state("");
 
 async function importColloscopeFromFile() {
-  const { pickXlsx } = await import("@/lib/files");
   const path = await pickXlsx("colloscope");
   if (!path) return;
   const { importFileToMatrix } = await import("@/lib/spreadsheet/import");
@@ -1433,7 +1433,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                   if (rp) {
                     const dir = joinPath(joinPath(rp, ".azprose"), "texmf");
                     await initTexmf(rp);
-                    const { invoke } = await import("@tauri-apps/api/core");
                     invoke("open_folder", { path: dir });
                   }
                 }}>

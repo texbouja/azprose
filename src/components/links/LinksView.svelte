@@ -189,8 +189,11 @@
 
 <style>
   .blv {
-    /* Vue scrollable : les sections (cartes) s'empilent et la vue scrolle dans
-       son ensemble (pattern VSCode). Espacement entre cartes + marges latérales. */
+    /* Les sections (cartes) s'empilent ; la vue elle-même ne scrolle QUE en
+       cas de repli de secours (fenêtre trop petite pour les trois en-têtes).
+       En usage normal, la section OUVERTE rétrécit (SidebarSection --open) et
+       son CORPS scrolle en interne : les intitulés Toc / Backlinks / Tags
+       restent toujours visibles. */
     height: 100%;
     min-height: 0;
     overflow-y: auto;

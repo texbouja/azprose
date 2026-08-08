@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import { pickFolder } from "@/lib/files"; // statique : @/lib/files est déjà chargé en eager (app.svelte)
 import { isImagePath, isPdfPath, basename } from "@/lib";
 import { exportMarkdownPdf } from "@/lib/pdf-export";
 import { folderRelation } from "@/lib/paths";
@@ -38,7 +39,6 @@ export function spawnProjectWindow(folder: string) {
 }
 
 export async function handleAddFolder(ctx: ProjectManagementDeps) {
-  const { pickFolder } = await import("@/lib/files");
   const folder = await pickFolder();
   if (folder) {
     const next = [...ctx.folders.current];
@@ -85,7 +85,6 @@ export async function handleOpenProjectByPath(ctx: ProjectManagementDeps, folder
 }
 
 export async function handleInitProject(ctx: ProjectManagementDeps) {
-  const { pickFolder } = await import("@/lib/files");
   const folder = await pickFolder();
   if (!folder) return;
   const name = basename(folder);

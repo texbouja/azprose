@@ -2,6 +2,7 @@ import type { HandlerContext, FileHandler } from "./types"
 import { extFromPath } from "@/lib/editor-languages"
 import { invoke } from "@tauri-apps/api/core"
 import { autoBuildIfDepChanged, clearLatexDeps, handleLatexBuild, setupLatexLogListener } from "@/latex"
+import { diagnosticsStore } from "@/stores/diagnostics.svelte" // statique : déjà eager (app.svelte) — l'import() ne découpait aucun chunk
 
 export function createLatexHandler(context: HandlerContext): FileHandler {
   const ctx = context
@@ -38,7 +39,7 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
         if (ext !== lastExt) {
           if (lastExt !== "tex") {
             ctx.ls.latexBuilding = false
-            import("@/stores/diagnostics.svelte").then(m => m.diagnosticsStore.clear("latex"))
+            diagnosticsStore.clear("latex")
             clearLatexDeps(ctx.ls)
           }
           lastExt = ext

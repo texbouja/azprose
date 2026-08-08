@@ -1,5 +1,6 @@
 import { persistedScopedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS, createFile, createFolder, renameEntry, removeEntry, moveEntry, basename, dirname, joinPath } from "@/lib";
+import { pickAnyFile } from "@/lib/files"; // statique : @/lib/files déjà en eager (app.svelte)
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu, type ContextMenuItem } from "@/stores/context-menu.svelte";
 import { confirm } from "@tauri-apps/plugin-dialog";
@@ -66,7 +67,6 @@ export class FileOpsManager {
   constructor(private deps: FileOpsDeps) {}
 
   openFile = async () => {
-    const { pickAnyFile } = await import("@/lib/files");
     const file = await pickAnyFile();
     if (file) await this.deps.onOpenFile(file);
   };

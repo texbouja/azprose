@@ -30,6 +30,7 @@ import {
 import { getPrintTemplate, renderPrintTemplate, printTitleFromPath, resolveLogoValue } from "@/lib/print-templates";
 import { parseFrontMatter } from "@/lib/front-matter";
 import { readFile } from "@tauri-apps/plugin-fs";
+import { save } from "@tauri-apps/plugin-dialog"; // statique : déjà eager (app.svelte)
 
 // ── HTML assembly ────────────────────────────────────────────────────────────
 
@@ -266,7 +267,6 @@ export async function exportMarkdownPdf(
 
   // La destination est choisie AVANT le rendu headless (le backend écrit le
   // PDF directement sur disque, plus de dialogue d'impression natif).
-  const { save } = await import("@tauri-apps/plugin-dialog");
   const outputPath = await save({
     filters: [{ name: "PDF", extensions: ["pdf"] }],
     defaultPath: filePath.replace(/\.md$/i, ".pdf"),

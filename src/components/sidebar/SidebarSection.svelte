@@ -48,7 +48,10 @@
   }
 </script>
 
-<section class="mdv-sb-section">
+<section
+  class="mdv-sb-section"
+  class:mdv-sb-section--open={!isCollapsed}
+>
   <div class="mdv-sb-section__head">
     <button
       type="button"
@@ -78,15 +81,26 @@
 <style>
   /* Carte : la section se détache du fond de la sidebar (--bg) par un fond
      thémé (--surface) + un filet discret. L'en-tête et le corps partagent le
-     même fond pour que la section forme un tout lisible. */
+     même fond pour que la section forme un tout lisible.
+     `min-height: 0` : indispensable pour que la section OUVERTE puisse
+     rétrécir sous sa hauteur de contenu (voir --open) — sans lui, le défaut
+     `min-height: auto` l'empêche de devenir un conteneur de scroll. */
   .mdv-sb-section {
     display: flex;
     flex-direction: column;
     flex: none;
+    min-height: 0;
     border-radius: var(--radius-sm);
     background: var(--surface);
     border: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
     overflow: hidden;
+  }
+  /* Section OUVERTE (accordéon) : rétrécissable mais JAMAIS étirée —
+     `flex: 0 1 auto` = hauteur NATURELLE quand le contenu tient, sinon
+     rétrécit jusqu'à l'espace restant (les en-têtes des trois sections
+     restent visibles) et le corps scrolle en interne. */
+  .mdv-sb-section--open {
+    flex: 0 1 auto;
   }
   .mdv-sb-section__head {
     display: flex;
@@ -153,7 +167,31 @@
     gap: 2px;
     flex: none;
   }
+  /* Corps : `flex: 1 1 auto; min-height: 0` — quand la section rétrécit
+     (--open + contenu trop long), le corps absorbe le déficit et scrolle en
+     interne ; l'en-tête (flex: none) reste épinglé au-dessus. `auto` = aucun
+     scrollbar tant que le contenu tient. `contain` : le geste de roulette ne
+     se propage pas aux conteneurs parents. */
   .mdv-sb-section__body {
     padding: 2px 8px 8px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(128, 128, 128, 0.35) transparent;
+  }
+  .mdv-sb-section__body::-webkit-scrollbar {
+    width: 8px;
+  }
+  .mdv-sb-section__body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .mdv-sb-section__body::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.35);
+    border-radius: 4px;
+  }
+  .mdv-sb-section__body::-webkit-scrollbar-thumb:hover {
+    background: rgba(128, 128, 128, 0.6);
   }
 </style>

@@ -13,6 +13,7 @@
  * Svelte (`$state`).
  */
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog"; // statique : déjà eager (app.svelte)
 import { parsePlanches } from "./parse";
 import { buildReportData } from "./email-render";
 import { assemblePrintHtml, type CollePrintOptions } from "./pdf-planches";
@@ -75,7 +76,6 @@ export async function exportPlanchesPdf(
 
   // La destination est choisie AVANT le rendu headless (à côté de la note
   // source, suffixe `-planches`).
-  const { save } = await import("@tauri-apps/plugin-dialog");
   const defaultPath = req.filePath
     ? req.filePath.replace(/\.md$/i, "-planches.pdf")
     : "planches.pdf";

@@ -1,6 +1,13 @@
 import type { HandlerContext, FileHandler } from "./types"
 import { extFromPath } from "@/lib/editor-languages"
 import { followPreviewNavigation } from "@/lib/preview-follow"
+// Imports STATIQUES (jamais mélangés avec du dynamique) : ces modules sont déjà
+// chargés en eager via app.svelte (markdown-oxide, files) ou par le graphe
+// statique (tauri/api/event — transport/markdown-oxide) — un `await import()`
+// ici ne découperait AUCUN chunk et mentirait sur la laziness réelle.
+import { ensureMoxideConfig, resolveWikilink } from "@/lib/lsp/markdown-oxide"
+import { walkSupportedTextFiles } from "@/lib/files"
+import { listen } from "@tauri-apps/api/event"
 
 export function createMarkdownHandler(context: HandlerContext): FileHandler {
   const ctx = context
@@ -11,7 +18,6 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
   function setupEffects() {
     // Ensure .moxide.toml exists at project root
     void (async () => {
-      const { ensureMoxideConfig } = await import("@/lib/lsp/markdown-oxide")
       let lastRoot = ctx.rootPath()
       const tick = () => {
         const root = ctx.rootPath()
@@ -45,8 +51,6 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
     // re-associates it with the rendered file) unless Alt+click, which
     // opens a NEW tab via azprose:wikilink-open-new.
     void (async () => {
-      const { resolveWikilink } = await import("@/lib/lsp/markdown-oxide")
-      const { walkSupportedTextFiles } = await import("@/lib/files")
 
       const resolveTarget = async (detail: { path?: string; target?: string }): Promise<string | null> => {
         if (detail.path) return detail.path
@@ -140,7 +144,6 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
     // yesterday/tomorrow/jump). User navigation → record the current preview
     // page in the back history before opening the target.
     void (async () => {
-      const { listen } = await import("@tauri-apps/api/event")
       const unlisten = await listen<{ path: string }>("azprose:oxide-show-document", (ev) => {
         const p = ev.payload.path
         if (p) {

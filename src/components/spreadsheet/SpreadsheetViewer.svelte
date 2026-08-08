@@ -15,6 +15,14 @@
   import {
     datagridFindBySource,
   } from "@/datagrid/store";
+  // Imports STATIQUES (jamais mélangés avec du dynamique) : @/lib/files et les
+  // wrappers tauri sont déjà chargés en eager (app.svelte / transclusion) — les
+  // `await import()` d'avant ne découpaient aucun chunk. Restent DYNAMIQUES à
+  // dessein : `@/lib/spreadsheet/import` (xlsx parsing, module runtime lazy) et
+  // `xlsx` (grosse lib externe, chargée seulement à l'import/export).
+  import { pickXlsx } from "@/lib/files";
+  import { save } from "@tauri-apps/plugin-dialog";
+  import { writeFile } from "@tauri-apps/plugin-fs";
   let {
     spreadsheetId = "",
   }: {
@@ -463,7 +471,6 @@
 
   async function handleImport() {
     const { importFileToMatrix } = await import("@/lib/spreadsheet/import");
-    const { pickXlsx } = await import("@/lib/files");
 
     const path = await pickXlsx("Fichier à importer");
     if (!path) return;
@@ -597,7 +604,6 @@
     const label = isXlsx ? "Excel" : "CSV";
 
     // Open save dialog
-    const { save } = await import("@tauri-apps/plugin-dialog");
     const path = await save({
       filters: [{ name: label, extensions: [ext] }],
       defaultPath: `${request.fileName || sheetName || "export"}.${ext}`,
@@ -615,7 +621,6 @@
         type: "array",
       }) as Uint8Array;
 
-      const { writeFile } = await import("@tauri-apps/plugin-fs");
       await writeFile(path, buf);
     } catch (err) {
       console.error("Export failed:", err);
