@@ -29,6 +29,7 @@ import { findBlockWikilinks } from "@/markdown/print-expand";
 import { parseMarkdownToc, type TocEntry } from "@/lib/markdown-toc";
 import { findLinkedIndexMd, normIndexPath, stem } from "@/lib/index-home";
 import { basename, dirname } from "@/lib/paths-utils";
+import { structuralTocHash, type TocMemo } from "@/lib/toc-cache";
 
 /** Nœud titre : un heading d'un fichier (propre ou transclu). */
 export interface TocHeadingNode {
@@ -63,6 +64,11 @@ export interface TocForest {
   /** Chemin du fichier effectivement affiché (index.md trouvé, sinon
    *  referencePath). */
   displayPath: string;
+  /** Hash STRUCTURAL du contenu du fichier affiché (phase 6bis) — identifie
+   *  la structure du plan : titres (niveau/ligne/texte) + liens block-level
+   *  (cible/ligne/alias). Un changement de corps (frappe dans un paragraphe,
+   *  évaluation de colle…) ne le change pas → la forêt reste mémoïsée. */
+  structuralHash: string;
 }
 
 export interface BuildTocForestOptions {
@@ -253,9 +259,16 @@ async function buildFileNode(
  * 1. `findLinkedIndexMd` (même mécanisme que le bouton Home du preview) ;
  * 2. contenu = readText(index) ou `referenceSource`/readText(référence) ;
  * 3. arbre récursif (titres + branches transcluses conformes).
+ *
+ * `memo` (optionnel, phases 6/6bis) : mémoïsation in-place — même clé
+ * (`referencePath::rootPath`), même hash structural et même fichier affiché →
+ * la forêt mémoïsée est retournée SANS rebuild (le debounce du panneau se
+ * réduit à une lecture + un hash). Passer une instance par composant via
+ * `makeTocMemo()`.
  */
 export async function buildTocForest(
   opts: BuildTocForestOptions,
+  memo?: TocMemo,
 ): Promise<TocForest> {
   const { rootPath, referencePath, referenceSource, readText } = opts;
   const getIndex = opts.getIndex;
@@ -278,11 +291,28 @@ export async function buildTocForest(
   const content = displayPath === refNorm
     ? (referenceSource ?? await tryRead(displayPath, readText))
     : await tryRead(displayPath, readText);
-  if (content === null) return { root: null, displayPath };
+  if (content === null) return { root: null, displayPath, structuralHash: "" };
+
+  // Phases 6/6bis : la structure du plan n'a pas changé → la forêt est
+  // INCHANGÉE, on la retourne telle quelle (aucune re-lecture des fichiers
+  // liés, aucune re-transclusion). Le hit exige aussi le même fichier affiché
+  // (un index.md lié créé/supprimé change displayPath à clé identique).
+  const key = `${refNorm}::${rootNorm}`;
+  const hash = structuralTocHash(content);
+  if (memo && memo.key === key && memo.hash === hash && memo.forest?.displayPath === displayPath) {
+    return memo.forest;
+  }
 
   // 3. Arbre récursif. Le fichier racine est marqué `root: true`.
   const ancestors = new Set<string>([rootNorm === refNorm ? refNorm : displayPath]);
   const ctx: BuildCtx = { rootPath, readText, getIndex: getIndex ?? (() => Promise.resolve(new Map())), maxDepth };
   const node = await buildFileNode(displayPath, content, 0, ancestors, ctx);
-  return { root: { ...node, root: true }, displayPath };
+  const forest: TocForest = { root: { ...node, root: true }, displayPath, structuralHash: hash };
+
+  if (memo) {
+    memo.key = key;
+    memo.hash = hash;
+    memo.forest = forest;
+  }
+  return forest;
 }

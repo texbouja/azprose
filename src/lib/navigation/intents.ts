@@ -53,8 +53,12 @@ export type NavIntent =
    *  0-based) et/ou heading. Remplaçant typé de `azprose:jump-to-file`. */
   | { type: "jump-to-file"; path: string; line?: number | null; heading?: string | null }
   /** Saut dbl-clic preview : cible le fichier RENDU (tab side), 0-based.
-   *  Remplaçant typé de `azprose:jump-to-line`. */
-  | { type: "jump-to-line"; line: number; path?: string | null }
+   *  Remplaçant typé de `azprose:jump-to-line`. `sessionId` = id du tab side
+   *  émetteur (phase 3 C) : le reducer le résout via la table de liens
+   *  preview↔éditeur — si le fichier rendu est celui du tab éditeur LIÉ, le
+   *  saut y va directement (jamais un doublon créé par une recherche par
+   *  chemin). Sans sessionId (legacy), résolution par chemin. */
+  | { type: "jump-to-line"; line: number; path?: string | null; sessionId?: string | null }
   /** Bouton Home du preview : navigation vers l'index.md lié. Remplaçant
    *  typé de `azprose:preview-home`. */
   | { type: "preview-home"; newTab?: boolean }
@@ -75,6 +79,22 @@ export type NavIntent =
   | { type: "journal-date-click"; date: string }
   /** Saut daily-note venant du LSP oxide (today/yesterday/tomorrow/jump).
    *  Remplaçant typé de `azprose:oxide-show-document`. */
-  | { type: "oxide-show-document"; path: string };
+  | { type: "oxide-show-document"; path: string }
+  /** Ouvre (dédup) un tableur en side. Remplaçant typé de
+   *  `openSpreadsheetInSide` (l'orchestrateur canal 3 lit le nom réel via le
+   *  domaine puis poste CETTE intention — le reducer ne connaît pas l'IPC). */
+  | { type: "open-spreadsheet"; spreadsheetId: string; title: string }
+  /** Ouvre (dédup) une pile DataFilter en side — identité = ensemble trié des
+   *  ids de grilles. Remplaçant typé de `openDataFilterInSide`. */
+  | { type: "open-datafilter"; datafilterIds: string[]; title: string }
+  /** Ouvre (dédup) un panneau custom en side (calendrier, …). Remplaçant typé
+   *  de `openCustomInSide`. */
+  | { type: "open-custom"; panelId: string; title: string }
+  /** Transition create→upgrade : fixe spreadsheetId + titre sur le tab tableur
+   *  « create » (sans id). Remplaçant typé de `setSpreadsheetTabId`. */
+  | { type: "set-spreadsheet-id"; spreadsheetId: string; title: string }
+  /** Met à jour le titre d'un tab tableur (après chargement du nom réel).
+   *  Remplaçant typé de `setSpreadsheetTabTitle`. */
+  | { type: "set-spreadsheet-title"; spreadsheetId: string; title: string };
 
 export type { TabSource };

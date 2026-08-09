@@ -25,22 +25,24 @@ import { consumeSyncLine, setSyncLine } from "@/stores/sync-line.svelte";
 let {
   value = "",
   filePath = null as string | null,
-  onJumpToLine,
+  tabId = null as string | null,
+  rev = 0,
 }: {
   value?: string;
   filePath?: string | null;
-  onJumpToLine?: (line: number, path?: string) => void;
+  /** Id de session du tab side (phase 3 C) : porté par azprose:jump-to-line
+   *  pour que le reducer résolve le saut via la table de liens. */
+  tabId?: string | null;
+  /** Version du CONTENU (phase 7, idée E) : le store bump la version du chemin
+   *  à chaque load/persist — même si `value` n'a pas changé (string primitive),
+   *  `rev` change → l'effet de rendu re-run. Remplace le listener
+   *  `azprose:preview-force-rerender` (bouton « Recharger », reload externe). */
+  rev?: number;
 } = $props();
 
 let articleEl: HTMLElement | undefined = $state();
 let ready = $state(false);
 let zoom = $state(100);
-
-// Compteur de re-rendu FORCÉ : incrémenté par le bouton « Recharger » de la
-// toolbar side (azprose:preview-force-rerender, filtré par fichier). Le
-// `$effect` de rendu le lit → il re-rend même si `value` n'a pas changé
-// (transclusion ou réglages changés sur disque avec contenu hôte identique).
-let forceRenderRev = $state(0);
 
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
 
@@ -171,27 +173,16 @@ $effect(() => {
   }
 });
 
-// Re-rendu forcé (bouton « Recharger » de la toolbar side). Filtré par fichier :
-// un preview d'un autre fichier ne doit pas se re-rendre. La fonction normalise
-// les chemins comme le fait la synchro transclusion (léger décalage anti-slash).
-$effect(() => {
-  const onForce = (e: Event) => {
-    const d = (e as CustomEvent<{ path?: string }>).detail;
-    if (!d?.path) return;
-    const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
-    if (filePath != null && norm(d.path) === norm(filePath)) {
-      forceRenderRev++;
-    }
-  };
-  window.addEventListener("azprose:preview-force-rerender", onForce);
-  return () => window.removeEventListener("azprose:preview-force-rerender", onForce);
-});
+// Re-rendu forcé : porté par la prop `rev` (version du chemin dans le store,
+// phase 7 E) — plus de listener `azprose:preview-force-rerender`. L'effet de
+// rendu lit `void rev` → il re-rend même si `value` n'a pas changé
+// (transclusion ou réglages changés sur disque avec contenu hôte identique).
 
 $effect(() => {
   if (!ready) return;
   const src = value;
   const theme = currentTheme;
-  void forceRenderRev; // dépendance : incrémenter force un re-rendu même si src est identique
+  void rev; // dépendance : incrémenter force un re-rendu même si src est identique
   let cancelled = false;
   let cleanupCode = () => {};
 
@@ -434,22 +425,23 @@ $effect(() => {
         const line = Number(transcluded.dataset.transcludedLine);
         if (path) {
           window.dispatchEvent(new CustomEvent("azprose:jump-to-line", {
-            detail: { path, line: Number.isFinite(line) ? line : undefined },
+            detail: { path, line: Number.isFinite(line) ? line : undefined, sessionId: tabId ?? undefined },
           }));
         }
         return;
       }
       // Normal inverse search: jump to line in current file. The event carries
       // the path of the RENDERED file (this preview tab's path — re-associated
-      // on every navigation), so app.svelte opens THAT .md in the editor
-      // (forced open, user rule) — never the tab that happens to be active.
+      // on every navigation) plus this tab's session id (phase 3 C) so the
+      // reducer resolves the jump via the link table. app.svelte opens THAT
+      // .md in the editor (forced open, user rule) — never the tab that
+      // happens to be active.
       const block = (e.target as HTMLElement).closest<HTMLElement>("[data-sline]");
       if (!block) return;
       const line = Number(block.dataset.sline);
       if (Number.isFinite(line)) {
-        onJumpToLine?.(line, filePath ?? undefined);
         window.dispatchEvent(new CustomEvent("azprose:jump-to-line", {
-          detail: { path: filePath, line },
+          detail: { path: filePath, line, sessionId: tabId ?? undefined },
         }));
       }
     }}

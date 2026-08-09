@@ -3,6 +3,7 @@ import { watch, type WatchEventKind } from "@tauri-apps/plugin-fs"
 import { readText } from "@/lib/files"
 import { isSupportedTextPath, isImagePath, isPdfPath, getMtime } from "@/lib"
 import type { PanelManager } from "@/lib/panel-manager"
+import type { ContentStore } from "@/lib/content-store"
 
 export interface ExternalChangeState {
   mtimeMap: Map<string, number>
@@ -18,6 +19,10 @@ export interface ExternalChangeDeps {
   setExternalChangeAlerts: (v: boolean) => void
   notify: { setInfo: (msg: string) => void }
   t: (key: string, params?: Record<string, string>) => string
+  /** Source unique du contenu (phase 7) : quand présent, le reload passe par
+   *  `load(path, { forceBuffer: true })` — l'utilisateur a choisi de recharger
+   *  le disque, le buffer (s'il y en avait un) est écrasé. */
+  content?: ContentStore
 }
 
 export function trackMtime(state: ExternalChangeState, path: string) {
@@ -32,9 +37,19 @@ export async function reloadFile(
   path: string,
 ) {
   const fresh = await readText(path);
-  deps.pm.main.tabs = deps.pm.main.tabs.map((t: any) =>
-    t.path === path ? { ...t, source: fresh, savedContent: fresh } : t,
-  );
+  if (deps.content) {
+    // L'écrivain unique : le contenu vit dans le store — load force le
+    // disque dans le buffer (reload externe), les reflets suivent le store.
+    await deps.content.load(path, { forceBuffer: true });
+    const src = deps.content.get(path);
+    deps.pm.main.tabs = deps.pm.main.tabs.map((t: any) =>
+      t.path === path ? { ...t, source: src, savedContent: src } : t,
+    );
+  } else {
+    deps.pm.main.tabs = deps.pm.main.tabs.map((t: any) =>
+      t.path === path ? { ...t, source: fresh, savedContent: fresh } : t,
+    );
+  }
   deps.bumpPanelVersion();
   await trackMtime(state, path);
 }

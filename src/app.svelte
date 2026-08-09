@@ -13,6 +13,7 @@ import { overlays } from "@/stores/overlays.svelte";
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
 import { persistedState } from "@/stores/persisted.svelte";
+import { contentStore, contentFor, contentSavedFor } from "@/stores/content.svelte";
 import {
   STORAGE_KEYS,
   CHANGELOG_URL,
@@ -53,7 +54,6 @@ import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { executeOxideCommand, notifyMarkdownOxideFileChanged } from "@/lib/lsp/markdown-oxide";
-import { writeText } from "@/lib/files";
 import { ensureHelpInstalled, helpIndexPath, isHelpPath } from "@/lib/help-install";
 // Import STATIQUE (jamais mélangé avec du dynamique) : index-home est déjà
 // dans le chunk principal via LinksView → TocPanel → toc-forest — un dynamic
@@ -64,7 +64,7 @@ import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
 import PrintOverlay from "@/components/overlays/PrintOverlay.svelte";
 import { extFromPath } from "@/lib/editor-languages";
 import { setOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
-import { saveSession, clearDraft, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
+import { saveSession, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
 import {
   findTabByPath as findTabByPathUtil,
   saveSessionNow as saveSessionNowUtil,
@@ -211,6 +211,7 @@ $effect(() => {
 // Handled by markdown handler after lazy load.
 
 let pm = new PanelManager({
+  content: contentStore,
   onSessionChange: (data) => {
     _panelVersion++;
     saveSession({
@@ -248,8 +249,19 @@ let expandedPanel = $derived<"main" | "side" | null>(
 // Main panel reactive views
 let tabs = $derived.by(() => { _panelVersion; return pm.main.tabs; });
 let activeTabId = $derived.by(() => { _panelVersion; return pm.main.activeTabId; });
-let source = $derived.by(() => { _panelVersion; return pm.main.source; });
-let savedContent = $derived.by(() => { _panelVersion; return pm.main.savedContent; });
+// Contenu = AUTORITÉ du store keyé par chemin (phase 7, idée E) : la frappe
+// (setBuffer), le save (persist) et le reload (load forceBuffer) bumpent la
+// version du chemin — les dérivés re-évaluent via contentFor/contentSavedFor,
+// qui trackent le miroir $state. `pm.main.source`/`savedContent` (reflets des
+// tabs) restent pour les tests et lecteurs directs, mais le RENDU lit le store.
+let source = $derived.by(() => {
+  _panelVersion;
+  return pm.main.activePath ? contentFor(pm.main.activePath) : "";
+});
+let savedContent = $derived.by(() => {
+  _panelVersion;
+  return pm.main.activePath ? contentSavedFor(pm.main.activePath) : "";
+});
 let activePath = $derived.by(() => { _panelVersion; return pm.main.activePath; });
 
 // Side panel reactive views
@@ -271,8 +283,11 @@ let tocRefPath = $derived.by(() => {
 });
 let tocRefSource = $derived.by(() => {
   _panelVersion;
+  // Tab doc (aide) → TOC lue sur disque (index.md), jamais le buffer.
   if (pm.side.activeTab?.kind === "doc") return null;
-  return tocRefPath === pm.side.activePath ? pm.side.source : pm.main.source;
+  // Sinon : contenu LIVE du fichier retenu, via le store (autorité unique) —
+  // la frappe dans l'éditeur met la TOC à jour au fil de l'eau.
+  return tocRefPath ? contentFor(tocRefPath) : null;
 });
 
 // Mode aide : l'article de la doc intégrée actuellement affiché dans le
@@ -422,6 +437,7 @@ const extChangeDeps: ExternalChangeDeps = {
   setExternalChangeAlerts: (v) => { externalChangeAlerts = v; },
   notify: notifications,
   t,
+  content: contentStore,
 };
 
 $effect(() => { return setupExternalChangeAlerts((v) => { externalChangeAlerts = v; }); });
@@ -432,25 +448,27 @@ async function checkExternalChanges() { await checkExternalChangesUtil(extChange
 
 /** Rafraîchit le tab SIDE preview du fichier (si ouvert) depuis le disque.
     `reloadFile` ne touche que les tabs main — sans ce rafraîchissement, le
-    preview side resterait sur l'ancien contenu après un reload externe. */
+    preview side resterait sur l'ancien contenu après un reload externe.
+    Depuis Ph7 : le preview side lit le STORE (contentFor) — un load avec
+    forceBuffer bump la version du chemin et le reflet side suit. */
 async function syncSideTabFromDisk(path: string) {
   const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
   const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === norm(path));
   if (!sideTab) return;
   try {
-    const fresh = await readText(path);
+    await contentStore.load(path, { forceBuffer: true });
+    const fresh = contentStore.get(path);
     pm.side.setTabSource(sideTab.id, fresh);
     _panelVersion++;
   } catch { /* fichier illisible — conserve l'état courant */ }
 }
 
 /** « Recharger (ignorer mes modifications) » du dialog de conflit : relecture
-    disque dans le tab main + rafraîchissement du tab side preview + re-rendu
-    forcé (même contenu identique). */
+    disque dans le tab main + rafraîchissement du tab side preview. Le re-rendu
+    est porté par le store (load forceBuffer → bump de version du chemin). */
 async function reloadFileFromConflict(path: string) {
   await reloadFile(path);
   await syncSideTabFromDisk(path);
-  window.dispatchEvent(new CustomEvent("azprose:preview-force-rerender", { detail: { path } }));
 }
 
 onMount(() => {
@@ -517,7 +535,7 @@ onMount(() => {
     const hasPreviewTab = pm.side.tabs.some(
       t => t.preview || t.renderMode === "preview" || t.renderMode === "presentation" || t.renderMode === "colle",
     );
-    if (!hasPreviewTab) pm.previewLinkedTabId = null;
+    if (!hasPreviewTab) pm.clearPreviewLinks();
   });
 
   // ── File-type handlers (latex, markdown) — lazy-loaded ──
@@ -597,8 +615,13 @@ $effect(() => setupCrashListener(crashDeps));
 
 $effect(() => {
   const onJump = (e: Event) => {
-    const detail = (e as CustomEvent<{ path?: string; line: number }>).detail;
-    navigateVoid(navDeps, { type: "jump-to-line", line: detail.line, path: detail.path ?? null });
+    const detail = (e as CustomEvent<{ path?: string; line: number; sessionId?: string }>).detail;
+    navigateVoid(navDeps, {
+      type: "jump-to-line",
+      line: detail.line,
+      path: detail.path ?? null,
+      sessionId: detail.sessionId ?? null,
+    });
   };
   window.addEventListener("azprose:jump-to-line", onJump);
   return () => window.removeEventListener("azprose:jump-to-line", onJump);
@@ -658,12 +681,11 @@ $effect(() => {
       // 4. Pas de changement externe mais buffer non sauvegardé → save (même
       //    procédure que handleSave : écriture disque + savedContent + oxide).
       try {
-        await writeText(path, mainTab!.source);
+        await contentStore.persist(path);
         pm.main.tabs = pm.main.tabs.map((t: any) =>
-          t.id === mainTab!.id ? { ...t, savedContent: mainTab!.source } : t,
+          t.id === mainTab!.id ? { ...t, savedContent: contentStore.getSaved(path) } : t,
         );
         _panelVersion++;
-        clearDraft(path);
         notifyMarkdownOxideFileChanged(path);
         window.dispatchEvent(new CustomEvent("azprose:links-refresh"));
       } catch (err) {
@@ -672,10 +694,11 @@ $effect(() => {
       }
     }
 
-    // 5. Rafraîchit le tab side preview depuis le disque + re-rendu forcé.
+    // 5. Rafraîchit le tab side preview depuis le disque — le load forceBuffer
+    //    du store bump la version du chemin → le preview (contentFor) re-rend
+    //    même si le contenu est identique (transclusion/réglages sur disque).
     await syncSideTabFromDisk(path);
     await trackMtime(path);
-    window.dispatchEvent(new CustomEvent("azprose:preview-force-rerender", { detail: { path } }));
   };
   window.addEventListener("azprose:preview-reload", onReload);
   return () => window.removeEventListener("azprose:preview-reload", onReload);
@@ -768,11 +791,14 @@ $effect(() => {
 //   azprose:datafilter-open-stack     → command:open-grid-stack
 //   azprose:datagrid-edit-in-spreadsheet → command:open-spreadsheet
 // Les sagas vivent dans src/lib/data/commands.ts (pures, DI : navigateur +
-// domaine IPC) ; l'hôte fournit les implémentations réelles ici.
+// domaine IPC) ; l'hôte fournit les implémentations réelles ici. Le
+// navigateur est un dispatcher d'INTENTIONS : chaque commande termine par
+// `navigate()` (règle 9 — le reducer est le seul endroit qui modifie la
+// session de navigation).
 $effect(() => {
   const sub = dataBus.subscribeCommands((cmd) => {
     void runCommand(cmd, {
-      nav: pm,
+      nav: { navigate: (intent) => navigateVoid(navDeps, intent) },
       domain: {
         findGridForSpreadsheet: (spreadsheetId) =>
           datagridFindBySource(spreadsheetId),
@@ -852,7 +878,8 @@ const handleSave = async () => {
   try {
     await pm.main.save();
     saveStatus = "saved";
-    clearDraft(activePath);
+    // Ph7 : persist (dans pm.main.save → store) fait déjà clearDraft — le
+    // clearDraft explicite est redondant et retiré.
     void trackMtime(activePath);
     if (extFromPath(activePath) === "md") {
       // Fraîcheur de la vue Links (backlinks + tags) : markdown-oxide
@@ -885,10 +912,9 @@ const handleSaveAll = async (deps: string[]) => {
   for (const tab of pm.main.tabs) {
     if (tab.source !== tab.savedContent && depSet.has(norm(tab.path))) {
       try {
-        await writeText(tab.path, tab.source);
-        pm.main.tabs = pm.main.tabs.map((t: any) => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
+        await contentStore.persist(tab.path);
+        pm.main.tabs = pm.main.tabs.map((t: any) => t.id === tab.id ? { ...t, savedContent: contentStore.getSaved(tab.path) } : t);
         _panelVersion++;
-        if (tab.path !== activePath) clearDraft(tab.path);
       } catch { /* best-effort */ }
     }
   }
@@ -1160,7 +1186,7 @@ const editorModeCtx: EditorModeDeps = {
   notify: notifications,
 };
 
-const handleJumpToLine = (line: number, path?: string | null) => jumpToLineUtil(editorModeCtx, line, path ?? undefined);
+const handleJumpToLine = (line: number, path?: string | null, sessionId?: string | null) => jumpToLineUtil(editorModeCtx, line, path ?? undefined, sessionId ?? undefined);
 const handleGutterClick = (line: number) => gutterClickUtil(editorModeCtx, line);
 const handleInverseSync = (file: string, line: number) => inverseSyncUtil(editorModeCtx, file, line);
 const handleConsoleJump = (line: number, col?: number | null) => consoleJumpUtil(editorModeCtx, line, col);
@@ -1311,7 +1337,9 @@ $effect(() => {
     const target = norm(detail.path);
     const mainTab = pm.main.tabs.find((t: any) => norm(t.path) === target);
     const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
-    const base = mainTab?.source ?? sideTab?.source;
+    // Ph7 : base = contenu du STORE (autorité unique, buffer live de
+    // l'éditeur) si le chemin y est entré, sinon repli sur les reflets.
+    const base = contentStore.has(target) ? contentStore.get(target) : (mainTab?.source ?? sideTab?.source);
     if (base === undefined) return;
     const updates = detail.updates ?? [{ index: detail.index!, keys: detail.keys! }];
     let next = base;
@@ -1320,6 +1348,9 @@ $effect(() => {
       if (n !== next) next = n;
     }
     if (next === base) return;
+    // Écrivain unique : le write-back passe par le store (le preview side
+    // contentFor re-évalue au bump), les reflets des tabs suivent.
+    contentStore.setBuffer(target, next);
     if (mainTab) {
       pm.main.setTabSource(mainTab.id, next);
     }
@@ -1333,7 +1364,9 @@ $effect(() => {
       saveStatus = "dirty";
       void handleSave();
     } else {
-      void writeText(detail.path, next).catch((err: unknown) => console.error("azprose: colle write-back direct failed", err));
+      // Fichier non affiché en main : persist DIRECT via le store (bump →
+      // preview side à jour). Jamais de writeText brut qui contournerait le store.
+      void contentStore.persist(target).catch((err: unknown) => console.error("azprose: colle write-back direct failed", err));
     }
   };
   window.addEventListener("azprose:colle-eval", onColleEval);
@@ -1604,12 +1637,21 @@ let cmds = $derived(
             splitRatio = pm.toggleExpandPanel(panelId);
           }}
           onSourceChange={(next) => {
+            // Écrivain unique du flux éditeur : le contenu vit dans le store
+            // (setBuffer bump la version du chemin → preview side + TOC
+            // re-évaluent), le reflet du tab main suit pour les tests/lecteurs.
+            if (pm.main.activePath) contentStore.setBuffer(pm.main.activePath, next);
             pm.main.setSource(next);
             _panelVersion++;
           }}
-          onSideSourceChange={(next) => { pm.side.setSource(next); _panelVersion++; }}
+          onSideSourceChange={(next) => {
+            // Éditeur side (fichier texte non-md affiché en side) : même
+            // chemin — setBuffer sur le path side actif, reflet side suit.
+            if (pm.side.activePath) contentStore.setBuffer(pm.side.activePath, next);
+            pm.side.setSource(next);
+            _panelVersion++;
+          }}
           onGutterClick={handleGutterClick}
-          onJumpToLine={handleJumpToLine}
           typo={typo}
           {jumpToLine}
           {jumpToCol}

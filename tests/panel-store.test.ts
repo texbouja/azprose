@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { PanelState, pickOpenTarget } from "../src/lib/panel-store";
+import { PanelState, pickOpenTarget, tabContentKind, normalizeLegacyKind } from "../src/lib/panel-store";
 
 test("starts empty", () => {
   const p = new PanelState("main");
@@ -315,4 +315,65 @@ test("pickOpenTarget: plain open (no preview) never re-points — new tab", () =
   const tabs = [mkTab("a", "/a.md")];
   const r = pickOpenTarget(tabs, "a", false, true);
   expect(r.id).toBeNull();
+});
+
+// ── phase 4 (G) : exhaustivité TypeScript des kinds ─────────────────────────
+// Tout nouveau TabKind DOIT être classé par `tabContentKind` et normalisé par
+// `normalizeLegacyKind` (checks `never` dans les switchs). Ces tests verrouillent
+// la classification et la migration legacy documentées.
+
+test("tabContentKind classifie TOUS les kinds (exhaustivité)", () => {
+  expect(tabContentKind(undefined)).toBe("file"); // legacy : tab fichier sans kind
+  expect(tabContentKind("file")).toBe("file");
+  expect(tabContentKind("doc")).toBe("doc");
+  expect(tabContentKind("custom")).toBe("data");
+  expect(tabContentKind("spreadsheet")).toBe("data");
+  expect(tabContentKind("datafilter")).toBe("data");
+});
+
+test("normalizeLegacyKind migre datagrid → datafilter et préserve les kinds connus", () => {
+  expect(normalizeLegacyKind("datagrid")).toBe("datafilter");
+  expect(normalizeLegacyKind(undefined)).toBeUndefined();
+  expect(normalizeLegacyKind("file")).toBe("file");
+  expect(normalizeLegacyKind("doc")).toBe("doc");
+  expect(normalizeLegacyKind("custom")).toBe("custom");
+  expect(normalizeLegacyKind("spreadsheet")).toBe("spreadsheet");
+  expect(normalizeLegacyKind("datafilter")).toBe("datafilter");
+});
+
+test("fromJSON FILTRE les tabs custom (comportement documenté — l'outil s'ouvre depuis le journal)", () => {
+  const p = new PanelState("side");
+  p.fromJSON({
+    tabs: [
+      { path: "/a.md", title: "a.md" },
+      { path: "/help.md", title: "help.md", kind: "doc" },
+      { path: "spreadsheet://abc", title: "Feuille", kind: "spreadsheet", spreadsheetId: "abc" },
+      { path: "datafilter://stack", title: "Filtre", kind: "datafilter", datafilterIds: ["g1", "g2"] },
+      { path: "custom://svar-calendar", title: "Calendrier", kind: "custom", panelId: "svar-calendar" },
+    ],
+    activePath: null,
+  });
+  // custom filtré, tous les autres kinds restaurés
+  expect(p.tabs.map(t => t.kind)).toEqual([undefined, "doc", "spreadsheet", "datafilter"]);
+  expect(p.tabs.find(t => t.kind === "spreadsheet")?.spreadsheetId).toBe("abc");
+  expect(p.tabs.find(t => t.kind === "datafilter")?.datafilterIds).toEqual(["g1", "g2"]);
+});
+
+test("fromJSON migre le kind legacy datagrid → datafilter (pile d'une carte)", () => {
+  const p = new PanelState("side");
+  // La session legacy (JSON brut d'une ancienne version) n'est pas typée :
+  // `datagrid` et `datagridIds` n'existent pas dans PanelSessionData — cast
+  // volontaire pour simuler le JSON restauré (le vrai fromJSON reçoit le
+  // résultat brut de JSON.parse).
+  const legacy = [
+    { path: "datagrid://dg-1", title: "Ancien", kind: "datagrid" },
+    { path: "/b.md", title: "b.md", datagridIds: ["x"] },
+  ] as unknown as Parameters<PanelState["fromJSON"]>[0]["tabs"];
+  p.fromJSON({ tabs: legacy, activePath: null });
+  const migrated = p.tabs.find(t => t.path === "datagrid://dg-1");
+  expect(migrated?.kind).toBe("datafilter");
+  expect(migrated?.datafilterIds).toEqual(["dg-1"]);
+  const viaIds = p.tabs.find(t => t.path === "/b.md");
+  expect(viaIds?.kind).toBeUndefined();
+  expect(viaIds?.datafilterIds).toEqual(["x"]);
 });

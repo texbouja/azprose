@@ -27,6 +27,8 @@ setSessionScope("/test-vault");
 function seed(
   pm: PanelManager,
   main: Array<{ id: string; path: string; source?: string; savedContent?: string; preview?: boolean; kind?: string }>,
+  side?: { id: string; path: string } | null,
+  linkTo?: string | null,
 ) {
   pm.main.tabs = main.map(m => ({
     id: m.id,
@@ -38,6 +40,22 @@ function seed(
     kind: m.kind as never,
   }));
   pm.main.activeTabId = main[0]?.id ?? null;
+  if (side) {
+    pm.side.tabs = [{
+      id: side.id,
+      title: side.path.split("/").pop()!,
+      path: side.path,
+      source: "",
+      savedContent: "",
+      preview: false,
+      kind: undefined,
+    }] as never;
+    pm.side.activeTabId = side.id;
+  } else {
+    pm.side.tabs = [];
+    pm.side.activeTabId = null;
+  }
+  if (side && linkTo != null) pm.linkPreview(side.id, linkTo);
 }
 
 test("sans lien → followed:false (repli legacy, rien ne bouge)", async () => {
@@ -49,8 +67,7 @@ test("sans lien → followed:false (repli legacy, rien ne bouge)", async () => {
 
 test("lien périmé (tab fermé) → délie et repli legacy", async () => {
   const pm = new PanelManager();
-  seed(pm, [{ id: "t1", path: "/a.md" }]);
-  pm.previewLinkedTabId = "ghost";
+  seed(pm, [{ id: "t1", path: "/a.md" }], { id: "s1", path: "/preview.md" }, "ghost");
   const r = await followPreviewNavigation(pm, "/b.md");
   expect(r.followed).toBe(false);
   expect(pm.previewLinkedTabId).toBeNull();
@@ -58,8 +75,7 @@ test("lien périmé (tab fermé) → délie et repli legacy", async () => {
 
 test("lien sur un tab d'outil → délie et repli legacy", async () => {
   const pm = new PanelManager();
-  seed(pm, [{ id: "t1", path: "/a.md", kind: "spreadsheet" }]);
-  pm.previewLinkedTabId = "t1";
+  seed(pm, [{ id: "t1", path: "/a.md", kind: "spreadsheet" }], { id: "s1", path: "/preview.md" }, "t1");
   const r = await followPreviewNavigation(pm, "/b.md");
   expect(r.followed).toBe(false);
   expect(pm.previewLinkedTabId).toBeNull();
@@ -70,9 +86,8 @@ test("le tab lié affiche déjà la cible → followed:true, sélection (no-op)"
   seed(pm, [
     { id: "t1", path: "/a.md" },
     { id: "t2", path: "/b.md" },
-  ]);
+  ], { id: "s1", path: "/preview.md" }, "t1");
   pm.main.activeTabId = "t2";
-  pm.previewLinkedTabId = "t1";
   const r = await followPreviewNavigation(pm, "/a.md");
   expect(r).toEqual({ followed: true, parked: false });
   expect(pm.main.activeTabId).toBe("t1");
@@ -83,9 +98,8 @@ test("adopt-if-open : cible déjà ouverte ailleurs → le lien s'y déplace, pa
   seed(pm, [
     { id: "t1", path: "/a.md" },
     { id: "t2", path: "/b.md" },
-  ]);
+  ], { id: "s1", path: "/preview.md" }, "t1");
   pm.main.activeTabId = "t1";
-  pm.previewLinkedTabId = "t1";
   const r = await followPreviewNavigation(pm, "/b.md");
   expect(r.followed).toBe(true);
   expect(pm.previewLinkedTabId).toBe("t2");
@@ -98,8 +112,7 @@ test("l'adoption retire le flag preview → le tab sort du pool jumpToLine", asy
   seed(pm, [
     { id: "t1", path: "/a.md" },
     { id: "t2", path: "/b.md", preview: true },
-  ]);
-  pm.previewLinkedTabId = "t1";
+  ], { id: "s1", path: "/preview.md" }, "t1");
   const r = await followPreviewNavigation(pm, "/b.md");
   expect(r.followed).toBe(true);
   expect(pm.main.tabs.find(t => t.id === "t2")?.preview).toBe(false);

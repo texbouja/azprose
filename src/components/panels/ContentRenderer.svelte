@@ -1,4 +1,16 @@
 <script lang="ts">
+// Ordre des branches VOLONTAIRE et exhaustif (phase 4, idée G) — tout
+// nouveau `TabKind` de données DOIT avoir sa branche explicite ici avant le
+// `{:else}` final (l'éditeur de fichiers) :
+//   1. custom (calendar-editor / journal-calendar / svar-calendar),
+//   2. doc (DocPreview — lecture seule, jamais l'éditeur),
+//   3. pdf / image (viewers dédiés, pas de contenu texte),
+//   4. md side → colle / presentation / preview (rendus dérivés),
+//   5. html side → preview html,
+//   6. spreadsheet / datafilter (outils — état SQLite, jamais l'éditeur),
+//   7. else → Éditeur CodeMirror (tout fichier texte kind file/undefined).
+// Un kind de données inconnu sans branche tomberait dans l'éditeur pour un
+// chemin `x://…` — signe d'erreur à la relecture, pas d'un comportement voulu.
 import { extFromPath } from "@/lib/editor-languages";
 import { isPdfPath, isImagePath, isMarkdownPath } from "@/lib";
 import type { Tab } from "@/lib/panel-store";
@@ -20,6 +32,7 @@ import LazyDataFilterViewer from "@/components/datafilter/LazyDataFilterViewer.s
 import type { TypographySettings } from "@/lib/typography";
 import { getTexlabClient } from "@/lib/lsp/texlab";
 import { getMarkdownOxideClient } from "@/lib/lsp/markdown-oxide";
+import { contentFor, contentVersionOf } from "@/stores/content.svelte";
 
 let {
   tab = null as Tab | null,
@@ -34,7 +47,6 @@ let {
   prosemarkOn = false,
   forwardToPage = null as number | null,
   onInverseSync,
-  onJumpToLine,
   buildRev = 0,
   onToggleFullscreen,
 }: {
@@ -52,7 +64,6 @@ let {
   presentationOn?: never;
   forwardToPage?: number | null;
   onInverseSync?: (file: string, line: number, col?: number) => void;
-  onJumpToLine?: (line: number) => void;
   buildRev?: number;
   onToggleFullscreen?: () => void;
 } = $props();
@@ -70,7 +81,7 @@ let {
   <LazySvarCalendarPanel />
 {:else if tab.kind === "doc" && isMarkdownPath(tab.path)}
   <LazyDocPreview
-    value={tab.source}
+    value={contentFor(tab.path)}
     filePath={tab.path}
   />
 {:else if isPdfPath(tab.path)}
@@ -85,30 +96,31 @@ let {
   <ImageViewer path={tab.path} />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "colle"}
   <LazyCollePreview
-    value={tab.source}
+    value={contentFor(tab.path)}
     filePath={tab.path}
   />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}
   <LazySlideDeck
-    value={tab.source}
+    value={contentFor(tab.path)}
     filePath={tab.path}
     fullscreen={false}
     onExitFullscreen={() => {}}
   />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md"}
   <LazyMarkdownPreview
-    value={tab.source}
+    value={contentFor(tab.path)}
+    rev={contentVersionOf(tab.path)}
     filePath={tab.path}
-    {onJumpToLine}
+    tabId={tab.id}
   />
 {:else if panelId === "main" && extFromPath(tab.path) === "md" && prosemarkOn}
   <LazyProseMark
-    value={tab.source}
+    value={contentFor(tab.path)}
     onChange={(next: string) => onSourceChange?.(next)}
   />
 {:else if extFromPath(tab.path) === "html" && panelId !== "main"}
   <LazyHtmlPreview
-    value={tab.source}
+    value={contentFor(tab.path)}
     filePath={tab.path}
   />
 {:else if tab.kind === "spreadsheet"}
@@ -121,7 +133,7 @@ let {
   />
 {:else}
   <Editor
-    value={tab.source}
+    value={contentFor(tab.path)}
     language={extFromPath(tab.path)}
     onChange={(next) => onSourceChange?.(next)}
     {jumpToLine}

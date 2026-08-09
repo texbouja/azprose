@@ -24,6 +24,7 @@ export type { ProjectConfig } from "./project-config";
 export { buildCommands } from "./commands";
 export { filterAndRankCommands } from "./command-search";
 export { displayKey, shortcutLabel } from "./platform";
+export { ContentStore, type ContentFs, type ContentHooks, type ContentEntry } from "./content-store";
 export {
   pickFolder,
   pickAnyFile,
@@ -89,3 +90,9 @@ export {
 } from "./print-templates";
 export { parseFrontMatter, type FrontMatter } from "./front-matter";
 export { imgMime, uint8ToBase64 } from "./image-uri";
+export {
+  createPhaseMachine,
+  type PhaseDef,
+  type PhaseMachine,
+  type PhaseMachineTransitions,
+} from "./phase-machine";

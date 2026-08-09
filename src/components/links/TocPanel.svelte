@@ -8,6 +8,7 @@
     type TocFileNode,
     type TocNode,
   } from "@/lib/toc-forest";
+  import { makeTocMemo } from "@/lib/toc-cache";
   import { buildHelpForest } from "@/help/help-toc";
   import { isHelpPath, helpDir } from "@/lib/help-install";
 
@@ -84,6 +85,11 @@
   // Anti-flicker : un changement de fichier (clé) vide l'arbre et affiche
   // « chargement » ; un changement de contenu (frappe) re-construit en
   // arrière-plan et conserve l'ancien arbre jusqu'à l'arrivée du nouveau.
+  // Mémoïsation (phases 6/6bis) : une instance par panneau — un contenu dont
+  // le hash STRUCTURAL n'a pas changé (frappe dans le corps, évaluation de
+  // colle) court-circuite le rebuild (buildTocForest retourne l'arbre
+  // mémoïsé sans re-lire les fichiers liés).
+  let tocMemo = makeTocMemo();
   let prevKey = "";
   let buildVersion = 0;
 
@@ -128,7 +134,7 @@
               referenceSource: src ?? undefined,
               readText,
               getIndex: getFileIndex,
-            });
+            }, tocMemo);
         if (version !== buildVersion) return; // requête obsolète
         forest = f;
         // Mode aide : la TOC se présente repliée comme le sommaire d'un

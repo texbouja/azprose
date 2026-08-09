@@ -132,12 +132,18 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
 }
 
 /** Faux PanelManager minimal (sans FS) pour les chemins qui ouvriraient un
- *  fichier inconnu — le reducer ne lit que quelques membres. */
-function minimalFakePm(linkedTabId: string | null = null): PanelManager {
+ *  fichier inconnu — le reducer ne lit que quelques membres. Le contrat du
+ *  registre de liens (phase 2 B) est reproduit fidèlement. */
+function minimalFakePm(): PanelManager {
+  const links = new Map<string, string | null>();
   return {
     main: { activeTabId: "t1", activePath: "/a.md" },
-    side: { visible: false, activeTab: undefined, tabs: [] },
-    previewLinkedTabId: linkedTabId,
+    side: { visible: false, activeTabId: "s1", activeTab: undefined, tabs: [] },
+    get previewLinkedTabId() {
+      return links.get("s1") ?? null;
+    },
+    linkedEditorTabId: (s: string) => links.get(s) ?? null,
+    linkPreview: (s: string, m: string | null) => void links.set(s, m),
     openInSide: async () => {},
   } as unknown as PanelManager;
 }
@@ -231,7 +237,7 @@ test("(b) premier lien : previewLinkedTabId = tab éditeur ACTIF (jamais un tab 
 test("(b) lien déjà établi : followPreviewNavigation suit (no-op aligné, pas de notification)", async () => {
   const pm = new PanelManager();
   seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
-  pm.previewLinkedTabId = "t1";
+  pm.linkPreview("s1", "t1");
   const deps = makeDeps(pm);
 
   await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
@@ -247,7 +253,7 @@ test("(b) back/forward : le lien existant suit (rien n'est re-lié au mauvais é
     { id: "s1", path: "/a.md", preview: true, renderMode: "preview" },
     { id: "s2", path: "/b.md", preview: true, renderMode: "preview" },
   ]);
-  pm.previewLinkedTabId = "t1";
+  pm.linkPreview("s1", "t1");
   const deps = makeDeps(pm, {
     navBack: () => "/a.md",
     navForwardStep: () => "/a.md",
@@ -362,7 +368,7 @@ test("history back : push-forward de la page courante + navigation du tab previe
     { id: "s1", path: "/a.md", preview: true, renderMode: "preview" },
     { id: "s2", path: "/b.md", preview: true, renderMode: "preview" },
   ], { sideActive: "s2" });
-  pm.previewLinkedTabId = "t1";
+  pm.linkPreview("s1", "t1");
   const deps = makeDeps(pm, { navBack: () => "/a.md" });
 
   await navigate(deps, { type: "preview-back" });
@@ -370,6 +376,29 @@ test("history back : push-forward de la page courante + navigation du tab previe
   expect(deps.calls.navPushForward).toEqual(["/b.md"]);
   expect(pm.side.activeTabId).toBe("s1"); // dédup → select du tab /a.md
   expect(pm.side.visible).toBe(true);
+});
+
+// ── phase 3 (C) : jump-to-line porte l'id de session du tab preview ────────
+// Le dbl-clic preview émet azprose:jump-to-line {path, line, sessionId}. Le
+// reducer le transmet à l'util éditeur qui résout le saut via la table de
+// liens (phase 2 B) — jamais un doublon créé par une recherche par chemin.
+// Sans sessionId, le comportement legacy par chemin reste identique.
+
+test("(c) jump-to-line : sessionId transmis tel quel à l'util éditeur", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
+  const received: Array<[number, string | null | undefined, string | null | undefined]> = [];
+  const deps = makeDeps(pm, {
+    jumpToLine: (line, path, sessionId) => { received.push([line, path, sessionId]); },
+  });
+
+  await navigate(deps, { type: "jump-to-line", line: 5, path: "/a.md", sessionId: "s1" });
+
+  expect(received).toEqual([[5, "/a.md", "s1"]]);
+
+  // Sans sessionId → undefined (legacy) — le reducer ne réinvente rien.
+  await navigate(deps, { type: "jump-to-line", line: 7, path: "/b.md" });
+  expect(received[1]).toEqual([7, "/b.md", undefined]);
 });
 
 test("open-help : racine doc déjà ouverte → sélection, pas de ré-ouverture", async () => {
@@ -393,4 +422,120 @@ test("doc-navigate : délègue à openDocArticle (jamais l'éditeur main)", asyn
   await navigate(deps, { type: "doc-navigate", path: "/help/guide.md", heading: "Liens" });
 
   expect(called).toEqual({ path: "/help/guide.md", heading: "Liens" });
+});
+
+// ── phase 1 (suite) : ouvertures d'outils — canal 3 termine par navigate() ──
+// Le rapport architecture-review exige les tests : dédup openSpreadsheet,
+// pile openDataFilter, openCustom calendar, transition create→upgrade,
+// gardes doc (cas du transcript). Les sagas déléguent au PanelManager RÉEL
+// (pures) — les assertions vérifient le COMPORTEMENT de session.
+
+test("open-spreadsheet : dédup par spreadsheetId — 2 ouvertures → 1 tab + visibilité side", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }]);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-spreadsheet", spreadsheetId: "s1", title: "Notes" });
+  await navigate(deps, { type: "open-spreadsheet", spreadsheetId: "s1", title: "Notes" });
+
+  const tabs = pm.side.tabs.filter(t => t.kind === "spreadsheet" && t.spreadsheetId === "s1");
+  expect(tabs).toHaveLength(1);
+  expect(pm.side.activeTabId).toBe(tabs[0].id);
+  expect(pm.side.visible).toBe(true);
+});
+
+test("open-spreadsheet : ids différents → 2 tabs", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }]);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-spreadsheet", spreadsheetId: "s1", title: "A" });
+  await navigate(deps, { type: "open-spreadsheet", spreadsheetId: "s2", title: "B" });
+
+  expect(pm.side.tabs.filter(t => t.kind === "spreadsheet")).toHaveLength(2);
+});
+
+test("open-datafilter : dédup par ENSEMBLE trié des ids (ordre indifférent)", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }]);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-datafilter", datafilterIds: ["g1", "g2"], title: "Pile" });
+  await navigate(deps, { type: "open-datafilter", datafilterIds: ["g2", "g1"], title: "Pile" });
+  expect(pm.side.tabs.filter(t => t.kind === "datafilter")).toHaveLength(1);
+  expect(pm.side.activeTabId).toBe(pm.side.tabs[0].id);
+
+  await navigate(deps, { type: "open-datafilter", datafilterIds: ["g1", "g3"], title: "Pile" });
+  expect(pm.side.tabs.filter(t => t.kind === "datafilter")).toHaveLength(2);
+});
+
+test("open-custom : dédup par panelId (calendar)", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }]);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-custom", panelId: "calendar", title: "Calendrier" });
+  await navigate(deps, { type: "open-custom", panelId: "calendar", title: "Calendrier" });
+
+  const tabs = pm.side.tabs.filter(t => t.kind === "custom" && t.panelId === "calendar");
+  expect(tabs).toHaveLength(1);
+  expect(pm.side.activeTabId).toBe(tabs[0].id);
+});
+
+test("set-spreadsheet-id : transition create→upgrade — le tab create reçoit id + titre", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "spreadsheet://new", kind: "spreadsheet" }], { sideActive: "s1" });
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "set-spreadsheet-id", spreadsheetId: "s42", title: "Créé" });
+
+  const tab = pm.side.tabs.find(t => t.id === "s1")!;
+  expect(tab.kind).toBe("spreadsheet");
+  expect(tab.spreadsheetId).toBe("s42");
+  expect(tab.title).toBe("Créé");
+});
+
+test("set-spreadsheet-id : no-op sans tab create (le tab doc reste un doc)", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/help/index.md", kind: "doc" }]);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "set-spreadsheet-id", spreadsheetId: "s42", title: "X" });
+
+  const tab = pm.side.tabs.find(t => t.id === "s1")!;
+  expect(tab.kind).toBe("doc");
+  expect(tab.spreadsheetId).toBeUndefined();
+  expect(tab.path).toBe("/help/index.md");
+});
+
+test("set-spreadsheet-title : met à jour le titre du tab (no-op si inchangé)", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "spreadsheet://s1", kind: "spreadsheet" }]);
+  pm.side.tabs = pm.side.tabs.map(t => t.id === "s1" ? { ...t, spreadsheetId: "s1", title: "Avant" } : t);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "set-spreadsheet-title", spreadsheetId: "s1", title: "Après" });
+
+  expect(pm.side.tabs.find(t => t.id === "s1")!.title).toBe("Après");
+});
+
+test("gardes doc : ouvrir un outil ne ré-affecte JAMAIS le tab doc (aide intégrée)", async () => {
+  const pm = new PanelManager();
+  seed(
+    pm,
+    [{ id: "t1", path: "/a.md" }],
+    [{ id: "s1", path: "/vault/.azprose/help/index.md", kind: "doc" }],
+    { sideActive: "s1" },
+  );
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-spreadsheet", spreadsheetId: "s1", title: "Tableur" });
+  await navigate(deps, { type: "open-custom", panelId: "calendar", title: "Calendrier" });
+
+  const doc = pm.side.tabs.find(t => t.kind === "doc")!;
+  expect(doc).toBeDefined();
+  expect(doc.path).toBe("/vault/.azprose/help/index.md");
+  expect(pm.side.tabs.filter(t => t.kind === "doc")).toHaveLength(1);
+  // Le tab doc n'est ni sélectionné ni transformé : un outil est actif.
+  expect(pm.side.activeTabId).not.toBe("s1");
 });

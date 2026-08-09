@@ -25,12 +25,16 @@
    * (planches) — derniers réglages utilisés, chargés à l'ouverture, écrits à
    * l'export.
    *
-   * Machine à états : "idle" → "loading" (lecture du fichier de réglages) →
-   * "ready" → "exporting" → "done" ; "error" sur échec (ou aucune planche).
+   * Machine à états (phase 5, idée D) : "idle" → "loading" (lecture du fichier
+   * de réglages) → "ready" → "exporting" → "done" ; "error" sur échec (ou
+   * aucune planche). Transitions par événements (`createPhaseMachine`) :
+   * open / loaded / empty / preview / previewed / failed / export / exported /
+   * cancelled — les événements hors alphabet sont ignorés.
    */
   import { Button, Overlay } from "@/components/primitives";
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
+  import { createPhaseMachine, type PhaseDef } from "@/lib/phase-machine";
   import { Counter, Combo, Segmented, Slider, Switch, Text } from "@svar-ui/svelte-core";
   import {
     DEFAULT_PRINT_REQUEST,
@@ -73,8 +77,38 @@
 
   let t = $derived(getT($language));
 
-  type Phase = "idle" | "loading" | "ready" | "previewing" | "exporting" | "done" | "error";
-  let phase = $state<Phase>("idle");
+  type PrintPhase =
+    | "idle"
+    | "loading"
+    | "ready"
+    | "previewing"
+    | "exporting"
+    | "done"
+    | "error";
+  type PrintEvent =
+    | "open"
+    | "loaded"
+    | "empty"
+    | "preview"
+    | "previewed"
+    | "failed"
+    | "export"
+    | "exported"
+    | "cancelled";
+
+  // Machine à phases : chaque phase n'accepte que son alphabet (les
+  // événements hors alphabet sont ignorés — plus d'état poubelle).
+  const PRINT_PHASES: PhaseDef<PrintPhase, PrintEvent>[] = [
+    { name: "idle", on: { open: "loading" } },
+    { name: "loading", on: { loaded: "ready", empty: "error" } },
+    { name: "ready", on: { preview: "previewing", export: "exporting" } },
+    { name: "previewing", on: { previewed: "ready", failed: "error" } },
+    { name: "exporting", on: { exported: "done", cancelled: "ready", failed: "error" } },
+    { name: "done", on: {} },
+    { name: "error", on: {} },
+  ];
+
+  let machine = $state(createPhaseMachine(PRINT_PHASES, { initial: "idle" }));
   let error = $state("");
 
   // Requête d'impression éditée par l'overlay (clone des défauts puis merge
@@ -93,7 +127,9 @@
   $effect(() => {
     if (!open) return;
     const isPlanches = mode === "planches";
-    phase = "loading";
+    // Reset INCONDITIONNEL à chaque ouverture (cycle de vie) : le chargement
+    // des réglages repart depuis n'importe quelle phase précédente.
+    machine.reset("loading");
     error = "";
     includeEval = false;
     planchesCount = 0;
@@ -107,10 +143,10 @@
         const n = parsePlanches(source).planches.length;
         planchesCount = n;
         planchesReady = n > 0;
-        phase = n ? "ready" : "error";
+        machine.send(n ? "loaded" : "empty");
         if (!n) error = t("colle.printEmpty");
       } else {
-        phase = "ready";
+        machine.send("loaded");
       }
     });
     return () => {
@@ -165,7 +201,7 @@
    */
   async function handlePreview() {
     if (!source || !filePath) return;
-    phase = "previewing";
+    if (!machine.send("preview")) return; // hors alphabet (ex. déjà en cours)
     error = "";
     try {
       if (mode === "planches") {
@@ -176,33 +212,33 @@
       }
       // L'aperçu reste ouvert — on revient à l'état prêt (les réglages
       // peuvent être ajustés et relancés).
-      phase = "ready";
+      machine.send("previewed");
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
-      phase = "error";
+      machine.send("failed");
     }
   }
 
   async function handleExport() {
     if (!source || !filePath) return;
-    phase = "exporting";
+    if (!machine.send("export")) return; // hors alphabet (ex. déjà en cours)
     error = "";
     try {
       if (mode === "planches") {
         const out = await exportPlanchesPdf(buildColleReq());
         if (out === false) {
           error = t("colle.printEmpty");
-          phase = "error";
+          machine.send("failed");
           return;
         }
         if (out === null) {
           // Dialogue de destination annulé — on reste sur l'overlay.
-          phase = "ready";
+          machine.send("cancelled");
           return;
         }
         await savePlanchesPrintRequest(req);
         notifications.setInfo(t("colle.printDone", { path: out }));
-        phase = "done";
+        machine.send("exported");
         onClose();
         return;
       }
@@ -210,16 +246,16 @@
       const out = await exportMarkdownPdf(source, theme, filePath, req);
       if (out === null) {
         // Dialogue de destination annulé — on reste sur l'overlay.
-        phase = "ready";
+        machine.send("cancelled");
         return;
       }
       await savePrintRequest(req);
       notifications.setInfo(t("pdf.exported", { path: out }));
-      phase = "done";
+      machine.send("exported");
       onClose();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
-      phase = "error";
+      machine.send("failed");
     }
   }
 </script>
@@ -246,15 +282,15 @@
     </div>
 
     <div class="print-overlay__body">
-      {#if phase === "loading"}
+      {#if machine.current === "loading"}
         <p class="print-overlay__status">{t("print.loading")}</p>
-      {:else if phase === "previewing"}
+      {:else if machine.current === "previewing"}
         <p class="print-overlay__status">{t("print.previewing")}</p>
-      {:else if phase === "exporting"}
+      {:else if machine.current === "exporting"}
         <p class="print-overlay__status">{t("print.exporting")}</p>
-      {:else if phase === "error"}
+      {:else if machine.current === "error"}
         <p class="print-overlay__error">{error}</p>
-      {:else if phase === "ready"}
+      {:else if machine.current === "ready"}
         {#if mode === "planches"}
           <!-- Planches : avec/sans évaluation + compteur -->
           <label class="print-overlay__checkbox">
@@ -423,10 +459,10 @@
       {/if}
     </div>
 
-    {#if phase === "ready" || phase === "error"}
+    {#if machine.current === "ready" || machine.current === "error"}
       <div class="print-overlay__actions">
         <Button variant="ghost" onclick={onClose}>{t("common.cancel")}</Button>
-        {#if phase === "ready" && (mode === "markdown" || planchesReady)}
+        {#if machine.current === "ready" && (mode === "markdown" || planchesReady)}
           <Button variant="outline" onclick={handlePreview}>{t("print.preview")}</Button>
           <Button variant="solid" onclick={handleExport}>{t("print.export")}</Button>
         {/if}

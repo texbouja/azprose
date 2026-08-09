@@ -26,6 +26,29 @@ import { parseMarkdownToc } from "@/lib/markdown-toc";
 import type { TocFileNode, TocHeadingNode, TocForest } from "@/lib/toc-forest";
 import { joinPath } from "@/lib/paths-utils";
 
+/** Hash djb2 (32 bits non signé, hex) — même convention que toc-cache. */
+function djb2(parts: string[]): string {
+  let h = 5381;
+  for (const s of parts) {
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    }
+  }
+  return h.toString(16);
+}
+
+/** Hash STRUCTURAL de la forêt d'aide : dérive du CATALOGUE (chemins + titres
+ *  des articles, qui structurent l'arbre). Le catalogue est figé au build
+ *  (une évolution de la doc → nouveau HELP_VERSION → réinstallation → nouvelle
+ *  session), mais le hash reste honnête : il change si l'ordre ou les titres
+ *  du guide changent. La forêt d'aide n'est jamais mémoïsée via toc-cache
+ *  (le catalogue est déjà statique), le champ est informatif. */
+function helpStructuralHash(): string {
+  const parts: string[] = [];
+  for (const a of catalog) parts.push(`${a.path}::${a.title}`);
+  return djb2(parts);
+}
+
 export interface BuildHelpTocOptions {
   /** Dossier d'installation de l'aide (absolu) : `<racine>/.azprose/help`. */
   helpDir: string;
@@ -95,7 +118,7 @@ export async function buildHelpForest(opts: BuildHelpTocOptions): Promise<TocFor
   }
 
   const indexPath = joinPath(helpDir, "index.md");
-  if (articles.length === 0) return { root: null, displayPath: indexPath };
+  if (articles.length === 0) return { root: null, displayPath: indexPath, structuralHash: helpStructuralHash() };
 
   const indexArt = articles.find((a) => a.rel === "index.md") ?? null;
   const chapters = articles.filter((a) => a.rel !== "index.md").map(chapterBranch);
@@ -109,5 +132,6 @@ export async function buildHelpForest(opts: BuildHelpTocOptions): Promise<TocFor
       children: chapters,
     },
     displayPath: indexArt ? indexArt.abs : articles[0].abs,
+    structuralHash: helpStructuralHash(),
   };
 }

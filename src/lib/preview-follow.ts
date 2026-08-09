@@ -36,9 +36,10 @@ export async function followPreviewNavigation(
 
   const linked = pm.main.tabs.find(t => t.id === linkedId);
   // Lien périmé : tab fermé ou devenu un onglet d'outil → délie et laisse
-  // l'appelant retomber sur son comportement legacy.
+  // l'appelant retomber sur son comportement legacy. (linkedId non-null
+  // garantit pm.side.activeTabId non-null — le getter lit le lien de ce tab.)
   if (!linked || (linked.kind && linked.kind !== "file")) {
-    pm.previewLinkedTabId = null;
+    pm.linkPreview(pm.side.activeTabId!, null);
     return { followed: false, parked: false };
   }
 
@@ -56,7 +57,7 @@ export async function followPreviewNavigation(
     t => t.id !== linkedId && (!t.kind || t.kind === "file") && norm(t.path) === target,
   );
   if (existing) {
-    pm.previewLinkedTabId = existing.id;
+    pm.linkPreview(pm.side.activeTabId!, existing.id);
     if (existing.preview) {
       pm.main.tabs = pm.main.tabs.map(t => t.id === existing.id ? { ...t, preview: false } : t);
     }

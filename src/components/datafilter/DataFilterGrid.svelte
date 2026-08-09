@@ -37,6 +37,7 @@
   import { dataBus, createOrigin } from "@/lib/data/bus";
   import { anyOf, ofType } from "@/lib/data/events";
   import { SqliteGridProvider } from "@/lib/data/providers";
+  import { createPhaseMachine, type PhaseDef } from "@/lib/phase-machine";
 
   // ── Densité (constante module : identité STABLE d'un render à l'autre) ────
   // Le Grid ré-initialise son DataStore à chaque changement de prop `sizes` —
@@ -60,7 +61,6 @@
     onRemove?: () => void;
   } = $props();
 
-  let loading = $state(true);
   let error = $state<string | null>(null);
   let gridName = $state("");
   let sourceLinked = $state(false);
@@ -319,6 +319,22 @@
   /** Dernier déclencheur de load() (debug boucle). */
   let loadTrigger = "mount";
 
+  // Machine à phases (phase 5, idée D) : `loading|ready` — un événement
+  // `load` pendant un chargement en cours est IGNORÉ (plus de requête en
+  // double quand une notification du bus arrive pendant le fetch). `failed`
+  // ramène la carte à ready (elle reste utilisable). `tooManyReloads` reste
+  // un FILET externe pour la boucle pathologique (25+ loads en 5 s).
+  type GridPhase = "idle" | "loading" | "ready";
+  type GridEvent = "load" | "loaded" | "failed";
+  const GRID_PHASES: PhaseDef<GridPhase, GridEvent>[] = [
+    { name: "idle", on: { load: "loading" } },
+    { name: "loading", on: { loaded: "ready", failed: "ready" } },
+    { name: "ready", on: { load: "loading" } },
+  ];
+  let machine = $state(createPhaseMachine(GRID_PHASES, { initial: "idle" }));
+  /** Reflet UI de la machine de chargement (spinner). */
+  let loading = $derived(machine.current === "loading");
+
   // Garde anti-boucle : si un chemin d'événements ré-appelle load() en rafale
   // (ex. une notification qui se ré-émet), on coupe AVANT de geler l'interface
   // et on logge la boucle pour le debug.
@@ -337,6 +353,7 @@
       console.error("datafilter load() en boucle — coupe la cascade. dernier déclencheur:", loadTrigger);
       return;
     }
+    if (!machine.send("load")) return; // chargement en cours → ignoré
     error = null;
     const gen = ++loadGen;
     loadTrigger = "load()";
@@ -373,9 +390,10 @@
     } catch (err) {
       if (gen === loadGen) {
         error = String(err);
+        machine.send("failed"); // loading → ready : la carte reste prête
       }
     } finally {
-      if (gen === loadGen) loading = false;
+      if (gen === loadGen) machine.send("loaded");
     }
   }
 

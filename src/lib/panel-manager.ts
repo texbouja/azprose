@@ -1,4 +1,5 @@
 import { PanelState, type Tab, type TabSource } from "./panel-store";
+import type { ContentStore } from "./content-store";
 
 export type LayoutMode = "main" | "main+side";
 
@@ -16,18 +17,51 @@ export class PanelManager {
   splitRatio = 0.45;
   private savedSplitRatio = 0.55;
 
-  /** Id of the MAIN editor tab the side preview is linked to. Set when a
-   *  preview is launched from an editor tab (Preview button, wikilink-first-
-   *  click); every navigation inside the preview (wikilink, back/forward,
-   *  home, TOC) re-points THIS tab to the rendered file — the editor follows
-   *  the preview. Never persisted; re-established when the user re-launches
-   *  the preview. */
-  previewLinkedTabId: string | null = null;
+  /** Link registry (Phase 2 B) : for each SIDE preview tab, the id of the MAIN
+   *  editor tab it is linked to. Set when a preview is launched from an editor
+   *  tab (Preview button, wikilink-first-click); every navigation inside the
+   *  preview (wikilink, back/forward, home, TOC) re-points THE LINKED MAIN TAB
+   *  to the rendered file — the editor follows the preview. Never persisted;
+   *  re-established when the user re-launches the preview.
+   *
+   *  The registry replaces the single `previewLinkedTabId` field: one side
+   *  panel shows ONE preview tab at a time, but its identity is a session
+   *  concern (tab ids change on relaunch) — callers must pass the side tab id
+   *  they just opened/activated explicitly, never read it back speculatively. */
+  private previewLinks = new Map<string, string>();
+
+  /** Main editor tab linked to the ACTIVE side tab, if any (legacy getter
+   *  used by followPreviewNavigation and the reducer guard). */
+  get previewLinkedTabId(): string | null {
+    const sideId = this.side.activeTabId;
+    if (!sideId) return null;
+    return this.previewLinks.get(sideId) ?? null;
+  }
+
+  /** Link `sideTabId` (a preview side tab) to `mainTabId` (an editor main
+   *  tab). Passing `null` breaks the link (keeps the entry for other tabs). */
+  linkPreview(sideTabId: string, mainTabId: string | null): void {
+    if (mainTabId === null) this.previewLinks.delete(sideTabId);
+    else this.previewLinks.set(sideTabId, mainTabId);
+  }
+
+  /** Editor main tab linked to `sideTabId`, or null. */
+  linkedEditorTabId(sideTabId: string): string | null {
+    return this.previewLinks.get(sideTabId) ?? null;
+  }
+
+  /** Break every editor↔preview link (no preview tab left in the side panel). */
+  clearPreviewLinks(): void {
+    this.previewLinks.clear();
+  }
 
   constructor(opts?: {
     onSessionChange?: (data: PanelManagerSession) => void;
     onFileOpen?: (path: string) => void;
     onError?: (title: string, message: string) => void;
+    /** Source unique du contenu par chemin (phase 7, idée E) — passée aux
+     *  deux PanelState ; optionnelle (tests sans store → lecture disque). */
+    content?: ContentStore;
   }) {
     const pm = this;
     this.main = new PanelState("main", {
@@ -35,14 +69,14 @@ export class PanelManager {
       onSessionChange: opts?.onSessionChange
         ? () => opts.onSessionChange!(pm.toJSON())
         : undefined,
-    });
+    }, opts?.content);
     this.side = new PanelState("side", {
       onFileOpen: opts?.onFileOpen,
       onError: opts?.onError,
       onSessionChange: opts?.onSessionChange
         ? () => opts.onSessionChange!(pm.toJSON())
         : undefined,
-    });
+    }, opts?.content);
   }
 
   get sideVisible(): boolean {

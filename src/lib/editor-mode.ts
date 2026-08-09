@@ -45,9 +45,6 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
       break;
     case "preview": {
       if (!isPreviewable) return;
-      // Link the side preview to the CURRENT editor tab: every navigation
-      // inside the preview re-points this tab (the editor follows the preview).
-      ctx.pm.previewLinkedTabId = ctx.pm.main.activeTabId;
       const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "preview");
@@ -62,12 +59,17 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.pm.sideVisible = true;
         ctx.bumpPanelVersion();
       }
+      // Link the side preview (now active) to the CURRENT editor tab: every
+      // navigation inside the preview re-points this tab (the editor follows
+      // the preview).
+      if (ctx.pm.side.activeTabId) {
+        ctx.pm.linkPreview(ctx.pm.side.activeTabId, ctx.pm.main.activeTabId);
+      }
       break;
     }
     case "presentation": {
       if (!isMd) return;
       ctx.setProsemarkOn(true);
-      ctx.pm.previewLinkedTabId = ctx.pm.main.activeTabId;
       const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "presentation");
@@ -82,13 +84,15 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.pm.sideVisible = true;
         ctx.bumpPanelVersion();
       }
+      if (ctx.pm.side.activeTabId) {
+        ctx.pm.linkPreview(ctx.pm.side.activeTabId, ctx.pm.main.activeTabId);
+      }
       break;
     }
     case "colle": {
       if (!isMd) return;
       // Le main panel reste sur l'éditeur (règle structurelle) ; la vue colles
       // s'ouvre dans le side panel avec renderMode "colle".
-      ctx.pm.previewLinkedTabId = ctx.pm.main.activeTabId;
       const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "colle");
@@ -102,6 +106,9 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
         ctx.bumpPanelVersion();
+      }
+      if (ctx.pm.side.activeTabId) {
+        ctx.pm.linkPreview(ctx.pm.side.activeTabId, ctx.pm.main.activeTabId);
       }
       break;
     }
@@ -145,13 +152,34 @@ export async function inverseSync(ctx: EditorModeDeps, file: string, line: numbe
   setEditorMode(ctx, "raw");
 }
 
-export async function jumpToLine(ctx: EditorModeDeps, line: number, path?: string | null) {
+export async function jumpToLine(ctx: EditorModeDeps, line: number, path?: string | null, sessionId?: string | null) {
+  const target = path ?? ctx.pm.side.activeTab?.path;
+  // Phase 3 (C) : `sessionId` = id du tab side émetteur du double-clic.
+  // Résolution VIA la table de liens (phase 2 B) : si CE preview est lié à un
+  // tab éditeur main ET que le fichier rendu est celui du tab lié, le saut va
+  // directement dans ce tab — jamais un doublon créé par une recherche par
+  // chemin. Sinon (fichier rendu ≠ tab lié, ex. bloc transclusé) → repli
+  // historique : ouvrir le fichier RENDU dans l'éditeur.
+  if (target && sessionId) {
+    const linkedId = ctx.pm.linkedEditorTabId(sessionId);
+    const linked = linkedId
+      ? ctx.pm.main.tabs.find((t: any) => t.id === linkedId && (!t.kind || t.kind === "file"))
+      : null;
+    if (linked) {
+      const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
+      if (norm(linked.path) === norm(target)) {
+        ctx.pm.main.select(linked.id);
+        ctx.setJumpToLine(line);
+        setEditorMode(ctx, "raw");
+        return;
+      }
+    }
+  }
   // Double-click in the preview: the jump targets the file that is RENDERED
   // (the preview tab's path — the tab is re-associated on every navigation),
   // never the file active in the main panel. The .md IS opened if it isn't
   // already in the editor (forced open — user rule), but ALWAYS the rendered
   // file, never an arbitrary active tab.
-  const target = path ?? ctx.pm.side.activeTab?.path;
   if (target) {
     const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
     const normTarget = norm(target);

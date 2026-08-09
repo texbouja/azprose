@@ -19,13 +19,15 @@ import type {
   OpenGridStackCommand,
   OpenGridCommand,
 } from "./events";
+import type { NavIntent } from "@/lib/navigation";
 
-/** Navigateur (PanelManager) — la seule porte d'entrée du reducer. */
-export interface PanelNavigator {
-  openSpreadsheetInSide(spreadsheetId: string, title: string): void;
-  openDataFilterInSide(datafilterIds: string[], title: string): void;
-  setSpreadsheetTabTitle(spreadsheetId: string, title: string): void;
-  setSpreadsheetTabId(spreadsheetId: string, title: string): void;
+/** Navigateur — la SEULE porte d'entrée du reducer (règle 9). Les sagas
+ *  terminent TOUJOURS par `navigate(intent)` ; l'hôte (app.svelte) branche
+ *  ce dispatcher sur `navigateVoid(navDeps, intent)`. Le reducer applique
+ *  l'intention sur la session (PanelManager) — jamais d'appels directs à
+ *  PanelManager depuis une saga. */
+export interface NavDispatcher {
+  navigate(intent: NavIntent): void;
 }
 
 /** Accès IPC du domaine datagrid/spreadsheet (wrappers `@/datagrid/store`).
@@ -46,14 +48,14 @@ export interface GridDomain {
 }
 
 export interface CommandDeps {
-  nav: PanelNavigator;
+  nav: NavDispatcher;
   domain: GridDomain;
 }
 
 /** Saga `open-grid` : trouve le grid lié au tableur, ou le crée depuis le
- *  tableur source (config de vue seulement — jamais de données), puis ouvre
- *  DataFilter en side avec ce grid. Même logique que l'ancien listener
- *  `azprose:datafilter-open` d'app.svelte. */
+ *  tableur source (config de vue seulement — jamais de données), puis poste
+ *  l'intention `open-datafilter` (pile d'un grid). Même logique que l'ancien
+ *  listener `azprose:datafilter-open` d'app.svelte. */
 export async function openGrid(
   spreadsheetId: string,
   name: string | undefined,
@@ -71,7 +73,11 @@ export async function openGrid(
       spreadsheetId,
     );
   }
-  nav.openDataFilterInSide([gridId], name || "Filtre de données");
+  nav.navigate({
+    type: "open-datafilter",
+    datafilterIds: [gridId],
+    title: name || "Filtre de données",
+  });
 }
 
 /** Saga `open-grid-stack` : ouvre TOUS les tableurs d'un ensemble (colloscope)
@@ -105,7 +111,11 @@ export async function openGridStack(
       gridIds.push(gridId);
     }
   }
-  nav.openDataFilterInSide(gridIds, cmd.name || "Filtre de données");
+  nav.navigate({
+    type: "open-datafilter",
+    datafilterIds: gridIds,
+    title: cmd.name || "Filtre de données",
+  });
 }
 
 /** Dispatch central des commandes : chaque branche est une saga qui termine
@@ -128,7 +138,11 @@ export async function runCommand(
         return;
       }
       case "command:open-spreadsheet": {
-        nav.openSpreadsheetInSide(cmd.spreadsheetId, cmd.name || "Tableur");
+        nav.navigate({
+          type: "open-spreadsheet",
+          spreadsheetId: cmd.spreadsheetId,
+          title: cmd.name || "Tableur",
+        });
         return;
       }
       case "command:open-spreadsheet-new": {
@@ -136,15 +150,27 @@ export async function runCommand(
         // faisait `spreadsheetGet` avant d'ouvrir) — le titre correct est
         // affiché dès l'ouverture, pas seulement après le reload du viewer.
         const sheet = await deps.domain.getSpreadsheet(cmd.spreadsheetId).catch(() => null);
-        nav.openSpreadsheetInSide(cmd.spreadsheetId, sheet?.name || "Tableur");
+        nav.navigate({
+          type: "open-spreadsheet",
+          spreadsheetId: cmd.spreadsheetId,
+          title: sheet?.name || "Tableur",
+        });
         return;
       }
       case "command:set-spreadsheet-id": {
-        nav.setSpreadsheetTabId(cmd.spreadsheetId, cmd.title);
+        nav.navigate({
+          type: "set-spreadsheet-id",
+          spreadsheetId: cmd.spreadsheetId,
+          title: cmd.title,
+        });
         return;
       }
       case "command:set-tab-title": {
-        nav.setSpreadsheetTabTitle(cmd.spreadsheetId, cmd.title);
+        nav.navigate({
+          type: "set-spreadsheet-title",
+          spreadsheetId: cmd.spreadsheetId,
+          title: cmd.title,
+        });
         return;
       }
     }

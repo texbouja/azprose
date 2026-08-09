@@ -1,10 +1,75 @@
 import { basename, isOpenablePath, isPdfPath, isImagePath } from "@/lib";
 import { readText, writeText } from "@/lib/files";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
+import { ContentStore } from "@/lib/content-store";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation" | "colle";
 export type TabSource = "latex";
 export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter" | "doc";
+
+/**
+ * Classification exhaustive du kind d'un tab (phase 4, idée G du rapport
+ * architecture-review). Tout nouveau `TabKind` ajouté à l'union DOIT être
+ * traité ici — le `default` du switch est un check `never` : ajouter un kind
+ * sans le classer devient une ERREUR DE COMPILATION dans ce fichier.
+ *
+ * - `"file"` — tab de fichier texte (kind `undefined` = legacy) OU `kind:
+ *   "file"` explicite (préservé par un restore de session) : contenu éditable
+ *   (md/tex/…), brouillons, politique A.
+ * - `"doc"` — article de la documentation intégrée : contenu fichier en
+ *   lecture seule (jamais dirty, jamais ré-affecté, jamais de brouillon).
+ * - `"data"` — tab d'OUTIL (custom/spreadsheet/datafilter) : PAS de contenu
+ *   fichier (`source` reste `""`, `savedContent` `""`), l'état vit dans
+ *   SQLite/les stores. Jamais de brouillon, jamais de lecture disque, jamais
+ *   ré-affecté par une navigation fichier.
+ */
+export type TabContentKind = "file" | "doc" | "data";
+
+export function tabContentKind(kind: TabKind | undefined): TabContentKind {
+  switch (kind) {
+    case undefined:
+    case "file":
+      return "file";
+    case "doc":
+      return "doc";
+    case "custom":
+    case "spreadsheet":
+    case "datafilter":
+      return "data";
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Kind legacy accepté par `fromJSON` (avant le merge DataFilter). */
+export type LegacyTabKind = TabKind | "datagrid" | undefined;
+
+/**
+ * Normalise le kind d'un tab restauré de session (phase 4, idée G). Le switch
+ * est EXHAUSTIF sur `LegacyTabKind` : un nouveau `TabKind` rend le `default`
+ * non-never → erreur de compilation. La migration legacy « datagrid →
+ * datafilter » (vue unique devenue pile d'une carte, avant le merge) vit ici,
+ * en un seul endroit.
+ */
+export function normalizeLegacyKind(raw: LegacyTabKind): TabKind | undefined {
+  switch (raw) {
+    case undefined:
+    case "file":
+    case "doc":
+    case "custom":
+    case "spreadsheet":
+    case "datafilter":
+      return raw;
+    case "datagrid":
+      return "datafilter";
+    default: {
+      const _exhaustive: never = raw;
+      return _exhaustive;
+    }
+  }
+}
 
 export type Tab = {
   id: string;
@@ -56,11 +121,14 @@ export function pickOpenTarget(
 ): { id: string | null; isFallback: boolean } {
   if (wantPreview && fallbackToActive) {
     const active = tabs.find(t => t.id === activeTabId);
-    if (active && !active.kind) return { id: active.id, isFallback: true };
+    // Uniquement les tabs de FICHIER (kind undefined legacy ou "file") —
+    // jamais un tab doc/data (ré-affecter l'aide ou un outil = vampirisation).
+    if (active && tabContentKind(active.kind) === "file") return { id: active.id, isFallback: true };
   }
   if (wantPreview) {
-    // Le tab doc (aide intégrée) n'est JAMAIS ré-affecté par un preview normal.
-    const reuse = tabs.find(t => t.preview && t.kind !== "doc");
+    // Le tab doc (aide intégrée) et les tabs d'OUTILS ne sont JAMAIS
+    // ré-affectés par un preview normal — seuls les tabs de fichier le sont.
+    const reuse = tabs.find(t => t.preview && tabContentKind(t.kind) === "file");
     if (reuse) return { id: reuse.id, isFallback: false };
   }
   return { id: null, isFallback: false };
@@ -72,10 +140,40 @@ export class PanelState {
   tabs: Tab[] = [];
   activeTabId: string | null = null;
   private cbs: PanelCallbacks;
+  /** Source unique du contenu par chemin (phase 7, idée E). Optionnel : sans
+   *  store (tests, contexte non-app), les méthodes lisent/écrivent le disque
+   *  directement (comportement historique). Avec store, le CONTENU vit dans
+   *  le store (l'autorité) et `source`/`savedContent` des tabs restent des
+   *  REFLETS maintenus par l'écrivain unique. */
+  private content?: ContentStore;
 
-  constructor(id: string, callbacks: PanelCallbacks = {}) {
+  constructor(id: string, callbacks: PanelCallbacks = {}, content?: ContentStore) {
     this.id = id;
     this.cbs = callbacks;
+    this.content = content;
+  }
+
+  /** Lecture disque (+ draft politique A) via l'autorité : le ContentStore si
+   *  présent, sinon le chemin historique (readText + loadDraft). Retourne le
+   *  couple {source, saved} pour les REFLETS du tab. */
+  private async readContent(
+    path: string,
+    opts?: { preferDraft?: boolean; forceBuffer?: boolean },
+  ): Promise<{ source: string; saved: string }> {
+    if (this.content) {
+      await this.content.load(path, opts);
+      return { source: this.content.get(path), saved: this.content.getSaved(path) };
+    }
+    const fileSource = await readText(path);
+    const draft = opts?.preferDraft ? loadDraft(path) : null;
+    const source = draft !== null && draft !== fileSource ? draft : fileSource;
+    return { source, saved: fileSource };
+  }
+
+  /** Park politique A (buffer → draft) via l'autorité, sinon historique. */
+  private parkContent(path: string, source: string): void {
+    if (this.content) this.content.park(path);
+    else saveDraft(path, source);
   }
 
   get activeTab(): Tab | undefined {
@@ -135,12 +233,12 @@ export class PanelState {
     if (target) {
       if (
         targetInfo.isFallback &&
-        target.kind !== "custom" &&
+        tabContentKind(target.kind) !== "data" &&
         !isPdfPath(target.path) &&
         !isImagePath(target.path) &&
         target.source !== target.savedContent
       ) {
-        saveDraft(target.path, target.source);
+        this.parkContent(target.path, target.source);
       }
       this.tabs = this.tabs.map(t => t.id === id ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, sourceType: opts?.sourceType } : t);
     } else {
@@ -152,10 +250,8 @@ export class PanelState {
 
     if (!isPdfPath(normalized) && !isImagePath(normalized)) {
       try {
-        const fileSource = await readText(normalized);
-        const draft = opts?.preferDraft ? loadDraft(normalized) : null;
-        const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
-        this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: content, savedContent: fileSource } : t);
+        const { source: src, saved } = await this.readContent(normalized, { preferDraft: opts?.preferDraft });
+        this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: src, savedContent: saved } : t);
       } catch (err) {
         this.tabs = this.tabs.filter(t => t.id !== id);
         if (this.activeTabId === id) {
@@ -206,8 +302,8 @@ export class PanelState {
     this.notify();
 
     try {
-      const fileSource = await readText(normalized);
-      this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: fileSource, savedContent: fileSource } : t);
+      const { source: src, saved } = await this.readContent(normalized);
+      this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: src, savedContent: saved } : t);
     } catch (err) {
       this.tabs = this.tabs.filter(t => t.id !== id);
       if (this.activeTabId === id) {
@@ -248,15 +344,16 @@ export class PanelState {
     }
 
     const active = this.activeTab;
-    // Le tab doc (aide intégrée) n'est jamais ré-affecté par une navigation
-    // « tab actif » : un clic sidebar pendant la lecture de l'aide ne doit
-    // pas détruire le lecteur — on crée un onglet dédié à la place.
-    const previous = active && active.kind !== "doc" ? { ...active } : null;
+    // Le tab doc (aide intégrée) et les tabs d'OUTILS ne sont jamais ré-affectés
+    // par une navigation « tab actif » : un clic sidebar pendant la lecture de
+    // l'aide ne doit pas détruire le lecteur, et un outil (spreadsheet/calendar)
+    // ne peut pas être re-pointé vers un fichier — on crée un onglet dédié.
+    const previous = active && tabContentKind(active.kind) === "file" ? { ...active } : null;
     const id = previous?.id ?? crypto.randomUUID();
 
     // Park du brouillon du tab actif AVANT de le ré-affecter (mécanique repoint).
-    if (previous && previous.kind !== "custom" && !isPdfPath(previous.path) && !isImagePath(previous.path) && previous.source !== previous.savedContent) {
-      saveDraft(previous.path, previous.source);
+    if (previous && tabContentKind(previous.kind) !== "data" && !isPdfPath(previous.path) && !isImagePath(previous.path) && previous.source !== previous.savedContent) {
+      this.parkContent(previous.path, previous.source);
     }
 
     if (previous) {
@@ -274,10 +371,8 @@ export class PanelState {
 
     if (!isPdfPath(normalized) && !isImagePath(normalized)) {
       try {
-        const fileSource = await readText(normalized);
-        const draft = opts?.preferDraft ? loadDraft(normalized) : null;
-        const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
-        this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: content, savedContent: fileSource } : t);
+        const { source: src, saved } = await this.readContent(normalized, { preferDraft: opts?.preferDraft });
+        this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: src, savedContent: saved } : t);
       } catch (err) {
         // Échec de lecture : restaure l'état précédent du tab (le brouillon
         // parké reste intact — l'utilisateur ne perd rien).
@@ -388,8 +483,8 @@ export class PanelState {
     const idx = this.tabs.findIndex(t => t.id === tabId);
     if (idx === -1) return;
     const tab = this.tabs[idx];
-    if (tab.kind !== "custom" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
-      saveDraft(tab.path, tab.source);
+    if (tabContentKind(tab.kind) !== "data" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+      this.parkContent(tab.path, tab.source);
     }
     this.tabs = this.tabs.filter(t => t.id !== tabId);
     if (this.activeTabId === tabId) {
@@ -449,24 +544,22 @@ export class PanelState {
 
     // Policy A: park unsaved edits BEFORE re-pointing away.
     let parked = false;
-    if (tab.kind !== "custom" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
-      saveDraft(tab.path, tab.source);
+    if (tabContentKind(tab.kind) !== "data" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+      this.parkContent(tab.path, tab.source);
       parked = true;
     }
 
     if (!isPdfPath(normalized) && !isImagePath(normalized)) {
       try {
-        const fileSource = await readText(normalized);
-        const draft = opts?.preferDraft ? loadDraft(normalized) : null;
-        const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
+        const { source: src, saved } = await this.readContent(normalized, { preferDraft: opts?.preferDraft });
         this.tabs = this.tabs.map(t =>
           t.id === tabId
             ? {
                 ...t,
                 path: normalized,
                 title: basename(normalized),
-                source: content,
-                savedContent: fileSource,
+                source: src,
+                savedContent: saved,
                 preview: false,
               }
             : t
@@ -496,11 +589,19 @@ export class PanelState {
 
   async save(): Promise<void> {
     const tab = this.activeTab;
-    if (!tab || tab.kind === "custom" || tab.source === tab.savedContent) return;
+    if (!tab || tabContentKind(tab.kind) === "data" || tab.source === tab.savedContent) return;
     try {
-      await writeText(tab.path, tab.source);
-      this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
-      clearDraft(tab.path);
+      if (this.content) {
+        // L'écrivain unique : le contenu vit dans le store — persist écrit
+        // buffer ?? draft ?? saved, clearDraft, et le reflet suit le store.
+        await this.content.persist(tab.path);
+        const saved = this.content.getSaved(tab.path);
+        this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, savedContent: saved } : t);
+      } else {
+        await writeText(tab.path, tab.source);
+        this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, savedContent: tab.source } : t);
+        clearDraft(tab.path);
+      }
       this.notify();
     } catch (err) {
       console.error(`panel ${this.id}: save failed`, err);
@@ -510,8 +611,8 @@ export class PanelState {
 
   saveDrafts(): void {
     for (const tab of this.tabs) {
-      if (tab.kind !== "custom" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
-        saveDraft(tab.path, tab.source);
+      if (tabContentKind(tab.kind) !== "data" && !isPdfPath(tab.path) && !isImagePath(tab.path) && tab.source !== tab.savedContent) {
+        this.parkContent(tab.path, tab.source);
       }
     }
   }
@@ -538,6 +639,10 @@ export class PanelState {
   }
 
   fromJSON(data: PanelSessionData): void {
+    // Le filtre `kind !== "custom"` est un comportement DOCUMENTÉ (phase 4,
+    // idée G) : les panneaux custom (calendrier, éditeur calendar, journal)
+    // ne sont PAS restaurés en session — l'outil s'ouvre depuis le journal à
+    // la demande. Ne pas « corriger » par accident : c'est volontaire.
     this.tabs = data.tabs
       .filter(t => t.kind !== "custom")
       .map(t => {
@@ -546,11 +651,10 @@ export class PanelState {
         if (!spreadsheetId && t.path.startsWith("spreadsheet://")) {
           spreadsheetId = t.path.slice("spreadsheet://".length);
         }
-        // Normaliser l'ancien modèle « datagrid » (avant le merge DataFilter) :
-        // le kind "datagrid" devient "datafilter" et les ids migrent vers
-        // `datafilterIds` (la vue unique est devenue une pile d'une carte).
-        const rawKind = (t as { kind?: string }).kind;
-        const legacyKind = rawKind === "datagrid" ? "datafilter" as TabKind : t.kind;
+        // Normalisation EXHAUSTIVE du kind (check `never` de
+        // `normalizeLegacyKind`) — la migration legacy « datagrid →
+        // datafilter » (vue unique devenue pile d'une carte) vit ici.
+        const kind = normalizeLegacyKind((t as { kind?: LegacyTabKind }).kind);
         let datafilterIds = t.datafilterIds ? [...t.datafilterIds] : undefined;
         if (!datafilterIds && (t as { datagridIds?: string[] }).datagridIds) {
           datafilterIds = [...(t as { datagridIds?: string[] }).datagridIds!];
@@ -567,7 +671,7 @@ export class PanelState {
           savedContent: "",
           renderMode: t.renderMode,
           sourceType: t.sourceType,
-          kind: legacyKind as TabKind | undefined,
+          kind,
           spreadsheetId,
           datafilterIds,
         } as Tab;
@@ -581,12 +685,13 @@ export class PanelState {
   async restoreContent(preferDraft?: boolean): Promise<void> {
     const toRemove: string[] = [];
     for (const tab of this.tabs) {
-      if (tab.kind === "custom" || tab.kind === "spreadsheet" || tab.kind === "datafilter") continue;
+      // Les tabs d'OUTILS (kind data) n'ont PAS de contenu fichier — leur état
+      // vit dans SQLite/les stores, chargé live au rendu. Ne jamais les lire
+      // depuis le disque (invariant documenté, phase 4 idée G).
+      if (tabContentKind(tab.kind) === "data") continue;
       try {
-        const fileSource = await readText(tab.path);
-        const draft = preferDraft ? loadDraft(tab.path) : null;
-        const content = (draft !== null && draft !== fileSource) ? draft : fileSource;
-        this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, source: content, savedContent: fileSource } : t);
+        const { source: src, saved } = await this.readContent(tab.path, { preferDraft });
+        this.tabs = this.tabs.map(t => t.id === tab.id ? { ...t, source: src, savedContent: saved } : t);
       } catch {
         toRemove.push(tab.id);
       }

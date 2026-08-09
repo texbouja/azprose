@@ -62,8 +62,10 @@ export interface NavDeps {
   readText: (path: string) => Promise<string>;
   /** `trackMtime` (synchronisation du watcher FS). */
   trackMtime: (path: string) => Promise<void>;
-  /** `jumpToLineUtil(editorModeCtx, line, path)` — saut curseur éditeur. */
-  jumpToLine: (line: number, path?: string | null) => void;
+  /** `jumpToLineUtil(editorModeCtx, line, path, sessionId)` — saut curseur
+   *  éditeur. `sessionId` (phase 3 C) = id du tab side émetteur, résolu via
+   *  la table de liens preview↔éditeur par l'util. */
+  jumpToLine: (line: number, path?: string | null, sessionId?: string | null) => void;
   /** Ouvre/active un tab doc (DocPreview) — le store lit le disque. */
   openDocArticle: (path: string, heading?: string) => Promise<void>;
   /** Crée (si absent) puis retourne la daily note pour `date`. */
@@ -128,8 +130,9 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
   ) {
     pushCurrentIfAny(deps);
     await deps.pm.openInSide(path, { preview: true, fallbackToActive: true });
-    if (!deps.pm.previewLinkedTabId) {
-      deps.pm.previewLinkedTabId = deps.pm.main.activeTabId;
+    const sideTabId = deps.pm.side.activeTabId;
+    if (sideTabId && !deps.pm.linkedEditorTabId(sideTabId)) {
+      deps.pm.linkPreview(sideTabId, deps.pm.main.activeTabId);
     } else {
       const r = await followPreviewNavigation(deps.pm, path);
       if (r.parked) deps.notifyInfo(deps.t("preview.draftParked"));
@@ -152,8 +155,9 @@ async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | n
   const cur = deps.sideActivePath();
   if (cur) deps.navPush(cur);
   await deps.pm.openInSide(path, { preview: true, fallbackToActive: true });
-  if (!deps.pm.previewLinkedTabId) {
-    deps.pm.previewLinkedTabId = deps.pm.main.activeTabId;
+  const sideTabId = deps.pm.side.activeTabId;
+  if (sideTabId && !deps.pm.linkedEditorTabId(sideTabId)) {
+    deps.pm.linkPreview(sideTabId, deps.pm.main.activeTabId);
   } else {
     const r = await followPreviewNavigation(deps.pm, path);
     if (r.parked) deps.notifyInfo(deps.t("preview.draftParked"));
@@ -194,8 +198,8 @@ async function jumpToFile(deps: NavDeps, path: string, line: number | null | und
 }
 
 /** Saut dbl-clic preview — 0-based, cible le fichier RENDU. */
-async function jumpToLine(deps: NavDeps, line: number, path: string | null | undefined): Promise<void> {
-  deps.jumpToLine(line, path ?? undefined);
+async function jumpToLine(deps: NavDeps, line: number, path: string | null | undefined, sessionId?: string | null): Promise<void> {
+  deps.jumpToLine(line, path ?? undefined, sessionId ?? undefined);
 }
 
 /** Bouton Home du preview — index.md lié, in-place ou nouvel onglet. */
@@ -265,6 +269,35 @@ async function oxideShowDocument(deps: NavDeps, path: string): Promise<void> {
   await openFile(deps, path, { silent: true });
 }
 
+/** Ouvre un tableur en side — dédup par spreadsheetId (PanelManager). Jamais
+ *  de ré-affectation d'un tab doc : la dédup cherche uniquement les tabs
+ *  `kind === "spreadsheet"` du même id, un tab doc ne peut pas être ciblé. */
+function openSpreadsheet(deps: NavDeps, spreadsheetId: string, title: string): void {
+  deps.pm.openSpreadsheetInSide(spreadsheetId, title);
+}
+
+/** Ouvre une pile DataFilter en side — dédup par ensemble trié des ids. */
+function openDataFilter(deps: NavDeps, datafilterIds: string[], title: string): void {
+  deps.pm.openDataFilterInSide(datafilterIds, title);
+}
+
+/** Ouvre un panneau custom en side (calendrier, …) — dédup par panelId. */
+function openCustom(deps: NavDeps, panelId: string, title: string): void {
+  deps.pm.openCustomInSide(panelId, title);
+}
+
+/** Transition create→upgrade : le tab tableur « create » (sans id) reçoit
+ *  spreadsheetId + titre. No-op s'il n'y a pas de tab create. */
+function setSpreadsheetId(deps: NavDeps, spreadsheetId: string, title: string): void {
+  deps.pm.setSpreadsheetTabId(spreadsheetId, title);
+}
+
+/** Met à jour le titre d'un tab tableur (no-op si inchangé — évite la cascade
+ *  notify → re-render du viewer à chaque load). */
+function setSpreadsheetTitle(deps: NavDeps, spreadsheetId: string, title: string): void {
+  deps.pm.setSpreadsheetTabTitle(spreadsheetId, title);
+}
+
 /**
  * Point d'entrée unique du reducer. Applique une intention de navigation sur
  * la session. Toute navigation applicative passe par ici (règle 9).
@@ -282,7 +315,7 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
     case "jump-to-file":
       return jumpToFile(deps, intent.path, intent.line ?? null, intent.heading ?? null);
     case "jump-to-line":
-      return jumpToLine(deps, intent.line, intent.path ?? null);
+      return jumpToLine(deps, intent.line, intent.path ?? null, intent.sessionId ?? null);
     case "preview-home":
       return previewHome(deps, intent.newTab ?? false);
     case "preview-back":
@@ -299,5 +332,22 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
       return journalDateClick(deps, intent.date);
     case "oxide-show-document":
       return oxideShowDocument(deps, intent.path);
+    case "open-spreadsheet":
+      return openSpreadsheet(deps, intent.spreadsheetId, intent.title);
+    case "open-datafilter":
+      return openDataFilter(deps, intent.datafilterIds, intent.title);
+    case "open-custom":
+      return openCustom(deps, intent.panelId, intent.title);
+    case "set-spreadsheet-id":
+      return setSpreadsheetId(deps, intent.spreadsheetId, intent.title);
+    case "set-spreadsheet-title":
+      return setSpreadsheetTitle(deps, intent.spreadsheetId, intent.title);
+    default: {
+      // Exhaustivité de l'alphabet (phase 4, idée G) : tout nouveau type de
+      // `NavIntent` ajouté à l'union SANS case ici devient une erreur de
+      // compilation — jamais un événement ignoré silencieusement.
+      const _exhaustive: never = intent;
+      return _exhaustive;
+    }
   }
 }

@@ -19,6 +19,7 @@
   import { Button, Overlay } from "@/components/primitives";
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
+  import { createPhaseMachine, type PhaseDef } from "@/lib/phase-machine";
   import { getRootPath } from "@/stores/root-path.svelte";
   import { collesSettings } from "@/stores/colles-settings.svelte";
   import { userProfile } from "@/stores/user-profile.svelte";
@@ -51,7 +52,7 @@
 
   let t = $derived(getT($language));
 
-  type Phase =
+  type SendPhase =
     | "idle"
     | "loading"
     | "ready"
@@ -61,8 +62,40 @@
     | "done"
     | "error"
     | "preview";
+  type SendEvent =
+    | "open"
+    | "parsed"
+    | "failed"
+    | "send"
+    | "prepared"
+    | "sent"
+    | "retry"
+    | "clear"
+    | "archive"
+    | "archived"
+    | "cancelled"
+    | "preview"
+    | "closePreview";
 
-  let phase = $state<Phase>("idle");
+  // Machine à phases (phase 5, idée D) : chaque phase n'accepte que son
+  // alphabet — un événement hors alphabet est IGNORÉ (plus d'état poubelle,
+  // plus de double-déclenchement). `reset` est réservé au cycle de vie.
+  const SEND_PHASES: PhaseDef<SendPhase, SendEvent>[] = [
+    { name: "idle", on: { open: "loading" } },
+    { name: "loading", on: { parsed: "ready", failed: "error" } },
+    {
+      name: "ready",
+      on: { send: "preparing", archive: "archiving", preview: "preview", failed: "error" },
+    },
+    { name: "preparing", on: { prepared: "sending", cancelled: "ready", failed: "error" } },
+    { name: "archiving", on: { archived: "ready", cancelled: "ready", failed: "error" } },
+    { name: "sending", on: { sent: "done", failed: "error" } },
+    { name: "done", on: { retry: "sending", clear: "ready", failed: "error" } },
+    { name: "error", on: {} },
+    { name: "preview", on: { closePreview: "ready", failed: "error" } },
+  ];
+
+  let machine = $state(createPhaseMachine(SEND_PHASES, { initial: "idle" }));
   let planches = $state<CollePlanche[]>([]);
   let messages = $state<ColleEmailMessage[]>([]);
   let recipients = $state<{ eleve: string; to: string }[]>([]);
@@ -111,11 +144,11 @@
       renderAbort?.abort();
       renderAbort = null;
       renderPromise = null;
-      phase = "idle";
+      machine.reset("idle"); // cycle de vie : retour à l'état de départ
       return;
     }
     let cancelled = false;
-    phase = "loading";
+    machine.reset("loading"); // cycle de vie : réinitialise à chaque ouverture
     planches = [];
     messages = [];
     recipients = [];
@@ -130,7 +163,7 @@
     renderProgress = null;
     renderPromise = null;
     renderAbort = null;
-    // L'overlay s'affiche d'abord (premier paint avec `phase = "loading"`) ;
+    // L'overlay s'affiche d'abord (premier paint avec la machine à "loading") ;
     // le parse + le rendu de fond Chromium démarrent ENSUITE, différés par une
     // macrotâche, HORS du contexte tracké de l'effet. Un $effect qui lit ET
     // écrit le même $state (`planches`, via `startRender` → `planches.length`
@@ -157,7 +190,7 @@
           previewIndex = 0;
           recipients = recips;
           missing = miss;
-          phase = "ready";
+          machine.send("parsed");
           // Rendu de FOND : démarre après l'affichage de l'overlay (décision
           // utilisateur round 20 — le cache est produit au lancement du
           // dialogue, pas au clic). Le dialogue reste utilisable ; `startRender`
@@ -167,7 +200,7 @@
         } catch (err) {
           if (cancelled) return;
           error = err instanceof Error ? err.message : String(err);
-          phase = "error";
+          machine.send("failed");
         }
       })();
     }, 0);
@@ -176,9 +209,7 @@
     };
   });
 
-  let sending = $derived(
-    phase === "sending" || phase === "preparing" || phase === "archiving",
-  );
+  let sending = $derived(machine.is("sending", "preparing", "archiving"));
   // Compteurs persistants : cumulent tous les tours d'envoi (les réessais ne
   // réinitialisent pas les succès précédents).
   let sentCount = $state(0);
@@ -221,7 +252,7 @@
         if (err instanceof ReportRenderCancelled) return;
         console.error("azprose: rendu des images de colles échoué", err);
         error = err instanceof Error ? err.message : String(err);
-        phase = "error";
+        machine.send("failed");
       },
     );
     return p;
@@ -270,7 +301,7 @@
     archiveProgress = null;
     const abort = new AbortController();
     busyAbort = abort;
-    phase = "archiving";
+    machine.send("archive");
     try {
       // Les images viennent du cache (rendu de fond) — l'archivage ne fait
       // que les écrire dans le FS utilisateur.
@@ -284,15 +315,15 @@
       );
       const folder = paths.length ? dirname(paths[0]) : "Colles";
       archiveResult = { count, folder };
-      phase = "ready";
+      machine.send("archived");
     } catch (err) {
       if (err instanceof ReportRenderCancelled) {
         // Annulation utilisateur : retour silencieux à la phase prête.
-        phase = "ready";
+        machine.send("cancelled");
         return;
       }
       error = err instanceof Error ? err.message : String(err);
-      phase = "error";
+      machine.send("failed");
     } finally {
       busyAbort = null;
     }
@@ -303,7 +334,7 @@
     const password = userProfile.current.gmailAppPassword.trim();
     if (!from || !password) {
       error = t("colle.sendMissingProfile");
-      phase = "error";
+      machine.send("failed");
       return;
     }
     if (!recipients.length) return;
@@ -311,29 +342,29 @@
     const abort = new AbortController();
     busyAbort = abort;
     try {
-      phase = "preparing";
+      machine.send("send");
       msgs = await ensurePrepared(abort.signal);
     } catch (err) {
       if (err instanceof ReportRenderCancelled) {
-        phase = "ready";
+        machine.send("cancelled");
         return;
       }
       error = err instanceof Error ? err.message : String(err);
-      phase = "error";
+      machine.send("failed");
       return;
     } finally {
       busyAbort = null;
     }
     if (!msgs.length) return;
-    phase = "sending";
+    machine.send("prepared");
     try {
       failures = await sendColleEmails(from, password, msgs);
       failedCount = failures.length;
       sentCount = recipients.length - failedCount;
-      phase = "done";
+      machine.send("sent");
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
-      phase = "error";
+      machine.send("failed");
     }
   }
 
@@ -380,7 +411,7 @@
   }
 
   $effect(() => {
-    if (phase !== "preview") return;
+    if (machine.current !== "preview") return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // Capture AVANT l'Overlay (qui fermerait le dialogue) : retour à ready,
@@ -388,7 +419,7 @@
         e.stopPropagation();
         e.preventDefault();
         handleCancel();
-        phase = "ready";
+        machine.send("closePreview");
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         // Toujours capturé en preview (même hors bornes ou pendant un rendu).
         // stopPropagation EST OBLIGATOIRE : le preventDefault seul laisse
@@ -427,7 +458,7 @@
     if (!planches.length) return;
     previewIndex = 0;
     zoom = 1;
-    phase = "preview";
+    machine.send("preview");
     // Prend le focus DÈS l'ouverture : l'Overlay ne vole pas le focus (le focus
     // resterait dans l'éditeur de la fenêtre principale → les touches y
     // atterriraient). Avec le focus sur le conteneur preview (tabindex=-1),
@@ -456,8 +487,8 @@
   function handleClose() {
     handleCancel();
     cancelWeekPrompt();
-    if (phase === "preview") {
-      phase = "ready";
+    if (machine.current === "preview") {
+      machine.send("closePreview");
       return;
     }
     onClose();
@@ -473,10 +504,10 @@
         const password = userProfile.current.gmailAppPassword.trim();
         if (!from || !password) {
           error = t("colle.sendMissingProfile");
-          phase = "error";
+          machine.send("failed");
           return;
         }
-        phase = "sending";
+        machine.send("retry");
         try {
           failures = (await sendColleEmails(from, password, remaining)).filter((f) =>
             failed.has(f.to),
@@ -485,15 +516,15 @@
           failedCount = failures.length;
           // Ne garder dans la file que les échecs restants (prochain réessai).
           messages = remaining.filter((m) => failures.some((f) => f.to === m.to));
-          phase = "done";
+          machine.send("sent");
         } catch (err) {
           error = err instanceof Error ? err.message : String(err);
-          phase = "error";
+          machine.send("failed");
         }
       })();
       return;
     }
-    phase = "ready";
+    machine.send("clear");
   }
 </script>
 
@@ -502,9 +533,9 @@
   onClose={handleClose}
   ariaLabel={t("colle.sendTitle")}
   variant="modal"
-  width={phase === "preview" ? "min(1100px, 94vw)" : undefined}
+  width={machine.current === "preview" ? "min(1100px, 94vw)" : undefined}
 >
-  {#if phase === "preview"}
+  {#if machine.current === "preview"}
     <div class="colle-send__preview" tabindex="-1">
       <div class="colle-send__preview-bar">
         <span class="colle-send__preview-title">{planches[previewIndex]?.meta.eleve || ""}</span>
@@ -602,14 +633,14 @@
     </div>
 
     <div class="colle-send__body">
-      {#if phase === "loading"}
+      {#if machine.current === "loading"}
         <p class="colle-send__status">{t("colle.sendLoading")}</p>
-      {:else if phase === "preparing"}
+      {:else if machine.current === "preparing"}
         <p class="colle-send__status">{t("colle.sendPreparing")}</p>
         <div class="colle-send__actions">
           <Button variant="ghost" onclick={handleCancel}>{t("common.cancel")}</Button>
         </div>
-      {:else if phase === "archiving"}
+      {:else if machine.current === "archiving"}
         <p class="colle-send__status">
           {#if archiveProgress}
             {t("colle.archiving", { done: archiveProgress.done, total: archiveProgress.total })}
@@ -620,7 +651,7 @@
         <div class="colle-send__actions">
           <Button variant="ghost" onclick={handleCancel}>{t("common.cancel")}</Button>
         </div>
-      {:else if phase === "error"}
+      {:else if machine.current === "error"}
         <p class="colle-send__error">{error}</p>
         {#if !userProfile.current.email.trim() || !userProfile.current.gmailAppPassword.trim()}
           <p class="colle-send__hint">{t("colle.sendProfileHint")}</p>
@@ -628,8 +659,8 @@
             {t("colle.sendOpenSettings")}
           </Button>
         {/if}
-      {:else if phase === "ready" || phase === "sending" || phase === "done"}
-          {#if phase !== "done"}
+      {:else if machine.is("ready", "sending", "done")}
+          {#if machine.current !== "done"}
           <p class="colle-send__status">
             {t("colle.sendCount", { count: recipients.length })}
             {#if missing.length}
@@ -651,7 +682,7 @@
           {/if}
         {/if}
 
-        {#if phase === "done"}
+        {#if machine.current === "done"}
           {#if failures.length}
             <p class="colle-send__status">
               {t("colle.sendPartial", { ok: sentCount, failed: failedCount })}
@@ -669,7 +700,7 @@
               <span class="colle-send__result">
                 {#if failures.some((f) => f.to === r.to)}
                   <i class="wxi-alert-circle" aria-hidden="true"></i>
-                {:else if phase === "done"}
+                {:else if machine.current === "done"}
                   <i class="wxi-check" aria-hidden="true"></i>
                 {/if}
               </span>
@@ -698,14 +729,14 @@
           </div>
         {/if}
 
-        {#if phase === "done" && failures.length}
+        {#if machine.current === "done" && failures.length}
           <div class="colle-send__actions">
             <Button variant="solid" disabled={sending} onclick={handleRetry}>
               {t("colle.sendRetry")}
             </Button>
             <Button disabled={sending} onclick={handleClose}>{t("common.close")}</Button>
           </div>
-        {:else if phase === "ready" || phase === "sending"}
+        {:else if machine.is("ready", "sending")}
           <div class="colle-send__actions">
             <Button
               variant="ghost"
@@ -722,7 +753,7 @@
               {t("colle.sendPreview")}
             </Button>
             <Button variant="solid" disabled={sending || !recipients.length} onclick={handleSend}>
-              {phase === "sending" ? t("colle.sendInProgress") : t("colle.send")}
+              {machine.current === "sending" ? t("colle.sendInProgress") : t("colle.send")}
             </Button>
             <Button disabled={sending} onclick={handleClose}>{t("common.close")}</Button>
           </div>

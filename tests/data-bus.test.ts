@@ -99,10 +99,7 @@ describe("DataBus", () => {
 function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps {
   return {
     nav: {
-      openSpreadsheetInSide: vi.fn(),
-      openDataFilterInSide: vi.fn(),
-      setSpreadsheetTabTitle: vi.fn(),
-      setSpreadsheetTabId: vi.fn(),
+      navigate: vi.fn(),
     },
     domain: {
       findGridForSpreadsheet: vi.fn(async () => null),
@@ -120,7 +117,11 @@ describe("commands — open-grid", () => {
     deps.domain.findGridForSpreadsheet = vi.fn(async () => ({ id: "dg-1" }));
     await openGrid("s1", "T", deps);
     expect(deps.domain.createGridForSpreadsheet).not.toHaveBeenCalled();
-    expect(deps.nav.openDataFilterInSide).toHaveBeenCalledWith(["dg-1"], "T");
+    expect(deps.nav.navigate).toHaveBeenCalledWith({
+      type: "open-datafilter",
+      datafilterIds: ["dg-1"],
+      title: "T",
+    });
   });
 
   it("creates the grid from the spreadsheet when no link exists", async () => {
@@ -131,10 +132,11 @@ describe("commands — open-grid", () => {
       "Notes",
       "s1",
     );
-    expect(deps.nav.openDataFilterInSide).toHaveBeenCalledWith(
-      ["dg-new"],
-      "Notes",
-    );
+    expect(deps.nav.navigate).toHaveBeenCalledWith({
+      type: "open-datafilter",
+      datafilterIds: ["dg-new"],
+      title: "Notes",
+    });
   });
 
   it("falls back to generic names", async () => {
@@ -145,10 +147,11 @@ describe("commands — open-grid", () => {
       "Tableau",
       "s1",
     );
-    expect(deps.nav.openDataFilterInSide).toHaveBeenCalledWith(
-      ["dg-new"],
-      "Filtre de données",
-    );
+    expect(deps.nav.navigate).toHaveBeenCalledWith({
+      type: "open-datafilter",
+      datafilterIds: ["dg-new"],
+      title: "Filtre de données",
+    });
   });
 });
 
@@ -165,10 +168,11 @@ describe("commands — open-grid-stack", () => {
     expect(deps.domain.createGridForSpreadsheet).toHaveBeenCalledTimes(2);
     expect(deps.domain.createGridForSpreadsheet).toHaveBeenCalledWith("dg-s1", "Élèves", "s1");
     expect(deps.domain.createGridForSpreadsheet).toHaveBeenCalledWith("dg-s2", "Colloscope — 2A", "s2");
-    expect(deps.nav.openDataFilterInSide).toHaveBeenCalledWith(
-      ["dg-new", "dg-new"],
-      "Colloscope",
-    );
+    expect(deps.nav.navigate).toHaveBeenCalledWith({
+      type: "open-datafilter",
+      datafilterIds: ["dg-new", "dg-new"],
+      title: "Colloscope",
+    });
   });
 
   it("renames stale grids (pre-fix pile-name) to the sheet name", async () => {
@@ -188,22 +192,38 @@ describe("commands — runCommand dispatch", () => {
   it("routes open-spreadsheet to the navigator", async () => {
     const deps = makeDeps();
     await runCommand({ type: "command:open-spreadsheet", spreadsheetId: "s1", name: "Notes" }, deps);
-    expect(deps.nav.openSpreadsheetInSide).toHaveBeenCalledWith("s1", "Notes");
+    expect(deps.nav.navigate).toHaveBeenCalledWith({
+      type: "open-spreadsheet",
+      spreadsheetId: "s1",
+      title: "Notes",
+    });
   });
 
   it("routes set-spreadsheet-id and set-tab-title", async () => {
     const deps = makeDeps();
     await runCommand({ type: "command:set-spreadsheet-id", spreadsheetId: "s1", title: "N" }, deps);
-    expect(deps.nav.setSpreadsheetTabId).toHaveBeenCalledWith("s1", "N");
+    expect(deps.nav.navigate).toHaveBeenCalledWith({
+      type: "set-spreadsheet-id",
+      spreadsheetId: "s1",
+      title: "N",
+    });
     await runCommand({ type: "command:set-tab-title", spreadsheetId: "s1", title: "R" }, deps);
-    expect(deps.nav.setSpreadsheetTabTitle).toHaveBeenCalledWith("s1", "R");
+    expect(deps.nav.navigate).toHaveBeenCalledWith({
+      type: "set-spreadsheet-title",
+      spreadsheetId: "s1",
+      title: "R",
+    });
   });
 
   it("open-spreadsheet-new reads the real name", async () => {
     const deps = makeDeps();
     deps.domain.getSpreadsheet = vi.fn(async () => ({ name: "Notes de cours" }));
     await runCommand({ type: "command:open-spreadsheet-new", spreadsheetId: "s1" }, deps);
-    expect(deps.nav.openSpreadsheetInSide).toHaveBeenCalledWith("s1", "Notes de cours");
+    expect(deps.nav.navigate).toHaveBeenCalledWith({
+      type: "open-spreadsheet",
+      spreadsheetId: "s1",
+      title: "Notes de cours",
+    });
   });
 
   it("never throws on domain failure (logged)", async () => {

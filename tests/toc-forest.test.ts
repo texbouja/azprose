@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildTocForest, type TocFileNode, type TocForest, type TocNode } from "@/lib/toc-forest";
+import { makeTocMemo } from "@/lib/toc-cache";
 
 /**
  * Tests du harnais de sécurité TOC : arbre des titres du fichier « home »
@@ -280,5 +281,157 @@ describe("buildTocForest — branches transcluses (wikilinks conformes)", () => 
     // Alias présent → label = alias ; alias absent → repli basename.
     expect(branches.find((b) => b.path === "/vault/chapitre-1.md")?.label).toBe("Le Chapitre Un");
     expect(branches.find((b) => b.path === "/vault/chapitre-2.md")?.label).toBe("chapitre-2");
+  });
+});
+
+describe("buildTocForest — mémoïsation par hash structural (phases 6/6bis)", () => {
+  /** Fake fs qui COMPTE les lectures — un hit memo ne doit lire AUCUN fichier
+   *  LIÉ (seule la lecture du fichier affiché reste, pour calculer le hash). */
+  function countingFs(files: Record<string, string>) {
+    const reads: string[] = [];
+    const readText = async (path: string): Promise<string> => {
+      const content = files[path];
+      if (content === undefined) throw new Error(`ENOENT: ${path}`);
+      reads.push(path);
+      return content;
+    };
+    return { reads, readText };
+  }
+
+  const INDEX = fakeIndex({
+    "chapitre-1": "/vault/chapitre-1.md",
+    "chapitre-2": "/vault/chapitre-2.md",
+  });
+
+  test("hit memo (même clé + même hash structural) → aucun fichier lié relu, même objet", async () => {
+    const fs = countingFs({
+      "/vault/index.md": "# R\n\n[[chapitre-1]]\n\n[[chapitre-2]]\n",
+      "/vault/chapitre-1.md": "# Chapitre 1\n",
+      "/vault/chapitre-2.md": "# Chapitre 2\n",
+    });
+    const memo = makeTocMemo();
+    const opts = {
+      rootPath: ROOT,
+      referencePath: "/vault/notes/note.md",
+      readText: fs.readText,
+      getIndex: INDEX,
+    };
+    const first = await buildTocForest(opts, memo);
+    expect(fs.reads).toContain("/vault/chapitre-1.md");
+
+    const linkedBefore = fs.reads.filter((p) => p.includes("chapitre")).length;
+    const second = await buildTocForest(opts, memo);
+    // Le hit ne relit AUCUN fichier lié (les chapitres ne sont pas re-transclus).
+    expect(fs.reads.filter((p) => p.includes("chapitre"))).toHaveLength(linkedBefore);
+    // MÊME objet : les nœuds mémoïsés sont retournés tels quels.
+    expect(second).toBe(first);
+    expect(second.structuralHash).toBe(first.structuralHash);
+  });
+
+  test("frappe dans le CORPS (hash structural identique) → hit memo", async () => {
+    // Pas d'index.md dans le vault : displayPath = référence, le buffer live
+    // (referenceSource) fait foi — on simule une frappe dans un paragraphe.
+    const readText = countingFs({
+      "/vault/notes/note.md": "# Note\n\n[[chapitre-1]]\n",
+      "/vault/chapitre-1.md": "# Chapitre 1\n",
+    }).readText;
+    const memo = makeTocMemo();
+    const opts = {
+      rootPath: ROOT,
+      referencePath: "/vault/notes/note.md",
+      readText,
+      getIndex: INDEX,
+    };
+    const first = await buildTocForest(
+      { ...opts, referenceSource: "# Note\n\nTexte de corps modifié pendant la frappe.\n\n[[chapitre-1]]\n" },
+      memo,
+    );
+    const second = await buildTocForest(
+      { ...opts, referenceSource: "# Note\n\nTexte de corps ENCORE modifié.\n\n[[chapitre-1]]\n" },
+      memo,
+    );
+    // Frappe dans le corps → même hash structural → la forêt est réutilisée.
+    expect(second).toBe(first);
+    expect(collectHeadings(second.root!)).toEqual(["Note", "Chapitre 1"]);
+  });
+
+  test("titre modifié (hash structural différent) → rebuild", async () => {
+    const readText = countingFs({
+      "/vault/notes/note.md": "# Note\n\n[[chapitre-1]]\n",
+      "/vault/chapitre-1.md": "# Chapitre 1\n",
+    }).readText;
+    const memo = makeTocMemo();
+    const opts = {
+      rootPath: ROOT,
+      referencePath: "/vault/notes/note.md",
+      readText,
+      getIndex: INDEX,
+    };
+    const first = await buildTocForest({ ...opts, referenceSource: "# Note\n\n[[chapitre-1]]\n" }, memo);
+    const rebuilt = await buildTocForest(
+      { ...opts, referenceSource: "# Note\n\n## Nouveau titre\n\n[[chapitre-1]]\n" },
+      memo,
+    );
+    expect(rebuilt).not.toBe(first);
+    expect(collectHeadings(rebuilt.root!)).toContain("Nouveau titre");
+  });
+
+  test("changement de fichier de référence (clé) → rebuild", async () => {
+    const files: Record<string, string> = {
+      "/vault/index.md": "# R\n\n[[chapitre-1]]\n",
+      "/vault/chapitre-1.md": "# Chapitre 1\n",
+      "/vault/autre.md": "# Autre\n",
+    };
+    const readText = countingFs(files).readText;
+    const memo = makeTocMemo();
+    const opts = {
+      rootPath: ROOT,
+      readText,
+      getIndex: INDEX,
+    };
+    const first = await buildTocForest({ ...opts, referencePath: "/vault/notes/note.md" }, memo);
+    const rebuilt = await buildTocForest({ ...opts, referencePath: "/vault/autre.md" }, memo);
+    expect(rebuilt).not.toBe(first);
+    expect(rebuilt.displayPath).toBe("/vault/index.md");
+  });
+
+  test("index.md lié créé entre deux builds (displayPath change) → rebuild", async () => {
+    const files: Record<string, string> = {
+      "/vault/chapitre-1.md": "# Chapitre 1\n",
+    };
+    const reads: string[] = [];
+    const readText = async (path: string): Promise<string> => {
+      const content = files[path];
+      if (content === undefined) throw new Error(`ENOENT: ${path}`);
+      reads.push(path);
+      return content;
+    };
+    const memo = makeTocMemo();
+    const opts = {
+      rootPath: ROOT,
+      referencePath: "/vault/notes/note.md",
+      readText,
+      getIndex: INDEX,
+    };
+    // Pas d'index.md lié → displayPath = référence (source live).
+    const first = await buildTocForest({ ...opts, referenceSource: "# Note\n" }, memo);
+    expect(first.displayPath).toBe("/vault/notes/note.md");
+
+    // L'index.md est créé dans le vault → même clé, displayPath différent.
+    files["/vault/index.md"] = "# R\n\n[[chapitre-1]]\n";
+    const rebuilt = await buildTocForest({ ...opts, referenceSource: "# Note\n" }, memo);
+    expect(rebuilt).not.toBe(first);
+    expect(rebuilt.displayPath).toBe("/vault/index.md");
+    expect(collectBranches(rebuilt.root!)).toHaveLength(1);
+  });
+
+  test("structuralHash exposé sur la forêt (hash du contenu affiché)", async () => {
+    const fs = fakeFs({
+      "/vault/index.md": "# R\n\n[[chapitre-1]]\n",
+      "/vault/chapitre-1.md": "# Chapitre 1\n",
+    });
+    const forest = await build("/vault/notes/note.md", { readText: fs });
+    expect(forest.structuralHash).toMatch(/^[0-9a-f]{1,8}$/);
+    expect(forest.structuralHash).not.toBe("");
   });
 });
