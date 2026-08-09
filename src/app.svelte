@@ -98,6 +98,9 @@ import { journal } from "@/stores/journal-store.svelte";
 import { journalSettings } from "@/stores/journal-settings.svelte";
 import { ensureDailyNoteWithColles } from "@/colles/daily-note-io";
 import { spreadsheetGet, spreadsheetInitDb } from "@/spreadsheet/store";
+import { datagridFindBySource, datagridCreateFromSpreadsheet, datagridRename } from "@/datagrid/store";
+import { dataBus } from "@/lib/data/bus";
+import { runCommand } from "@/lib/data/commands";
 import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
 import { navPush, navBack, navForwardStep, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
 import { followPreviewNavigation } from "@/lib/preview-follow";
@@ -823,139 +826,32 @@ $effect(() => {
   return () => window.removeEventListener("azprose:journal-date-click", handler);
 });
 
-// Spreadsheet title change → update the tab title
+// Commandes du domaine data (canal 3, phase 0bis) — un seul abonnement au
+// bus typé remplace les 6 listeners CustomEvent :
+//   azprose:spreadsheet-title-change  → command:set-tab-title
+//   azprose:spreadsheet-open-new      → command:open-spreadsheet-new
+//   azprose:spreadsheet-set-id        → command:set-spreadsheet-id
+//   azprose:datafilter-open           → command:open-grid
+//   azprose:datafilter-open-stack     → command:open-grid-stack
+//   azprose:datagrid-edit-in-spreadsheet → command:open-spreadsheet
+// Les sagas vivent dans src/lib/data/commands.ts (pures, DI : navigateur +
+// domaine IPC) ; l'hôte fournit les implémentations réelles ici.
 $effect(() => {
-  const handler = (e: Event) => {
-    const { spreadsheetId, title } = (e as CustomEvent<{ spreadsheetId: string; title: string }>).detail;
-    pm.setSpreadsheetTabTitle(spreadsheetId, title);
-  };
-  window.addEventListener("azprose:spreadsheet-title-change", handler);
-  return () => window.removeEventListener("azprose:spreadsheet-title-change", handler);
-});
-
-// Spreadsheet "open in new tab" from the manager
-$effect(() => {
-  const handler = async (e: Event) => {
-    const { id } = (e as CustomEvent<{ id: string }>).detail;
-    // If already open in any panel, just activate it — no duplicate editors
-    const existing = pm.findSpreadsheetTab(id);
-    if (existing) {
-      const panel = existing.panel === "main" ? pm.main : pm.side;
-      panel.select(existing.tab.id);
-      if (existing.panel === "side") {
-        sideVisible = true;
-        pm.sideVisible = true;
-        pm.layout = "main+side";
-      }
-      return;
-    }
-    try {
-      const data = await spreadsheetGet(id);
-      pm.openSpreadsheetInSide(id, data.name);
-    } catch (err) {
-      console.error("[spreadsheet] failed to open in new tab:", err);
-    }
-  };
-  window.addEventListener("azprose:spreadsheet-open-new", handler);
-  return () => window.removeEventListener("azprose:spreadsheet-open-new", handler);
-});
-
-// Spreadsheet "set-id" — upgrade a create-mode tab with a real spreadsheetId
-$effect(() => {
-  const handler = (e: Event) => {
-    const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
-    pm.setSpreadsheetTabId(id, title);
-  };
-  window.addEventListener("azprose:spreadsheet-set-id", handler);
-  return () => window.removeEventListener("azprose:spreadsheet-set-id", handler);
-});
-
-// Spreadsheet "open in DataFilter" (toolbar) — find the linked grid, or
-// create one from the spreadsheet snapshot, then open DataFilter in the side
-// panel with this table loaded (the user can add more tables from there).
-$effect(() => {
-  const handler = async (e: Event) => {
-    const { spreadsheetId, name } = (e as CustomEvent<{ spreadsheetId: string; name: string }>).detail;
-    try {
-      const { datagridFindBySource, datagridCreateFromSpreadsheet } = await import("@/datagrid/store");
-      let gridId: string | null = null;
-      const meta = await datagridFindBySource(spreadsheetId);
-      if (meta) {
-        gridId = meta.id;
-      } else {
-        gridId = await datagridCreateFromSpreadsheet(
-          `dg-${spreadsheetId}`,
-          name || "Tableau",
-          spreadsheetId,
-        );
-      }
-      pm.openDataFilterInSide([gridId], name || "Filtre de données");
-    } catch (err) {
-      console.error("[spreadsheet] failed to open data filter:", err);
-    }
-  };
-  window.addEventListener("azprose:datafilter-open", handler);
-  return () => window.removeEventListener("azprose:datafilter-open", handler);
-});
-
-// DataFilter "open stack" — same as above, but opens ALL the spreadsheets of a
-// set as a single stack (the DataFilter stack view). Used by the colloscope
-// import: students + per-class tables are stacked together, one grid per table,
-// sharing the unified stack filter. A linked grid is created on first use.
-$effect(() => {
-  const handler = async (e: Event) => {
-    const { spreadsheetIds, name } = (e as CustomEvent<{ spreadsheetIds: string[]; name?: string }>).detail;
-    if (!spreadsheetIds?.length) return;
-    try {
-      const { datagridFindBySource, datagridCreateFromSpreadsheet, datagridRename } = await import("@/datagrid/store");
-      const gridIds: string[] = [];
-      for (const spreadsheetId of spreadsheetIds) {
-        // Le grid porte le nom de SON tableau source (jamais le nom de la pile
-        // — un grid créé avec le nom de pile afficherait « Colloscope —
-        // Colloscope » sur toutes les cartes). On lit le nom live depuis la db
-        // pour rester aligné même après un rename du tableur.
-        const sheet = await spreadsheetGet(spreadsheetId).catch(() => null);
-        const sheetName = sheet?.name || name || "Tableau";
-        const meta = await datagridFindBySource(spreadsheetId);
-        if (meta) {
-          // Réparer les grids créés avant ce fix (nom de pile au lieu du nom
-          // du tableau) : `datagridRename` n'a aucun appelant UI, pas de
-          // rename manuel à préserver.
-          if (meta.name !== sheetName) {
-            await datagridRename(meta.id, sheetName);
-          }
-          gridIds.push(meta.id);
-        } else {
-          const gridId = await datagridCreateFromSpreadsheet(
-            `dg-${spreadsheetId}`,
-            sheetName,
-            spreadsheetId,
-          );
-          gridIds.push(gridId);
-        }
-      }
-      pm.openDataFilterInSide(gridIds, name || "Filtre de données");
-    } catch (err) {
-      console.error("[spreadsheet] failed to open data filter stack:", err);
-    }
-  };
-  window.addEventListener("azprose:datafilter-open-stack", handler);
-  return () => window.removeEventListener("azprose:datafilter-open-stack", handler);
-});
-
-// DataFilter « Edit dans Spreadsheet » — ouvre le tableur source dans le
-// SIDE panel : le panneau principal est réservé EXCLUSIVEMENT à CodeMirror
-// (l'éditeur), toute vue d'outil (tableur, DataFilter, calendrier, …) s'ouvre
-// en side. La source de vérité des données reste `spreadsheet_cells` ; le
-// tableur et la vue datagrid la lisent live (pas de mirror à resynchroniser).
-$effect(() => {
-  const handler = (e: Event) => {
-    const { spreadsheetId, name } = (e as CustomEvent<{ spreadsheetId: string; name: string }>).detail;
-    if (!spreadsheetId) return;
-    pm.openSpreadsheetInSide(spreadsheetId, name || "Tableur");
-  };
-  window.addEventListener("azprose:datagrid-edit-in-spreadsheet", handler);
-  return () => window.removeEventListener("azprose:datagrid-edit-in-spreadsheet", handler);
+  const sub = dataBus.subscribeCommands((cmd) => {
+    void runCommand(cmd, {
+      nav: pm,
+      domain: {
+        findGridForSpreadsheet: (spreadsheetId) =>
+          datagridFindBySource(spreadsheetId),
+        createGridForSpreadsheet: (id, name, spreadsheetId) =>
+          datagridCreateFromSpreadsheet(id, name, spreadsheetId),
+        renameGrid: (id, name) => datagridRename(id, name),
+        getSpreadsheet: (id) =>
+          spreadsheetGet(id).then((s) => ({ name: s.name })),
+      },
+    });
+  });
+  return () => sub.unsubscribe();
 });
 
 async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" }) {

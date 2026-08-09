@@ -5,6 +5,7 @@
   } from "@/spreadsheet/store";
   import type { SpreadsheetMeta } from "@/spreadsheet/types";
   import { getOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
+  import { dataBus } from "@/lib/data/bus";
 
   let {
     open,
@@ -123,10 +124,12 @@
     try {
       await spreadsheetRename(id, trimmed);
       await refresh();
-      // Notify open tabs so they update their title
-      window.dispatchEvent(new CustomEvent("azprose:spreadsheet-title-change", {
-        detail: { spreadsheetId: id, title: trimmed },
-      }));
+      // Notify open tabs so they update their title (canal 3, bus data)
+      dataBus.emit({
+        type: "command:set-tab-title",
+        spreadsheetId: id,
+        title: trimmed,
+      });
     } catch (err) {
       console.error("Rename failed:", err);
     }

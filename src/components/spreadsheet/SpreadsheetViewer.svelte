@@ -23,11 +23,17 @@
   import { pickXlsx } from "@/lib/files";
   import { save } from "@tauri-apps/plugin-dialog";
   import { writeFile } from "@tauri-apps/plugin-fs";
+  import { dataBus, createOrigin } from "@/lib/data/bus";
+  import { ofType } from "@/lib/data/events";
   let {
     spreadsheetId = "",
   }: {
     spreadsheetId?: string;
   } = $props();
+
+  // Identité d'instance pour le skip self sur le bus data (phase 0bis) : ce
+  // viewer n'écoute pas ses propres émissions de fraîcheur.
+  const origin = createOrigin("spreadsheet-viewer");
 
   // When the current spreadsheet is deleted via Gérer,
   // we clear local state and show the empty view (tab stays open).
@@ -211,9 +217,11 @@
       // re-render on each reload.
       if (lastDispatchedSheetTitle !== result.name) {
         lastDispatchedSheetTitle = result.name;
-        window.dispatchEvent(new CustomEvent("azprose:spreadsheet-title-change", {
-          detail: { spreadsheetId, title: result.name },
-        }));
+        dataBus.emit({
+          type: "command:set-tab-title",
+          spreadsheetId,
+          title: result.name,
+        });
       }
 
       if (initialLoading) {
@@ -256,32 +264,35 @@
   });
 
   // A linked datagrid edits cells directly through the same SQLite table.
-  // When it saves, it dispatches "azprose:spreadsheet-updated" — reload so the
-  // sheet mirrors the grid without waiting for a manual refresh. Local pending
-  // edits are flushed first: they share the same spreadsheet_cells rows, and a
-  // blind reload would drop edits queued but not yet persisted.
+  // When it saves, it emits "cells-changed" on the data bus (canal 2) —
+  // reload so the sheet mirrors the grid without waiting for a manual
+  // refresh. Local pending edits are flushed first: they share the same
+  // spreadsheet_cells rows, and a blind reload would drop edits queued but
+  // not yet persisted. Remplace l'écoute CustomEvent "azprose:spreadsheet-updated".
   $effect(() => {
     const id = spreadsheetId;
     if (!id) return;
-    const onSpreadsheetUpdated = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ spreadsheetId: string }>).detail;
-      if (!detail || detail.spreadsheetId !== id) return;
-      void (async () => {
-        // Let a currently in-flight flush (and any re-queued one) finish before
-        // reading, so the reload never sees a stale snapshot.
-        while (saving || pendingFlush) {
-          await new Promise((r) => setTimeout(r, 50));
-        }
-        if (pendingCellChanges.size > 0) await flushChanges();
-        while (saving || pendingFlush) {
-          await new Promise((r) => setTimeout(r, 50));
-        }
-        // Only reload if this viewer is still on the same spreadsheet.
-        if (spreadsheetId === id) load();
-      })();
-    };
-    window.addEventListener("azprose:spreadsheet-updated", onSpreadsheetUpdated);
-    return () => window.removeEventListener("azprose:spreadsheet-updated", onSpreadsheetUpdated);
+    const sub = dataBus.subscribe(
+      ofType("cells-changed"),
+      (ev) => {
+        if (ev.spreadsheetId !== id) return;
+        void (async () => {
+          // Let a currently in-flight flush (and any re-queued one) finish before
+          // reading, so the reload never sees a stale snapshot.
+          while (saving || pendingFlush) {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          if (pendingCellChanges.size > 0) await flushChanges();
+          while (saving || pendingFlush) {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          // Only reload if this viewer is still on the same spreadsheet.
+          if (spreadsheetId === id) load();
+        })();
+      },
+      { skipOrigin: origin },
+    );
+    return () => sub.unsubscribe();
   });
 
   // ── SQLite persistence (incremental cells + structural save) ─────────────
@@ -493,9 +504,11 @@
     // setting the prop directly — this keeps the store in sync across sessions.
     if (!spreadsheetId) {
       initialLoading = true;
-      window.dispatchEvent(new CustomEvent("azprose:spreadsheet-set-id", {
-        detail: { id: imported[0].id, title: imported[0].name },
-      }));
+      dataBus.emit({
+        type: "command:set-spreadsheet-id",
+        spreadsheetId: imported[0].id,
+        title: imported[0].name,
+      });
       return;
     }
     // Switching sheet in place (import into an open tab): flush pending edits
@@ -526,9 +539,11 @@
       // never renders Spreadsheet briefly with stale initialLoading=false.
       initialLoading = true;
       // Upgrade the current tab with the real spreadsheetId
-      window.dispatchEvent(new CustomEvent("azprose:spreadsheet-set-id", {
-        detail: { id, title: createName },
-      }));
+      dataBus.emit({
+        type: "command:set-spreadsheet-id",
+        spreadsheetId: id,
+        title: createName,
+      });
     } catch (err) {
       console.error("Failed to create spreadsheet:", err);
     }
@@ -543,9 +558,10 @@
   async function handleManagerOpenSheet(id: string, openInNewTab: boolean) {
     managerOpen = false;
     if (openInNewTab) {
-      window.dispatchEvent(new CustomEvent("azprose:spreadsheet-open-new", {
-        detail: { id },
-      }));
+      dataBus.emit({
+        type: "command:open-spreadsheet-new",
+        spreadsheetId: id,
+      });
     } else {
       if (id === spreadsheetId) return; // Already showing this sheet
       // In create mode (no spreadsheetId), upgrade the tab via the panel store
@@ -554,9 +570,11 @@
         try {
           const data = await spreadsheetGet(id);
           initialLoading = true;
-          window.dispatchEvent(new CustomEvent("azprose:spreadsheet-set-id", {
-            detail: { id, title: data.name },
-          }));
+          dataBus.emit({
+            type: "command:set-spreadsheet-id",
+            spreadsheetId: id,
+            title: data.name,
+          });
         } catch (err) {
           console.error("Failed to open spreadsheet:", err);
         }
@@ -662,12 +680,16 @@
     });
   }
 
-  /** Tell any open datagrid view that its linked grid changed → reload. */
+  /** Canal 2 : dire aux vues DataFilter que la config du grid lié a changé →
+   *  reload. Émis sur le bus data (remplace le CustomEvent
+   *  `azprose:datagrid-updated`). */
   function notifyDatagridUpdated() {
     if (!linkedGridId) return;
-    window.dispatchEvent(new CustomEvent("azprose:datagrid-updated", {
-      detail: { datagridId: linkedGridId },
-    }));
+    dataBus.emit({
+      type: "grid-config-changed",
+      gridId: linkedGridId,
+      origin,
+    });
   }
 
   /**
@@ -690,13 +712,16 @@
   /**
    * Toolbar button: open (or create, then open) the linked grid for the
    * current spreadsheet in the DataFilter side panel. The actual create/find
-   * logic lives in app.svelte ("azprose:datafilter-open" listener).
+   * logic lives in the command saga `open-grid` (src/lib/data/commands.ts),
+   * exécutée par l'hôte via le bus data (canal 3).
    */
   function openInDataFilter() {
     if (!spreadsheetId) return;
-    window.dispatchEvent(new CustomEvent("azprose:datafilter-open", {
-      detail: { spreadsheetId, name: sheetName || "Tableau" },
-    }));
+    dataBus.emit({
+      type: "command:open-grid",
+      spreadsheetId,
+      name: sheetName || "Tableau",
+    });
   }
 
   function buildToolbar(defaultToolbar: any, _instance: any[]) {

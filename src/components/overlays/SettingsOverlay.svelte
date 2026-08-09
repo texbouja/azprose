@@ -33,6 +33,7 @@ import { getFontStore, type FontCheck } from "@/stores/fonts.svelte";
 import { joinPath, pickCssFiles, pickXlsx, readText, basename } from "@/lib/files";
 import { invoke } from "@tauri-apps/api/core"; // statique : déjà chargé en eager par le graphe
 import { spreadsheetDelete } from "@/spreadsheet/store";
+import { dataBus } from "@/lib/data/bus";
 import { initTexmf, rehashTexmf } from "@/latex";
 import { userProfile, type UserRole } from "@/stores/user-profile.svelte";
 import { exportCalendar, importCalendar, clearCalendar } from "@/lib/calendar-persistence";
@@ -295,11 +296,11 @@ function openColloscopeInDataFilter() {
     ...classes.map((classe) => c.colloscopeSpreadsheetIds[classe]),
   ].filter((id): id is string => !!id);
   if (!spreadsheetIds.length) return;
-  window.dispatchEvent(
-    new CustomEvent("azprose:datafilter-open-stack", {
-      detail: { spreadsheetIds, name: "Colloscope" },
-    }),
-  );
+  dataBus.emit({
+    type: "command:open-grid-stack",
+    spreadsheetIds,
+    name: "Colloscope",
+  });
 }
 
 // ── Conversion YYYY-MM-DD ⇄ Date (DatePicker SVAR) ─────────────────────────

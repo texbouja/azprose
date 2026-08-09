@@ -7,13 +7,17 @@
   // reconstruit les lignes depuis spreadsheet_cells — pas de snapshot stocké).
   //
   // Édition directe (même comportement que l'ancien DatagridViewer) :
-  //  - chaque édition de cellule est persistée via `datagridSaveCells`
+  //  - la persistance vit dans `SqliteGridProvider` (phase 0bis, idée H) —
+  //    `api.setNext(provider)` le branche en fin de chaîne d'événements du
+  //    Grid SVAR ; il accumule les `update-cell` (Map row:col, debounce
+  //    500 ms, anti-chevauchement) et flushe via `datagridSaveCells`
   //    (O(changes), upsert natif directement dans la table source partagée)
   //  - undo/redo natifs du Grid SVAR (mode `undo`) — les rejoués portent
   //    `eventSource: "undo"` et SONT persistés comme toute édition
-  //  - rechargement inverse : écoute `azprose:datagrid-updated` (le viewer
-  //    tableur notifie ses vues ouvertes après un save) ; après ses propres
-  //    saves, notifie `azprose:spreadsheet-updated` pour le viewer tableur
+  //  - fraîcheur via le bus data (canal 2) : écoute `cells-changed` (flushes
+  //    d'autres vues sur le même source) ET `grid-config-changed` (save
+  //    structurel du viewer tableur) ; le provider émet `cells-changed` après
+  //    ses propres flushes (les anciens CustomEvent ont disparu)
   //
   // Filtrage : vient du widget unifié de la pile (v10) — le parent passe
   // `rules` (une règle par TITRE de colonne, combinées en ET, persistées
@@ -25,13 +29,14 @@
 
   import { onMount, onDestroy, tick } from "svelte";
   import SvarGrid from "./SvarGrid.svelte";
-  import type { UpdateCellPayload } from "./SvarGrid.svelte";
   import type { IApi, IColumn, IColumnEditor, IOption, IRow } from "@svar-ui/grid-store";
   import { getFilter } from "@svar-ui/filter-store";
   import type { IFilter } from "@svar-ui/filter-store";
   import { datagridGet, datagridSave, datagridSaveCells } from "@/datagrid/store";
   import type { DatagridColumnDef, StackFilterField, StackFilterRule } from "@/datagrid/types";
-  import type { CellChange } from "@/spreadsheet/types";
+  import { dataBus, createOrigin } from "@/lib/data/bus";
+  import { anyOf, ofType } from "@/lib/data/events";
+  import { SqliteGridProvider } from "@/lib/data/providers";
 
   // ── Densité (constante module : identité STABLE d'un render à l'autre) ────
   // Le Grid ré-initialise son DataStore à chaque changement de prop `sizes` —
@@ -69,6 +74,25 @@
   let svarRows: IRow[] = $state([]);
   let gridApi: IApi | null = $state(null);
 
+  // ── Provider de persistance (phase 0bis, idée H) ──────────────────────────
+  // Le SqliteGridProvider reçoit les `update-cell` du Grid SVAR en fin de
+  // chaîne d'événements (`api.setNext(provider)` dans handleReady) et les
+  // persiste via l'upsert natif — les MÊMES commandes IPC que l'ancien
+  // `handleUpdateCell` local, déplacées telles quelles (contrats sacrés,
+  // règle 7). Après chaque flush il émet `cells-changed` sur le bus (canal 2)
+  // au lieu du CustomEvent `azprose:spreadsheet-updated`. `origin` permet aux
+  // émetteurs de sauter leurs propres événements.
+  const origin = createOrigin("datafilter-grid");
+  // svelte-ignore state_referenced_locally — `gridId` est stable par instance
+  // (DataFilterViewer keye chaque carte par `item.id` : le composant est
+  // recréé si l'id change), la capture initiale dans le provider est sûre.
+  const provider = new SqliteGridProvider({
+    gridId,
+    origin,
+    bus: dataBus,
+    saveCells: (changes) => datagridSaveCells(gridId, changes),
+  });
+
   /** Config de colonnes de la VUE au dernier load (datagridGet) — seul
    *  width/hidden est une donnée de vue, le reste (title/type/options) vient
    *  du tableur source. On la garde pour persister les largeurs (auto-fit +
@@ -83,26 +107,29 @@
    *  données (`svarColumns`/`svarRows`) : le Grid SVAR ré-exécute
    *  `$effect(reinitStore)` → `dataStore.init()` à chaque changement de props
    *  et un re-init peut rejouer un `update-cell` fantôme — ne pas le
-   *  persister comme un edit utilisateur. Plain variable, jamais rendue. */
-  let suppressGridUpdates = false;
+   *  persister comme un edit utilisateur. L'état vit dans le provider
+   *  (`setSuppressed`). */
 
   /** Remplace les données de la grille sous suppression d'événements : les
    *  `update-cell` émis pendant le re-init du Grid (synchrones dans le flush
    *  Svelte + un macrotask pour les différés) sont ignorés. */
   async function setGridData(cols: IColumn[], rows: IRow[]) {
-    suppressGridUpdates = true;
+    provider.setSuppressed(true);
     svarColumns = cols;
     svarRows = rows;
     try {
       await tick();
       await new Promise((r) => setTimeout(r, 0));
     } finally {
-      suppressGridUpdates = false;
+      provider.setSuppressed(false);
     }
   }
 
   function handleReady(api: IApi) {
     gridApi = api;
+    // Fin de chaîne d'événements : les `update-cell` du DataStore arrivent au
+    // provider (après les handlers du store), qui les persiste.
+    api.setNext(provider);
   }
 
   // ── Largeurs de colonnes (auto-fit + resize utilisateur) ─────────────────
@@ -319,6 +346,7 @@
       gridName = dg.name || name;
       sourceLinked = !!dg.source_spreadsheet_id;
       sourceSpreadsheetId = dg.source_spreadsheet_id ?? null;
+      provider.setSourceSpreadsheetId(sourceSpreadsheetId);
       totalRows = dg.rows.length;
       viewColumns = dg.columns;
       const cols = dg.columns.map((c) => {
@@ -356,18 +384,28 @@
     load();
   });
 
-  /** Recharger quand le tableur lié notifie ses vues après un save. */
-  function onGridUpdated(e: Event) {
-    const detail = (e as CustomEvent<{ datagridId?: string }>).detail;
-    if (detail?.datagridId && detail.datagridId === gridId) {
-      loadTrigger = "azprose:datagrid-updated";
-      load();
-    }
-  }
-
-  onMount(() => {
-    window.addEventListener("azprose:datagrid-updated", onGridUpdated);
-    return () => window.removeEventListener("azprose:datagrid-updated", onGridUpdated);
+  /** Canal 2 : se recharger quand la source de données change — (a) `cells-changed`
+   *  (flushes d'un autre grid ou du viewer tableur sur le même source — remplace
+   *  l'ancien `azprose:spreadsheet-updated`), (b) `grid-config-changed` (save
+   *  structurel du viewer : les colonnes du grid viennent du JOIN avec
+   *  spreadsheet_columns, une structure modifiée doit se refléter — remplace
+   *  l'ancien `azprose:datagrid-updated`). Le `skipOrigin` ignore NOS propres
+   *  émissions (le provider a déjà persisté, le rechargement serait un no-op
+   *  coûteux). Réabonné quand le source change (premier load). */
+  $effect(() => {
+    const src = sourceSpreadsheetId;
+    const gid = gridId;
+    const sub = dataBus.subscribe(
+      anyOf(ofType("cells-changed"), ofType("grid-config-changed")),
+      (ev) => {
+        if (ev.type === "cells-changed" && ev.spreadsheetId !== src) return;
+        if (ev.type === "grid-config-changed" && ev.gridId !== gid) return;
+        loadTrigger = `bus:${ev.type}`;
+        load();
+      },
+      { skipOrigin: origin },
+    );
+    return () => sub.unsubscribe();
   });
 
   // ── Filtre de pile (widget unifié, appliqué par titre) ────────────────────
@@ -460,110 +498,36 @@
     applyFilters();
   });
 
-  // ── Persistance (datagrid_save_cells → table source partagée) ─────────────
-  // Même contrat que le viewer tableur : on accumule les edits dans une Map
-  // clé "row:col" et on flushe via l'upsert natif (O(changements)) — écriture
-  // DIRECTE dans la table source partagée, aucune snapshot à mettre à jour.
-  // Un événement `azprose:spreadsheet-updated` dit au viewer tableur de se
-  // recharger. Anti-chevauchement saving/pendingFlush : un flush en cours
-  // re-queue au lieu d'empiler ; le pending n'est vidé qu'après succès (un
-  // échec IPC conserve les edits pour le prochain essai).
-
-  let saveTimer: ReturnType<typeof setTimeout> | null = null;
-  let pendingCellChanges = new Map<string, CellChange>();
-  let saving = false;
-  let pendingFlush = false;
-
-  function normalizeCellValue(v: string | number | Date): string {
-    if (v instanceof Date) return v.toISOString().slice(0, 10);
-    return String(v ?? "");
-  }
-
-  function handleUpdateCell(p: UpdateCellPayload) {
-    if (suppressGridUpdates) return;
-    const rowIndex = Number(String(p.id).replace(/^r/, ""));
-    const colIndex = Number(String(p.column).replace(/^c/, ""));
-    if (isNaN(rowIndex) || isNaN(colIndex) || rowIndex < 0 || colIndex < 0) return;
-    const value = normalizeCellValue(p.value);
-    const key = `${rowIndex}:${colIndex}`;
-    // Skip d'égalité : un `update-cell` fantôme (re-init du Grid pendant un
-    // rechargement du pont live) peut rejouer une valeur déjà en attente —
-    // ne pas re-queuer une sauvegarde redondante. On ne compare PAS avec
-    // `svarRows` (la prop est périmée après un edit : le DataStore du Grid
-    // garde ses propres copies) — cela écraserait un vrai edit de l'utilisateur.
-    if (pendingCellChanges.get(key)?.value === value) return;
-    pendingCellChanges.set(key, {
-      row_index: rowIndex,
-      col_index: colIndex,
-      value,
-    });
-    debouncedSave();
-  }
-
-  function debouncedSave() {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      saveTimer = null;
-      flushChanges();
-    }, 500);
-  }
-
-  async function flushChanges() {
-    if (saving) {
-      pendingFlush = true;
-      return;
-    }
-    saving = true;
-    try {
-      const changes = [...pendingCellChanges.values()];
-      if (changes.length === 0) return;
-      await datagridSaveCells(gridId, changes);
-      // Ne retirer que les edits sauvés — un edit arrivé pendant l'IPC en
-      // vol reste en attente pour le prochain flush.
-      for (const ch of changes) {
-        pendingCellChanges.delete(`${ch.row_index}:${ch.col_index}`);
-      }
-      // Le viewer tableur (s'il est ouvert) doit se recharger.
-      if (sourceSpreadsheetId) {
-        window.dispatchEvent(new CustomEvent("azprose:spreadsheet-updated", {
-          detail: { spreadsheetId: sourceSpreadsheetId },
-        }));
-      }
-    } catch (err) {
-      console.error("[datafilter] save failed:", err);
-    } finally {
-      saving = false;
-      if (pendingFlush) {
-        pendingFlush = false;
-        flushChanges();
-      }
-    }
-  }
+  // ── Persistance — déléguée au SqliteGridProvider (phase 0bis) ─────────────
+  // Le pipeline complet (Map row:col, debounce 500 ms, anti-chevauchement
+  // saving/pendingFlush, skip d'égalité, émission cells-changed) vit dans
+  // `src/lib/data/providers.ts`, branché sur le Grid via `api.setNext`.
+  // Ici ne restent que le filet de fermeture et le teardown du provider.
 
   onDestroy(() => {
-    // Filet de fermeture : flusher les edits encore en attente.
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
-    }
+    // Filet de fermeture : flusher les edits encore en attente, puis couper
+    // les futurs edits (destroy avant/après selon le sens du teardown).
+    provider.flushNow().finally(() => provider.destroy());
     // Largeurs de vue en attente (auto-fit / resize) : flush immédiat.
     if (widthSaveTimer) {
       clearTimeout(widthSaveTimer);
       flushWidths();
     }
-    if (pendingCellChanges.size > 0) flushChanges();
   });
 
   // ── Edit dans Spreadsheet (barre de carte) ────────────────────────────────
   // Ouvre le tableur source dans le SIDE panel (règle : le panneau principal
   // est réservé exclusivement à CodeMirror ; toute vue d'outil s'ouvre en
-  // side). L'écoute vit dans app.svelte ("azprose:datagrid-edit-in-spreadsheet").
+  // side). La navigation est une commande du bus (canal 3) — remplace le
+  // CustomEvent `azprose:datagrid-edit-in-spreadsheet`.
 
   function editInSpreadsheet() {
     if (!sourceSpreadsheetId) return;
-    window.dispatchEvent(new CustomEvent("azprose:datagrid-edit-in-spreadsheet", {
-      detail: { spreadsheetId: sourceSpreadsheetId, name: gridName || "Tableur" },
-    }));
+    dataBus.emit({
+      type: "command:open-spreadsheet",
+      spreadsheetId: sourceSpreadsheetId,
+      name: gridName || "Tableur",
+    });
   }
 
   // ── Redimensionnement manuel de la HAUTEUR de carte ───────────────────────
@@ -728,7 +692,6 @@
         reorder={false}
         sizes={GRID_SIZES}
         onReady={handleReady}
-        onUpdateCell={handleUpdateCell}
         onresizecolumn={handleColumnResize}
       />
     </div>
