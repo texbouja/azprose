@@ -17,10 +17,8 @@
     "themes": "node scripts/build-themes.mjs",
     "catalog": "bun run scripts/gen-catalog.mjs",
     "sync:help": "bun run scripts/sync-help.mjs",
-    "predev": "bun run scripts/sync-help.mjs",
-    "prebuild": "bun run scripts/sync-help.mjs",
-    "prebuild-release": "bun run scripts/sync-help.mjs",
-    "pretauri": "bun run scripts/sync-help.mjs",
+    "help": "bun run scripts/sync-help.mjs",
+    "doc": "bun run scripts/sync-help.mjs",
     "build-release": "bun run tauri build"
   },
   "engines": {

@@ -102,7 +102,10 @@ export class ContentStore {
    *  éditeur ouvert dessus garde son édition) SAUF `forceBuffer: true`
    *  (reload externe / conflit — l'utilisateur a choisi de recharger le
    *  disque). Sans buffer : `preferDraft ? draft ?? disque : disque`
-   *  (politique A au retour d'une navigation). */
+   *  (politique A au retour d'une navigation). Un draft VIDE est traité
+   *  comme absent : il ne peut être qu'un artefact (buffer "" écrit par le
+   *  sync value de l'éditeur pendant la fenêtre source:"" d'open()), et
+   *  restaurer "" par-dessus un disque non vide afficherait un fichier vidé. */
   async load(
     path: string,
     opts?: { preferDraft?: boolean; forceBuffer?: boolean },
@@ -113,7 +116,7 @@ export class ContentStore {
     e.saved = text;
     if (e.buffer === undefined || opts?.forceBuffer) {
       const draft = opts?.preferDraft ? this.fs.loadDraft(path) : null;
-      e.buffer = draft !== null && draft !== text ? draft : text;
+      e.buffer = draft !== null && draft !== "" && draft !== text ? draft : text;
     }
     this.entries.set(k, e);
     this.bump(k);

@@ -22,6 +22,10 @@ let _projectRoot: string | null = null;
 export function setSessionScope(root: string | null): void {
   scope = root ? "::" + root : "";
   _projectRoot = root;
+  if (root && !_draftsPurged) {
+    _draftsPurged = true;
+    purgeEmptyDrafts();
+  }
 }
 
 /** Return the current project root path, or null if no project is open. */
@@ -130,4 +134,22 @@ export function loadDraft(path: string): string | null {
 
 export function clearDraft(path: string): void {
   localStorage.removeItem(draftKey(path));
+}
+
+// Purge unique par session : nettoie les brouillons VIDE laissés par le bug
+// « fichier .md affiché vide » (un buffer "" écrit par le sync value de
+// l'éditeur pendant la fenêtre source:"" d'open(), puis parké). Un draft vide
+// n'est jamais restauré (ContentStore.load le traite comme absent) — il ne
+// sert qu'à polluer le localStorage et à tromper le diagnostic.
+let _draftsPurged = false;
+function purgeEmptyDrafts(): void {
+  try {
+    const prefix = DRAFT_PREFIX + scope + "::";
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix) && localStorage.getItem(key) === "") {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch { /* non-fatal */ }
 }

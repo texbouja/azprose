@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount, onDestroy } from "svelte";
-import { Compartment, EditorState, Transaction } from "@codemirror/state";import { EditorView, keymap, highlightActiveLine, drawSelection } from "@codemirror/view";
+import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state";
+import { EditorView, keymap, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
@@ -18,6 +19,16 @@ import { reportCursor } from "@/stores/cursor-line.svelte";
 function toFileUri(path: string): string {
   return "file://" + encodeURI(path.replace(/\\/g, "/"));
 }
+
+/** Marque les transactions de SYNCHRONISATION (prop value → doc), par
+ *  opposition aux éditions utilisateur. L'updateListener ignore leur
+ *  `onChange` : un reflet ne doit jamais écrire le buffer du store.
+ *  Cause racine du bug « fichier .md affiché vide » : lors d'une
+ *  ré-affectation de tab (panel-store.open l.243 pose `source: ""` AVANT la
+ *  lecture async), ce $effect dispatchait "" → onChange("") → setBuffer →
+ *  le load() préservait le buffer "" → fichier vide + dirty + draft vide
+ *  parké (qui gagnait ensuite à chaque lecture preferDraft). */
+const syncValueAnnotation = Annotation.define<boolean>();
 
 let {
   value = "",
@@ -86,7 +97,11 @@ onMount(() => {
       buildTheme(),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
-          onChangeRef?.(update.state.doc.toString());
+          // Seules les éditions utilisateur notifient : les transactions de
+          // sync value (annotation dédiée) reflètent le store, elles ne le
+          // ré-alimentent pas.
+          const isUserEdit = !update.transactions.some((t) => t.annotation(syncValueAnnotation));
+          if (isUserEdit) onChangeRef?.(update.state.doc.toString());
           docVersion++;
         }
         if (update.docChanged || update.selectionSet) {
@@ -161,7 +176,10 @@ $effect(() => {
   if (view && view.state.doc.toString() !== next) {
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: next },
-      annotations: Transaction.addToHistory.of(false),
+      annotations: [
+        Transaction.addToHistory.of(false),
+        syncValueAnnotation.of(true),
+      ],
     });
     trackCursor(view.state); // changement d'onglet : la sélection est recalculée par CM
   }

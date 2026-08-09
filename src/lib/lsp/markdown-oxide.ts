@@ -1,5 +1,6 @@
 import { LSPClient, type LSPClientConfig, type LSPClientExtension, serverCompletion, serverDiagnostics } from "@codemirror/lsp-client";
 import { createTauriTransport, killTransport, type TauriTransport } from "./transport";
+import { MultiViewWorkspace } from "./multi-view-workspace";
 import { DEFAULT_MOXIDE_TOML, patchCalloutCompletions } from "@/lib/moxide-config";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
@@ -242,6 +243,10 @@ export function getMarkdownOxideClient(
     notificationHandlers: config?.notificationHandlers,
     unhandledNotification: config?.unhandledNotification,
     extensions: [serverCompletion(), serverDiagnostics(), markdownOxideCapabilities],
+    // The same .md can be open in the main editor AND the side preview
+    // (which runs a live EditorView for jump-to-line); the default
+    // workspace throws on a second view of a file.
+    workspace: (client) => new MultiViewWorkspace(client),
   }).connect(transport);
 
   return _client;

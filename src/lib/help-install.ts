@@ -1,4 +1,4 @@
-import { mkdir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { mkdir, readTextFile, remove, writeTextFile } from "@tauri-apps/plugin-fs";
 import { HELP_VERSION } from "@/help/catalog";
 import { joinPath } from "./paths-utils";
 
@@ -31,10 +31,16 @@ export function isHelpPath(path: string, rootPath: string | null | undefined): b
 
 /**
  * Matérialise la documentation embarquée dans `<racine>/.azprose/help/` si la
- * version installée diffère du bundle (stamp `.version`). Idempotent : au
+ * version installée diffère du bundle (stamp `version.txt`). Idempotent : au
  * démarrage d'un projet déjà à jour, ne réécrit rien. Le `getHelpBundle`
  * (import.meta.glob) est chargé à l'exécution pour garder ce module testable
  * sous bun sans évaluer le glob.
+ *
+ * Le stamp est un fichier NORMAL (pas un dotfile) : il vit déjà dans
+ * `.azprose/` (dossier caché, filtré du watcher FS), et le scope fs
+ * (pattern `**` sur les sous-dossiers) ne matche pas les dotfiles sur
+ * Unix (require_literal_leading_dot) — `.version` était hors scope et
+ * l'écriture échouait.
  *
  * Retourne le dossier help, ou `null` en cas d'échec (jamais bloquant).
  */
@@ -43,7 +49,7 @@ export async function ensureHelpInstalled(rootPath: string | null | undefined): 
   const dir = helpDir(rootPath);
   try {
     await mkdir(dir, { recursive: true });
-    const stamp = joinPath(dir, ".version");
+    const stamp = joinPath(dir, "version.txt");
     try {
       const v = await readTextFile(stamp);
       // Version GÉNÉRÉE (hash du contenu, string) — comparaison en chaîne.
@@ -63,6 +69,14 @@ export async function ensureHelpInstalled(rootPath: string | null | undefined): 
       await writeTextFile(target, content);
     }
     await writeTextFile(stamp, String(HELP_VERSION));
+    // Migration : l'ancien stamp dotfile (.version) était hors scope fs Unix
+    // (require_literal_leading_dot) — il resterait orphelin. Nettoyage
+    // best-effort (un remove échoué ne bloque pas l'installation).
+    try {
+      await remove(joinPath(dir, ".version"));
+    } catch {
+      /* déjà absent, ou hors scope — sans importance */
+    }
     return dir;
   } catch (err) {
     console.error("[help] ensureHelpInstalled failed:", err);

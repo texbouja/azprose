@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * Synchro AUTOMATIQUE de la documentation utilisateur vers l'aide embarquée.
+ * Synchro de la documentation utilisateur vers l'aide embarquée — scénario
+ * EXPLICITE, lancé à la demande :
  *
- *   bun run sync:help            # une passe (source → bundle + catalogue)
- *   bun run sync:help --watch    # surveille docs/user/ et re-synchronise
+ *   bun run help          # une passe (source → bundle + catalogue)
+ *   bun run help --watch  # surveille docs/user/ et re-synchronise
+ *   bun run doc           # alias de help
  *
  * La source de vérité de la doc est `docs/user/` (le guide écrit dans le
  * vault). À CHAQUE passe le script régénère intégralement :
@@ -25,9 +27,9 @@
  * EXCLUDE_FROM_CATALOG restent EMBARQUÉS (les wikilinks du guide y résolvent
  * dans le lecteur) mais n'ont pas de footer de navigation.
  *
- * Branché sur les hooks `predev` / `prebuild` / `prebuild-release` /
- * `pretauri` de package.json : la doc est toujours à jour au lancement de
- * l'app et à la compilation.
+ * Les scripts `build` / `dev` utilisent `src/help` TEL QU'IL EST (la doc est
+ * commitée dans le repo) : lancer `bun run help` après chaque édition de
+ * `docs/user/`, avant de builder ou de lancer l'app.
  */
 
 import { createHash } from "node:crypto";
@@ -140,8 +142,8 @@ function sync() {
   );
   const out = [
     "// GÉNÉRÉ AUTOMATIQUEMENT par scripts/sync-help.mjs — ne pas éditer à la main.",
-    "// La source de vérité est docs/user/ ; ce fichier est régénéré à chaque passe",
-    "// (hooks predev/prebuild/pretauri).",
+    "// La source de vérité est docs/user/ ; ce fichier est régénéré via",
+    "// `bun run help` (scénario explicite) après chaque édition de la doc.",
     "",
     `export const HELP_VERSION = ${JSON.stringify(HELP_VERSION)};`,
     "",
@@ -162,17 +164,17 @@ function sync() {
 const args = process.argv.slice(2);
 if (args.includes("--watch")) {
   sync();
-  console.log("[sync-help] surveillance de docs/user/ (Ctrl-C pour arrêter)…");
-  let timer = null;
-  const onChange = () => {
-    clearTimeout(timer);
-    timer = setTimeout(sync, 300);
-  };
-  try {
-    watch(SRC, { recursive: true }, onChange);
-  } catch {
-    console.error("[sync-help] watch récursif non supporté — relancez `bun run sync:help` après chaque édition.");
-  }
+    console.log("[sync-help] surveillance de docs/user/ (Ctrl-C pour arrêter)…");
+    let timer = null;
+    const onChange = () => {
+      clearTimeout(timer);
+      timer = setTimeout(sync, 300);
+    };
+    try {
+      watch(SRC, { recursive: true }, onChange);
+    } catch {
+      console.error("[sync-help] watch récursif non supporté — relancez `bun run help` après chaque édition.");
+    }
 } else {
   sync();
 }

@@ -166,7 +166,8 @@ export class PanelState {
     }
     const fileSource = await readText(path);
     const draft = opts?.preferDraft ? loadDraft(path) : null;
-    const source = draft !== null && draft !== fileSource ? draft : fileSource;
+    // Draft vide = artefact (jamais restauré — cf. ContentStore.load)
+    const source = draft !== null && draft !== "" && draft !== fileSource ? draft : fileSource;
     return { source, saved: fileSource };
   }
 

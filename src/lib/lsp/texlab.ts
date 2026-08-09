@@ -1,5 +1,6 @@
 import { LSPClient, type LSPClientConfig, serverDiagnostics } from "@codemirror/lsp-client";
 import { createTauriTransport, killTransport } from "./transport";
+import { MultiViewWorkspace } from "./multi-view-workspace";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import type { Diagnostic } from "@/lib/diagnostics";
@@ -86,6 +87,9 @@ export function getTexlabClient(
     notificationHandlers: config?.notificationHandlers,
     unhandledNotification: config?.unhandledNotification,
     extensions: [serverDiagnostics()],
+    // The same file can be open in the main editor AND the side panel;
+    // the default workspace throws on a second view of a file.
+    workspace: (client) => new MultiViewWorkspace(client),
   }).connect(transport);
 
   wireNotifications(_client);

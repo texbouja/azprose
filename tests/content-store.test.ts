@@ -93,6 +93,29 @@ test("load with preferDraft ignores a draft identical to disk", async () => {
   expect(store.getDraft("/a.md")).toBeNull(); // pas de draft overlayé
 });
 
+test("load with preferDraft ignores an EMPTY draft over a non-empty disk", async () => {
+  // Artefact du bug « fichier affiché vide » : un draft "" parké par le sync
+  // value de l'éditeur pendant la fenêtre source:"" d'open(). Ne doit JAMAIS
+  // gagner sur un disque non vide (sinon fichier vidé + dirty à chaque retour).
+  const { fs, drafts } = makeFs({ "/a.md": "11632 bytes de contenu" });
+  drafts.set("/a.md", "");
+  const store = new ContentStore(fs);
+  const result = await store.load("/a.md", { preferDraft: true });
+  expect(result).toBe("11632 bytes de contenu");
+  expect(store.getSaved("/a.md")).toBe("11632 bytes de contenu");
+  expect(store.has("/a.md")).toBe(true);
+});
+
+test("load with preferDraft empty draft + empty disk: stays empty", async () => {
+  // Fichier neuf : draft vide et disque vide — aucun effet observable.
+  const { fs, drafts } = makeFs({ "/new.md": "" });
+  drafts.set("/new.md", "");
+  const store = new ContentStore(fs);
+  const result = await store.load("/new.md", { preferDraft: true });
+  expect(result).toBe("");
+  expect(store.getSaved("/new.md")).toBe("");
+});
+
 test("setBuffer is idempotent (same text, no bump)", async () => {
   const { fs } = makeFs();
   const versions: number[] = [];

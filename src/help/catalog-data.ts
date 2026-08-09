@@ -1,6 +1,6 @@
 // GÉNÉRÉ AUTOMATIQUEMENT par scripts/sync-help.mjs — ne pas éditer à la main.
-// La source de vérité est docs/user/ ; ce fichier est régénéré à chaque passe
-// (hooks predev/prebuild/pretauri).
+// La source de vérité est docs/user/ ; ce fichier est régénéré via
+// `bun run help` (scénario explicite) après chaque édition de la doc.
 
 export const HELP_VERSION = "5c12af89a7b8";
 

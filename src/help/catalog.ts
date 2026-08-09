@@ -21,7 +21,7 @@ export type HelpArticle = { path: string; title: string };
 export const HELP_ROOT = "index.md";
 
 /**
- * Version du bundle embarqué — le stamp `.azprose/help/.version` la compare
+ * Version du bundle embarqué — le stamp `.azprose/help/version.txt` la compare
  * pour déclencher une réinstallation. GÉNÉRÉE par sync-help.mjs : hash du
  * contenu de `docs/user/` (même contenu → même version → aucune réinstallation ;
  * tout edit de doc change la version → réinstallation au prochain démarrage).

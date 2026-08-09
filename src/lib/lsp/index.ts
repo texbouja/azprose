@@ -4,3 +4,4 @@ export { getTexlabClient, stopTexlab, isTexlabReady } from "./texlab";
 export { getMarkdownOxideClient, stopMarkdownOxide, isMarkdownOxideReady, ensureMoxideConfig, executeOxideCommand, requestMarkdownOxide, notifyMarkdownOxideFileChanged } from "./markdown-oxide";
 export { fetchBacklinks, toFileUri, fromFileUri, parseLocations, filterSelf, sortRefs, groupBacklinks } from "./backlinks";
 export type { BacklinkRef, BacklinkGroup } from "./backlinks";
+export { MultiViewWorkspace } from "./multi-view-workspace";
