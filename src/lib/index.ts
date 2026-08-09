@@ -23,7 +23,6 @@ export { loadProjectConfig, saveProjectConfig, configPath } from "./project-conf
 export type { ProjectConfig } from "./project-config";
 export { buildCommands } from "./commands";
 export { filterAndRankCommands } from "./command-search";
-export { isCsvPath, parseCsvPreview, type CsvPreview } from "./csv";
 export { displayKey, shortcutLabel } from "./platform";
 export {
   pickFolder,
@@ -32,6 +31,7 @@ export {
   walkSupportedTextFiles,
   readText,
   writeText,
+  isCsvPath,
   isSupportedTextPath,
   isImagePath,
   isPdfPath,

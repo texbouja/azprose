@@ -1,6 +1,5 @@
 import { open, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { readDir, readFile, readTextFile, writeTextFile, exists, stat, rename, mkdir, remove } from "@tauri-apps/plugin-fs";
-import { isCsvPath } from "./csv";
 import { basename, dirname, joinPath } from "./paths-utils";
 
 export { basename, dirname, joinPath };
@@ -145,6 +144,11 @@ export function isEditablePath(path: string): boolean {
 
 export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(path);
+}
+
+/** CSV/TSV files open as plain text in the editor (no spreadsheet association). */
+export function isCsvPath(path: string): boolean {
+  return /\.(csv|tsv)$/i.test(path);
 }
 
 export function isSupportedTextPath(path: string): boolean {
