@@ -1,6 +1,6 @@
 import type { HandlerContext, FileHandler } from "./types"
 import { extFromPath } from "@/lib/editor-languages"
-import { followPreviewNavigation } from "@/lib/preview-follow"
+import type { NavIntent } from "@/lib/navigation"
 // Imports STATIQUES (jamais mélangés avec du dynamique) : ces modules sont déjà
 // chargés en eager via app.svelte (markdown-oxide, files) ou par le graphe
 // statique (tauri/api/event — transport/markdown-oxide) — un `await import()`
@@ -8,6 +8,17 @@ import { followPreviewNavigation } from "@/lib/preview-follow"
 import { ensureMoxideConfig, resolveWikilink } from "@/lib/lsp/markdown-oxide"
 import { walkSupportedTextFiles } from "@/lib/files"
 import { listen } from "@tauri-apps/api/event"
+
+/**
+ * Pont handler → canal « navigate » : le handler résout la cible (monde réel :
+ * LSP oxide, walk du vault) puis POSTE l'intention typée sur l'événement
+ * `azprose:navigate`. app.svelte branche cet événement sur
+ * `bridgeEvent(navDeps, "azprose:navigate", …)` — le reducer de navigation
+ * (seul endroit qui modifie la session) exécute l'intention.
+ */
+function postNavIntent(intent: NavIntent): void {
+  window.dispatchEvent(new CustomEvent("azprose:navigate", { detail: intent }))
+}
 
 export function createMarkdownHandler(context: HandlerContext): FileHandler {
   const ctx = context
@@ -79,28 +90,10 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
         void (async () => {
           const path = await resolveTarget(detail)
           if (!path) return
-          // Navigate IN PLACE: reuse the preview tab (preview: true), re-associate
-          // it with the rendered file. The tab is never a fresh, unlinked tab.
-          // fallbackToActive: si le flag preview a été perdu (restore de session,
-          // ré-affectation openInActiveTab), on re-pointe le tab ACTIF au lieu de
-          // créer un nouvel onglet — « clic simple = tab actif ».
-          if (ctx.sideActivePath()) ctx.navPush(ctx.sideActivePath()!)
-          if (heading) ctx.setScrollTarget(heading)
-          ctx.setSideVisible(true)
-          ctx.pm.openInSide(path, { preview: true, fallbackToActive: true }).catch((err: any) => console.error("[azprose] wikilink open failed", err))
-          // Editor-follow (décision utilisateur) : le tab éditeur LIÉ suit la
-          // navigation du preview. Au PREMIER clic de la session, on établit le
-          // lien vers le tab éditeur actif (celui qui a lancé le browsing) —
-          // l'éditeur affiche déjà la source, rien à déplacer. Ensuite, chaque
-          // navigation re-pointe ce tab (politique A : edits parkés en brouillon
-          // avant le mouvement, notification discrète).
-          if (!ctx.pm.previewLinkedTabId) {
-            ctx.pm.previewLinkedTabId = ctx.pm.main.activeTabId
-          } else {
-            void followPreviewNavigation(ctx.pm, path).then(r => {
-              if (r.parked) ctx.notify.setInfo(ctx.t("preview.draftParked"))
-            })
-          }
+          // Navigation IN PLACE : le reducer réutilise le tab preview (preview:
+          // true, fallbackToActive), établit/ré-associe previewLinkedTabId et
+          // fait suivre l'éditeur lié (politique A : edits parkés + notification).
+          postNavIntent({ type: "wikilink-navigate", path, heading })
         })()
       }
       window.addEventListener("azprose:wikilink-navigate", onWikilinkNavigate)
@@ -110,11 +103,11 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       // an already-open tab is activated, not duplicated).
       const onWikilinkOpenNew = (e: Event) => {
         const detail = (e as CustomEvent).detail as { path?: string; target?: string; heading?: string | null }
+        const heading = detail.heading ?? null
         void (async () => {
           const path = await resolveTarget(detail)
           if (!path) return
-          ctx.openFileInTab(path, { silent: true }).catch((err: any) => console.error("[azprose] wikilink open-new failed", err))
-          if (detail.heading) ctx.setScrollTarget(detail.heading)
+          postNavIntent({ type: "wikilink-open-new", path, heading })
         })()
       }
       window.addEventListener("azprose:wikilink-open-new", onWikilinkOpenNew)
@@ -126,8 +119,10 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       const onPdfRectNavigate = (e: Event) => {
         const detail = (e as CustomEvent).detail as { path: string; page?: number; rect?: string }
         if (!detail.path) return
-        ctx.openFileInTab(detail.path, { silent: true }).catch(() => {})
-        // Tell PdfViewer to scroll to page/rect after the file opens
+        // Le reducer ouvre le PDF dans le tab side actif ; la cible de scroll
+        // (page/rect) est un événement de RENDU pour PdfViewer, émis ici APRÈS
+        // l'intention (le store scroll-target est réservé aux headings preview).
+        postNavIntent({ type: "pdf-rect-navigate", path: detail.path, page: detail.page, rect: detail.rect })
         window.dispatchEvent(new CustomEvent("azprose:pdf-scroll-to-rect", { detail }))
       }
       window.addEventListener("azprose:pdf-rect-navigate", onPdfRectNavigate)
@@ -141,15 +136,12 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
     })()
 
     // oxide show-document listener (daily-note jumps from the LSP: today/
-    // yesterday/tomorrow/jump). User navigation → record the current preview
-    // page in the back history before opening the target.
+    // yesterday/tomorrow/jump). User navigation → le reducer enregistre la
+    // page preview courante dans l'historique back puis ouvre la cible.
     void (async () => {
       const unlisten = await listen<{ path: string }>("azprose:oxide-show-document", (ev) => {
         const p = ev.payload.path
-        if (p) {
-          if (ctx.sideActivePath()) ctx.navPush(ctx.sideActivePath()!)
-          ctx.openFileInTab(p, { silent: true }).catch(() => {})
-        }
+        if (p) postNavIntent({ type: "oxide-show-document", path: p })
       })
       cleanups.push(unlisten)
     })()

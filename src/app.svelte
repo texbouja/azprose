@@ -17,10 +17,6 @@ import {
   STORAGE_KEYS,
   CHANGELOG_URL,
   getWhatsNewToastMessage,
-  isImagePath,
-  isPdfPath,
-  isOpenablePath,
-  isMarkdownPath,
   readText,
   getMtime,
   basename,
@@ -62,7 +58,7 @@ import { ensureHelpInstalled, helpIndexPath, isHelpPath } from "@/lib/help-insta
 // Import STATIQUE (jamais mélangé avec du dynamique) : index-home est déjà
 // dans le chunk principal via LinksView → TocPanel → toc-forest — un dynamic
 // import ici ne découperait AUCUN chunk (avertissement INEFFECTIVE_DYNAMIC_IMPORT).
-import { findLinkedIndexMd } from "@/lib/index-home";
+import { navigate, navigateVoid, bridgeEvent, type NavDeps, type NavIntent } from "@/lib/navigation";
 import { writeBackColleKeys } from "@/colles/write-back";
 import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
 import PrintOverlay from "@/components/overlays/PrintOverlay.svelte";
@@ -103,7 +99,6 @@ import { dataBus } from "@/lib/data/bus";
 import { runCommand } from "@/lib/data/commands";
 import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
 import { navPush, navBack, navForwardStep, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
-import { followPreviewNavigation } from "@/lib/preview-follow";
 import {
   createLatexState,
   cleanLatexAux, cleanLatexAuxAndOutput, cleanLatexAll,
@@ -246,7 +241,7 @@ let splitRatio = $state(pm.splitRatio);
 // État maximisé d'un panneau — signalé par le PanelManager via splitRatio :
 // toggleExpandPanel pose 1 (MAIN plein écran) / 0 (SIDE plein écran) et
 // restaure savedSplitRatio. Déduit ici pour le routage des clics sidebar.
-let expandedPanel = $derived(
+let expandedPanel = $derived<"main" | "side" | null>(
   splitRatio >= 0.99 ? "main" : splitRatio <= 0.01 ? "side" : null,
 );
 
@@ -503,34 +498,14 @@ onMount(() => {
   // ── Latex log listener, oxide events, wikilink nav → handlers ──
 
   // — preview navigation history (back / forward) —
-  // The preview tab navigates AND the linked editor tab follows (the editor
-  // mirrors the preview — see followPreviewNavigation). Unsaved edits in the
-  // linked tab are parked (policy A) with a discreet notification.
+  // Le reducer : le tab preview navigue ET l'éditeur lié suit (l'éditeur
+  // reflète le preview — voir followPreviewNavigation). Les brouillons non
+  // sauvegardés du tab lié sont parqués (politique A) avec une notification.
   const navGoBack = () => {
-    if (!sideActivePath) return;
-    const prev = navBack();
-    if (!prev) return;
-    navPushForward(sideActivePath);
-    sideVisible = true;
-    pm.sideVisible = true;
-    pm.openInSide(prev, { preview: true, fallbackToActive: true }).catch(() => {});
-    void followPreviewNavigation(pm, prev).then(r => {
-      if (r.parked) notifications.setInfo(t("preview.draftParked"));
-    });
+    navigateVoid(navDeps, { type: "preview-back" });
   };
   const navGoForward = () => {
-    if (!sideActivePath) return;
-    // navForwardStep pushes the current page onto back WITHOUT clearing the
-    // remaining forward entries (a plain navPush would break multi-step
-    // forward navigation).
-    const next = navForwardStep(sideActivePath);
-    if (!next) return;
-    sideVisible = true;
-    pm.sideVisible = true;
-    pm.openInSide(next, { preview: true, fallbackToActive: true }).catch(() => {});
-    void followPreviewNavigation(pm, next).then(r => {
-      if (r.parked) notifications.setInfo(t("preview.draftParked"));
-    });
+    navigateVoid(navDeps, { type: "preview-forward" });
   };
   setNavActions({ goBack: navGoBack, goForward: navGoForward });
 
@@ -615,33 +590,29 @@ const crashDeps: CrashHandlerDeps = {
 function handleViewCrash(error: unknown) { handleViewCrashUtil(crashDeps, error); }
 $effect(() => setupCrashListener(crashDeps));
 
+// Canal « navigate » (phase 1, idée A) : le reducer de navigation PUR est le
+// SEUL endroit qui modifie la session de navigation. `navDeps` est construit
+// plus bas (après tous les helpers) — les $effect ci-dessous ne s'exécutent
+// qu'après l'initialisation complète du corps, leurs closures sont sûres.
+
 $effect(() => {
   const onJump = (e: Event) => {
     const detail = (e as CustomEvent<{ path?: string; line: number }>).detail;
-    handleJumpToLine(detail.line, detail.path ?? null);
+    navigateVoid(navDeps, { type: "jump-to-line", line: detail.line, path: detail.path ?? null });
   };
   window.addEventListener("azprose:jump-to-line", onJump);
   return () => window.removeEventListener("azprose:jump-to-line", onJump);
 });
 
-// Preview home button → HOME dynamique du preview : `findLinkedIndexMd` remonte
-// depuis le fichier courant pour trouver l'`index.md` lié (≤ 3 niveaux, borné au
-// vault), repli `rootPath/index.md`, sinon no-op silencieux. Clic simple =
-// navigation IN-PLACE du tab preview (azprose:wikilink-navigate — l'association
-// tab↔fichier est conservée par previewLinkedTabId) ; alt+clic = NOUVEL onglet
-// (azprose:wikilink-open-new, même logique que les liens du viewer).
+// Preview home button → HOME dynamique du preview : le reducer (`preview-home`)
+// remonte via findLinkedIndexMd depuis le fichier courant (≤ 3 niveaux, borné
+// au vault), repli `rootPath/index.md`, sinon no-op silencieux. Clic simple =
+// navigation IN-PLACE du tab preview (associé par previewLinkedTabId) ;
+// alt+clic = NOUVEL onglet (même logique que les liens du viewer).
 $effect(() => {
-  const onHome = async (e: Event) => {
+  const onHome = (e: Event) => {
     const newTab = !!(e as CustomEvent<{ newTab?: boolean }>).detail?.newTab;
-    const rp = getRootPath();
-    const cur = pm.side.activePath ?? activePath;
-    if (!rp || !cur) return;
-    const target = await findLinkedIndexMd({ rootPath: rp, currentFilePath: cur, readText });
-    if (!target) return; // aucun index lié → no-op silencieux
-    window.dispatchEvent(new CustomEvent(
-      newTab ? "azprose:wikilink-open-new" : "azprose:wikilink-navigate",
-      { detail: { path: target } },
-    ));
+    navigateVoid(navDeps, { type: "preview-home", newTab });
   };
   window.addEventListener("azprose:preview-home", onHome);
   return () => window.removeEventListener("azprose:preview-home", onHome);
@@ -719,10 +690,10 @@ let docArticleOpen = false; // garde : l'effet d'écoute est monté une fois
 $effect(() => {
   if (docArticleOpen) return;
   docArticleOpen = true;
-  const onDocNavigate = async (e: Event) => {
+  const onDocNavigate = (e: Event) => {
     const { path, heading } = (e as CustomEvent<{ path: string; heading?: string }>).detail;
     if (!path || !isHelpPath(path, getRootPath())) return;
-    await openDocArticle(path, heading);
+    navigateVoid(navDeps, { type: "doc-navigate", path, heading });
   };
   window.addEventListener("azprose:doc-navigate", onDocNavigate);
   return () => window.removeEventListener("azprose:doc-navigate", onDocNavigate);
@@ -746,55 +717,25 @@ async function openDocArticle(path: string, heading?: string): Promise<void> {
 
 /** Ouvre la racine de la documentation intégrée dans un tab doc (side). */
 async function openHelp(): Promise<void> {
-  const rp = getRootPath();
-  if (!rp) return;
-  const index = helpIndexPath(rp);
-  const existing = pm.side.tabs.find((t) => t.kind === "doc" && t.path === index);
-  if (existing) pm.side.select(existing.id);
-  else await openDocArticle(index);
+  await navigate(navDeps, { type: "open-help" });
 }
 
 $effect(() => {
   const onJumpFile = async (e: Event) => {
     const { path, line, heading } = (e as CustomEvent<{ path: string; line?: number; heading?: string }>).detail;
     if (!path) return;
-    // Chemin de la documentation intégrée → navigation dans le DocPreview
-    // (jamais dans l'éditeur main : tab doc = lecture seule).
-    if (isHelpPath(path, getRootPath())) {
-      await openDocArticle(path, heading);
-      return;
-    }
-    // User navigation (TOC / backlinks / tags click): record the current
-    // preview page in the back history BEFORE jumping (browser-like). The
-    // store dedupes consecutive duplicates (headings within the same file).
-    if (sideActivePath) navPush(sideActivePath);
-    // Normalize path (same as handleInverseSync)
-    const normFile = path.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
-    const found = pm.findTabByPath(normFile);
-    if (found && found.panel === "main") {
-      pm.main.select(found.tab.id);
-    } else {
-      await pm.openInMain(normFile, { silent: true, preview: true });
-    }
-    if (line != null || heading != null) {
-      // Line contract of azprose:jump-to-file is 1-BASED (TOC i+1, LSP +1).
-      // jumpToLine state and data-sline are 0-BASED (editor does line+1).
+    // User navigation (TOC / backlinks / tags click) → le reducer gère :
+    // routage doc (jamais l'éditeur main), historique back, findTabByPath,
+    // openInMain, jumpToLine 1-based → 0-based, scroll heading (immune aux
+    // décalages de transclusion) ou syncLine LIÉE au chemin normalisé.
+    const isHelp = isHelpPath(path, getRootPath());
+    await navigate(navDeps, { type: "jump-to-file", path, line, heading });
+    // Notification de rendu (le reducer ne touche pas au DOM) : un preview déjà
+    // rendu scrolle immédiatement ; le pending store couvre un preview encore
+    // en cours de rendu. Les articles doc se scrollent eux-mêmes (openDocArticle).
+    if (!isHelp && (line != null || heading != null)) {
+      const normFile = path.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
       const line0 = line != null ? line - 1 : undefined;
-      if (line0 != null) {
-        jumpToLine = line0;
-        handleSetEditorMode("raw");
-      }
-      // Sync the side preview when it shows this file. Heading-id scroll is
-      // immune to transclusion line shifts, so prefer it; the line-based
-      // syncLine remains the fallback for jumps without a heading (backlinks,
-      // tags, transcluded dbl-click). The pending store covers a preview still
-      // rendering; the event covers an already-rendered preview (immediate
-      // scroll that clears the pending value).
-      if (heading != null) {
-        setScrollTarget(heading);
-      } else if (line0 != null) {
-        setSyncLine(line0, normFile);
-      }
       window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", {
         detail: { path: normFile, line: line0, heading },
       }));
@@ -806,21 +747,13 @@ $effect(() => {
 
 // Journal date click → create or open daily note (wired from JournalCalendarPanel)
 $effect(() => {
-  const handler = async (e: Event) => {
+  const handler = (e: Event) => {
     const { date } = (e as CustomEvent<{ date: string }>).detail;
     if (!date) return;
-    const rp = getRootPath();
-    if (!rp) return;
-    const folder = journalSettings.current.journalFolder;
-    // User navigation (journal calendar click): record the current preview
-    // page in the back history before opening the daily note.
-    if (sideActivePath) navPush(sideActivePath);
-    const p = await ensureDailyNoteWithColles(date, rp, folder);
-    if (p) {
-      await openFileInTab(p);
-    }
-    // Refresh note scan so the JournalCalendarPanel picks up the new file
-    await journal.scanForNotes(rp, folder);
+    // Le reducer : push de la page preview courante dans l'historique back,
+    // création/ouverture de la daily note (ensureDailyNote), puis re-scan du
+    // journal pour que JournalCalendarPanel voie le nouveau fichier.
+    navigateVoid(navDeps, { type: "journal-date-click", date });
   };
   window.addEventListener("azprose:journal-date-click", handler);
   return () => window.removeEventListener("azprose:journal-date-click", handler);
@@ -855,19 +788,9 @@ $effect(() => {
 });
 
 async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" }) {
-  if (!isOpenablePath(path)) {
-    if (!opts?.silent) {
-      notifications.setLoadError({ title: "Format", message: t("app.unsupportedFormat", { name: basename(path) }) });
-    }
-    return;
-  }
-  if (isImagePath(path) || isPdfPath(path)) {
-    await pm.openInSide(path, opts);
-    sideVisible = true;
-  } else {
-    await pm.openInMain(path, opts);
-  }
-  void trackMtime(path);
+  // Canal « navigate » : le reducer route image/pdf → side, texte → main, et
+  // notifie l'erreur de format (sauf silent).
+  await navigate(navDeps, { type: "open-file", path, opts });
 }
 
 function closeTab(id: string) {
@@ -884,47 +807,10 @@ function closeTab(id: string) {
  * PDF/images passent toujours par le side (même maximisé).
  */
 async function handleSidebarFileSelect(path: string, newTab = false) {
-  if (!isOpenablePath(path)) {
-    notifications.setLoadError({ title: "Format", message: t("app.unsupportedFormat", { name: basename(path) }) });
-    return;
-  }
-  if (isImagePath(path) || isPdfPath(path)) {
-    if (newTab) await pm.openInSide(path);
-    else await pm.openInSideActiveTab(path);
-    sideVisible = true;
-    void trackMtime(path);
-    return;
-  }
-  if (newTab) {
-    await pm.openInMain(path);
-    void trackMtime(path);
-    return;
-  }
-  // Clic simple sur du texte : routage maximisé du preview md — navigation
-  // IN-PLACE du tab preview (comme un wikilink), l'éditeur lié suit via
-  // followPreviewNavigation (au premier clic, le lien s'établit vers le tab
-  // éditeur actif).
-  const sideTab = pm.side.activeTab;
-  if (
-    expandedPanel === "side" &&
-    isMarkdownPath(path) &&
-    sideTab &&
-    isMarkdownPath(sideTab.path) &&
-    (sideTab.renderMode === "preview" || sideTab.renderMode === "colle" || sideTab.renderMode === "presentation")
-  ) {
-    if (sideActivePath) navPush(sideActivePath);
-    await pm.openInSide(path, { preview: true, fallbackToActive: true });
-    if (!pm.previewLinkedTabId) {
-      pm.previewLinkedTabId = pm.main.activeTabId;
-    } else {
-      const r = await followPreviewNavigation(pm, path);
-      if (r.parked) notifications.setInfo(t("preview.draftParked"));
-    }
-    void trackMtime(path);
-    return;
-  }
-  await pm.openInMainActiveTab(path);
-  void trackMtime(path);
+  // Canal « navigate » : le reducer implémente le routage maximisé (image/pdf
+  // → side, .md plein écran → preview IN-PLACE via previewLinkedTabId, sinon
+  // openInMainActiveTab) + la garde de format + l'historique back.
+  await navigate(navDeps, { type: "open-active", path, newTab });
 }
 
 const fo = new FileOpsManager({
@@ -1452,6 +1338,55 @@ $effect(() => {
   };
   window.addEventListener("azprose:colle-eval", onColleEval);
   return () => window.removeEventListener("azprose:colle-eval", onColleEval);
+});
+
+// ── Canal « navigate » (phase 1, idée A) : DI réelle du reducer ──────────────
+// Tous les helpers ci-dessus sont définis : l'objet est construit une fois,
+// ses getters lisent l'état $state/$derived en direct (toujours frais), et ses
+// actions délèguent aux fonctions réelles de l'app.
+let navDeps: NavDeps = {
+  pm,
+  rootPath: () => rootPath,
+  activePath: () => activePath,
+  sideActivePath: () => sideActivePath,
+  expandedPanel: () => expandedPanel,
+  navPush,
+  navBack,
+  navForwardStep,
+  navPushForward,
+  setScrollTarget,
+  setSyncLine,
+  setJumpToLine: (line: number) => { jumpToLine = line; },
+  setEditorModeRaw: () => handleSetEditorMode("raw"),
+  setSideVisible: (v: boolean) => {
+    sideVisible = v;
+    pm.sideVisible = v;
+  },
+  notifyError: (title, message) => notifications.setLoadError({ title, message }),
+  notifyInfo: (message) => notifications.setInfo(message),
+  t,
+  readText,
+  trackMtime,
+  jumpToLine: handleJumpToLine,
+  openDocArticle,
+  ensureDailyNote: (date: string) => {
+    const rp = getRootPath();
+    if (!rp) return Promise.resolve(null);
+    return ensureDailyNoteWithColles(date, rp, journalSettings.current.journalFolder);
+  },
+  journalScan: async () => {
+    const rp = getRootPath();
+    if (!rp) return;
+    await journal.scanForNotes(rp, journalSettings.current.journalFolder);
+  },
+};
+
+// Pont handler → reducer : les handlers (wikilink/oxide/pdf-rect, monde réel
+// Tauri/LSP) résolvent leurs cibles puis POSTENT l'intention typée sur
+// `azprose:navigate` — le reducer l'exécute (règle 9 : seul endroit qui
+// modifie la session de navigation). Le cleanup est rendu via $effect (HMR).
+$effect(() => {
+  return bridgeEvent(navDeps, "azprose:navigate", (e) => (e as CustomEvent).detail as NavIntent | null);
 });
 
 const handleToggleViewPanel = () => {
