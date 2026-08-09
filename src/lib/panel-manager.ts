@@ -119,6 +119,7 @@ export class PanelManager {
       preview?: boolean;
       sourceType?: TabSource;
       fallbackToActive?: boolean;
+      forceNew?: boolean;
     },
   ): Promise<void> {
     this.side.visible = true;
@@ -246,6 +247,17 @@ export class PanelManager {
       this.savedSplitRatio = this.splitRatio;
       this.splitRatio = panelId === "main" ? 1 : 0;
     }
+    return this.splitRatio;
+  }
+
+  /** Sort de la maximisation du panneau `panelId` (retour au ratio sauvegardé)
+   *  si elle était active ; retourne le nouveau ratio. Ne change rien sinon. */
+  unexpandPanel(panelId: "main" | "side"): number {
+    const expanded =
+      (panelId === "main" && this.splitRatio >= 0.99) ||
+      (panelId === "side" && this.splitRatio <= 0.01);
+    if (!expanded) return this.splitRatio;
+    this.splitRatio = this.savedSplitRatio;
     return this.splitRatio;
   }
 

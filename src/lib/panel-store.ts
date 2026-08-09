@@ -197,7 +197,7 @@ export class PanelState {
     this.cbs.onSessionChange?.(this.toJSON());
   }
 
-  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; fallbackToActive?: boolean }): Promise<void> {
+  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; fallbackToActive?: boolean; forceNew?: boolean }): Promise<void> {
     if (!isOpenablePath(path)) {
       if (!opts?.silent) {
         this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
@@ -208,7 +208,10 @@ export class PanelState {
     const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
     const normalized = norm(path);
     const wantPreview = opts?.preview === true;
-    const existing = this.tabs.find(t => norm(t.path) === normalized);
+    // `forceNew` (bouton Preview de l'éditeur, routage maximisé) : JAMAIS de
+    // dédup ni de ré-affectation — un NOUVEL onglet est toujours créé. Sans
+    // forceNew, dédup par chemin (un tab affichant déjà le fichier est activé).
+    const existing = opts?.forceNew ? undefined : this.tabs.find(t => norm(t.path) === normalized);
     if (existing) {
       this.tabs = this.tabs.map(t => t.id === existing.id ? { ...t, sourceType: opts?.sourceType ?? t.sourceType } : t);
       this.activeTabId = existing.id;
@@ -227,7 +230,12 @@ export class PanelState {
     // openInActiveTab). Le flag preview est CONSERVÉ (le tab reste un preview ;
     // l'éditeur lié suit via previewLinkedTabId) et le brouillon éventuel est
     // parké avant ré-affectation (politique A, même mécanique que openInActiveTab).
-    const targetInfo = pickOpenTarget(this.tabs, this.activeTabId, wantPreview, opts?.fallbackToActive);
+    // `forceNew` : AUCUNE ré-affectation du tab actif (pickOpenTarget) — on
+    // crée toujours un nouvel onglet (cas bouton Preview de l'éditeur, où
+    // réutiliser un tab preview NON associé casserait le couplage éditeur↔preview).
+    const targetInfo = opts?.forceNew
+      ? { id: null as string | null, isFallback: false as boolean }
+      : pickOpenTarget(this.tabs, this.activeTabId, wantPreview, opts?.fallbackToActive);
     const target = targetInfo.id != null ? this.tabs.find(t => t.id === targetInfo.id) : undefined;
     const title = basename(normalized);
     const id = target?.id ?? crypto.randomUUID();
@@ -516,6 +524,11 @@ export class PanelState {
 
   setTabSource(tabId: string, next: string): void {
     this.tabs = this.tabs.map(t => t.id === tabId ? { ...t, source: next } : t);
+  }
+
+  /** Reflet `savedContent` d'un tab (sync après un persist hors save()). */
+  setSavedContent(tabId: string, saved: string): void {
+    this.tabs = this.tabs.map(t => t.id === tabId ? { ...t, savedContent: saved } : t);
   }
 
   /**

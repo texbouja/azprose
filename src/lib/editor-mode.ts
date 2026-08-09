@@ -45,15 +45,21 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
       break;
     case "preview": {
       if (!isPreviewable) return;
-      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
+      // Réutilise UNIQUEMENT un tab side déjà lié à l'éditeur actif. Un tab
+      // preview NON associé (ex. viewer créé par le routage maximisé, ou
+      // preview d'un autre éditeur) n'est JAMAIS ré-affecté : un NOUVEL
+      // onglet est créé (forceNew) puis lié — le couplage éditeur↔preview
+      // exige que le tab preview soit l'image du tab éditeur courant.
+      const linkedId = ctx.pm.main.activeTabId;
+      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath && ctx.pm.linkedEditorTabId(t.id) === linkedId);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "preview");
         ctx.pm.side.select(existing.id);
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true }).catch(() => {});
-        const tab = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true }).catch(() => {});
+        const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "preview");
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
@@ -70,15 +76,16 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
     case "presentation": {
       if (!isMd) return;
       ctx.setProsemarkOn(true);
-      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
+      const linkedId = ctx.pm.main.activeTabId;
+      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath && ctx.pm.linkedEditorTabId(t.id) === linkedId);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "presentation");
         ctx.pm.side.select(existing.id);
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true }).catch(() => {});
-        const tab = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true }).catch(() => {});
+        const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "presentation");
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
@@ -93,15 +100,16 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
       if (!isMd) return;
       // Le main panel reste sur l'éditeur (règle structurelle) ; la vue colles
       // s'ouvre dans le side panel avec renderMode "colle".
-      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
+      const linkedId = ctx.pm.main.activeTabId;
+      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath && ctx.pm.linkedEditorTabId(t.id) === linkedId);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "colle");
         ctx.pm.side.select(existing.id);
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true }).catch(() => {});
-        const tab = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath);
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true }).catch(() => {});
+        const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "colle");
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;

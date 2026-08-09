@@ -11,6 +11,7 @@ import { isDailyNotePath } from "@/stores/journal-store.svelte";
 import SlideModeRadio from "./SlideModeRadio.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
 import { navHistory, getNavActions } from "@/stores/nav-history.svelte";
+import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
 
 // Register SlideModeRadio as a custom toolbar item
 registerToolbarItem("slide-mode-radio", SlideModeRadio);
@@ -135,6 +136,14 @@ let isDaily = $derived(
   isMd && isDailyNotePath(activeTab?.path ?? "", journalSettings.current.journalFolder),
 );
 
+// Mode navigation du tab side actif (store par tab, jamais persisté) — lu
+// réactivement via la version du store (rune $state du module).
+const previewNav = getPreviewNavStore();
+let navMode = $derived.by(() => {
+  void previewNav.version;
+  return activeTab ? previewNav.isNavMode(activeTab.id) : false;
+});
+
 /* ── Toolbar items — reactive on mode + renderMode + slideMode ── */
 
 let mainItems = $derived.by(() => {
@@ -178,22 +187,28 @@ let mainItems = $derived.by(() => {
 let sideItems = $derived.by(() => {
   const items: any[] = [];
 
-  // Left: preview navigation — back / forward (wikilink history) + home
-  // (rootPath/index.md), shown for the .md PREVIEW tab (the side tab whose
-  // rendered file it displays; the tab↔file association survives navigation).
-  // The side tab renders the preview by default (renderMode undefined/"raw"),
-  // so only the colle/presentation modes exclude these buttons.
-  // Home est LE bouton le plus à gauche de la toolbar side (décision utilisateur).
+  // Left: preview navigation — mode nav + back/forward (wikilink history) +
+  // home (rootPath/index.md), shown ONLY for the .md PREVIEW tab in MODE
+  // NAVIGATION (décision utilisateur : les boutons home/next/prev ne sont
+  // VISIBLES qu'en mode nav ; le toggle de mode vit à gauche). Le mode est
+  // par TAB (store, jamais persisté).
   if (!isMain && isMd && renderMode !== "colle" && renderMode !== "presentation") {
-    const hist = navHistory();
     items.push(
-      { comp: "icon", icon: "wxi-home", id: "home", text: t("preview.home"), pinned: true,
-        handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-home")) },
-      { comp: "icon", icon: "wxi-arrow-left", text: t("preview.back"), pinned: true,
-        disabled: !hist.canGoBack, handler: () => getNavActions().goBack() },
-      { comp: "icon", icon: "wxi-arrow-right", text: t("preview.forward"), pinned: true,
-        disabled: !hist.canGoForward, handler: () => getNavActions().goForward() },
+      { comp: "icon", icon: "wxi-globe", text: t("preview.navMode"), pinned: true,
+        type: navMode ? "pressed" : "",
+        handler: () => previewNav.setNavMode(activeTab?.id, !navMode) },
     );
+    if (navMode) {
+      const hist = navHistory();
+      items.push(
+        { comp: "icon", icon: "wxi-home", id: "home", text: t("preview.home"), pinned: true,
+          handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-home")) },
+        { comp: "icon", icon: "wxi-arrow-left", text: t("preview.back"), pinned: true,
+          disabled: !hist.canGoBack, handler: () => getNavActions().goBack() },
+        { comp: "icon", icon: "wxi-arrow-right", text: t("preview.forward"), pinned: true,
+          disabled: !hist.canGoForward, handler: () => getNavActions().goForward() },
+      );
+    }
   }
 
   // Left: navigation colles (chevrons) — vue planches active dans le side panel
@@ -229,13 +244,6 @@ let sideItems = $derived.by(() => {
       { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", pinned: true, handler: () => fire("zoom-out") },
       { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", pinned: true, handler: () => fire("zoom-reset") },
       { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", pinned: true, handler: () => fire("zoom-in") },
-      // Recharger : même procédure que le save éditeur (conflit externe → dialog
-      // de décision ; sinon save + re-rendu du preview). Agit sur le fichier
-      // AFFICHÉ par le tab side (activeTab), pas forcément le tab main actif.
-      { comp: "icon", icon: "wxi-refresh", text: t("preview.reload"), pinned: true,
-        handler: () => activeTab && window.dispatchEvent(
-          new CustomEvent("azprose:preview-reload", { detail: { path: activeTab.path } }),
-        ) },
     );
   } else if (isMd && renderMode === "presentation") {
     for (const sm of SLIDE_MODES) {
@@ -302,6 +310,22 @@ let sideItems = $derived.by(() => {
       pinned: true,
       type: renderMode === "presentation" ? "pressed" : "",
       handler: () => onToggleRenderMode?.(),
+    });
+  }
+  // « Ouvrir dans l'éditeur » : le fichier RENDU par ce tab side s'ouvre dans
+  // le tab éditeur main (dédup — jamais de doublon). App.svelte dé-maximise
+  // le side au besoin (matrice : double-clic viewer / bouton).
+  if (!isMain && isMd) {
+    items.push({
+      comp: "icon",
+      icon: "wxi-external",
+      text: t("preview.openInEditor"),
+      pinned: true,
+      handler: () =>
+        activeTab &&
+        window.dispatchEvent(
+          new CustomEvent("azprose:preview-open-editor", { detail: { path: activeTab.path } }),
+        ),
     });
   }
   items.push(

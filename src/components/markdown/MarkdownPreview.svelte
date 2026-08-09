@@ -21,6 +21,7 @@ import { previewSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont
 import { getRootPath } from "@/stores/root-path.svelte";
 import { clearScrollTarget, consumeScrollTarget } from "@/stores/scroll-target.svelte";
 import { consumeSyncLine, setSyncLine } from "@/stores/sync-line.svelte";
+import { getPreviewFocusStore } from "@/stores/preview-focus.svelte";
 
 let {
   value = "",
@@ -345,21 +346,14 @@ $effect(() => {
       return;
     }
 
-    // Wikilink with resolved full path: open directly
+    // Wikilink with resolved full path: open directly. Le routage (mode nav :
+    // in-place dans le preview / hors mode nav : onglet éditeur) est décidé
+    // par le reducer via l'état de mode navigation du tab. Alt+clic est
+    // SUPPRIMÉ (matrice de navigation) — hors mode nav l'éditeur reçoit la
+    // cible, pas un comportement alt spécifique.
     if (a.classList.contains("wikilink")) {
       const fullpath = a.getAttribute("data-wikilink-fullpath");
       const heading = a.getAttribute("data-wikilink-heading");
-      // Alt+clic = open in a NEW tab (editor for .md) instead of navigating
-      // the preview in place. The deduplication ("s'il n'est pas déjà ouvert")
-      // lives in PanelState.open — an existing tab is activated.
-      if (e.altKey) {
-        e.preventDefault();
-        const target = a.getAttribute("data-wikilink-target");
-        window.dispatchEvent(new CustomEvent("azprose:wikilink-open-new", {
-          detail: { path: fullpath ?? undefined, target: target ?? undefined, heading },
-        }));
-        return;
-      }
       if (fullpath) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading } }));
@@ -390,6 +384,19 @@ $effect(() => {
   return () => el.removeEventListener("click", onClick);
 });
 
+// ── Focus preview (règle non-état : ctrl+s au focus preview enregistre le
+//    .md affiché, pas le tab main actif) ────────────────────────────────────
+$effect(() => {
+  const previewFocus = getPreviewFocusStore();
+  const onFocusIn = () => {
+    const active = document.activeElement as HTMLElement | null;
+    const inside = active?.closest?.("[data-file-path]") as HTMLElement | null;
+    previewFocus.setFocus(inside?.dataset.filePath ?? null);
+  };
+  document.addEventListener("focusin", onFocusIn);
+  return () => document.removeEventListener("focusin", onFocusIn);
+});
+
 // ── Zoom commands from TabActions ───────────────────────────────
 
 $effect(() => {
@@ -413,6 +420,7 @@ $effect(() => {
     <article
     bind:this={articleEl}
     class="mdv-prose"
+    data-file-path={filePath ?? undefined}
     ondblclick={(e) => {
       // Transcluded block: jump to the original source file at the source
       // line — the .md source IS opened in the editor (forced open, user

@@ -89,6 +89,8 @@ import { setActivePath } from "@/stores/active-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
 import { getCursorLine } from "@/stores/cursor-line.svelte";
+import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
+import { getPreviewFocusStore } from "@/stores/preview-focus.svelte";
 import { getCalendarStore } from "@/stores/calendar-store.svelte";
 import { journal } from "@/stores/journal-store.svelte";
 import { journalSettings } from "@/stores/journal-settings.svelte";
@@ -641,6 +643,19 @@ $effect(() => {
   return () => window.removeEventListener("azprose:preview-home", onHome);
 });
 
+// Bouton « Ouvrir dans l'éditeur » du tab side (matrice) : le fichier RENDU par
+// le tab preview s'ouvre dans l'éditeur main (dédup — jamais de doublon). Le
+// reducer dé-maximise le side au besoin avant l'ouverture.
+$effect(() => {
+  const onOpenInEditor = (e: Event) => {
+    const path = (e as CustomEvent<{ path?: string }>).detail?.path;
+    if (!path) return;
+    navigateVoid(navDeps, { type: "preview-open-editor", path });
+  };
+  window.addEventListener("azprose:preview-open-editor", onOpenInEditor);
+  return () => window.removeEventListener("azprose:preview-open-editor", onOpenInEditor);
+});
+
 // Bouton « Recharger » de la toolbar side (preview) — même procédure que le
 // save éditeur (méthode officielle VSCode) : changement EXTERNE + buffer non
 // sauvegardé → dialog de décision (fileConflict existant, l'utilisateur choisit
@@ -873,6 +888,34 @@ $effect(() => {
 });
 
 const handleSave = async () => {
+  // Règle non-état : ctrl+s au focus d'un preview md enregistre LE .md
+  // affiché par ce preview (unlinked viewer inclus) — pas le tab main actif.
+  const focusPath = previewFocus.path;
+  if (focusPath && extFromPath(focusPath) === "md") {
+    const normF = (p: string) => p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
+    const target = normF(focusPath);
+    if (contentFor(target) !== contentSavedFor(target)) {
+      saveStatus = "saving";
+      try {
+        await contentStore.persist(target);
+        saveStatus = "saved";
+        // Reflet savedContent des tabs main affichant le même chemin (le
+        // rendu preview lit le store — déjà à jour par le bump).
+        for (const tab of pm.main.tabs) {
+          if (normF(tab.path) === target && tab.savedContent !== contentSavedFor(target)) {
+            pm.main.setSavedContent(tab.id, contentSavedFor(target));
+          }
+        }
+        void trackMtime(target);
+        notifyMarkdownOxideFileChanged(target);
+        window.dispatchEvent(new CustomEvent("azprose:links-refresh"));
+      } catch (err) {
+        console.error("azprose: save failed", err);
+        saveStatus = "dirty";
+      }
+    }
+    return;
+  }
   if (!activePath || saveStatus !== "dirty") return;
   saveStatus = "saving";
   try {
@@ -1374,6 +1417,9 @@ $effect(() => {
 });
 
 // ── Canal « navigate » (phase 1, idée A) : DI réelle du reducer ──────────────
+// Mode navigation des tabs preview (par tab, jamais persisté) + focus preview.
+const previewNav = getPreviewNavStore();
+const previewFocus = getPreviewFocusStore();
 // Tous les helpers ci-dessus sont définis : l'objet est construit une fois,
 // ses getters lisent l'état $state/$derived en direct (toujours frais), et ses
 // actions délèguent aux fonctions réelles de l'app.
@@ -1383,6 +1429,17 @@ let navDeps: NavDeps = {
   activePath: () => activePath,
   sideActivePath: () => sideActivePath,
   expandedPanel: () => expandedPanel,
+  isPreviewNavMode: () => {
+    const t = pm.side.activeTab;
+    if (!t) return false;
+    // Aide intégrée (DocPreview) : le mode navigation est tacitement actif —
+    // ses wikilinks naviguent en place, jamais vers l'éditeur main.
+    if (t.kind === "doc") return true;
+    return previewNav.isNavMode(t.id);
+  },
+  unexpandSide: () => {
+    splitRatio = pm.unexpandPanel("side");
+  },
   navPush,
   navBack,
   navForwardStep,

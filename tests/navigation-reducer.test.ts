@@ -109,6 +109,8 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
     activePath: () => pm.main.activePath,
     sideActivePath: () => pm.side.activePath,
     expandedPanel: () => null,
+    isPreviewNavMode: () => false,
+    unexpandSide: () => {},
     navPush: (p) => void calls.navPush.push(p),
     navBack: () => null,
     navForwardStep: () => null,
@@ -145,6 +147,7 @@ function minimalFakePm(): PanelManager {
     linkedEditorTabId: (s: string) => links.get(s) ?? null,
     linkPreview: (s: string, m: string | null) => void links.set(s, m),
     openInSide: async () => {},
+    openInMain: async () => {},
   } as unknown as PanelManager;
 }
 
@@ -163,7 +166,7 @@ test("pickOpenTarget (garde pure) : le tab doc actif n'est jamais choisi par fal
     .toEqual({ id: null, isFallback: false });
 });
 
-test("(a) tab doc actif : le routage maximisé ne s'applique pas → navigation main, le doc reste actif", async () => {
+test("(a) viewer md maximisé + tab doc actif : NOUVEL onglet viewer (le doc n'est jamais ré-affecté)", async () => {
   const pm = new PanelManager();
   seed(
     pm,
@@ -178,15 +181,15 @@ test("(a) tab doc actif : le routage maximisé ne s'applique pas → navigation 
 
   await navigate(deps, { type: "open-active", path: "/a.md" });
 
-  // Le routage maximisé exige un tab side de rendu preview/colle/presentation —
-  // un tab doc (lecture seule) ne l'est pas → clic sidebar = navigation main.
-  expect(pm.side.activeTabId).toBe("s1");
+  // Matrice : maximisation CONSERVÉE, ouverture d'un tab viewer (dédup par
+  // chemin → s2), le tab doc reste un doc non sélectionné. Aucun lien.
+  expect(pm.side.activeTabId).toBe("s2");
   expect(pm.side.tabs.find(t => t.kind === "doc")!.path).toBe("/help/index.md");
   expect(pm.main.activeTabId).toBe("t1");
   expect(pm.previewLinkedTabId).toBeNull();
 });
 
-test("(a) routage maximisé avec preview ACTIF : navigation in-place du tab preview, le doc n'est pas impliqué", async () => {
+test("(a) viewer md maximisé + preview ACTIF : nouvel onglet viewer (dédup), maximisation conservée, aucun lien", async () => {
   const pm = new PanelManager();
   seed(
     pm,
@@ -201,12 +204,14 @@ test("(a) routage maximisé avec preview ACTIF : navigation in-place du tab prev
 
   await navigate(deps, { type: "open-active", path: "/a.md" });
 
-  expect(pm.side.activeTabId).toBe("s2"); // dédup du chemin → le preview est sélectionné
+  // Dédup du chemin → le preview est sélectionné ; l'éditeur n'est PAS lié
+  // (le couplage éditeur↔preview ne s'applique qu'aux tabs preview LIÉS).
+  expect(pm.side.activeTabId).toBe("s2");
   expect(pm.side.tabs.find(t => t.kind === "doc")!.path).toBe("/help/index.md");
-  expect(pm.previewLinkedTabId).toBe("t1"); // premier lien → éditeur actif
+  expect(pm.previewLinkedTabId).toBeNull();
 });
 
-test("(a) wikilink : openInSide en fallbackToActive, jamais de ré-affectation du doc actif", async () => {
+test("(a) wikilink HORS mode nav : ouvre un onglet ÉDITEUR (le preview ne navigue pas)", async () => {
   const pm = minimalFakePm();
   const opened: Array<{ path: string; opts: unknown }> = [];
   (pm.openInSide as unknown as (p: string, o?: unknown) => Promise<void>) =
@@ -215,26 +220,47 @@ test("(a) wikilink : openInSide en fallbackToActive, jamais de ré-affectation d
 
   await navigate(deps, { type: "wikilink-navigate", path: "/b.md" });
 
+  // Hors mode nav : la cible va à l'ÉDITEUR (openFile → openInMain, texte),
+  // jamais au preview — le tab doc n'est pas impliqué (aucun openInSide).
+  expect(opened).toHaveLength(0);
+  expect(pm.previewLinkedTabId).toBeNull();
+});
+
+test("(a) wikilink EN mode nav : openInSide en fallbackToActive, jamais de ré-affectation du doc actif", async () => {
+  const pm = minimalFakePm();
+  const opened: Array<{ path: string; opts: unknown }> = [];
+  (pm.openInSide as unknown as (p: string, o?: unknown) => Promise<void>) =
+    async (p, o) => void opened.push({ path: p, opts: o });
+  const deps = makeDeps(pm, { isPreviewNavMode: () => true });
+
+  await navigate(deps, { type: "wikilink-navigate", path: "/b.md" });
+
   // Le fallbackToActive est bien transmis — c'est la garde de pickOpenTarget
-  // (testée pure ci-dessus) qui protège le tab doc, pas un code ad hoc.
+  // (testée pure ci-dessus) qui protège le tab doc, pas un code ad hoc. Aucun
+  // lien n'est établi en mode nav (l'éditeur ne suit plus — décision utilisateur).
   expect(opened).toHaveLength(1);
   expect(opened[0]).toEqual({ path: "/b.md", opts: { preview: true, fallbackToActive: true } });
-  expect(pm.previewLinkedTabId).toBe("t1");
+  expect(pm.previewLinkedTabId).toBeNull();
 });
 
 // ── (b) le lien preview↔éditeur s'établit sur l'éditeur ACTIF ──
 
-test("(b) premier lien : previewLinkedTabId = tab éditeur ACTIF (jamais un tab d'outil)", async () => {
+test("(b) EN mode nav, première navigation : IN-PLACE dans le preview, AUCUN lien (éditeur détaché)", async () => {
   const pm = new PanelManager();
   seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
-  const deps = makeDeps(pm);
+  const deps = makeDeps(pm, { isPreviewNavMode: () => true });
 
   await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
 
-  expect(pm.previewLinkedTabId).toBe("t1");
+  // Le preview affiche la cible (dédup → sélection) mais n'est PAS lié à
+  // l'éditeur : le mode nav en fait un navigateur autonome (l'éditeur ne suit
+  // plus — ni link, ni follow).
+  expect(pm.side.activeTabId).toBe("s1");
+  expect(pm.previewLinkedTabId).toBeNull();
+  expect(pm.main.activeTabId).toBe("t1");
 });
 
-test("(b) lien déjà établi : followPreviewNavigation suit (no-op aligné, pas de notification)", async () => {
+test("(b) HORS mode nav, lien existant : la navigation va à l'ÉDITEUR (jamais un doublon, pas de follow)", async () => {
   const pm = new PanelManager();
   seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
   pm.linkPreview("s1", "t1");
@@ -242,8 +268,23 @@ test("(b) lien déjà établi : followPreviewNavigation suit (no-op aligné, pas
 
   await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
 
+  // Dédup par chemin → le tab main /a.md est sélectionné ; le preview ne
+  // navigue pas et l'éditeur lié ne suit rien (pas de notification).
   expect(pm.previewLinkedTabId).toBe("t1");
   expect(pm.main.activeTabId).toBe("t1");
+  expect(deps.calls.notifyInfo).toHaveLength(0);
+});
+
+test("(b) EN mode nav, lien existant : navigation IN-PLACE du preview, pas de follow ni de notification", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
+  pm.linkPreview("s1", "t1");
+  const deps = makeDeps(pm, { isPreviewNavMode: () => true });
+
+  await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
+
+  expect(pm.previewLinkedTabId).toBe("t1");
+  expect(pm.side.activeTabId).toBe("s1"); // dédup → le preview affiche la cible
   expect(deps.calls.notifyInfo).toHaveLength(0);
 });
 
@@ -399,6 +440,54 @@ test("(c) jump-to-line : sessionId transmis tel quel à l'util éditeur", async 
   // Sans sessionId → undefined (legacy) — le reducer ne réinvente rien.
   await navigate(deps, { type: "jump-to-line", line: 7, path: "/b.md" });
   expect(received[1]).toEqual([7, "/b.md", undefined]);
+});
+
+// ── matrice : bouton « Ouvrir dans l'éditeur » (preview-open-editor) ────────
+// Le fichier RENDU par le tab side s'ouvre dans l'éditeur main, DÉDUP (jamais
+// de doublon) ; si le side est maximisé, bascule d'abord en 2 panneaux.
+
+test("preview-open-editor : le fichier rendu s'ouvre dans l'éditeur main (dédup → select)", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "preview-open-editor", path: "/a.md" });
+
+  // Déjà ouvert en main → sélection, jamais de doublon ni de lecture FS.
+  expect(pm.main.activeTabId).toBe("t1");
+  expect(pm.main.tabs).toHaveLength(1);
+});
+
+test("preview-open-editor : non ouvert en main → NOUVEAU tab éditeur + side dé-maximisé", async () => {
+  const pm = new PanelManager();
+  seed(
+    pm,
+    [{ id: "t1", path: "/a.md" }, { id: "t2", path: "/b.md" }],
+    [{ id: "s1", path: "/b.md", preview: true, renderMode: "preview" }],
+    { mainActive: "t1", sideActive: "s1" },
+  );
+  let unexpanded = 0;
+  const deps = makeDeps(pm, {
+    expandedPanel: () => "side",
+    unexpandSide: () => { unexpanded++; },
+  });
+
+  await navigate(deps, { type: "preview-open-editor", path: "/b.md" });
+
+  expect(unexpanded).toBe(1);
+  expect(pm.main.activeTabId).toBe("t2"); // dédup par chemin → t2 sélectionné
+});
+
+test("preview-open-editor : côté split, aucun unexpand (no-op)", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
+  let unexpanded = 0;
+  const deps = makeDeps(pm, { unexpandSide: () => { unexpanded++; } });
+
+  await navigate(deps, { type: "preview-open-editor", path: "/a.md" });
+
+  expect(unexpanded).toBe(0);
+  expect(pm.main.activeTabId).toBe("t1");
 });
 
 test("open-help : racine doc déjà ouverte → sélection, pas de ré-ouverture", async () => {

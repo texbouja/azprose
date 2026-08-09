@@ -405,6 +405,8 @@
   "preview.back": "Précédent",
   "preview.forward": "Suivant",
   "preview.home": "Accueil",
+  "preview.navMode": "Mode navigation (les liens du preview naviguent dans le preview ; l'éditeur lié ne suit plus)",
+  "preview.openInEditor": "Ouvrir dans l'éditeur",
   "preview.reload": "Recharger",
   "preview.draftParked": "Brouillon conservé : vos modifications non enregistrées sont restaurées au retour.",
   "pdf.zoomOut": "Zoom arrière",

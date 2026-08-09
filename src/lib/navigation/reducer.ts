@@ -39,6 +39,13 @@ export interface NavDeps {
   sideActivePath: () => string | null;
   /** Panneau en plein écran, `null` si split. */
   expandedPanel: () => "main" | "side" | null;
+  /** Mode navigation du tab preview side ACTIF (bouton « mode nav »). Hors
+   *  mode nav, un clic wikilink ouvre un onglet éditeur ; en mode nav, il
+   *  navigue IN-PLACE dans le preview (l'éditeur lié ne suit plus). */
+  isPreviewNavMode: () => boolean;
+  /** Sort de la maximisation du side (retour au ratio sauvegardé) + sync de
+   *  la rune splitRatio de l'app. */
+  unexpandSide: () => void;
   // ── actions stores (historique preview + cibles de rendu) ──
   navPush: (path: string) => void;
   navBack: () => string | null;
@@ -102,15 +109,20 @@ async function openFile(deps: NavDeps, path: string, opts?: OpenInTabOptions): P
   void deps.trackMtime(path);
 }
 
-/** Clic sidebar — tab ACTIF du bon panel, routage maximisé du preview md. */
+/** Clic sidebar — tab ACTIF du bon panel. Règle « click = alt-click » pour
+ *  les non-textes (image/pdf → side, dédup — un tab affichant déjà le fichier
+ *  est activé, jamais de ré-affectation du tab actif). Les textes vont en
+ *  main. PLUS de routage maximisé in-place : si le viewer md est maximisé, on
+ *  CONSERVE la maximisation et on ouvre un NOUVEL onglet viewer (sans tab
+ *  éditeur associé — le couplage éditeur↔preview ne s'applique qu'aux tabs
+ *  preview LIÉS). */
 async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise<void> {
   if (!isOpenablePath(path)) {
     deps.notifyError("Format", deps.t("app.unsupportedFormat", { name: basename(path) }));
     return;
   }
   if (isImagePath(path) || isPdfPath(path)) {
-    if (newTab) await deps.pm.openInSide(path);
-    else await deps.pm.openInSideActiveTab(path);
+    await deps.pm.openInSide(path);
     deps.setSideVisible(true);
     void deps.trackMtime(path);
     return;
@@ -120,23 +132,9 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
     void deps.trackMtime(path);
     return;
   }
-  const sideTab = deps.pm.side.activeTab;
-  if (
-    deps.expandedPanel() === "side" &&
-    isMarkdownPath(path) &&
-    sideTab &&
-    isMarkdownPath(sideTab.path) &&
-    (sideTab.renderMode === "preview" || sideTab.renderMode === "colle" || sideTab.renderMode === "presentation")
-  ) {
+  if (deps.expandedPanel() === "side" && isMarkdownPath(path)) {
     pushCurrentIfAny(deps);
     await deps.pm.openInSide(path, { preview: true, fallbackToActive: true });
-    const sideTabId = deps.pm.side.activeTabId;
-    if (sideTabId && !deps.pm.linkedEditorTabId(sideTabId)) {
-      deps.pm.linkPreview(sideTabId, deps.pm.main.activeTabId);
-    } else {
-      const r = await followPreviewNavigation(deps.pm, path);
-      if (r.parked) deps.notifyInfo(deps.t("preview.draftParked"));
-    }
     void deps.trackMtime(path);
     return;
   }
@@ -144,24 +142,30 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
   void deps.trackMtime(path);
 }
 
-/** Navigation wikilink : in-place (tab preview lié) ou nouvel onglet. */
+/** Navigation wikilink. Hors mode nav : ouvre un NOUVEL ONGLET ÉDITEUR
+ *  (dédup si déjà ouvert — `openFile`), le preview ne navigue pas (il est le
+ *  miroir de l'éditeur lié). En mode nav (bouton) : navigation IN-PLACE dans
+ *  le preview, l'éditeur lié NE suit PLUS (ni link, ni follow). `newTab`
+ *  (intent wikilink-open-new) n'est plus émis par les liens de preview —
+ *  conservé pour Home alt + autres émetteurs. */
 async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | null | undefined, newTab: boolean): Promise<void> {
   if (newTab) {
-    // Alt+clic = nouvel onglet, routage image/pdf → side (comme openFileInTab).
     await openFile(deps, path, { silent: true });
     if (heading) deps.setScrollTarget(heading);
+    void deps.trackMtime(path);
     return;
   }
+  if (!deps.isPreviewNavMode()) {
+    // Hors mode nav : la cible va à l'ÉDITEUR (main), jamais au preview.
+    await openFile(deps, path, { silent: true });
+    if (heading) deps.setScrollTarget(heading);
+    void deps.trackMtime(path);
+    return;
+  }
+  // Mode nav : in-place dans le preview, l'éditeur lié ne suit pas.
   const cur = deps.sideActivePath();
   if (cur) deps.navPush(cur);
   await deps.pm.openInSide(path, { preview: true, fallbackToActive: true });
-  const sideTabId = deps.pm.side.activeTabId;
-  if (sideTabId && !deps.pm.linkedEditorTabId(sideTabId)) {
-    deps.pm.linkPreview(sideTabId, deps.pm.main.activeTabId);
-  } else {
-    const r = await followPreviewNavigation(deps.pm, path);
-    if (r.parked) deps.notifyInfo(deps.t("preview.draftParked"));
-  }
   if (heading) deps.setScrollTarget(heading);
   void deps.trackMtime(path);
 }
@@ -197,8 +201,27 @@ async function jumpToFile(deps: NavDeps, path: string, line: number | null | und
   }
 }
 
-/** Saut dbl-clic preview — 0-based, cible le fichier RENDU. */
+/** Bouton « Ouvrir dans l'éditeur » du tab side (matrice) : le fichier RENDU
+ *  par le tab preview s'ouvre dans l'éditeur main, dédup (jamais de doublon).
+ *  Si le side est maximisé : bascule d'abord en 2 panneaux (le dbl-clic viewer
+ *  partage exactement cette logique via `jumpToLine` + `unexpandSide`). */
+async function previewOpenEditor(deps: NavDeps, path: string): Promise<void> {
+  const normFile = normNavPath(path);
+  if (deps.expandedPanel() === "side") deps.unexpandSide();
+  const found = deps.pm.findTabByPath(normFile);
+  if (found && found.panel === "main") {
+    deps.pm.main.select(found.tab.id);
+  } else {
+    await deps.pm.openInMain(normFile, { silent: true });
+  }
+  void deps.trackMtime(normFile);
+}
+
+/** Saut dbl-clic preview — 0-based, cible le fichier RENDU. Si le side est
+ *  maximisé : bascule d'abord en 2 panneaux (unexpand), puis saut vers
+ *  l'éditeur (le tab éditeur est ouvert si non disponible — jumpToLineUtil). */
 async function jumpToLine(deps: NavDeps, line: number, path: string | null | undefined, sessionId?: string | null): Promise<void> {
+  if (deps.expandedPanel() === "side") deps.unexpandSide();
   deps.jumpToLine(line, path ?? undefined, sessionId ?? undefined);
 }
 
@@ -316,6 +339,8 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
       return jumpToFile(deps, intent.path, intent.line ?? null, intent.heading ?? null);
     case "jump-to-line":
       return jumpToLine(deps, intent.line, intent.path ?? null, intent.sessionId ?? null);
+    case "preview-open-editor":
+      return previewOpenEditor(deps, intent.path);
     case "preview-home":
       return previewHome(deps, intent.newTab ?? false);
     case "preview-back":

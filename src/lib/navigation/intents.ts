@@ -59,6 +59,10 @@ export type NavIntent =
    *  saut y va directement (jamais un doublon créé par une recherche par
    *  chemin). Sans sessionId (legacy), résolution par chemin. */
   | { type: "jump-to-line"; line: number; path?: string | null; sessionId?: string | null }
+  /** Bouton « Ouvrir dans l'éditeur » du tab side : le fichier RENDU par ce
+   *  tab preview s'ouvre dans l'éditeur main (dédup — jamais de doublon).
+   *  Si le side est maximisé : bascule d'abord en 2 panneaux. */
+  | { type: "preview-open-editor"; path: string }
   /** Bouton Home du preview : navigation vers l'index.md lié. Remplaçant
    *  typé de `azprose:preview-home`. */
   | { type: "preview-home"; newTab?: boolean }
