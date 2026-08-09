@@ -41,9 +41,10 @@ export type NavIntent =
    *  pdf/image), avec dédup. C'est le remplaçant typé de
    *  `handleSidebarFileSelect(path, newTab=false)`. */
   | { type: "open-active"; path: string; newTab?: boolean }
-  /** Navigation wikilink IN-PLACE du tab preview (associé à l'éditeur via
-   *  previewLinkedTabId). C'est le remplaçant typé de
-   *  `azprose:wikilink-navigate`. */
+  /** Navigation wikilink : HORS mode nav, ouvre un NOUVEAU tab viewer side
+   *  (jamais l'éditeur main — décision utilisateur ; éditeur uniquement par
+   *  double-clic) ; EN mode nav, navigation IN-PLACE du tab preview actif.
+   *  C'est le remplaçant typé de `azprose:wikilink-navigate`. */
   | { type: "wikilink-navigate"; path: string; heading?: string | null }
   /** Alt+clic wikilink : NOUVEL onglet éditeur. Remplaçant typé de
    *  `azprose:wikilink-open-new`. */
@@ -61,8 +62,15 @@ export type NavIntent =
   | { type: "jump-to-line"; line: number; path?: string | null; sessionId?: string | null }
   /** Bouton « Ouvrir dans l'éditeur » du tab side : le fichier RENDU par ce
    *  tab preview s'ouvre dans l'éditeur main (dédup — jamais de doublon).
-   *  Si le side est maximisé : bascule d'abord en 2 panneaux. */
-  | { type: "preview-open-editor"; path: string }
+   *  Si le side est maximisé : bascule d'abord en 2 panneaux. HORS mode nav :
+   *  couple le tab preview `sessionId` (id du tab side émetteur) au tab
+   *  éditeur ; EN mode nav : pas de couplage (règle utilisateur). */
+  | { type: "preview-open-editor"; path: string; sessionId?: string | null }
+  /** Bascule du mode navigation du tab preview `tabId` (bouton globe de la
+   *  toolbar side). ENTRER en mode nav LIBÈRE le couplage de ce viewer (l'édi-
+   *  teur lié ne suit plus) ; la SORTIE ne re-couple PAS — un re-couplage ne
+   *  se fait que par double-clic / « Ouvrir dans l'éditeur » hors mode nav. */
+  | { type: "preview-nav-mode"; tabId: string; on: boolean }
   /** Bouton Home du preview : navigation vers l'index.md lié. Remplaçant
    *  typé de `azprose:preview-home`. */
   | { type: "preview-home"; newTab?: boolean }

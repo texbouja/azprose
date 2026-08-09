@@ -110,6 +110,7 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
     sideActivePath: () => pm.side.activePath,
     expandedPanel: () => null,
     isPreviewNavMode: () => false,
+    setPreviewNavMode: () => {},
     unexpandSide: () => {},
     navPush: (p) => void calls.navPush.push(p),
     navBack: () => null,
@@ -211,7 +212,7 @@ test("(a) viewer md maximisé + preview ACTIF : nouvel onglet viewer (dédup), m
   expect(pm.previewLinkedTabId).toBeNull();
 });
 
-test("(a) wikilink HORS mode nav : ouvre un onglet ÉDITEUR (le preview ne navigue pas)", async () => {
+test("(a) wikilink HORS mode nav : ouvre un NOUVEAU tab viewer side (jamais l'éditeur main)", async () => {
   const pm = minimalFakePm();
   const opened: Array<{ path: string; opts: unknown }> = [];
   (pm.openInSide as unknown as (p: string, o?: unknown) => Promise<void>) =
@@ -220,9 +221,11 @@ test("(a) wikilink HORS mode nav : ouvre un onglet ÉDITEUR (le preview ne navig
 
   await navigate(deps, { type: "wikilink-navigate", path: "/b.md" });
 
-  // Hors mode nav : la cible va à l'ÉDITEUR (openFile → openInMain, texte),
-  // jamais au preview — le tab doc n'est pas impliqué (aucun openInSide).
-  expect(opened).toHaveLength(0);
+  // Décision utilisateur : un clic wikilink ouvre un NOUVEAU tab viewer side
+  // (forceNew — jamais l'éditeur main, jamais le tab doc), aucun couplage
+  // établi (la vue de droite reste indépendante de l'éditeur).
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toEqual({ path: "/b.md", opts: { preview: true, forceNew: true, silent: true } });
   expect(pm.previewLinkedTabId).toBeNull();
 });
 
@@ -236,8 +239,9 @@ test("(a) wikilink EN mode nav : openInSide en fallbackToActive, jamais de ré-a
   await navigate(deps, { type: "wikilink-navigate", path: "/b.md" });
 
   // Le fallbackToActive est bien transmis — c'est la garde de pickOpenTarget
-  // (testée pure ci-dessus) qui protège le tab doc, pas un code ad hoc. Aucun
-  // lien n'est établi en mode nav (l'éditeur ne suit plus — décision utilisateur).
+  // (testée pure ci-dessus) qui protège le tab doc, pas un code ad hoc. Le
+  // mode nav libère le couplage du viewer actif (aucun lien établi ici) —
+  // décision utilisateur : l'éditeur ne suit plus.
   expect(opened).toHaveLength(1);
   expect(opened[0]).toEqual({ path: "/b.md", opts: { preview: true, fallbackToActive: true } });
   expect(pm.previewLinkedTabId).toBeNull();
@@ -260,7 +264,7 @@ test("(b) EN mode nav, première navigation : IN-PLACE dans le preview, AUCUN li
   expect(pm.main.activeTabId).toBe("t1");
 });
 
-test("(b) HORS mode nav, lien existant : la navigation va à l'ÉDITEUR (jamais un doublon, pas de follow)", async () => {
+test("(b) HORS mode nav, lien existant : la cible va au viewer (dédup), l'éditeur ne suit pas", async () => {
   const pm = new PanelManager();
   seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
   pm.linkPreview("s1", "t1");
@@ -268,14 +272,16 @@ test("(b) HORS mode nav, lien existant : la navigation va à l'ÉDITEUR (jamais 
 
   await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
 
-  // Dédup par chemin → le tab main /a.md est sélectionné ; le preview ne
-  // navigue pas et l'éditeur lié ne suit rien (pas de notification).
-  expect(pm.previewLinkedTabId).toBe("t1");
+  // Dédup par chemin → le viewer s1 est sélectionné ; l'éditeur t1 n'est PAS
+  // sélectionné (la navigation wikilink ne va jamais à l'éditeur). Le couplage
+  // s1↔t1 reste cohérent (t1 affiche toujours /a.md), aucune notification.
+  expect(pm.side.activeTabId).toBe("s1");
   expect(pm.main.activeTabId).toBe("t1");
+  expect(pm.previewLinkedTabId).toBe("t1");
   expect(deps.calls.notifyInfo).toHaveLength(0);
 });
 
-test("(b) EN mode nav, lien existant : navigation IN-PLACE du preview, pas de follow ni de notification", async () => {
+test("(b) EN mode nav, lien existant : navigation IN-PLACE du preview + LIBÉRATION du couplage", async () => {
   const pm = new PanelManager();
   seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
   pm.linkPreview("s1", "t1");
@@ -283,8 +289,10 @@ test("(b) EN mode nav, lien existant : navigation IN-PLACE du preview, pas de fo
 
   await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
 
-  expect(pm.previewLinkedTabId).toBe("t1");
-  expect(pm.side.activeTabId).toBe("s1"); // dédup → le preview affiche la cible
+  // Le mode nav navigue le preview IN-PLACE (dédup → sélection) et LIBÈRE le
+  // couplage du viewer actif : l'éditeur lié ne suit plus (décision utilisateur).
+  expect(pm.previewLinkedTabId).toBeNull();
+  expect(pm.side.activeTabId).toBe("s1");
   expect(deps.calls.notifyInfo).toHaveLength(0);
 });
 
@@ -425,7 +433,7 @@ test("history back : push-forward de la page courante + navigation du tab previe
 // liens (phase 2 B) — jamais un doublon créé par une recherche par chemin.
 // Sans sessionId, le comportement legacy par chemin reste identique.
 
-test("(c) jump-to-line : sessionId transmis tel quel à l'util éditeur", async () => {
+test("(c) jump-to-line : sessionId transmis + COUPLAGE du tab preview au tab éditeur", async () => {
   const pm = new PanelManager();
   seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
   const received: Array<[number, string | null | undefined, string | null | undefined]> = [];
@@ -436,10 +444,37 @@ test("(c) jump-to-line : sessionId transmis tel quel à l'util éditeur", async 
   await navigate(deps, { type: "jump-to-line", line: 5, path: "/a.md", sessionId: "s1" });
 
   expect(received).toEqual([[5, "/a.md", "s1"]]);
+  // Double-clic HORS mode nav : le tab preview émetteur est COUPLÉ au tab
+  // éditeur qui a reçu le saut (t1) — règle utilisateur.
+  expect(pm.previewLinkedTabId).toBe("t1");
 
-  // Sans sessionId → undefined (legacy) — le reducer ne réinvente rien.
+  // Sans sessionId → undefined (legacy) — le reducer ne réinvente rien, et le
+  // couplage n'est PAS modifié.
   await navigate(deps, { type: "jump-to-line", line: 7, path: "/b.md" });
   expect(received[1]).toEqual([7, "/b.md", undefined]);
+  expect(pm.previewLinkedTabId).toBe("t1");
+});
+
+test("(c) jump-to-line EN mode nav : aucun couplage — le lien d'un AUTRE viewer est conservé", async () => {
+  const pm = new PanelManager();
+  seed(
+    pm,
+    [{ id: "t1", path: "/a.md" }],
+    [
+      { id: "s1", path: "/a.md", preview: true, renderMode: "preview" },
+      { id: "s2", path: "/b.md", preview: true, renderMode: "preview" },
+    ],
+    { sideActive: "s2" },
+  );
+  pm.linkPreview("s1", "t1");
+  const deps = makeDeps(pm, { isPreviewNavMode: () => true });
+
+  await navigate(deps, { type: "jump-to-line", line: 2, path: "/a.md", sessionId: "s2" });
+
+  // En mode nav, le dbl-clic n'établit AUCUN couplage : s2 n'a pas volé le
+  // lien — le couplage s1↔t1 existant est conservé (règle utilisateur).
+  expect(pm.linkedEditorTabId("s1")).toBe("t1");
+  expect(pm.linkedEditorTabId("s2")).toBeNull();
 });
 
 // ── matrice : bouton « Ouvrir dans l'éditeur » (preview-open-editor) ────────
@@ -627,4 +662,109 @@ test("gardes doc : ouvrir un outil ne ré-affecte JAMAIS le tab doc (aide intég
   expect(pm.side.tabs.filter(t => t.kind === "doc")).toHaveLength(1);
   // Le tab doc n'est ni sélectionné ni transformé : un outil est actif.
   expect(pm.side.activeTabId).not.toBe("s1");
+});
+
+// ── couplage éditeur↔viewer : état par tab, un-couplé-par-éditeur ───────────
+// Décision utilisateur : le couplage est EXPLICITE, créé uniquement par le
+// bouton preview éditeur / double-clic / « Ouvrir dans l'éditeur » (hors mode
+// nav) ; ENTRER en mode nav LIBÈRE le couplage, SORTIR ne re-couple pas ; le
+// clic sidebar fait suivre le viewer couplé.
+
+test("linkPreview : un seul viewer couplé par éditeur — coupler s2 à t1 dé-couple s1", () => {
+  const pm = new PanelManager();
+  pm.linkPreview("s1", "t1");
+  pm.linkPreview("s2", "t1");
+  expect(pm.linkedEditorTabId("s1")).toBeNull();
+  expect(pm.linkedEditorTabId("s2")).toBe("t1");
+  // Coupler s1 à un AUTRE éditeur ne touche pas s2.
+  pm.linkPreview("s1", "t2");
+  expect(pm.linkedEditorTabId("s1")).toBe("t2");
+  expect(pm.linkedEditorTabId("s2")).toBe("t1");
+});
+
+test("sideTabLinkedTo : reverse lookup du viewer couplé à un éditeur", () => {
+  const pm = new PanelManager();
+  expect(pm.sideTabLinkedTo("t1")).toBeNull();
+  pm.linkPreview("s1", "t1");
+  expect(pm.sideTabLinkedTo("t1")).toBe("s1");
+  pm.linkPreview("s1", null);
+  expect(pm.sideTabLinkedTo("t1")).toBeNull();
+});
+
+test("preview-nav-mode : ENTRER libère le couplage ; SORTIR ne re-couple pas", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
+  pm.linkPreview("s1", "t1");
+  const navMode: Record<string, boolean> = {};
+  const deps = makeDeps(pm, { setPreviewNavMode: (tabId, on) => { navMode[tabId] = on; } });
+
+  await navigate(deps, { type: "preview-nav-mode", tabId: "s1", on: true });
+  expect(pm.previewLinkedTabId).toBeNull(); // couplage libéré
+  expect(navMode["s1"]).toBe(true);
+
+  await navigate(deps, { type: "preview-nav-mode", tabId: "s1", on: false });
+  expect(pm.previewLinkedTabId).toBeNull(); // pas de re-couplage
+  expect(navMode["s1"]).toBe(false);
+});
+
+test("preview-nav-mode : OFF sur un tab sans lien — aucun lien créé", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "preview-nav-mode", tabId: "s1", on: false });
+
+  expect(pm.previewLinkedTabId).toBeNull();
+});
+
+test("preview-open-editor : sessionId → COUPLAGE du tab preview au tab éditeur (hors mode nav)", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "preview-open-editor", path: "/a.md", sessionId: "s1" });
+
+  // « Ouvrir dans l'éditeur » hors mode nav : le tab preview émetteur est
+  // COUPLÉ au tab éditeur qui reçoit (règle utilisateur).
+  expect(pm.main.activeTabId).toBe("t1");
+  expect(pm.previewLinkedTabId).toBe("t1");
+});
+
+test("preview-open-editor : EN mode nav → aucun couplage créé", async () => {
+  const pm = new PanelManager();
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
+  const deps = makeDeps(pm, { isPreviewNavMode: () => true });
+
+  await navigate(deps, { type: "preview-open-editor", path: "/a.md", sessionId: "s1" });
+
+  expect(pm.main.activeTabId).toBe("t1");
+  expect(pm.previewLinkedTabId).toBeNull();
+});
+
+test("open-active : clic sidebar → le viewer COUPLÉ suit (repoint vers la cible)", async () => {
+  // Fake riche : openInMainActiveTab « ouvre » /b.md (aucune lecture FS), le
+  // viewer s1 est couplé à t1 — syncCoupledViewer doit re-pointer s1 vers
+  // /b.md (règle utilisateur « le viewer couplé suit »).
+  const repointed: string[] = [];
+  const pm = {
+    main: { activeTabId: "t1", activePath: "/b.md", tabs: [] },
+    side: {
+      visible: true,
+      activeTabId: "s1",
+      activeTab: undefined,
+      tabs: [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }],
+      repoint: async (tabId: string, path: string) => {
+        repointed.push(`${tabId}→${path}`);
+        return { ok: true, parked: false };
+      },
+    },
+    sideTabLinkedTo: (mainId: string) => (mainId === "t1" ? "s1" : null),
+    openInMainActiveTab: async () => {},
+    trackMtime: async () => {},
+  } as unknown as PanelManager;
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md" });
+
+  expect(repointed).toEqual(["s1→/b.md"]);
 });

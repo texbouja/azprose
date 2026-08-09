@@ -196,7 +196,11 @@ let sideItems = $derived.by(() => {
     items.push(
       { comp: "icon", icon: "wxi-globe", text: t("preview.navMode"), pinned: true,
         type: navMode ? "pressed" : "",
-        handler: () => previewNav.setNavMode(activeTab?.id, !navMode) },
+        // Le toggle passe par le reducer (`preview-nav-mode`) : ENTRER en mode
+        // nav libère le couplage de ce viewer (règle utilisateur).
+        handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-nav-mode", {
+          detail: { tabId: activeTab?.id, on: !navMode },
+        })) },
     );
     if (navMode) {
       const hist = navHistory();
@@ -324,7 +328,11 @@ let sideItems = $derived.by(() => {
       handler: () =>
         activeTab &&
         window.dispatchEvent(
-          new CustomEvent("azprose:preview-open-editor", { detail: { path: activeTab.path } }),
+          new CustomEvent("azprose:preview-open-editor", {
+            // sessionId = id du tab side émetteur : le reducer couple ce tab au
+            // tab éditeur (hors mode nav) — règle utilisateur.
+            detail: { path: activeTab.path, sessionId: activeTab.id },
+          }),
         ),
     });
   }

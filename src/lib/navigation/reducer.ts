@@ -24,6 +24,7 @@ import { findLinkedIndexMd } from "@/lib/index-home";
 import { followPreviewNavigation } from "@/lib/preview-follow";
 import { isOpenablePath, isImagePath, isPdfPath, isMarkdownPath } from "@/lib/files";
 import { isHelpPath, helpIndexPath } from "@/lib/help-install";
+import { tabContentKind } from "@/lib/panel-store";
 import { basename } from "@/lib/paths-utils";
 import type { NavIntent, OpenInTabOptions } from "./intents";
 
@@ -39,10 +40,13 @@ export interface NavDeps {
   sideActivePath: () => string | null;
   /** Panneau en plein écran, `null` si split. */
   expandedPanel: () => "main" | "side" | null;
-  /** Mode navigation du tab preview side ACTIF (bouton « mode nav »). Hors
-   *  mode nav, un clic wikilink ouvre un onglet éditeur ; en mode nav, il
-   *  navigue IN-PLACE dans le preview (l'éditeur lié ne suit plus). */
+  /** Mode navigation du tab preview side ACTIF (bouton « mode nav »). HORS
+   *  mode nav, un clic wikilink ouvre un NOUVEAU tab viewer side (jamais
+   *  l'éditeur) ; EN mode nav, il navigue IN-PLACE dans le preview. Le mode
+   *  nav libère le couplage du viewer. */
   isPreviewNavMode: () => boolean;
+  /** Setter du store mode-nav par tab (bouton globe de la toolbar side). */
+  setPreviewNavMode: (tabId: string, on: boolean) => void;
   /** Sort de la maximisation du side (retour au ratio sauvegardé) + sync de
    *  la rune splitRatio de l'app. */
   unexpandSide: () => void;
@@ -92,6 +96,24 @@ function pushCurrentIfAny(deps: NavDeps): void {
   if (cur) deps.navPush(cur);
 }
 
+/** Règle « clic sidebar → le viewer COUPLÉ suit » : si le tab éditeur main
+ *  actif est couplé à un tab viewer side, re-pointe ce viewer vers `path`
+ *  (politique A identique à followPreviewNavigation : park + preferDraft, le
+ *  tab lié n'est jamais un onglet d'outil et son flag `preview` est retiré à
+ *  chaque repoint). No-op sans couplage ou si déjà sur la cible. */
+function syncCoupledViewer(deps: NavDeps, path: string): void {
+  const mainId = deps.pm.main.activeTabId;
+  if (!mainId) return;
+  const sideId = deps.pm.sideTabLinkedTo(mainId);
+  if (!sideId) return;
+  const side = deps.pm.side;
+  const tab = side.tabs.find((t) => t.id === sideId);
+  if (!tab || tabContentKind(tab.kind) !== "file" || !tab.path) return;
+  if (normNavPath(tab.path) === normNavPath(path)) return;
+  void side.repoint(sideId, path, { preferDraft: true, silent: true });
+  void deps.trackMtime(path);
+}
+
 /** `openFileInTab` — routage image/pdf → side, texte → main. */
 async function openFile(deps: NavDeps, path: string, opts?: OpenInTabOptions): Promise<void> {
   if (!isOpenablePath(path)) {
@@ -115,7 +137,8 @@ async function openFile(deps: NavDeps, path: string, opts?: OpenInTabOptions): P
  *  main. PLUS de routage maximisé in-place : si le viewer md est maximisé, on
  *  CONSERVE la maximisation et on ouvre un NOUVEL onglet viewer (sans tab
  *  éditeur associé — le couplage éditeur↔preview ne s'applique qu'aux tabs
- *  preview LIÉS). */
+ *  preview LIÉS). Règle « le viewer couplé suit » : après ouverture en main,
+ *  le viewer couplé au tab éditeur actif est re-pointé vers `path`. */
 async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise<void> {
   if (!isOpenablePath(path)) {
     deps.notifyError("Format", deps.t("app.unsupportedFormat", { name: basename(path) }));
@@ -130,6 +153,7 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
   if (newTab) {
     await deps.pm.openInMain(path);
     void deps.trackMtime(path);
+    syncCoupledViewer(deps, path);
     return;
   }
   if (deps.expandedPanel() === "side" && isMarkdownPath(path)) {
@@ -140,14 +164,19 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
   }
   await deps.pm.openInMainActiveTab(path);
   void deps.trackMtime(path);
+  syncCoupledViewer(deps, path);
 }
 
-/** Navigation wikilink. Hors mode nav : ouvre un NOUVEL ONGLET ÉDITEUR
- *  (dédup si déjà ouvert — `openFile`), le preview ne navigue pas (il est le
- *  miroir de l'éditeur lié). En mode nav (bouton) : navigation IN-PLACE dans
- *  le preview, l'éditeur lié NE suit PLUS (ni link, ni follow). `newTab`
- *  (intent wikilink-open-new) n'est plus émis par les liens de preview —
- *  conservé pour Home alt + autres émetteurs. */
+/** Navigation wikilink (décision utilisateur) :
+ *  - HORS mode nav : ouvre un NOUVEAU tab viewer side — JAMAIS l'éditeur main
+ *    (l'éditeur ne s'atteint que par double-clic / « Ouvrir dans l'éditeur »).
+ *    Dédup raisonnable : si un tab viewer affiche déjà le fichier, il est
+ *    sélectionné. Aucun couplage n'est établi ici — la vue de droite reste
+ *    indépendante de l'éditeur.
+ *  - EN mode nav (bouton) : navigation IN-PLACE du tab preview actif ; le
+ *    mode nav ayant libéré le couplage, l'éditeur lié ne suit pas.
+ *  `newTab` (intent wikilink-open-new) n'est plus émis par les liens de
+ *  preview — conservé pour Home alt + autres émetteurs (éditeur main). */
 async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | null | undefined, newTab: boolean): Promise<void> {
   if (newTab) {
     await openFile(deps, path, { silent: true });
@@ -156,15 +185,26 @@ async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | n
     return;
   }
   if (!deps.isPreviewNavMode()) {
-    // Hors mode nav : la cible va à l'ÉDITEUR (main), jamais au preview.
-    await openFile(deps, path, { silent: true });
+    // Hors mode nav : NOUVEAU tab viewer side (jamais l'éditeur main).
+    const normFile = normNavPath(path);
+    const existing = deps.pm.side.tabs.find(
+      (t) => tabContentKind(t.kind) === "file" && t.path && normNavPath(t.path) === normFile,
+    );
+    if (existing) {
+      deps.pm.side.select(existing.id);
+    } else {
+      await deps.pm.openInSide(path, { preview: true, forceNew: true, silent: true });
+    }
+    deps.setSideVisible(true);
     if (heading) deps.setScrollTarget(heading);
     void deps.trackMtime(path);
     return;
   }
-  // Mode nav : in-place dans le preview, l'éditeur lié ne suit pas.
-  const cur = deps.sideActivePath();
-  if (cur) deps.navPush(cur);
+  // Mode nav : in-place dans le preview. Le mode nav a libéré le couplage du
+  // viewer actif ; on le confirme (idempotent) — l'éditeur lié ne suit pas.
+  const activeSide = deps.pm.side.activeTabId;
+  if (activeSide) deps.pm.linkPreview(activeSide, null);
+  pushCurrentIfAny(deps);
   await deps.pm.openInSide(path, { preview: true, fallbackToActive: true });
   if (heading) deps.setScrollTarget(heading);
   void deps.trackMtime(path);
@@ -204,8 +244,11 @@ async function jumpToFile(deps: NavDeps, path: string, line: number | null | und
 /** Bouton « Ouvrir dans l'éditeur » du tab side (matrice) : le fichier RENDU
  *  par le tab preview s'ouvre dans l'éditeur main, dédup (jamais de doublon).
  *  Si le side est maximisé : bascule d'abord en 2 panneaux (le dbl-clic viewer
- *  partage exactement cette logique via `jumpToLine` + `unexpandSide`). */
-async function previewOpenEditor(deps: NavDeps, path: string): Promise<void> {
+ *  partage exactement cette logique via `jumpToLine` + `unexpandSide`).
+ *  Couplage : HORS mode nav, le tab preview émetteur (`sessionId`) est COUPLÉ
+ *  au tab éditeur qui reçoit ; EN mode nav, aucun couplage (règle utilisateur
+ *  — un re-couplage n'arrive que par un geste hors mode nav). */
+async function previewOpenEditor(deps: NavDeps, path: string, sessionId?: string | null): Promise<void> {
   const normFile = normNavPath(path);
   if (deps.expandedPanel() === "side") deps.unexpandSide();
   const found = deps.pm.findTabByPath(normFile);
@@ -215,14 +258,34 @@ async function previewOpenEditor(deps: NavDeps, path: string): Promise<void> {
     await deps.pm.openInMain(normFile, { silent: true });
   }
   void deps.trackMtime(normFile);
+  if (sessionId && !deps.isPreviewNavMode()) {
+    const mainId = deps.pm.main.activeTabId;
+    if (mainId) deps.pm.linkPreview(sessionId, mainId);
+  }
 }
 
 /** Saut dbl-clic preview — 0-based, cible le fichier RENDU. Si le side est
  *  maximisé : bascule d'abord en 2 panneaux (unexpand), puis saut vers
- *  l'éditeur (le tab éditeur est ouvert si non disponible — jumpToLineUtil). */
+ *  l'éditeur (le tab éditeur est ouvert si non disponible — jumpToLineUtil).
+ *  Couplage : HORS mode nav, le tab preview émetteur (`sessionId`) est COUPLÉ
+ *  au tab éditeur qui reçoit ; EN mode nav, aucun couplage (si ce tab éditeur
+ *  est déjà couplé à un autre viewer, ce couplage est CONSERVÉ). */
 async function jumpToLine(deps: NavDeps, line: number, path: string | null | undefined, sessionId?: string | null): Promise<void> {
   if (deps.expandedPanel() === "side") deps.unexpandSide();
-  deps.jumpToLine(line, path ?? undefined, sessionId ?? undefined);
+  await deps.jumpToLine(line, path ?? undefined, sessionId ?? undefined);
+  if (sessionId && !deps.isPreviewNavMode()) {
+    const mainId = deps.pm.main.activeTabId;
+    if (mainId) deps.pm.linkPreview(sessionId, mainId);
+  }
+}
+
+/** Bascule du mode navigation d'un tab preview (bouton globe de la toolbar
+ *  side). ENTRER en mode nav LIBÈRE le couplage de ce viewer (l'éditeur lié
+ *  ne suit plus) ; la SORTIE ne re-couple PAS — un re-couplage ne se fait
+ *  que par double-clic / « Ouvrir dans l'éditeur » hors mode nav. */
+function previewNavMode(deps: NavDeps, tabId: string, on: boolean): void {
+  if (on) deps.pm.linkPreview(tabId, null);
+  deps.setPreviewNavMode(tabId, on);
 }
 
 /** Bouton Home du preview — index.md lié, in-place ou nouvel onglet. */
@@ -340,7 +403,9 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
     case "jump-to-line":
       return jumpToLine(deps, intent.line, intent.path ?? null, intent.sessionId ?? null);
     case "preview-open-editor":
-      return previewOpenEditor(deps, intent.path);
+      return previewOpenEditor(deps, intent.path, intent.sessionId ?? null);
+    case "preview-nav-mode":
+      return previewNavMode(deps, intent.tabId, intent.on);
     case "preview-home":
       return previewHome(deps, intent.newTab ?? false);
     case "preview-back":

@@ -645,15 +645,34 @@ $effect(() => {
 
 // Bouton « Ouvrir dans l'éditeur » du tab side (matrice) : le fichier RENDU par
 // le tab preview s'ouvre dans l'éditeur main (dédup — jamais de doublon). Le
-// reducer dé-maximise le side au besoin avant l'ouverture.
+// reducer dé-maximise le side au besoin avant l'ouverture. `sessionId` = id du
+// tab side émetteur : HORS mode nav le reducer couple ce tab au tab éditeur ;
+// EN mode nav aucun couplage (règle utilisateur).
 $effect(() => {
   const onOpenInEditor = (e: Event) => {
-    const path = (e as CustomEvent<{ path?: string }>).detail?.path;
-    if (!path) return;
-    navigateVoid(navDeps, { type: "preview-open-editor", path });
+    const detail = (e as CustomEvent<{ path?: string; sessionId?: string }>).detail;
+    if (!detail?.path) return;
+    navigateVoid(navDeps, {
+      type: "preview-open-editor",
+      path: detail.path,
+      sessionId: detail.sessionId ?? null,
+    });
   };
   window.addEventListener("azprose:preview-open-editor", onOpenInEditor);
   return () => window.removeEventListener("azprose:preview-open-editor", onOpenInEditor);
+});
+
+// Bascule du mode navigation d'un tab preview (bouton globe de la toolbar
+// side) → reducer `preview-nav-mode` : ENTRER libère le couplage de ce viewer,
+// la SORTIE ne re-couple pas (règle utilisateur).
+$effect(() => {
+  const onNavMode = (e: Event) => {
+    const detail = (e as CustomEvent<{ tabId?: string; on?: boolean }>).detail;
+    if (!detail?.tabId) return;
+    navigateVoid(navDeps, { type: "preview-nav-mode", tabId: detail.tabId, on: !!detail.on });
+  };
+  window.addEventListener("azprose:preview-nav-mode", onNavMode);
+  return () => window.removeEventListener("azprose:preview-nav-mode", onNavMode);
 });
 
 // Bouton « Recharger » de la toolbar side (preview) — même procédure que le
@@ -1437,6 +1456,7 @@ let navDeps: NavDeps = {
     if (t.kind === "doc") return true;
     return previewNav.isNavMode(t.id);
   },
+  setPreviewNavMode: (tabId: string, on: boolean) => previewNav.setNavMode(tabId, on),
   unexpandSide: () => {
     splitRatio = pm.unexpandPanel("side");
   },

@@ -17,17 +17,21 @@ export class PanelManager {
   splitRatio = 0.45;
   private savedSplitRatio = 0.55;
 
-  /** Link registry (Phase 2 B) : for each SIDE preview tab, the id of the MAIN
-   *  editor tab it is linked to. Set when a preview is launched from an editor
-   *  tab (Preview button, wikilink-first-click); every navigation inside the
-   *  preview (wikilink, back/forward, home, TOC) re-points THE LINKED MAIN TAB
-   *  to the rendered file — the editor follows the preview. Never persisted;
-   *  re-established when the user re-launches the preview.
+  /** Link registry (Phase 2 B) : for each SIDE viewer tab, the id of the MAIN
+   *  editor tab it is COUPLED to. Coupling is EXPLICIT, per tab, cumulative —
+   *  created ONLY by the editor Preview/Presentation/Colles buttons and by a
+   *  double-click / « Ouvrir dans l'éditeur » from the viewer (OUTSIDE nav
+   *  mode). Entering nav mode RELEASES the coupling; exiting does NOT
+   *  re-couple. While coupled, a sidebar click makes the viewer follow the
+   *  editor. Never persisted; re-established when the user re-launches.
    *
-   *  The registry replaces the single `previewLinkedTabId` field: one side
-   *  panel shows ONE preview tab at a time, but its identity is a session
-   *  concern (tab ids change on relaunch) — callers must pass the side tab id
-   *  they just opened/activated explicitly, never read it back speculatively. */
+   *  Invariant « un seul viewer couplé par éditeur » : coupling a viewer to an
+   *  editor tab automatically de-couples any OTHER viewer already coupled to
+   *  that editor (enforced in `linkPreview`). The registry replaces the single
+   *  `previewLinkedTabId` field: one side panel shows ONE preview tab at a
+   *  time, but its identity is a session concern (tab ids change on relaunch)
+   *  — callers must pass the side tab id they just opened/activated
+   *  explicitly, never read it back speculatively. */
   private previewLinks = new Map<string, string>();
 
   /** Main editor tab linked to the ACTIVE side tab, if any (legacy getter
@@ -38,11 +42,27 @@ export class PanelManager {
     return this.previewLinks.get(sideId) ?? null;
   }
 
-  /** Link `sideTabId` (a preview side tab) to `mainTabId` (an editor main
-   *  tab). Passing `null` breaks the link (keeps the entry for other tabs). */
+  /** Link `sideTabId` (a side viewer tab) to `mainTabId` (an editor main
+   *  tab). Passing `null` breaks the link. Invariant « un seul viewer couplé
+   *  par éditeur » : coupling a viewer to `mainTabId` de-couples any OTHER
+   *  viewer already coupled to that same editor tab. */
   linkPreview(sideTabId: string, mainTabId: string | null): void {
-    if (mainTabId === null) this.previewLinks.delete(sideTabId);
-    else this.previewLinks.set(sideTabId, mainTabId);
+    if (mainTabId === null) {
+      this.previewLinks.delete(sideTabId);
+      return;
+    }
+    for (const [sId, mId] of this.previewLinks) {
+      if (sId !== sideTabId && mId === mainTabId) this.previewLinks.delete(sId);
+    }
+    this.previewLinks.set(sideTabId, mainTabId);
+  }
+
+  /** Side viewer tab coupled to `mainTabId`, or null (reverse lookup). */
+  sideTabLinkedTo(mainTabId: string): string | null {
+    for (const [sId, mId] of this.previewLinks) {
+      if (mId === mainTabId) return sId;
+    }
+    return null;
   }
 
   /** Editor main tab linked to `sideTabId`, or null. */
