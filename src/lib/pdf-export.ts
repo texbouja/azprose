@@ -28,6 +28,7 @@ import {
   type PrintRequest,
 } from "@/lib/print-request";
 import { getPrintTemplate, renderPrintTemplate, printTitleFromPath, resolveLogoValue } from "@/lib/print-templates";
+import { assemblePrintDocument, PRINT_READY_TITLE } from "@/printing/core/document";
 import { parseFrontMatter } from "@/lib/front-matter";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { save } from "@tauri-apps/plugin-dialog"; // statique : déjà eager (app.svelte)
@@ -180,61 +181,24 @@ async function assembleHtml(
   const altlogo = (fm.meta.altlogo ?? "").trim() || null;
   const body = renderPrintTemplate(template, { content: tmp.innerHTML, title, date, logo, altlogo });
 
-  // 6. Assemble
+  // 6. Assemble — squelette commun du noyau printing (head CSS + MathJax CDN
+  //    + préambule + lifecycle), marqueur `azprose-print-ready`.
   const proseCss = buildProseCss();
   const calloutBaseCss = buildCalloutBaseCss();
   const calloutDynCss = generateCalloutCss(calloutSettings.current);
   const printCss = buildPrintCss(req) + "\n" + template.css;
   const mathjaxConfig = buildMathJaxConfig();
-
-  // Inject preamble as hidden display math — MathJax will process it during typesetting
-  // and register the macros before processing the rest of the document.
   const preamble = mathJaxPreamble.current.trim();
-  const preambleBlock = preamble
-    ? `<div style="position:absolute;left:-9999px" aria-hidden="true">$$${preamble}$$</div>`
-    : "";
 
-  // Lifecycle script — waits for MathJax to finish, then signals readiness by
-  // setting document.title to the marker polled by the headless Rust backend
-  // (mdprinter.rs). No more window.print(): the PDF is produced by print_to_pdf.
-  const lifecycleScript = `
-<script>
-(function() {
-    function markReady() { document.title = "azprose-print-ready"; }
-    if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
-        window.MathJax.startup.promise.then(function() {
-            setTimeout(markReady, 600);
-        }).catch(function() { markReady(); });
-    } else {
-        window.addEventListener('load', function() {
-            setTimeout(markReady, 2000);
-        });
-    }
-})();
-<\/script>`;
-
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<base href="${baseUrl}">
-<style>
-${proseCss}
-${calloutBaseCss}
-${calloutDynCss}
-${printCss}
-</style>
-<script>
-${mathjaxConfig}
-</script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js" async><\/script>
-</head>
-<body>
-${preambleBlock}
-${body}
-${lifecycleScript}
-</body>
-</html>`;
+  return assemblePrintDocument({
+    baseHref: baseUrl,
+    cssBlocks: [proseCss, calloutBaseCss, calloutDynCss, printCss],
+    mathjaxConfig,
+    mathjaxCdn: true,
+    body,
+    preamble,
+    readyMarker: PRINT_READY_TITLE,
+  });
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────

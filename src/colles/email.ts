@@ -38,6 +38,7 @@ import {
   type ReportLayout,
   type ColleReportData,
 } from "./report-layout";
+import { assemblePrintDocument, REPORT_READY_TITLE } from "@/printing/core/document";
 
 export {
   REPORT_PAGE_CSS,
@@ -98,29 +99,10 @@ export function buildReportContent(
  * Marqueur de fin de rendu posé par le lifecycle script — pollé par le backend
  * headless (mdprinter.rs `REPORT_READY_TITLE`) avant la capture PNG. Distinct
  * du marqueur d'impression `azprose-print-ready` (pdf-export.ts / pdf-planches).
+ * Défini dans le noyau printing (src/printing/core/document.ts), ré-exporté ici
+ * pour préserver l'API historique de ce module.
  */
-export const REPORT_READY_TITLE = "azprose-report-ready";
-
-/**
- * Script de cycle de vie du document image : signale au backend headless
- * (mdprinter.rs `render_report_png`) que le typeset MathJax est terminé en
- * posant document.title sur le marqueur pollé par Rust. Même pattern que le
- * LIFECYCLE_SCRIPT des planches PDF (pdf-planches.ts), marqueur différent.
- */
-const REPORT_LIFECYCLE_SCRIPT = `<script>
-(function() {
-    function markReady() { document.title = "${REPORT_READY_TITLE}"; }
-    if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
-        window.MathJax.startup.promise.then(function() {
-            setTimeout(markReady, 600);
-        }).catch(function() { markReady(); });
-    } else {
-        window.addEventListener('load', function() {
-            setTimeout(markReady, 2000);
-        });
-    }
-})();
-<\/script>`;
+export { REPORT_READY_TITLE };
 
 /** Options d'assemblage du document image (toutes optionnelles — défauts stables). */
 export interface ReportImageOptions {
@@ -160,31 +142,23 @@ export function assembleReportImageHtml(
   const preamble = opts.preamble?.trim();
   const printCss = opts.printCss?.trim();
 
-  const mathjaxBlock = mathjax
-    ? `<script>\n${mathjax}\n</script>\n<script src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js" async><\/script>`
-    : "";
-  const preambleBlock = preamble
+  return assemblePrintDocument({
+    title: "Rapport de colle",
+    cssBlocks: [renderReportLayoutCss(L), printCss],
+    mathjaxConfig: mathjax,
+    mathjaxCdn: Boolean(mathjax),
+    bodyAttrs: "style=\"margin:0;padding:0;background:#f0f2f5;\"",
+    body: `${preambleBlock(preamble)}
+${renderReportLayout(data, L, { includeEval: true, includeSalle: false }, { includeCss: false })}`,
+    readyMarker: REPORT_READY_TITLE,
+  });
+}
+
+/** Le préambule mathématique caché (macros LaTeX) — partagé avec les planches. */
+function preambleBlock(preamble?: string): string {
+  return preamble
     ? `<div style="position:absolute;left:-9999px" aria-hidden="true">$$${preamble}$$</div>`
     : "";
-  const printCssBlock = printCss ? `\n${printCss}` : "";
-
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<title>Rapport de colle</title>
-<style>
-${renderReportLayoutCss(L)}
-${printCssBlock}
-</style>
-${mathjaxBlock}
-</head>
-<body style="margin:0;padding:0;background:#f0f2f5;">
-${preambleBlock}
-${renderReportLayout(data, L, { includeEval: true, includeSalle: false }, { includeCss: false })}
-${REPORT_LIFECYCLE_SCRIPT}
-</body>
-</html>`;
 }
 
 /**

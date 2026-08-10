@@ -40,6 +40,7 @@ import {
   HEADER_FOOTER_RESERVE_MM,
   type PrintRequest,
 } from "@/lib/print-request";
+import { assemblePrintDocument, PRINT_READY_TITLE } from "@/printing/core/document";
 
 /** Options de rendu des planches pour l'impression. */
 export interface CollePrintOptions {
@@ -119,26 +120,6 @@ export function chunkPairs<T>(items: T[], cols = 2): T[][] {
   for (let i = 0; i < items.length; i += n) out.push(items.slice(i, i + n));
   return out;
 }
-
-/**
- * Script de cycle de vie : signale au backend headless (mdprinter.rs) que le
- * rendu est terminé en posant document.title sur le marqueur pollé par Rust.
- * Plus de window.print() — le PDF est produit par print_to_pdf.
- */
-const LIFECYCLE_SCRIPT = `<script>
-(function() {
-    function markReady() { document.title = "azprose-print-ready"; }
-    if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
-        window.MathJax.startup.promise.then(function() {
-            setTimeout(markReady, 600);
-        }).catch(function() { markReady(); });
-    } else {
-        window.addEventListener('load', function() {
-            setTimeout(markReady, 2000);
-        });
-    }
-})();
-<\/script>`;
 
 /**
  * Config MathJax par défaut (repli si l'app n'en fournit pas — le module
@@ -243,27 +224,13 @@ export function assemblePrintHtml(
 
   const printCssBlock = printCss.trim() ? `\n${printCss.trim()}` : "";
 
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<title>Planches de colles</title>
-<style>
-${renderReportLayoutCss(L)}
-${pageCss}
-${printCssBlock}
-</style>
-<script>
-${mathjaxConfig}
-</script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js" async><\/script>
-</head>
-<body>
-<div class="pl-doc">
-${preambleBlock}
-${content}
-</div>
-${LIFECYCLE_SCRIPT}
-</body>
-</html>`;
+  return assemblePrintDocument({
+    title: "Planches de colles",
+    cssBlocks: [renderReportLayoutCss(L), pageCss, printCssBlock],
+    mathjaxConfig,
+    mathjaxCdn: true,
+    // Le préambule vit DANS le <div class="pl-doc"> (structure historique).
+    body: `<div class="pl-doc">\n${preambleBlock}\n${content}\n</div>`,
+    readyMarker: PRINT_READY_TITLE,
+  });
 }
