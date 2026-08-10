@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { loadSession, saveSession, saveLastFile, loadLastFile } from "@/lib/session";
 import { loadProjectSession } from "@/lib/project-session";
+import { tabContentKind } from "@/lib/panel-store";
 import type { PanelManager } from "@/lib/panel-manager";
 
 export interface SessionRestoreDeps {
@@ -69,6 +70,8 @@ export function setupSessionRestore(
               // précédemment restaurés au lieu d'en créer un par entrée). Le flag
               // sert à la ré-affectation en place des navigations open(…, { preview: true }).
               ctx.pm.side.tabs = ctx.pm.side.tabs.map(t => ({ ...t, preview: true }));
+              // Restaure le couplage éditeur↔viewer (voir restorePreviewLinks).
+              restorePreviewLinks(ctx.pm);
               if (!cancelled && session.side.activePath) {
                 const sideTab = ctx.findTabByPath(session.side.activePath);
                 if (sideTab) ctx.pm.side.select(sideTab.id);
@@ -113,4 +116,33 @@ export function setupSessionRestore(
     cancelled = true;
     unlisteners.forEach((u) => u());
   };
+}
+
+/**
+ * Restaure le couplage éditeur↔viewer par CHEMIN après la restauration des
+ * tabs (boot). Le registre `previewLinks` du PanelManager est un état runtime
+ * — jamais persisté — et les ids de tabs sont RÉGÉNÉRÉS au restore : le
+ * chemin est le seul identifiant stable de la session. Un tab side de
+ * fichier affichant le même chemin qu'un tab main est donc re-couplé — la
+ * synchro éditeur→viewer (« le viewer couplé suit le tab éditeur recyclé »)
+ * redevient active après redémarrage.
+ *
+ * Sûr par construction :
+ *  - le mode nav n'est PAS persisté (état d'interaction éphémère par tab) →
+ *    aucun viewer restauré n'est en mode nav, donc jamais de re-couplage d'un
+ *    viewer qui aurait été volontairement libéré ;
+ *  - l'invariant « un seul viewer couplé par éditeur » est maintenu par
+ *    `linkPreview` (coupler un viewer découple automatiquement l'autre).
+ *  - le cas où l'utilisateur n'AVAIT pas de couplage (viewer indépendant
+ *    ouvert par wikilink hors mode nav) produit un faux positif bénin : le
+ *    viewer suit l'éditeur — c'est la règle de défaut attendue.
+ */
+export function restorePreviewLinks(pm: PanelManager): void {
+  for (const s of pm.side.tabs) {
+    if (tabContentKind(s.kind) !== "file" || !s.path) continue;
+    const mainTab = pm.main.tabs.find(
+      (t) => tabContentKind(t.kind) === "file" && t.path === s.path,
+    );
+    if (mainTab) pm.linkPreview(s.id, mainTab.id);
+  }
 }
