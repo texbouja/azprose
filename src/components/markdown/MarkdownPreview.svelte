@@ -17,7 +17,8 @@ import { subscribeMode, type Theme } from "@/lib/theme";
 import { typesetMath } from "@/lib/typeset-math";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
-import { previewSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PreviewStyle } from "@/stores/markdown-settings.svelte";
+import { previewSettings } from "@/stores/markdown-settings.svelte";
+import { buildPreviewProseCss } from "@/lib/prose-style-css";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { clearScrollTarget, consumeScrollTarget } from "@/stores/scroll-target.svelte";
 import { consumeSyncLine, setSyncLine } from "@/stores/sync-line.svelte";
@@ -56,29 +57,6 @@ function zoomIn() {
 function zoomOut() {
   const i = ZOOM_STEPS.indexOf(zoom);
   zoom = i < 0 ? 100 : ZOOM_STEPS[Math.max(i - 1, 0)];
-}
-
-function buildPreviewProseCss(s: PreviewStyle): string {
-  const head = (n: 1 | 2 | 3) => {
-    const size = s[`h${n}Size`] as number;
-    const align = s[`h${n}Align`] as string;
-    const font = resolveHeadingFont(s[`h${n}FontFamily`] as PreviewStyle["h1FontFamily"], s[`h${n}CustomFontName`] as string);
-    const mt = s[`h${n}MarginTop`] as number;
-    const mb = s[`h${n}MarginBottom`] as number;
-    return `.mdv-prose h${n}{font-size:${size}em;text-align:${align};font-family:${font};margin:${mt}em 0 ${mb}em;}`;
-  };
-  const fontFamily = resolveFontFamily(s.fontFamily, s.customFontName);
-  const monoFont  = resolveMonoFont(s.monoFont);
-  const base = [
-    `.mdv-prose{font-family:${fontFamily};font-size:${s.fontSize}px;line-height:${s.lineHeight};max-width:${s.maxWidth}px;}`,
-    `.mdv-prose code,.mdv-prose pre{font-family:${monoFont};}`,
-    head(1), head(2), head(3),
-    `.mdv-prose ol{list-style-type:${s.olLevel1};}`,
-    `.mdv-prose ol ol{list-style-type:${s.olLevel2};}`,
-    `.mdv-prose ol ol ol{list-style-type:${s.olLevel3};}`,
-  ].join("\n");
-  const custom = s.customCss;
-  return custom ? base + "\n" + custom : base;
 }
 
 $effect(() => {

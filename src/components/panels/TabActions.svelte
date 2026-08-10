@@ -6,8 +6,7 @@ import { isPdfPath, isImagePath } from "@/lib";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
-import { journalSettings } from "@/stores/journal-settings.svelte";
-import { isDailyNotePath } from "@/stores/journal-store.svelte";
+import { parseFrontMatter } from "@/lib/front-matter";
 import SlideModeRadio from "./SlideModeRadio.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
 import { navHistory, getNavActions } from "@/stores/nav-history.svelte";
@@ -88,7 +87,11 @@ $effect(() => {
 });
 
 // ── Navigation colles (chevrons) — état rapporté par CollePreview ────────
+// `colleStudentsOpen` = état pressé du bouton « Élèves » : la sidebar est
+// INTERNE au rendu CollePreview, seul son ouverture/fermeture est reportée
+// ici via `studentsOpen` dans le nav-state (bouton pressé = panneau ouvert).
 let colleNav = $state({ index: 0, total: 0 });
+let colleStudentsOpen = $state(false);
 
 $effect(() => {
   const onState = (e: Event) => {
@@ -96,6 +99,7 @@ $effect(() => {
       filePath?: string | null;
       index?: number;
       total?: number;
+      studentsOpen?: boolean;
     };
     if (
       d.filePath &&
@@ -105,6 +109,7 @@ $effect(() => {
       typeof d.total === "number"
     ) {
       colleNav = { index: d.index, total: d.total };
+      if (typeof d.studentsOpen === "boolean") colleStudentsOpen = d.studentsOpen;
     }
   };
   window.addEventListener("azprose:colle-nav-state", onState);
@@ -132,8 +137,23 @@ let isMd = $derived(ext === "md");
 let isTex = $derived(ext === "tex");
 let isCsv = $derived(ext === "csv" || ext === "tsv");
 let isMain = $derived(panelId === "main");
-let isDaily = $derived(
-  isMd && isDailyNotePath(activeTab?.path ?? "", journalSettings.current.journalFolder),
+// Mode ALTERNATIF du viewer pour le fichier affiché (généralisation).
+// Le viewer GÉNÉRALISTE (« preview ») est le mode d'affichage par défaut
+// universel — le seul lancé par le bouton Preview de l'éditeur, et le seul à
+// survivre au recyclage d'un tab (panel-store `recycleRenderMode` réarme tout
+// mode viewer sur "preview" quand le fichier change). Un fichier peut déclarer
+// un mode alternatif, exposé comme BASCULE dans la toolbar de ce tab viewer :
+//   - `type: colle` (front matter) → vue planches (CollePreview) ;
+//   - tout autre .md → SlideDeck (« Presentation ») — le cas particulier PAR
+//     DÉFAUT du viewer généraliste (bascule historique du viewer).
+// La bascule ne permute qu'entre preview ↔ mode alternatif : un recyclage
+// retombe TOUJOURS sur le mode général (décision utilisateur).
+let altMode = $derived<"colle" | "presentation" | null>(
+  isMd
+    ? parseFrontMatter(activeTab?.source ?? "").meta.type === "colle"
+      ? "colle"
+      : "presentation"
+    : null,
 );
 
 // Mode navigation du tab side actif (store par tab, jamais persisté) — lu
@@ -217,16 +237,31 @@ let sideItems = $derived.by(() => {
     }
   }
 
-  // Left: navigation colles (chevrons) — vue planches active dans le side panel
+  // Left: navigation colles (bouton « Élèves » + chevrons + compteur) — vue
+  // planches active dans le side panel. Le bouton « Élèves » est TOUT À
+  // GAUCHE : il ouvre/ferme la sidebar INTERNE au rendu CollePreview
+  // (azprose:colle-students-toggle → CollePreview bascule son panneau local ;
+  // l'état pressé est resynchronisé via studentsOpen dans le nav-state).
   if (renderMode === "colle") {
     const prevDisabled = colleNav.total <= 0 || colleNav.index <= 0;
     const nextDisabled = colleNav.total <= 0 || colleNav.index >= colleNav.total - 1;
     items.push(
+      { comp: "icon", icon: "wxi-user-list", text: t("colle.students"), pinned: true,
+        type: colleStudentsOpen ? "pressed" : "",
+        handler: () =>
+          window.dispatchEvent(new CustomEvent("azprose:colle-students-toggle")) },
       { comp: "icon", icon: "wxi-chevron-left", text: t("colle.prev"), pinned: true,
         disabled: prevDisabled, handler: () => dispatchColleNav("prev") },
       { comp: "icon", icon: "wxi-chevron-right", text: t("colle.next"), pinned: true,
         disabled: nextDisabled, handler: () => dispatchColleNav("next") },
     );
+    if (colleNav.total > 0) {
+      items.push({
+        comp: "label",
+        text: `${colleNav.index + 1} / ${colleNav.total}`,
+        css: "ta-colle-count",
+      });
+    }
   }
 
   // Left: title (PDF/image/HTML)
@@ -265,15 +300,28 @@ let sideItems = $derived.by(() => {
       { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", pinned: true, handler: () => fire("zoom-reset") },
       { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", pinned: true, handler: () => fire("zoom-in") },
     );
+  } else if (isMd && renderMode === "colle") {
+    // Zoom du TEXTE markdown de la vue planches (énoncé + observations) — même
+    // canal `azprose:viewer-command` que le preview md ; CollePreview zoome
+    // uniquement le contenu rendu, jamais les cartes/métadonnées YAML.
+    items.push(
+      { comp: "icon", icon: "wxi-zoom-out", text: "Zoom out", pinned: true, handler: () => fire("zoom-out") },
+      { comp: "icon", icon: "wxi-zoom-reset", text: "Reset zoom", pinned: true, handler: () => fire("zoom-reset") },
+      { comp: "icon", icon: "wxi-zoom-in", text: "Zoom in", pinned: true, handler: () => fire("zoom-in") },
+    );
   }
 
   items.push({ spacer: true });
 
-  // Right: impression + envoi (vue colles, daily notes), bascule « Colles »
-  // (daily notes), presentation (non-daily md) + fullscreen — dans cet ordre.
-  // `pinned: true` = jamais basculés dans le menu « … » de débordement (l'overflow
-  // SVAR masque tout ce qui ne tient pas — l'exception native est le pinning).
-  if (isDaily) {
+  // Right: bascule du mode ALTERNATIF du viewer + (vue colle) impression/envoi
+  // + fullscreen — dans cet ordre. `pinned: true` = jamais basculés dans le
+  // menu « … » de débordement (l'overflow SVAR masque tout ce qui ne tient
+  // pas — l'exception native est le pinning).
+  // La bascule ne permute que preview ↔ altMode (mode général ←→ mode
+  // alternatif du fichier) : le viewer généraliste reste toujours le défaut,
+  // le bouton « Preview » de l'éditeur ne lance QUE ce mode (jamais un mode
+  // alternatif), et le recyclage d'un tab retombe sur preview (panel-store).
+  if (altMode === "colle") {
     // Vue colles du side panel : Print puis Send (ordre demandé par l'utilisateur).
     if (renderMode === "colle") {
       items.push({
@@ -299,23 +347,18 @@ let sideItems = $derived.by(() => {
           ),
       });
     }
-    items.push({
-      comp: "icon",
-      icon: "wxi-chalkboard-teacher",
-      text: t("tabs.colles"),
-      pinned: true,
-      type: renderMode === "colle" ? "pressed" : "",
-      handler: () => onToggleColles?.(),
-    });
   }
-  if (isMd && !isDaily) {
+  if (altMode) {
+    const altOn = renderMode === altMode;
     items.push({
       comp: "icon",
-      icon: renderMode === "presentation" ? "wxi-slideshow" : "wxi-image",
-      text: "Presentation",
+      icon: altMode === "colle"
+        ? "wxi-chalkboard-teacher"
+        : renderMode === "presentation" ? "wxi-slideshow" : "wxi-image",
+      text: altMode === "colle" ? t("tabs.colles") : "Presentation",
       pinned: true,
-      type: renderMode === "presentation" ? "pressed" : "",
-      handler: () => onToggleRenderMode?.(),
+      type: altOn ? "pressed" : "",
+      handler: () => (altMode === "colle" ? onToggleColles?.() : onToggleRenderMode?.()),
     });
   }
   // « Ouvrir dans l'éditeur » : le fichier RENDU par ce tab side s'ouvre dans
@@ -566,5 +609,18 @@ let sideItems = $derived.by(() => {
   /* ── Side panel label element ─────────────────────────── */
   .ta-wrap :global(.wx-toolbar .wx-label) {
     font-family: var(--font-preview, var(--font-ui, system-ui));
+  }
+
+  /* ── Colle sheet counter (i / n) ───────────────────────── */
+  .ta-wrap :global(.ta-colle-count) {
+    flex: none;
+    margin-left: 2px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    line-height: 40px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 </style>

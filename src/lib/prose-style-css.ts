@@ -6,13 +6,17 @@
  *    `.rp`) ;
  *  - `colles/pdf-planches-render.ts` (impression des planches : scope `.rp`).
  *
+ * `buildPreviewProseCss` (plus bas) est le builder du rendu d'APERÇU à
+ * l'écran (scope `.mdv-prose`, polices de titres comprises) — partagé entre
+ * MarkdownPreview et le contenu des planches de colles (ColleCard).
+ *
  * La SOURCE des réglages est le store `printSettings` (section « Printing »
  * des réglages) — une copie indépendante de la section Preview qui ne
  * s'applique qu'aux rendus d'impression, jamais à l'aperçu à l'écran.
  * Le type `ProseStyleSettings` est la forme structurelle partagée (les types
  * union étroits du store sont assignables).
  */
-import { resolveFontFamily, resolveMonoFont } from "./font-resolvers";
+import { resolveFontFamily, resolveMonoFont, resolveHeadingFont } from "./font-resolvers";
 
 /** Forme structurelle d'un style prose/print (champs typographiques). */
 export interface ProseStyleSettings {
@@ -109,4 +113,50 @@ function descendant(scope: string, sel: string): string {
 export function buildReportPrintCss(s: ProseStyleSettings): string {
   const css = buildProseStyleCss(s, ".rp-enonce-box, .rp-obs-content", false);
   return s.customCss?.trim() ? css + "\n" + s.customCss.trim() : css;
+}
+
+/* ── Rendu PREVIEW à l'écran (aperçus `.mdv-prose`) ──────────────────────────
+ * Le builder EXACT de l'aperçu écran (MarkdownPreview) — police des TITRES
+ * comprise (les réglages Preview ont des polices dédiées H1-H3, champs ABSENTS
+ * du builder d'impression). Partagé entre MarkdownPreview (aperçu md) et
+ * ColleCard (contenu des planches de colles) : les deux doivent utiliser les
+ * « polices document » de la section Preview des réglages.
+ * Module PUR : ne dépend d'aucun DOM/état — testable sous bun. */
+
+/** Forme structurelle d'un style d'aperçu (réglages Preview, polices de titres
+ *  comprises). `PreviewStyle` du store markdown-settings est assignable. */
+export interface PreviewProseStyleSettings extends ProseStyleSettings {
+  h1FontFamily: string;
+  h1CustomFontName: string;
+  h2FontFamily: string;
+  h2CustomFontName: string;
+  h3FontFamily: string;
+  h3CustomFontName: string;
+}
+
+/** CSS typographique de l'aperçu `.mdv-prose` (scope FIXE, `max-width` inclus,
+ *  `customCss` ajouté en fin de bloc) — identique au rendu de MarkdownPreview.
+ *  À consommer via un `<style>` injecté dans le `<head>` (jamais du CSS
+ *  global : les réglages sont dynamiques). */
+export function buildPreviewProseCss(s: PreviewProseStyleSettings): string {
+  const head = (n: 1 | 2 | 3) => {
+    const size = s[`h${n}Size`] as number;
+    const align = s[`h${n}Align`] as string;
+    const font = resolveHeadingFont(s[`h${n}FontFamily`] as string, s[`h${n}CustomFontName`] as string);
+    const mt = s[`h${n}MarginTop`] as number;
+    const mb = s[`h${n}MarginBottom`] as number;
+    return `.mdv-prose h${n}{font-size:${size}em;text-align:${align};font-family:${font};margin:${mt}em 0 ${mb}em;}`;
+  };
+  const fontFamily = resolveFontFamily(s.fontFamily, s.customFontName);
+  const monoFont = resolveMonoFont(s.monoFont);
+  const base = [
+    `.mdv-prose{font-family:${fontFamily};font-size:${s.fontSize}px;line-height:${s.lineHeight};max-width:${s.maxWidth}px;}`,
+    `.mdv-prose code,.mdv-prose pre{font-family:${monoFont};}`,
+    head(1), head(2), head(3),
+    `.mdv-prose ol{list-style-type:${s.olLevel1};}`,
+    `.mdv-prose ol ol{list-style-type:${s.olLevel2};}`,
+    `.mdv-prose ol ol ol{list-style-type:${s.olLevel3};}`,
+  ].join("\n");
+  const custom = s.customCss;
+  return custom ? base + "\n" + custom : base;
 }

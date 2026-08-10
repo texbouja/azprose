@@ -9,9 +9,11 @@
    * « Évaluation » et le chevron de pliage/dépliage appartiennent à la CARTE
    * parente (ColleCard), qui porte aussi le mode preview.
    *
-   * La note GLOBALE = somme des rubriques, TOUJOURS calculée ici (jamais
-   * stockée) ; le write-back écrit le dict `notes` (`{rub1: val, …}`) dans le
-   * YAML du bloc ```colle. Débounce 800 ms puis write-back via `onChange`.
+   * La note GLOBALE = somme des rubriques, TOUJOURS calculée à l'affichage par
+   * la CARTE (badge `colle-sec__note-badge`, draft live — décision round 6 :
+   * elle n'est plus affichée ici, le form reste au contenu). Le write-back
+   * écrit le dict `notes` (`{rub1: val, …}`) dans le YAML du bloc ```colle.
+   * Débounce 800 ms puis write-back via `onChange`.
    * `onDraft` reporte l'état LIVE (à chaque frappe) pour le mode preview de la
    * carte — la somme et le rendu markdown des observations s'y mettent à jour
    * sans attendre le debounce.
@@ -20,7 +22,7 @@
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import { collesSettings } from "@/stores/colles-settings.svelte";
-  import { rubriquesFor, sumMaxScore, sumNotes } from "@/colles";
+  import { rubriquesFor } from "@/colles";
 
   export interface ColleDraft {
     notes: Record<string, number | string> | null;
@@ -59,9 +61,6 @@
   }
 
   let timer: ReturnType<typeof setTimeout> | null = null;
-
-  let noteGlobale = $derived(sumNotes(values));
-  let noteMax = $derived(sumMaxScore(rubriques));
 
   /** Chaîne numérique → number, sinon chaîne (jamais stockée telle quelle). */
   function coerce(raw: string): number | string | null {
@@ -111,15 +110,6 @@
 </script>
 
 <div class="colle-form">
-  {#if rubriques.length > 0}
-    <div class="colle-form__sum">
-      <span>{t("colle.noteGlobale")}</span>
-      <strong class:colle-form__sum--empty={noteGlobale === null}>
-        {noteGlobale !== null ? String(noteGlobale) : "—"} / {noteMax}
-      </strong>
-    </div>
-  {/if}
-
   <div class="colle-form__grid">
     {#each rubriques as r (r.id)}
       <label class="colle-form__row" title={r.label}>
@@ -168,22 +158,6 @@
   .colle-form {
     font-family: var(--font-ui);
     font-size: 12px;
-  }
-  .colle-form__sum {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    padding: 4px 0 8px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .colle-form__sum strong {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--accent);
-  }
-  .colle-form__sum--empty {
-    color: var(--muted);
   }
   .colle-form__grid {
     display: grid;

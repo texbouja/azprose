@@ -21,6 +21,10 @@ import { userProfile } from "@/stores/user-profile.svelte";
 /**
  * Génère la note du jour si absente, en y injectant la section colles le cas
  * échéant. Une note existante est retournée telle quelle (jamais modifiée).
+ *
+ * Quand une section est générée, le fichier reçoit AUSSI le front matter
+ * `type: colle` : c'est LA condition d'activation de la vue planches
+ * (CollePreview) — ni l'emplacement, ni la présence de fences ne comptent.
  */
 export async function ensureDailyNoteWithColles(
   date: string,
@@ -33,7 +37,7 @@ export async function ensureDailyNoteWithColles(
     const section = await buildCollesSectionForDate(date);
     if (section) {
       const content = await readTextFile(p);
-      await writeTextFile(p, `${content.trimEnd()}\n\n${section}`);
+      await writeTextFile(p, `---\ntype: colle\n---\n\n${content.trimEnd()}\n\n${section}`);
     }
   }
   return p;

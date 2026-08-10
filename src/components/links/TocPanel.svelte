@@ -23,12 +23,13 @@
     /** Contenu LIVE du fichier de référence (frappes non sauvegardées).
      *  `null` = à lire sur disque (racine de la doc intégrée). */
     source = null as string | null,
-    /** Mode navigation du viewer (tab side) : SEUL mode où la TOC étend le
-     *  plan aux branches transcluses (maxDepth 3 + remontée index.md). Hors
-     *  mode nav (mode édition), la TOC est STRICTE : seuls les titres du .md
-     *  affiché — jamais de branche transcluse, jamais d'index.md lié (aucun
-     *  autre md lançable depuis la TOC). Sans effet en mode aide (helpMode
-     *  prime : le catalogue complet s'affiche quoi qu'il arrive). */
+    /** Mode navigation du viewer (tab side) : la TOC étend alors son plan à la
+     *  remontée index.md (branche Home). Hors mode nav (mode édition), la TOC
+     *  reste POST-TRANSCLUSION (décision utilisateur : les titres transclus
+     *  font partie de la note affichée — toujours dépliés via maxDepth par
+     *  défaut) mais SANS remontée index.md (aucun autre md lançable depuis la
+     *  TOC en mode édition). Sans effet en mode aide (helpMode prime : le
+     *  catalogue complet s'affiche quoi qu'il arrive). */
     navMode = false as boolean,
     /** Id du tab VIEWER side qui fournit la référence TOC (celui dont
      *  `navMode` est lu). Voyage avec l'événement de navigation — la décision
@@ -148,10 +149,12 @@
               referenceSource: src ?? undefined,
               readText,
               getIndex: getFileIndex,
-              // Mode navigation → forêt complète (transclusions + index.md
-              // lié) ; mode édition → TOC STRICTE du fichier affiché (maxDepth
-              // 0 : aucune branche, linkedIndex false : aucune remontée Home).
-              maxDepth: navMode ? DEFAULT_MAX_DEPTH : 0,
+              // TOC TOUJOURS post-transclusion (décision utilisateur) : les
+              // titres des fichiers transclus font partie de la note affichée
+              // (maxDepth par défaut — les branches sont des ancres de la
+              // note, pas des fichiers lançables). La remontée index.md
+              // (branche Home) reste réservée au mode navigation.
+              maxDepth: DEFAULT_MAX_DEPTH,
               linkedIndex: navMode,
             }, tocMemo);
         if (version !== buildVersion) return; // requête obsolète
@@ -313,28 +316,46 @@
     else collapsed.add(key);
   }
 
-  function navigate(path: string, line: number, heading?: string): void {
+  function navigate(path: string, line: number, heading?: string, redirectInNote = true): void {
     // Décision FIGÉE au clic (matrice cas 1) : `navMode`/`navTabId` sont lus
     // ICI, au moment du clic, et voyagent avec l'intention — le reducer ne
     // relit JAMAIS l'état du mode navigation (course asynchrone). La cible
     // remonte dans le VIEWER side, jamais l'éditeur main (décision
     // utilisateur) : le reducer `toc-navigate` réutilise la politique
     // wikilink (mode nav → in-place + historique ; sinon nouveau tab viewer).
+    //
+    // TITRES TRANSCLUS (décision utilisateur) : un clic sur un titre qui
+    // n'appartient PAS au fichier affiché (forest.displayPath — titre d'un
+    // fichier transclu, traité comme partie de la note) localise DANS le
+    // preview de la note courante, jamais le md source : la cible devient la
+    // note affichée et la LIGNE source n'est pas transmise (coordonnées du
+    // fichier d'origine, sans signification dans la note hôte) — le scroll se
+    // fait par l'ID du titre (slugify), immunisé aux décalages de
+    // transclusion. Mode aide : navigation d'articles intacte (les titres des
+    // chapitres ouvrent leur article). `navigateFile` (branche fichier)
+    // désactive la redirection : le label d'une branche ouvre toujours le
+    // fichier source.
+    const display = forest?.displayPath;
+    const inNote = !helpMode && redirectInNote && display != null && display !== path;
+    const target = inNote ? display : path;
+    const line0 = inNote ? undefined : line;
     window.dispatchEvent(
       new CustomEvent("azprose:toc-navigate", {
         // line = 1-based source line (rendu preview) ; heading = raw text for
         // the id-based preview scroll (immune to transclusion line shifts).
-        detail: { path, line, heading, tabId: navTabId, navMode },
+        detail: { path: target, line: line0, heading, tabId: navTabId, navMode },
       }),
     );
   }
 
   /** Saut vers le début du fichier d'une branche transcluse (ou d'un article
    *  de la doc intégrée). En mode aide, ouvrir un article déplie aussi sa
-   *  branche (navigation de site statique). */
+   *  branche (navigation de site statique). La redirection « titre transclu →
+   *  note affichée » ne s'applique pas : le label d'une branche est une
+   *  navigation FICHIER (ouvrir le md source). */
   function navigateFile(node: TocFileNode): void {
     if (helpMode && collapsed.has(fileKey(node))) toggle(fileKey(node));
-    navigate(node.path, 1);
+    navigate(node.path, 1, undefined, false);
   }
 </script>
 

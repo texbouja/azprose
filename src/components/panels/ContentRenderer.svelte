@@ -49,6 +49,7 @@ let {
   onInverseSync,
   buildRev = 0,
   onToggleFullscreen,
+  viewerFullscreenOn = false,
 }: {
   tab?: Tab | null;
   panelId?: string;
@@ -66,6 +67,7 @@ let {
   onInverseSync?: (file: string, line: number, col?: number) => void;
   buildRev?: number;
   onToggleFullscreen?: () => void;
+  viewerFullscreenOn?: boolean;
 } = $props();
 
 // texlab and markdown-oxide start lazily on first .tex/.md file open
@@ -100,6 +102,7 @@ let {
     value={contentFor(tab.path)}
     filePath={tab.path}
     tabId={tab.id}
+    viewerFullscreenOn={viewerFullscreenOn}
   />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}
   <LazySlideDeck

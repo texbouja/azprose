@@ -132,6 +132,7 @@ function handleViewerFullscreen() {
           {onInverseSync}
           {buildRev}
           onToggleFullscreen={handleViewerFullscreen}
+          viewerFullscreenOn={viewerFullscreenOn}
         />
       </div>
     {/each}

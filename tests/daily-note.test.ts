@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildCollesSection, fenceColle, seancesDuJour } from "../src/colles/daily-note";
-import { parseColleYaml, splitPlanches, findFichesSection, isFenceOpen, isFenceClose } from "../src/colles/parse";
+import { parseColleYaml, splitPlanches, findFichesSection, isFenceOpen, isFenceClose, stripColleSeparators } from "../src/colles/parse";
 import type { ColloscopeData, ColloscopeEleve, ColloscopeSeance } from "../src/colles/colloscope";
 
 const ELEVES: ColloscopeEleve[] = [
@@ -28,10 +28,11 @@ function yamlOf(fence: string): string {
   return lines.slice(1, -1).join("\n");
 }
 
-/** Découpe une section en fiches, en retirant le double `---` d'annonce. */
+/** Découpe une section en fiches : retire le titre `# Colles`, les titres
+ *  `## <élève>` et le `---` final de la dernière planche. */
 function fichesOf(section: string): string[] {
-  const sansAnnonce = section.replace(/^---\n\n---\n\n/, "");
-  return sansAnnonce.split(/\n\n---\n\n/).map((f) => f.trimEnd());
+  const sansAnnonce = section.trimEnd().replace(/\n---$/, "").replace(/^# Colles\n\n/, "");
+  return sansAnnonce.split(/\n\n---\n\n/).map((f) => f.replace(/^## .+\n\n/, "").trimEnd());
 }
 
 describe("buildCollesSection", () => {
@@ -55,13 +56,35 @@ describe("buildCollesSection", () => {
     expect(buildCollesSection(sansEleves, "2026-08-03", "M. Taibi")).toBeNull();
   });
 
-  test("double `---` d'annonce + une fiche par élève du groupe collé", () => {
+  test("`# Colles` + une fiche par élève du groupe collé, chaque fiche bornée par `---`", () => {
     const section = buildCollesSection(DATA, "2026-08-03", "M. Taibi")!;
-    expect(section.startsWith("---\n\n---\n\n")).toBe(true);
+    expect(section.startsWith("# Colles\n\n")).toBe(true);
     // M. Taibi : G1 de MPs-1 (2 élèves) + G1 de MPs-2 (1 élève) → 3 fiches
     const fiches = fichesOf(section);
     expect(fiches).toHaveLength(3);
     expect(fiches.every((f) => f.startsWith("```colle") && f.endsWith("```"))).toBe(true);
+    // la DERNIÈRE planche se termine aussi par `---` (borne le corps au parsing)
+    expect(section.trimEnd().endsWith("\n---")).toBe(true);
+  });
+
+  test("un titre `## <élève>` précède chaque codefence (ordre : élève puis fence)", () => {
+    const section = buildCollesSection(DATA, "2026-08-03", "M. Taibi")!;
+    // La section commence par `# Colles`, puis chaque fiche =
+    // `## <élève>` + fence, séparées par `---`.
+    expect(section.startsWith("# Colles\n\n## Yassine BENALI\n\n```colle")).toBe(true);
+    expect(section).toContain("\n\n---\n\n## Salma TAHIRI\n\n```colle");
+    expect(section).toContain("\n\n---\n\n## Ines EL ALAOUI\n\n```colle");
+  });
+
+  test("les `---` séparateurs restent entre les fiches (bornent les corps au parsing)", () => {
+    const section = buildCollesSection(DATA, "2026-08-03", "M. Taibi")!;
+    // Trois blocs fiche séparés par deux `---` simples (après `# Colles`),
+    // plus le `---` final de la dernière planche.
+    const blocs = section.split(/\n\n---\n\n/);
+    expect(blocs).toHaveLength(3);
+    expect(blocs[0].startsWith("# Colles\n\n## Yassine BENALI")).toBe(true);
+    expect(blocs[1].startsWith("## Salma TAHIRI")).toBe(true);
+    expect(blocs[2].startsWith("## Ines EL ALAOUI")).toBe(true);
   });
 
   test("métadonnées de chaque fiche = données de la db (round-trip parseColleYaml)", () => {
@@ -125,6 +148,26 @@ describe("buildCollesSection", () => {
     expect(planches[0].meta.eleve).toBe("Yassine BENALI");
     // fiches sans contenu : l'utilisateur remplit le corps après la fermeture
     expect(planches[0].bodySource).toBe("");
+  });
+
+  test("les titres `# Colles`/`## <élève>` sont ignorés au parsing (ni fence ni corps)", () => {
+    const section = buildCollesSection(DATA, "2026-08-03", "M. Taibi")!;
+    const body = `# 2026-08-03\n\n## Travaux en classe\n\n${section}`;
+    const lines = body.split("\n");
+    const start = findFichesSection(lines);
+    const planches = splitPlanches(lines, start);
+    // 3 fiches, aucune planche parasite, aucun titre dans les corps
+    expect(planches).toHaveLength(3);
+    for (const p of planches) {
+      expect(p.bodySource).not.toContain("Colles");
+      expect(p.meta.eleve).toBeTruthy();
+    }
+    // stripColleSeparators : les `---` structurels sont vidés (jamais <hr>),
+    // les titres restent en place.
+    const stripped = stripColleSeparators(body);
+    expect(stripped).toContain("# Colles");
+    expect(stripped).toContain("## Yassine BENALI");
+    expect(stripped).not.toContain("\n---\n");
   });
 
   test("les séances sont triées par (horaire, classe, groupe)", () => {

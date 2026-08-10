@@ -25,10 +25,6 @@ date: 2026-08-02
 
 Du contenu normal de la daily note, sans colle.
 
----
-
----
-
 \`\`\`colle
 matiere: "Maths"
 colleur: "M. El Amrani"
@@ -58,6 +54,8 @@ salle: "B205"
 ## Questions de cours
 
 La relativité du temps.
+
+---
 `;
 
 describe("parseColleYaml", () => {
@@ -95,12 +93,12 @@ describe("parseColleYaml", () => {
 });
 
 describe("findFichesSection", () => {
-  test("trouve le double ---", () => {
+  test("s'ancre sur la PREMIÈRE fence, aucune disposition requise avant", () => {
     const lines = ["a", "b", "---", "---", "```colle", "x"];
     expect(findFichesSection(lines)).toBe(4);
   });
 
-  test("ignore un --- simple isolé", () => {
+  test("ignore un --- simple isolé (pas de fence)", () => {
     const lines = ["a", "---", "b", "---", "c"];
     expect(findFichesSection(lines)).toBe(-1);
   });
@@ -110,20 +108,20 @@ describe("findFichesSection", () => {
     expect(findFichesSection([])).toBe(-1);
   });
 
-  test("le front matter n'est pas confondu avec le marqueur", () => {
-    const lines = ["---", "title: x", "---", "a", "---", "---", "b"];
-    // le front matter a des lignes YAML entre les deux ---
-    expect(findFichesSection(lines)).toBe(6);
-  });
-
-  test("tolère une ligne vide entre les deux ---", () => {
-    const lines = ["a", "---", "", "---", "```colle"];
+  test("le front matter n'est pas confondu avec la section", () => {
+    const lines = ["---", "title: x", "---", "a", "```colle", "b"];
+    // la première fence est après le front matter + le contenu
     expect(findFichesSection(lines)).toBe(4);
   });
-  test("tolère les espaces autour du --- (CommonMark)", () => {
-    expect(findFichesSection(["a", "--- ", "---", "```colle"])).toBe(3);
-    expect(findFichesSection(["a", "---", " ---", "```colle"])).toBe(3);
-    expect(findFichesSection(["a", "--- ", "", " ---", "```colle"])).toBe(4);
+
+  test("la première fence gagne, même après du contenu varié", () => {
+    const lines = ["# Journal", "", "> du contenu", "```meta", "type: colle", "```", "```colle", "x"];
+    expect(findFichesSection(lines)).toBe(3);
+  });
+
+  test("retourne l'index de la première fence ```meta comme ```colle", () => {
+    expect(findFichesSection(["a", "```meta", "type: colle", "```"])).toBe(1);
+    expect(findFichesSection(["a", "```colle", "matiere: X", "```"])).toBe(1);
   });
 });
 
@@ -183,9 +181,10 @@ describe("parsePlanches", () => {
     expect(section.planches).toHaveLength(0);
   });
 
-  test("planche sans fence dans la section est ignorée", () => {
+  test("le contenu avant la première fence est hors section (ignoré)", () => {
     const src = ["a", "---", "---", "texte orphelin", "```colle", "matiere: X", "```", "corps"].join("\n");
     const section = parsePlanches(src);
+    expect(section.startLine).toBe(4);
     expect(section.planches).toHaveLength(1);
     expect(section.planches[0].bodySource).toBe("corps");
   });
@@ -215,11 +214,11 @@ describe("parsePlanches", () => {
 });
 
 describe("stripColleSeparators", () => {
-  test("vide le double --- d'annonce et les --- séparateurs, pas les autres", () => {
+  test("vide les --- legacy d'annonce et les --- séparateurs, pas les autres", () => {
     const src = [
       "# Journal",
       "",
-      "---", // légitime (hors section, séparé du marqueur par du contenu) → conservé
+      "---", // légitime (hors section, séparé de la fence par du contenu) → conservé
       "",
       "contenu du journal",
       "",
@@ -234,13 +233,15 @@ describe("stripColleSeparators", () => {
       "matiere: Physique",
       "```",
       "corps 2",
+      "---",
     ].join("\n");
     const out = stripColleSeparators(src);
     const lines = out.split("\n");
     expect(lines[2]).toBe("---"); // conservé (hors section)
-    expect(lines[6]).toBe(""); // 1er --- d'annonce vidé
-    expect(lines[7]).toBe(""); // 2e --- d'annonce vidé
+    expect(lines[6]).toBe(""); // repli legacy : --- avant la première fence vidé
+    expect(lines[7]).toBe(""); // repli legacy : 2e --- vidé
     expect(lines[12]).toBe(""); // séparateur de planches vidé
+    expect(lines[17]).toBe(""); // --- final de la dernière planche vidé
     // le contenu est intact
     expect(out).toContain("# Journal");
     expect(out).toContain("contenu du journal");
@@ -267,9 +268,13 @@ describe("stripColleSeparators", () => {
     expect(stripColleSeparators(src)).toBe(src);
   });
 
-  test("no-op sans section (--- simple uniquement)", () => {
-    const src = ["a", "---", "```colle", "x", "```"].join("\n");
-    expect(stripColleSeparators(src)).toBe(src);
+  test("repli legacy : le --- juste avant la première fence est vidé, le contenu plus haut est conservé", () => {
+    const src = ["a", "---", "```colle", "x", "```", "corps"].join("\n");
+    const out = stripColleSeparators(src);
+    const lines = out.split("\n");
+    expect(lines[0]).toBe("a"); // contenu au-dessus → conservé
+    expect(lines[1]).toBe(""); // --- legacy vidé
+    expect(lines[5]).toBe("corps");
   });
 
   test("préserve les --- à l'intérieur d'un fence de code", () => {
@@ -304,12 +309,12 @@ describe("stripColleSeparators", () => {
   });
 
   test("vide aussi les séparateurs avec espaces (--- ,  ---)", () => {
-    const src = ["---", "---", "```colle", "matiere: X", "```", "corps", "--- ", "```colle", "matiere: Y", "```", "corps2"].join("\n");
+    const src = ["contenu", "---", "---", "```colle", "matiere: X", "```", "corps", "--- ", "```colle", "matiere: Y", "```", "corps2"].join("\n");
     const out = stripColleSeparators(src);
     const lines = out.split("\n");
-    expect(lines[0]).toBe(""); // 1er --- d'annonce
-    expect(lines[1]).toBe(""); // 2e --- d'annonce
-    expect(lines[6]).toBe(""); // séparateur "--- " vidé
+    expect(lines[1]).toBe(""); // repli legacy : 1er --- d'annonce
+    expect(lines[2]).toBe(""); // repli legacy : 2e --- d'annonce
+    expect(lines[7]).toBe(""); // séparateur "--- " vidé
     expect(out).toContain("corps");
     expect(out).toContain("corps2");
   });

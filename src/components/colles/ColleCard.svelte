@@ -28,6 +28,8 @@
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import { collesSettings } from "@/stores/colles-settings.svelte";
+  import { previewSettings } from "@/stores/markdown-settings.svelte";
+  import { buildPreviewProseCss } from "@/lib/prose-style-css";
   import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
   import { rubriquesFor, sumMaxScore, sumNotes } from "@/colles";
   import type { CollePlanche } from "@/colles";
@@ -37,6 +39,7 @@
     planche,
     filePath = null as string | null,
     tabId = null as string | null,
+    zoom = 100,
     onEval,
   }: {
     planche: CollePlanche;
@@ -44,12 +47,19 @@
     /** Id de session du tab side (phase 3 C) — porté par les intents wikilink
      *  (décision figée au clic, matrice cas 1). */
     tabId?: string | null;
+    /** Zoom du TEXTE markdown (énoncé + observations) — état du viewer
+     *  (CollePreview), appliqué uniquement aux `.colle-sec__zoom`, jamais aux
+     *  cartes/métadonnées YAML. Largeur de la zone de texte inchangée. */
+    zoom?: number;
     onEval?: (
       index: number,
       keys: {
         notes?: Record<string, number | string> | null;
         observations?: string | null;
         programme?: string | null;
+        colleur?: string | null;
+        creneau?: string | null;
+        salle?: string | null;
       },
       propagateProgramme?: boolean,
     ) => void;
@@ -70,6 +80,21 @@
     return subscribeMode(() => {
       currentTheme = (document.documentElement.getAttribute("data-theme") as Theme) ?? "latte";
     });
+  });
+
+  // ── Polices « document » (réglages Preview) ──────────────────────────────
+  // Le contenu markdown (Énoncé + observations rendues) utilise le MÊME CSS
+  // typographique que MarkdownPreview : `buildPreviewProseCss` (shared) injecté
+  // ici en `<style>` dédié (id distinct — en mode colle, MarkdownPreview n'est
+  // pas monté et son `#mdv-preview-prose-css` n'existe pas). Les règles sont
+  // scoped `.mdv-prose`, posé sur les conteneurs de contenu ci-dessous.
+  $effect(() => {
+    const css = buildPreviewProseCss(previewSettings.current);
+    const el = document.createElement("style");
+    el.id = "mdv-colle-prose-css";
+    el.textContent = css;
+    document.head.appendChild(el);
+    return () => el.remove();
   });
 
   // ── Mode preview de l'évaluation ─────────────────────────────────────────
@@ -110,13 +135,15 @@
 
   // ── Mode preview de la section Métadonnées ────────────────────────────────
   // Comme la carte Évaluation : icône œil → affichage « rigide » (lecture
-  // seule). Le champ Programme éditable (+ sa checkbox « Propager ») n'existe
-  // qu'en mode form — en preview il est affiché en texte, le checkbox disparaît.
+  // seule). Le champ Programme éditable (+ son bouton « Propager ») n'existe
+  // qu'en mode form — en preview il est affiché en texte, le bouton disparaît.
   let metaMode = $state<"form" | "preview">("form");
 
-  // Pliage des trois sections. Par défaut tout est déplié (comportement hérité).
+  // Pliage des sections. Par défaut tout est déplié (comportement hérité).
+  // Décision utilisateur : SEULES les cartes 1 (métadonnées) et 3 (évaluation)
+  // sont pliables — la carte 2 (contenu) est TOUJOURS dépliée (elle absorbe
+  // l'espace que les cartes 1 et 3 ne prennent pas).
   let metaCollapsed = $state(false);
-  let bodyCollapsed = $state(false);
   let formCollapsed = $state(false);
 
   // ── Programme ─────────────────────────────────────────────────────────────
@@ -128,16 +155,16 @@
   // ciblé par index de planche). Le timer est purgé au repli de la section
   // (démontage) et au démontage de la carte.
   //
-  // PROPAGATION volontaire : le programme d'un même créneau étant en général
-  // le même, la checkbox « Propager » (état local, visible en mode form
+  // PROPAGATION VOLONTAIRE : le programme d'un même créneau étant en général
+  // le même, le bouton « Propager » (à côté du champ, visible en mode form
   // uniquement) copie la valeur saisie vers les AUTRES planches du même
   // créneau (date + créneau identiques, via `sameCreneau` dans CollePreview).
-  // Ne propage QUE si la valeur est non vide — un effacement volontaire ne
-  // doit jamais vider les programmes des planches voisines.
+  // La propagation est une ACTION UNIQUE déclenchée au clic — jamais
+  // automatique. Le bouton est désactivé si la valeur est vide (un effacement
+  // volontaire ne doit jamais vider les programmes des planches voisines).
   // svelte-ignore state_referenced_locally
   let programmeVal = $state(planche.meta.programme ?? "");
   let programmeDirty = $state(false);
-  let propagate = $state(false);
   let programmeTimer: ReturnType<typeof setTimeout> | null = null;
 
   function flushProgramme() {
@@ -148,7 +175,23 @@
     if (!programmeDirty) return;
     programmeDirty = false;
     const value = programmeVal.trim();
-    onEval?.(planche.index, { programme: value || null }, propagate && value !== "");
+    onEval?.(planche.index, { programme: value || null });
+  }
+
+  // Propagation AU CLIC : écrit le programme de la planche courante ET le
+  // copie vers les autres planches du même créneau, en UN seul événement
+  // (app.svelte chaîne les write-backs sur le même source → une sauvegarde).
+  // Le timer de debounce en attente est purgé (la valeur vient d'être écrite ;
+  // re-écrire la même chaîne est idempotent de toute façon).
+  function handlePropagate() {
+    const value = programmeVal.trim();
+    if (!value) return;
+    if (programmeTimer) {
+      clearTimeout(programmeTimer);
+      programmeTimer = null;
+    }
+    programmeDirty = false;
+    onEval?.(planche.index, { programme: value }, true);
   }
 
   function handleProgrammeInput(value: string) {
@@ -158,8 +201,92 @@
     programmeTimer = setTimeout(flushProgramme, 800);
   }
 
-  onDestroy(() => {
+  // ── Zoom du texte markdown ────────────────────────────────────────────────
+  // Appliqué aux `.colle-sec__zoom` (énoncé + observations rendues). La
+  // compensation `width: calc(100% / z)` annule l'élargissement du `zoom` CSS :
+  // la zone de texte garde SA largeur (celle de la carte), seuls la taille du
+  // texte et sa hauteur changent — le scroll interne de la section absorbe la
+  // hauteur. Les métadonnées YAML et les cartes ne sont jamais zoomées.
+  let zoomStyle = $derived(
+    zoom !== 100 ? `zoom: ${zoom / 100}; width: calc(100% / ${zoom / 100});` : "",
+  );
+
+  // ── Métadonnées éditables (colleur / créneau / salle) ─────────────────────
+  // Même pattern que le programme : état local init au montage (le `{#key}` de
+  // CollePreview relit le YAML à chaque navigation), write-back débouncé
+  // 800 ms via le même canal `azprose:colle-eval`, purge au repli (démontage)
+  // et au démontage de la carte. Décision utilisateur : l'élève (titre de
+  // carte) et la matière (badge, pilote les rubriques) restent FIXES ; la date
+  // reste en lecture seule.
+  interface MetaField {
+    value: string;
+    dirty: boolean;
+    flush: () => void;
+    handleInput: (value: string) => void;
+  }
+
+  function createMetaField(key: "colleur" | "creneau" | "salle") {
+    // `creneau` : repli silencieux du legacy `creneaux` (tableau) en une chaîne
+    // jointe — le write-back réécrit `creneau` seul (le legacy reste intact
+    // tant que le champ n'est pas édité).
+    const initial =
+      key === "creneau"
+        ? (planche.meta.creneau ?? (planche.meta.creneaux as string[] | undefined)?.join(", ") ?? "")
+        : (planche.meta[key] ?? "");
+    // `$state` ne peut PAS être placé dans un littéral d'objet (restriction
+    // svelte 5) : variables de closure exposées via getters/setters.
+    let value = $state(initial);
+    let dirty = $state(false);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const field = {
+      get value() {
+        return value;
+      },
+      set value(v: string) {
+        value = v;
+      },
+      get dirty() {
+        return dirty;
+      },
+      set dirty(d: boolean) {
+        dirty = d;
+      },
+      flush: () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (!dirty) return;
+        dirty = false;
+        const v = value.trim();
+        onEval?.(planche.index, { [key]: v || null });
+      },
+      handleInput: (input: string) => {
+        value = input;
+        dirty = true;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(field.flush, 800);
+      },
+    } satisfies MetaField;
+    return field;
+  }
+
+  const colleurField = createMetaField("colleur");
+  const creneauField = createMetaField("creneau");
+  const salleField = createMetaField("salle");
+
+  // Purge du repli de la section Métadonnées + démontage de la carte : TOUS
+  // les debounces en attente (programme + métadonnées) sont vidés avant que
+  // les champs ne disparaissent (sinon saisie perdue).
+  function flushAllMeta() {
     flushProgramme();
+    colleurField.flush();
+    creneauField.flush();
+    salleField.flush();
+  }
+
+  onDestroy(() => {
+    flushAllMeta();
   });
 
   let bodyEl = $state<HTMLElement | undefined>();
@@ -260,6 +387,51 @@
     return () => el.removeEventListener("click", onClick);
   });
 
+  // Jumptoline dbl-clic — même contrat que MarkdownPreview, UNIQUEMENT sur le
+  // TEXTE NON-YAML (le corps rendu de la section Contenu ; les métadonnées et
+  // les observations viennent du YAML et sont exclues) :
+  //   1. Bloc TRANSCLU (`[data-transcluded-from]`) → saut vers le FICHIER
+  //      SOURCE à `data-transcluded-line` (offset 0-based déjà résolu par la
+  //      synchro transclusion — app.svelte ouvre le .md d'origine, règle
+  //      utilisateur, jamais un tab arbitraire).
+  //   2. Texte SUR PLACE (`[data-sline]`) → `data-sline` est 0-based DANS le
+  //      fragment `bodySource`, pas dans la daily note : la ligne réelle =
+  //      `planche.bodyStart + sline` (bodyStart = index 0-based de la première
+  //      ligne du corps dans le fichier complet).
+  $effect(() => {
+    const el = bodyEl;
+    if (!el) return;
+    const tid = tabId; // capture réactive — le closure lit `tid` au dbl-clic
+    const bodyOffset = planche.bodyStart;
+    const onDblClick = (e: MouseEvent) => {
+      const transcluded = (e.target as HTMLElement).closest<HTMLElement>("[data-transcluded-from]");
+      if (transcluded) {
+        const path = transcluded.dataset.transcludedFrom;
+        const line = Number(transcluded.dataset.transcludedLine);
+        if (path) {
+          window.dispatchEvent(
+            new CustomEvent("azprose:jump-to-line", {
+              detail: { path, line: Number.isFinite(line) ? line : undefined, sessionId: tid ?? undefined },
+            }),
+          );
+        }
+        return;
+      }
+      const block = (e.target as HTMLElement).closest<HTMLElement>("[data-sline]");
+      if (!block) return;
+      const sline = Number(block.dataset.sline);
+      if (Number.isFinite(sline)) {
+        window.dispatchEvent(
+          new CustomEvent("azprose:jump-to-line", {
+            detail: { path: filePath ?? undefined, line: sline + bodyOffset, sessionId: tid ?? undefined },
+          }),
+        );
+      }
+    };
+    el.addEventListener("dblclick", onDblClick);
+    return () => el.removeEventListener("dblclick", onDblClick);
+  });
+
   function formatDate(d?: string): string {
     if (!d) return "—";
     const parsed = new Date(`${d}T12:00:00`);
@@ -297,9 +469,10 @@
         aria-expanded={!metaCollapsed}
         aria-controls="colle-sec-meta"
         onclick={() => {
-          // La section est DÉMONTÉE au repli : purger le debounce du programme
-          // avant que le champ ne disparaisse (sinon saisie perdue).
-          flushProgramme();
+          // La section est DÉMONTÉE au repli : purger tous les debounces en
+          // attente (programme + métadonnées) avant que les champs ne
+          // disparaissent (sinon saisie perdue).
+          flushAllMeta();
           metaCollapsed = !metaCollapsed;
         }}
       >
@@ -312,7 +485,7 @@
           <dt>{t("colle.programme")}</dt>
           {#if metaMode === "preview"}
             <!-- Mode « rigide » (œil) : le programme s'affiche en TEXTE sur la
-                 même ligne que le label (le champ éditable et la checkbox
+                 même ligne que le label (le champ éditable et le bouton
                  « Propager » disparaissent). Une seule ligne : ellipsis +
                  titre complet au survol. -->
             <dd
@@ -331,40 +504,55 @@
                   value={programmeVal}
                   oninput={(e) => handleProgrammeInput(e.currentTarget.value)}
                 />
-                <label class="colle-sec__propagate" title={t("colle.propagateHint")}>
-                  <input
-                    type="checkbox"
-                    bind:checked={propagate}
-                    aria-label={t("colle.propagate")}
-                  />
-                  <span>{t("colle.propagate")}</span>
-                </label>
+                <!-- Bouton d'action UNIQUE : propage la valeur saisie vers les
+                     autres planches du même créneau, AU CLIC. Désactivé si la
+                     valeur est vide (un effacement ne propage jamais). -->
+                <button
+                  type="button"
+                  class="colle-sec__propagate"
+                  disabled={!programmeVal.trim()}
+                  title={t("colle.propagateHint")}
+                  onclick={handlePropagate}
+                >
+                  {t("colle.propagate")}
+                </button>
               </div>
             </dd>
           {/if}
         </div>
-        {#if planche.meta.colleur}
-          <div class="colle-sec__field">
-            <dt>{t("colle.colleur")}</dt>
-            <dd>{planche.meta.colleur}</dd>
+        <!-- Colleur / Créneau / Salle : éditables en mode form (inputs
+             toujours visibles, write-back débouncé 800 ms), texte « rigide »
+             sous l'œil. La date reste en lecture seule ; l'élève et la matière
+             sont FIXES (titre + badge de carte). -->
+        {#snippet metaFieldRow(field: MetaField, label: string, placeholder: string)}
+          <div class="colle-sec__field colle-sec__field--meta">
+            <dt>{label}</dt>
+            {#if metaMode === "preview"}
+              <dd class="colle-sec__meta-text" title={field.value.trim() || undefined}>
+                {field.value.trim() || "—"}
+              </dd>
+            {:else}
+              <dd>
+                <input
+                  class="colle-sec__meta-input"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder={placeholder}
+                  value={field.value}
+                  oninput={(e) => field.handleInput(e.currentTarget.value)}
+                />
+              </dd>
+            {/if}
           </div>
-        {/if}
+        {/snippet}
+        {@render metaFieldRow(colleurField, t("colle.colleur"), t("colle.colleurPlaceholder"))}
+        {@render metaFieldRow(creneauField, t("colle.creneau"), t("colle.creneauPlaceholder"))}
+        {@render metaFieldRow(salleField, t("colle.salle"), t("colle.sallePlaceholder"))}
         {#if planche.meta.date}
           <div class="colle-sec__field">
             <dt>{t("colle.date")}</dt>
             <dd>{formatDate(planche.meta.date)}</dd>
-          </div>
-        {/if}
-        {#if planche.meta.creneau || (planche.meta.creneaux as string[] | undefined)?.length}
-          <div class="colle-sec__field">
-            <dt>{t("colle.creneau")}</dt>
-            <dd>{planche.meta.creneau || (planche.meta.creneaux as string[] | undefined)?.join(", ")}</dd>
-          </div>
-        {/if}
-        {#if planche.meta.salle}
-          <div class="colle-sec__field">
-            <dt>{t("colle.salle")}</dt>
-            <dd>{planche.meta.salle}</dd>
           </div>
         {/if}
       </dl>
@@ -372,26 +560,24 @@
   </section>
 
   <!-- ── 2. Contenu ─────────────────────────────────────────────── -->
+  <!-- NON pliable (décision utilisateur) : le corps est toujours rendu et
+       absorbe l'espace que les cartes 1 et 3 ne prennent pas. Pas de chevron. -->
   <section class="colle-sec">
     <div class="colle-sec__head">
       <i class="colle-sec__icon wxi-scroll-text" aria-hidden="true"></i>
       <span class="colle-sec__title">Énoncé</span>
       <div class="colle-sec__spacer"></div>
-      <button
-        type="button"
-        class="colle-sec__btn"
-        title={bodyCollapsed ? t("colle.expand") : t("colle.collapse")}
-        aria-label={bodyCollapsed ? t("colle.expand") : t("colle.collapse")}
-        aria-expanded={!bodyCollapsed}
-        aria-controls="colle-sec-body"
-        onclick={() => (bodyCollapsed = !bodyCollapsed)}
-      >
-        <i class="colle-sec__chevron {bodyCollapsed ? 'wxi-chevron-right' : 'wxi-chevron-down'}" aria-hidden="true"></i>
-      </button>
     </div>
-    {#if !bodyCollapsed}
-      <div id="colle-sec-body" class="colle-sec__body" bind:this={bodyEl}></div>
-    {/if}
+    <div id="colle-sec-body" class="colle-sec__body">
+      <!-- Zoom du TEXTE seul (`.colle-sec__zoom`) : la carte n'est jamais
+           zoomée, la largeur est compensée par le style `width: calc(100%/z)`.
+           `margin: 0` (SURCHARGE de `.mdv-prose` qui pose `margin: 0 auto`) :
+           les marges auto seraient calculées à l'état non-zoomé PUIS
+           multipliées par le zoom → « padding » du texte qui grandit avec le
+           zoom (gap 12px → 191px à z=2, mesuré). Sans elles le padding reste
+           celui du body (12px), constant quel que soit le zoom. -->
+      <div class="colle-sec__zoom mdv-prose" style={zoomStyle} bind:this={bodyEl}></div>
+    </div>
   </section>
 
   <!-- ── 3. Évaluation (titre + chevron portés par la carte) ───── -->
@@ -399,15 +585,6 @@
     <div class="colle-sec__head">
       <i class="colle-sec__icon wxi-book-open-check" aria-hidden="true"></i>
       <span class="colle-sec__title">{t("colle.evaluation")}</span>
-      {#if evalMode === "preview"}
-        <span
-          class="colle-sec__note-badge"
-          class:colle-sec__note-badge--empty={previewNote === null}
-          title={t("colle.noteGlobale")}
-        >
-          {previewNote !== null ? String(previewNote) : "—"} / {previewNoteMax}
-        </span>
-      {/if}
       <div class="colle-sec__spacer"></div>
       <button
         type="button"
@@ -431,6 +608,16 @@
       >
         <i class="colle-sec__chevron {formCollapsed ? 'wxi-chevron-right' : 'wxi-chevron-down'}" aria-hidden="true"></i>
       </button>
+      <!-- Note globale TOUJOURS visible, à droite du chevron (décision
+           utilisateur) : somme des rubriques du draft LIVE (mode preview) —
+           `—` tant qu'aucune rubrique n'est remplie. -->
+      <span
+        class="colle-sec__note-badge"
+        class:colle-sec__note-badge--empty={previewNote === null}
+        title={t("colle.noteGlobale")}
+      >
+        {previewNote !== null ? String(previewNote) : "—"} / {previewNoteMax}
+      </span>
     </div>
     <!-- Le form reste MONTÉ (masqué par CSS) : saisie + debounce vivants au
          repli ET en mode preview. -->
@@ -452,7 +639,7 @@
            corps du preview ne contient QUE les observations rendues. -->
       <div id="colle-sec-preview" class="colle-sec__preview">
         {#if draft.observations.trim()}
-          <div class="colle-sec__preview-obs" bind:this={previewEl}></div>
+          <div class="colle-sec__zoom mdv-prose" style={zoomStyle} bind:this={previewEl}></div>
         {:else}
           <p class="colle-sec__preview-empty">{t("colle.noObservations")}</p>
         {/if}

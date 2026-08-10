@@ -16,11 +16,12 @@ Chaque semaine, M. Boujaida interroge ses élèves à l'oral (une *colle*). Il l
 
 Chaque jour de colle commence par une note quotidienne (voir le chapitre 8, [[08-journal|Les notes quotidiennes]]), par exemple [[2026-01-07]]. Elle contient **une fiche par élève** : un bloc de métadonnées suivi de l'énoncé de la colle.
 
-Chaque fiche est un bloc de données YAML — la matière, le colleur, l'élève, la date, le créneau, la salle, la classe, le groupe, l'email, le programme :
+Chaque fiche est un bloc de données YAML — la matière, le colleur, l'élève, la date, le créneau, la salle, la classe, le groupe, l'email, le programme. La note porte aussi `type: colle` dans ses métadonnées : c'est ce marqueur qui active la **vue planches** (l'étoile dans la barre d'outils) — peu importe l'emplacement du fichier ou le nombre de fiches :
 
 ````markdown
 ---
 date: 2026-01-07
+type: colle
 ---
 
 # Colles du 7 janvier
@@ -60,10 +61,12 @@ groupe: G2
 email_eleve: youssef.elamrani@exemple.ma
 programme: Suites numériques — suites adjacentes
 ```
+
+---
 ````
 
 > [!note] Ce que l'application fait de ces blocs
-> Le mode **colle** du journal — l'étoile affichée dans la barre d'outils de l'aperçu d'une note quotidienne — transforme la note en **feuille de colles** : une carte par élève, avec navigation entre les planches, saisie de l'évaluation (notes par rubrique, observations) et enregistrement direct dans le bloc de données. Voir la note d'exemple [[2026-01-07]].
+> Le mode **colle** — l'étoile affichée dans la barre d'outils de l'aperçu d'une note dont les métadonnées portent `type: colle` — transforme la note en **feuille de colles** : une carte par élève, avec navigation entre les planches, saisie de l'évaluation (notes par rubrique, observations) et enregistrement direct dans le bloc de données. Voir la note d'exemple [[2026-01-07]].
 
 ### 2. Relier élèves et matières
 

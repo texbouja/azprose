@@ -10,12 +10,13 @@
 /** Métadonnées d'une planche de colle (contenu YAML du bloc ```` ```colle ````). */
 export interface ColleMeta {
   matiere?: string;
-  colleur?: string;
+  /** `null` = suppression de la clé au write-back (même sémantique que `programme`). */
+  colleur?: string | null;
   eleve?: string;
   date?: string;
   /** Créneau unique (ex. "09:00-10:00") — remplace l'ancien tableau `creneaux`. */
-  creneau?: string;
-  salle?: string;
+  creneau?: string | null;
+  salle?: string | null;
   /**
    * Note attribuée par le colleur (héritage). DEPRECATED : remplacée par le
    * dict `notes` (rubriques) — conservée en lecture seule pour les notes

@@ -128,3 +128,76 @@ test("repoint politique A avec store : park du buffer avant de partir", async ()
   expect(store.get("/b.md")).toBe("world");
   expect(p.activePath).toBe("/b.md");
 });
+
+// ── Invariant `recycleRenderMode` : tout recyclage d'un tab (changement de
+// fichier) réarme le viewer sur le mode GÉNÉRAL « preview » ; les modes
+// ÉDITEUR (raw/prose — tabs main, repoint aussi utilisé par preview-follow)
+// sont préservés ; la dédup (même fichier) n'est PAS un recyclage. ──────────
+
+test("repoint : modes viewer (colle/presentation) réarmés sur preview", async () => {
+  const { fs } = makeFakeFs({ "/a.md": "a", "/b.md": "b" });
+  const store = new ContentStore(fs);
+  const p = new PanelState("side", {}, store);
+  await p.open("/a.md");
+
+  p.setRenderMode(p.activeTabId!, "colle");
+  await p.repoint(p.activeTabId!, "/b.md");
+  expect(p.activeTab!.renderMode).toBe("preview");
+
+  p.setRenderMode(p.activeTabId!, "presentation");
+  await p.repoint(p.activeTabId!, "/a.md");
+  expect(p.activeTab!.renderMode).toBe("preview");
+});
+
+test("repoint sur tab MAIN : modes éditeur raw/prose préservés", async () => {
+  const { fs } = makeFakeFs({ "/a.md": "a", "/b.md": "b" });
+  const store = new ContentStore(fs);
+  const p = new PanelState("main", {}, store);
+  await p.open("/a.md");
+
+  p.setRenderMode(p.activeTabId!, "raw");
+  await p.repoint(p.activeTabId!, "/b.md");
+  expect(p.activeTab!.renderMode).toBe("raw");
+
+  p.setRenderMode(p.activeTabId!, "prose");
+  await p.repoint(p.activeTabId!, "/a.md");
+  expect(p.activeTab!.renderMode).toBe("prose");
+});
+
+test("open ré-affectation (fallbackToActive) : renderMode viewer réarmé sur preview", async () => {
+  const { fs } = makeFakeFs({ "/a.md": "a", "/b.md": "b" });
+  const store = new ContentStore(fs);
+  const p = new PanelState("side", {}, store);
+  await p.open("/a.md");
+  p.setRenderMode(p.activeTabId!, "colle");
+
+  await p.open("/b.md", { preview: true, fallbackToActive: true });
+
+  expect(p.activePath).toBe("/b.md");
+  expect(p.activeTab!.renderMode).toBe("preview");
+});
+
+test("openInActiveTab : renderMode viewer réarmé sur preview", async () => {
+  const { fs } = makeFakeFs({ "/a.md": "a", "/b.md": "b" });
+  const store = new ContentStore(fs);
+  const p = new PanelState("side", {}, store);
+  await p.open("/a.md");
+  p.setRenderMode(p.activeTabId!, "presentation");
+
+  await p.openInActiveTab("/b.md");
+
+  expect(p.activePath).toBe("/b.md");
+  expect(p.activeTab!.renderMode).toBe("preview");
+});
+
+test("open dédup (même fichier) : PAS de recyclage — le mode alternatif survit", async () => {
+  const { fs } = makeFakeFs({ "/a.md": "a" });
+  const store = new ContentStore(fs);
+  const p = new PanelState("side", {}, store);
+  await p.open("/a.md");
+  p.setRenderMode(p.activeTabId!, "colle");
+
+  await p.open("/a.md", { preview: true, fallbackToActive: true });
+
+  expect(p.activeTab!.renderMode).toBe("colle");
+});

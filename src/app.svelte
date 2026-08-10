@@ -842,11 +842,26 @@ $effect(() => {
       path: string; line?: number; heading?: string; tabId?: string | null; navMode?: boolean;
     }>).detail;
     if (!path) return;
+    const isHelp = isHelpPath(path, getRootPath());
+    // Daily note en mode COLLE : un clic TOC ramène le tab cible en mode
+    // preview normal (décision utilisateur) — la localisation se fait dans le
+    // rendu markdown (MarkdownPreview), pas dans les cartes de planches.
+    // Fait AVANT la navigation : le mode bascule, MarkdownPreview monte, puis
+    // le scroll arrive (pending store couvre un rendu encore en cours).
+    if (!isHelp) {
+      const normTarget = normPath(path);
+      for (const t of pm.side.tabs) {
+        if (t.renderMode === "colle" && t.path && normPath(t.path) === normTarget) {
+          pm.side.setRenderMode(t.id, "preview");
+          _panelVersion++;
+          break;
+        }
+      }
+    }
     // Clic TOC → la cible remonte dans le VIEWER side (jamais l'éditeur main —
     // décision utilisateur) : le reducer `toc-navigate` réutilise la politique
     // wikilink (mode nav figé au clic → in-place + historique ; sinon nouveau
     // tab viewer), l'aide intégrée reste routée en doc.
-    const isHelp = isHelpPath(path, getRootPath());
     await navigate(navDeps, { type: "toc-navigate", path, line, heading, tabId, navMode: navMode === true });
     // Notification de rendu (le reducer ne touche pas au DOM) : un preview déjà
     // rendu scrolle immédiatement ; le pending store couvre un preview encore
@@ -1399,6 +1414,13 @@ const toggleLinksView = () => {
   }
 };
 
+// ── Panneau « Élèves » (sidebar gauche, mode colle) ─────────────────────────
+// SUPERSÉDÉ (demande utilisateur) : la liste des élèves est désormais une
+// sidebar INTERNE au rendu CollePreview (jamais la sidebar gauche de l'app).
+// Le bouton de contrôle vit dans TabActions (wxi-user-list) et dispatch
+// `azprose:colle-students-toggle`, écouté par CollePreview. Aucun câblage
+// app-level (pas de vue sidebar "colle", pas de store module).
+
 /**
  * Impression des planches de colles (TabActions → azprose:colle-print).
  * Même pattern que l'envoi : la source est lue LIVE depuis le STORE de
@@ -1447,6 +1469,9 @@ $effect(() => {
         notes?: Record<string, number | string> | null;
         observations?: string | null;
         programme?: string | null;
+        colleur?: string | null;
+        creneau?: string | null;
+        salle?: string | null;
       };
       updates?: Array<{
         index: number;
@@ -1454,6 +1479,9 @@ $effect(() => {
           notes?: Record<string, number | string> | null;
           observations?: string | null;
           programme?: string | null;
+          colleur?: string | null;
+          creneau?: string | null;
+          salle?: string | null;
         };
       }>;
     };

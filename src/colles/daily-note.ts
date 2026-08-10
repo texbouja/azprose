@@ -5,8 +5,9 @@
  * (`userProfile.current.colleurName`), la note fraîchement créée est complétée
  * d'une section structurée :
  *
- *   ---            ← double `---` d'annonce (reconnu par `findFichesSection`)
- *   ---
+ *   # Colles       ← titre de section (aucune disposition particulière requise :
+ *                    l'extraction s'ancre sur la PREMIÈRE fence ```colle)
+ *   ## <élève>     ← un titre H2 par élève, juste avant sa codefence
  *   ```colle       ← une fiche par élève (métadonnées YAML de la db)
  *   matiere: …
  *   colleur: …
@@ -19,10 +20,21 @@
  *   email_eleve: …   ← colonne Élèves du colloscope (vide si absente)
  *   programme: ""    ← renseigné après génération par le colleur
  *   ```
- *   ---            ← séparateur de fiches
+ *   ---            ← séparateur de fiches — CHAQUE fiche se termine par `---`,
+ *                    y compris la dernière (borne les corps des planches au
+ *                    parsing : sans lui, le corps d'une planche sans contenu
+ *                    avalerait les fiches suivantes jusqu'à EOF)
+ *   ## <élève>
  *   ```colle
  *   …
  *   ```
+ *   ---            ← `---` final obligatoire (dernière planche bornée)
+ *
+ * Les titres (`# Colles`, `## <élève>`) sont IGNORÉS par les parsers
+ * (splitPlanches ne retient que les fences ; stripColleSeparators ne vide que
+ * les `---`) : les previews (normal et CollePreview) et la TOC ne sont pas
+ * altérés — seuls les `## <élève>` s'ajoutent naturellement au plan de la
+ * note (navigation vers la fiche dans la daily note).
  *
  * Les métadonnées proviennent de la base colloscope (readColloscope) ; le YAML
  * est toujours sérialisé par `stringify` (package `yaml`), même protection que
@@ -93,8 +105,12 @@ export function seancesDuJour(
 }
 
 /**
- * Construit la section colles d'une daily note : double `---` d'annonce puis
- * une fiche par élève (codefence ```colle), séparées par `---`.
+ * Construit la section colles d'une daily note : titre `# Colles`, puis par
+ * élève un titre `## <élève>` suivi de sa codefence ```colle. CHAQUE fiche se
+ * termine par un `---` (y compris la dernière) : ces séparateurs bornent le
+ * corps des planches au parsing (`splitPlanches` s'arrête à la prochaine ligne
+ * `---`) — sans eux, le corps d'une planche sans contenu avalerait les fiches
+ * suivantes jusqu'à EOF.
  *
  * Retourne `null` si aucune colle du colleur ce jour, ou si aucun élève du
  * colloscope ne correspond aux groupes collés (fiches vides inutiles).
@@ -107,17 +123,19 @@ export function buildCollesSection(
   const seances = seancesDuJour(data, date, colleurName);
   if (seances.length === 0) return null;
 
-  const fiches: string[] = [];
+  const fiches: { eleve: string; fence: string }[] = [];
   for (const s of seances) {
     const eleves = data.eleves
       .filter((e) => e.classe === s.classe && e.groupe === s.groupe)
       .sort((a, b) => a.nom.localeCompare(b.nom) || a.prenom.localeCompare(b.prenom));
     for (const e of eleves) {
-      fiches.push(
-        fenceColle({
+      const eleve = `${e.prenom} ${e.nom}`;
+      fiches.push({
+        eleve,
+        fence: fenceColle({
           matiere: s.matiere,
           colleur: s.colleur,
-          eleve: `${e.prenom} ${e.nom}`,
+          eleve,
           date: s.date,
           creneau: s.horaire,
           salle: s.salle,
@@ -126,10 +144,12 @@ export function buildCollesSection(
           email_eleve: e.email,
           programme: "",
         }),
-      );
+      });
     }
   }
   if (fiches.length === 0) return null;
 
-  return `---\n\n---\n\n${fiches.join("\n\n---\n\n")}\n`;
+  return `# Colles\n\n${fiches
+    .map((f) => `## ${f.eleve}\n\n${f.fence}`)
+    .join("\n\n---\n\n")}\n\n---\n`;
 }

@@ -138,6 +138,23 @@ export function pickOpenTarget(
   return { id: null, isFallback: false };
 }
 
+/**
+ * Ré-affectation d'un tab existant (recyclage : changement de fichier) — le
+ * viewer repasse en mode GÉNÉRAL (`preview`). Direction utilisateur : « à
+ * chaque recyclage d'un tab éditeur, passer immédiatement le viewer en mode
+ * général » — le viewer généraliste est le mode d'affichage par défaut, les
+ * modes alternatifs (colle, presentation) ne s'atteignent que par leur bascule
+ * TabActions et ne survivent PAS au recyclage (un autre fichier s'affiche : on
+ * redémarre en mode général, l'utilisateur rebascule s'il le souhaite).
+ * Seuls les modes VIEWER (preview/presentation/colle) sont réarmés : les modes
+ * ÉDITEUR (raw/prose — tabs du panneau main, `repoint` est aussi utilisé sur
+ * les tabs main par preview-follow) sont préservés. `preview`/`undefined` →
+ * no-op.
+ */
+function recycleRenderMode(mode: RenderMode | undefined): RenderMode | undefined {
+  return mode === "presentation" || mode === "colle" ? "preview" : mode;
+}
+
 export class PanelState {
   readonly id: string;
   visible: boolean = true;
@@ -253,7 +270,7 @@ export class PanelState {
       ) {
         this.parkContent(target.path, target.source);
       }
-      this.tabs = this.tabs.map(t => t.id === id ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, sourceType: opts?.sourceType } : t);
+      this.tabs = this.tabs.map(t => t.id === id ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, sourceType: opts?.sourceType, renderMode: recycleRenderMode(t.renderMode) } : t);
     } else {
       this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType }];
     }
@@ -305,7 +322,7 @@ export class PanelState {
     const id = existingDoc?.id ?? crypto.randomUUID();
     if (existingDoc) {
       this.tabs = this.tabs.map(t => t.id === id
-        ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, kind: "doc" }
+        ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, kind: "doc", renderMode: recycleRenderMode(t.renderMode) }
         : t);
     } else {
       this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: true, kind: "doc" }];
@@ -372,7 +389,7 @@ export class PanelState {
     if (previous) {
       this.tabs = this.tabs.map(t =>
         t.id === id
-          ? { ...t, path: normalized, title: basename(normalized), source: "", savedContent: "", preview: false, sourceType: opts?.sourceType }
+          ? { ...t, path: normalized, title: basename(normalized), source: "", savedContent: "", preview: false, sourceType: opts?.sourceType, renderMode: recycleRenderMode(t.renderMode) }
           : t,
       );
     } else {
@@ -582,6 +599,7 @@ export class PanelState {
                 source: src,
                 savedContent: saved,
                 preview: false,
+                renderMode: recycleRenderMode(t.renderMode),
               }
             : t
         );
@@ -596,7 +614,7 @@ export class PanelState {
     // PDF/images : pas de contenu texte — re-point immédiat (viewer dédié).
     this.tabs = this.tabs.map(t =>
       t.id === tabId
-        ? { ...t, path: normalized, title: basename(normalized), source: "", savedContent: "", preview: false }
+        ? { ...t, path: normalized, title: basename(normalized), source: "", savedContent: "", preview: false, renderMode: recycleRenderMode(t.renderMode) }
         : t
     );
     this.cbs.onFileOpen?.(normalized);

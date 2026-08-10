@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildPreviewProseCss,
   buildProseStyleCss,
   buildReportPrintCss,
+  type PreviewProseStyleSettings,
   type ProseStyleSettings,
 } from "../src/lib/prose-style-css";
 
@@ -30,6 +32,20 @@ function style(over: Partial<ProseStyleSettings> = {}): ProseStyleSettings {
     olLevel1: "decimal",
     olLevel2: "lower-alpha",
     olLevel3: "lower-roman",
+    ...over,
+  };
+}
+
+/** Réglages d'aperçu (PreviewStyle du store markdown-settings, forme structurelle). */
+function previewStyle(over: Partial<PreviewProseStyleSettings> = {}): PreviewProseStyleSettings {
+  return {
+    ...style(),
+    h1FontFamily: "custom",
+    h1CustomFontName: "Source Serif 4",
+    h2FontFamily: "inherit",
+    h2CustomFontName: "",
+    h3FontFamily: "inherit",
+    h3CustomFontName: "",
     ...over,
   };
 }
@@ -104,5 +120,57 @@ describe("buildReportPrintCss", () => {
   test("customCss vide → pas de ligne parasite", () => {
     const css = buildReportPrintCss(style());
     expect(css.trim().split("\n").every((l) => l.includes("{"))).toBe(true);
+  });
+});
+
+describe("buildPreviewProseCss", () => {
+  test("scope .mdv-prose fixe : police, taille, interligne, max-width (comme MarkdownPreview)", () => {
+    const css = buildPreviewProseCss(previewStyle());
+    expect(css).toContain(
+      ".mdv-prose{font-family:'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;font-size:15px;line-height:1.65;max-width:800px;}",
+    );
+    expect(css).toContain(".mdv-prose code,.mdv-prose pre{font-family:'Fira Code',");
+  });
+
+  test("police de TITRES dédiée (h1FontFamily + custom) — absente du builder d'impression", () => {
+    const css = buildPreviewProseCss(previewStyle());
+    // h1 = police de titres (custom) ; h2/h3 = inherit (police du document).
+    expect(css).toContain(".mdv-prose h1{font-size:2.1em;text-align:left;font-family:'Source Serif 4',");
+    expect(css).toContain(".mdv-prose h2{font-size:1.55em;text-align:left;font-family:inherit;");
+    expect(css).toContain(".mdv-prose h3{font-size:1.25em;text-align:left;font-family:inherit;");
+  });
+
+  test("marges des titres présentes (champs H du builder d'impression)", () => {
+    const css = buildPreviewProseCss(previewStyle());
+    expect(css).toContain("margin:0em 0 0.5em;");
+    expect(css).toContain("margin:2em 0 0.5em;");
+    expect(css).toContain("margin:1.6em 0 0.5em;");
+  });
+
+  test("listes ordonnées imbriquées (3 niveaux)", () => {
+    const css = buildPreviewProseCss(previewStyle());
+    expect(css).toContain(".mdv-prose ol{list-style-type:decimal;}");
+    expect(css).toContain(".mdv-prose ol ol{list-style-type:lower-alpha;}");
+    expect(css).toContain(".mdv-prose ol ol ol{list-style-type:lower-roman;}");
+  });
+
+  test("customCss ajouté en fin de bloc", () => {
+    const css = buildPreviewProseCss(previewStyle({ customCss: ".mdv-prose p{margin:0}" }));
+    expect(css.trimEnd().endsWith(".mdv-prose p{margin:0}")).toBe(true);
+  });
+
+  test("une instance PreviewStyle du store est assignable (structure)", () => {
+    // Vérification structurelle : toutes les clés PreviewStyle requises par
+    // PreviewProseStyleSettings existent (le store doit compiler sans erreur).
+    const keys = [
+      "fontFamily", "customFontName", "monoFont", "fontSize", "lineHeight", "maxWidth",
+      "customCss",
+      "h1FontFamily", "h1CustomFontName", "h1Size", "h1Align", "h1MarginTop", "h1MarginBottom",
+      "h2FontFamily", "h2CustomFontName", "h2Size", "h2Align", "h2MarginTop", "h2MarginBottom",
+      "h3FontFamily", "h3CustomFontName", "h3Size", "h3Align", "h3MarginTop", "h3MarginBottom",
+      "olLevel1", "olLevel2", "olLevel3",
+    ] as const;
+    const p = previewStyle();
+    for (const k of keys) expect(k in p).toBe(true);
   });
 });

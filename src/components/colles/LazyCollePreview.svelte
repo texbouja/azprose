@@ -7,10 +7,12 @@
     value = "",
     filePath = null as string | null,
     tabId = null as string | null,
+    viewerFullscreenOn = false,
   }: {
     value?: string;
     filePath?: string | null;
     tabId?: string | null;
+    viewerFullscreenOn?: boolean;
   } = $props();
 
   let t = $derived(getT($language));
@@ -37,5 +39,5 @@
 {#if loading}
   <div class="mdv-editor mdv-editor--loading">{t("lazy.loadingColles")}</div>
 {:else if Cmp}
-  <Cmp {value} {filePath} {tabId} />
+  <Cmp {value} {filePath} {tabId} {viewerFullscreenOn} />
 {/if}

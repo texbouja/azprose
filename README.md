@@ -16,7 +16,7 @@ un format de balisage très simple devenu omniprésent sur Internet. Il est trè
 Le standard de fait de la rédaction de texte scientifique.  
 L'éditeur contient les fonctions de base d'un éditeur LaTeX, y compris la recherche inverse par ctrl+clic. 
 
-Il faut disposer d'une installation TeX/LaTeX fonctionnelle pour pouvoir compiler vos fichiers. La détection se fait automatiquement. En outre l'application a besoin que le programme TeXlab soit présent dans le système. 
+Il faut disposer d'une installation TeX/LaTeX fonctionnelle pour pouvoir compiler vos fichiers. La détection se fait automatiquement. En outre l'application a besoin que le programme TeXlab soit présent dans le système.
 
 ### Typst :
 Typst est le LaTeX des temps modernes. Très léger et extrêmement rapide, il offre déjà la plupart des fonctionnalités de LaTeX, plus des capacités que ce dernier ne possède pas. Comme la gestion native des liens hypertextes et l'export directe en HTML. Son interface de programmation est en outre moins mystérieuse que celle de TeX. 
@@ -47,3 +47,23 @@ Les cellules des entetes des colonnes de semaine doivent fournir une assistance 
 À l'export, vers Calendar et json :
 Si TOUS les entêtes des semaines contiennent un format "date" valide se baser dessus pour l'export vers calendrier et json. 
 Si au moins un contient une chaine de caractères quelconque avertir l'utilisateur et s'il valide se baser uniquement sur date de début et date de fin pour l'export. 
+
+
+Changements dans la formation du code md par click dans calendar de la vue Journal dans sidebar. 
+
+États des lieux : un double --- annonce le début des colles et un --- simple sert de séparateur entre planches. Chaque planche commence par un codefence ```colle suivi du texte de la planche. Tout texte avant le codefence est ignoré dans CollePreview mais reste visible dans le Preview Général. 
+
+Ce comportement peut être conservé. Mais on va l'enrichir pour que le Preview normal d'une daily note soit plus structuré :
+- après le double --- insérer une section `# Colles`
+- avant chaque codefence insérer une section H2 (`##`) avec le nom de l'élève. 
+
+Ces changements resteront invisibles dans CollePreview. Ils seront visibles dans le Preview md normal et dans la TOC sidebar.  Tout cela sans rien changer dans les codes des preview et de la TOC. 
+
+Par contre un comportement global de la gestion TOC doit changer. La TOC doit être construite post-transclusion md (le texte transclu doit être traité comme faisant partie de la note). Le click dans la toc sur un titre transclu dois mener à sa localisation dans la note courante, pas au md d'origine.  
+
+Encore des ajouts :
+- ajoutes les boutons zoom dans TabAction CollePreview (au milieu), selon le même principe que le zoom dans Preview md normal. Le zoom ne doit concerner que le texte md, pas les métadonnées YAML. La largeur de la zone de texte ne doit pas être altérée par le zoom. 
+- les trois zones (cartes) d'une planche doivent rester visibles en tout temps. La carte du contenu doit être scrollable ;
+- pour compactifier le texte "Note globale" dans le corps de la carte "Évaluation" doit être déplacé dans la zone entête de la carte (placé à droite, à gauche du chevron de repli). 
+- toutes les métadonnées de la première carte doivent devenir éditable (des champs forms, à l'exception peut être de date qui est la date de la daily note). 
+
