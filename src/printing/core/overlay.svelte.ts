@@ -16,7 +16,15 @@
  * composant Svelte (ou d'un module .svelte.ts monté dans un composant) — les
  * sources `open`/`source`/`filePath` sont passées en getters pour être lues
  * à l'instant T (le $effect n'enregistre que les dépendances qu'il lit).
+ *
+ * PIÈGE RÉACTIVITÉ (corrigé — même bug que ColleSendDialog, cf. commentaire
+ * du reset) : un $effect qui LIT `machine` (reset) ET dont les `.then`
+ * MUTENT `machine` (send) se re-planifie en boucle — la machine ne reste
+ * jamais en "ready" et les boutons Aperçu/Export (rendus seulement en phase
+ * "ready" stable) disparaissent. Toute lecture de `machine` dans l'effet
+ * doit passer par `untrack`.
  */
+import { untrack } from "svelte";
 import { createPhaseMachine, type PhaseDef, type PhaseMachine } from "@/lib/phase-machine";
 import type { PrintRequest } from "@/lib/print-request";
 import type { PrintTypeContract } from "./contract";
@@ -102,8 +110,16 @@ export function createPrintOverlayCore(
   $effect(() => {
     if (!sources.open()) return;
     // Reset INCONDITIONNEL à chaque ouverture (cycle de vie) : le chargement
-    // repart depuis n'importe quelle phase précédente.
-    machine.reset("loading");
+    // repart depuis n'importe quelle phase précédente. `untrack` est
+    // OBLIGATOIRE : sans lui, la LECTURE de `machine` ici en ferait une
+    // dépendance de l'effet, et chaque mutation de la machine (les `send`
+    // du `.then` ci-dessous) re-déclencherait l'effet → reset → nouvelle
+    // promesse → send → BOUCLE (schedule_possible_effect_self_invalidation
+    // → effect_update_depth_exceeded — même piège que ColleSendDialog,
+    // commentaire l.174-181). La machine resterait figée en "loading" et le
+    // template (boutons Aperçu/Export rendus seulement en phase "ready"
+    // stable) ne les afficherait jamais.
+    untrack(() => machine.reset("loading"));
     error = "";
     count = 0;
     let cancelled = false;
