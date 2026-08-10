@@ -310,14 +310,14 @@ Chaque planche reprend le **gabarit du rapport de colle** configurable dans les 
 
 ### Une mémoire séparée
 
-Les réglages du mode planches sont mémorisés **séparément** de ceux des notes (`.azprose/print-planches.json`) : vous pouvez donc avoir, par exemple, un export de notes en A4 portrait et des planches en A4 paysage sans rien reconfigurer à chaque fois.
+Les réglages du mode planches sont mémorisés **séparément** de ceux des notes (`.azprose/print/colle.json`) : vous pouvez donc avoir, par exemple, un export de notes en A4 portrait et des planches en A4 paysage sans rien reconfigurer à chaque fois.
 
 > [!tip] Une note sans planche
 > Si la note ne contient **aucune planche** (pas de bloc `colle`), le dialogue l'indique et l'export est désactivé — impossible de produire un PDF vide.
 
 ## La mémoire des réglages
 
-Les derniers réglages d'impression sont **sauvegardés par projet** (fichier `.azprose/print.json` dans votre coffre) : la prochaine ouverture du dialogue les retrouve tels quels. Les planches de colles ont leur propre mémoire (`.azprose/print-planches.json`). Les réglages de fond (polices, titres…) vivent dans les réglages d'application, section **Impression**.
+Les derniers réglages d'impression sont **sauvegardés par projet** (fichier `.azprose/print/md.json` dans votre coffre — les planches de colles ont leur propre mémoire dans `.azprose/print/colle.json`) : la prochaine ouverture du dialogue les retrouve tels quels. Les anciens fichiers `print.json` et `print-planches.json` sont relus automatiquement à la première ouverture (migration en lecture seule). Les réglages de fond (polices, titres…) vivent dans les réglages d'application, section **Impression**.
 
 ## Voir aussi
 
