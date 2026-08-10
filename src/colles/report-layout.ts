@@ -53,8 +53,12 @@ import {
   type ResolveResult,
 } from "@/lib/handout-layout";
 import { DOC_META_FIELDS } from "@/lib/doc-meta";
+import type { VarDef } from "@/printing/core/vars";
 
 export { escHtml } from "@/lib/handout-layout";
+
+/** Alias rétro-compat du type de catalogue (nouveau nom commun : `VarDef`). */
+export type ReportVarDef = VarDef;
 
 // ── Types (déplacés depuis email.ts — une seule source de vérité) ───────────
 
@@ -354,41 +358,27 @@ export function normalizeReportLayout(layout?: ReportLayout | null): ReportLayou
 
 // ── Catalogue de variables ───────────────────────────────────────────────────
 
-/** Une variable du catalogue : nom `{{…}}`, label UI et nature. */
-interface ReportVarDef {
-  /** Nom SANS les accolades (ex. "matiere"). */
-  name: string;
-  /** Label français pour l'UI. */
-  label: string;
-  /** true = valeur HTML (blocs composés / fragments markdown) ; false = texte échappé. */
-  html: boolean;
-  /** Zones où la variable est pertinente. */
-  zones: Array<"titre" | "sousTitre" | "metadonnees" | "corps" | "evaluation">;
-}
-
 /**
  * Catalogue des variables exposées au gabarit (utilisé par l'UI pour l'aide
  * et par le moteur pour la résolution). L'ordre = ordre d'affichage.
+ *
+ * Type commun `VarDef` du noyau printing (src/printing/core/vars.ts) — la
+ * règle d'or (printing.md §2.2) : noms CANONIQUES sans préfixe technique
+ * (`{{eleve}}`, pas `{{meta.eleve}}`). Les alias historiques `meta.*`/`meta:`
+ * restent résolus par le moteur (rétro-compat des templates enregistrés)
+ * mais ne sont PLUS listés ici — plus de doublon dans l'UI.
  */
-export const REPORT_VARS: ReportVarDef[] = [
+export const REPORT_VARS: VarDef[] = [
   { name: "titre", label: "Titre composé (matière — élève)", html: true, zones: ["titre"] },
   { name: "matiere", label: "Matière", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
   { name: "eleve", label: "Élève", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
+  { name: "classe", label: "Classe", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
+  { name: "groupe", label: "Groupe", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
+  { name: "creneau", label: "Créneau", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
+  { name: "salle", label: "Salle", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
   { name: "sousTitre", label: "Sous-titre composé (date ou « Rapport de colle »)", html: true, zones: ["sousTitre"] },
   { name: "date", label: "Date (format français)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
   { name: "dateIso", label: "Date (AAAA-MM-JJ brute)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.matiere", label: "Matière (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.eleve", label: "Élève (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.classe", label: "Classe (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.groupe", label: "Groupe (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.creneau", label: "Créneau (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.salle", label: "Salle (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.date", label: "Date (meta, format français)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.dateIso", label: "Date ISO (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.programme", label: "Programme (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.note", label: "Note globale (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.noteMax", label: "Note maximale (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
-  { name: "meta.colleur", label: "Colleur (meta)", html: false, zones: ["titre", "sousTitre", "metadonnees", "corps", "evaluation"] },
   { name: "metaRow:date", label: "Ligne méta Date", html: true, zones: ["metadonnees"] },
   { name: "metaRow:creneau", label: "Ligne méta Créneau", html: true, zones: ["metadonnees"] },
   { name: "metaRow:salle", label: "Ligne méta Salle", html: true, zones: ["metadonnees"] },

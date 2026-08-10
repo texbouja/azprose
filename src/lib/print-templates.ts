@@ -20,6 +20,7 @@
 import { renderTemplateText, escHtml, type TemplateResolve } from "@/lib/handout-layout";
 import { imgMime, uint8ToBase64 } from "@/lib/image-uri";
 import { dirname, joinPath } from "@/lib/paths-utils";
+import type { VarDef } from "@/printing/core/vars";
 
 export interface PrintTemplate {
   id: string;
@@ -80,6 +81,34 @@ export const PRINT_TEMPLATES: Record<string, PrintTemplate> = {
 export function getPrintTemplate(id: string): PrintTemplate {
   return PRINT_TEMPLATES[id] ?? PRINT_TEMPLATES.simple;
 }
+
+// ── Catalogue de variables de la coquille md ─────────────────────────────────
+// Contrat `VarDef` du noyau printing (src/printing/core/vars.ts) : l'UI du
+// Tab « Templates » (Général) affiche les boutons d'insertion depuis CE
+// catalogue (pattern insertVar — même mécanique que REPORT_VARS pour les
+// colles). Variables de la coquille SEULEMENT : le contenu du document est
+// déjà rendu en HTML, inséré dans `{{content}}`.
+
+/** Zones de la coquille (une seule : la page). */
+const SHELL_ZONES = ["page"];
+
+/** Variable de coquille : insertion dans la page, texte échappé. */
+function shellVar(name: string, label: string, html = false): VarDef {
+  return { name, label, html, zones: SHELL_ZONES };
+}
+
+/**
+ * Catalogue des variables de la coquille md (gabarit général) — ordre
+ * d'affichage dans l'UI. Les valeurs viennent du front matter / du contexte
+ * d'impression (print-templates.ts `renderPrintTemplate`).
+ */
+export const MD_VARS: VarDef[] = [
+  shellVar("content", "Contenu du document (HTML rendu)", true),
+  shellVar("title", "Titre (nom du fichier sans extension)"),
+  shellVar("date", "Date du jour (format français)"),
+  shellVar("logo", "Logo (front matter `logo:`)"),
+  shellVar("altlogo", "Texte alternatif du logo (front matter `altlogo:`)"),
+];
 
 /** Contexte d'impression d'un gabarit (variables {{…}} résolues). */
 export interface PrintTemplateContext {

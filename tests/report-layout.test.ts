@@ -539,18 +539,28 @@ describe("normalizeReportLayout", () => {
 // ── Catalogue de variables ──────────────────────────────────────────────────
 
 describe("REPORT_VARS (catalogue)", () => {
-  it("couvre toutes les variables résolues par le moteur", () => {
+  it("couvre toutes les variables résolues par le moteur (noms canoniques)", () => {
     const names = new Set(REPORT_VARS.map((v) => v.name));
-    for (const n of ["titre", "matiere", "eleve", "sousTitre", "date", "dateIso",
-      "meta.matiere", "meta.eleve", "meta.classe", "meta.groupe", "meta.creneau",
-      "meta.salle", "meta.date", "meta.dateIso", "meta.programme", "meta.note",
-      "meta.noteMax", "meta.colleur",
+    for (const n of ["titre", "matiere", "eleve", "classe", "groupe", "creneau",
+      "salle", "sousTitre", "date", "dateIso",
       "metaRow:date", "metaRow:creneau", "metaRow:salle", "metaRow:classe",
       "metaRow:groupe", "metaRow:colleur",
       "programme", "blocProg", "blocEnonce", "bodyHtml", "blocEval", "note", "noteMax",
       "rubriques", "observations", "colleur"]) {
       expect(names.has(n), n).toBe(true);
     }
+  });
+
+  it("règle d'or : PAS de préfixe technique dans le catalogue (alias meta.* exclus)", () => {
+    for (const v of REPORT_VARS) {
+      expect(v.name.startsWith("meta."), v.name).toBe(false);
+      expect(v.name.startsWith("meta:"), v.name).toBe(false);
+    }
+  });
+
+  it("les alias meta.* restent résolus par le moteur (rétro-compat)", () => {
+    expect(resolveReportVar("meta.eleve", base)?.value).toBe("Ahmed El Moujahid");
+    expect(resolveReportVar("meta:eleve", base)?.value).toBe("Ahmed El Moujahid");
   });
 
   it("chaque zone a au moins une variable recommandée", () => {
