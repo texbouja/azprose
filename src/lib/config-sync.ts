@@ -162,6 +162,16 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   if (cfg.favorites != null) deps.fo.favorites.current = cfg.favorites;
   if (cfg.colles != null) collesSettings.current = cfg.colles;
 
+  // Migration du gabarit colle (refonte des réglages « Impression », printing.md
+  // §2.3) : il vivait dans `cfg.print.style.layout` — il vit désormais dans
+  // `cfg.colles.layout`. Repli défensif : l'ancien chemin gagne si le nouveau
+  // est absent (config pré-refonte) ; le champ résiduel `layout` de print.style
+  // est ignoré par la suite (PrintStyle ne le porte plus).
+  const legacyColleLayout = (cfg.print?.style as { layout?: unknown } | null | undefined)?.layout;
+  if (legacyColleLayout && cfg.colles?.layout == null) {
+    collesSettings.update((prev) => ({ ...prev, layout: legacyColleLayout as never }));
+  }
+
   deps.setConfigLoaded(true);
   deps.setThemeBootDone(true);
   if (warnings.length) {

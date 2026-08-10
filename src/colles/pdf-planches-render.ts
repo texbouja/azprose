@@ -21,6 +21,7 @@ import { DEFAULT_REPORT_LAYOUT } from "./report-layout";
 import type { RubriquesParMatiere } from "./types";
 import { buildMathJaxConfig } from "@/lib/pdf-export";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { collesSettings } from "@/stores/colles-settings.svelte";
 import { printSettings } from "@/stores/markdown-settings.svelte";
 import { buildReportPrintCss } from "@/lib/prose-style-css";
 import { getRootPath } from "@/stores/root-path.svelte";
@@ -70,7 +71,7 @@ export async function exportPlanchesPdf(
     buildMathJaxConfig(),
     mathJaxPreamble.current,
     buildReportPrintCss(printSettings.current),
-    printSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
+    collesSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
     print,
   );
 
@@ -116,7 +117,7 @@ export async function previewPlanchesPdf(req: CollePrintRequest): Promise<string
     buildMathJaxConfig(),
     mathJaxPreamble.current,
     buildReportPrintCss(printSettings.current),
-    printSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
+    collesSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
     print,
   );
   return await invoke<string>("preview_print", {

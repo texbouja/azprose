@@ -14,6 +14,7 @@ import {
 import { writeBackColleKeys } from "../src/colles/write-back";
 import { matiereKey, rubriquesFor, sumMaxScore, sumNotes } from "../src/colles/rubrics";
 import { normalizeCollesSettings, colloscopeTableName } from "../src/colles/settings-model";
+import { DEFAULT_REPORT_LAYOUT } from "../src/colles/report-layout";
 import type { ColleMeta, RubriquesParMatiere } from "../src/colles/types";
 
 const SAMPLE = `---
@@ -547,8 +548,9 @@ describe("rubrics — note globale calculée (jamais stockée)", () => {
   });
 
   test("normalizeCollesSettings comble les champs manquants (migration legacy)", () => {
-    // Ancienne forme persistée (avant l'ajout de `vacances`) → pas de crash
-    // `undefined.vacances` et champ initialisé à [].
+    // Ancienne forme persistée (avant l'ajout de `vacances` puis de `layout`)
+    // → pas de crash `undefined.vacances` et champs initialisés ([] et layout
+    // par défaut complété en profondeur).
     const legacy = { dateDebut: "2026-09-01", dateFin: "", rubriques: RUBRIQUES } as any;
     expect(normalizeCollesSettings(legacy)).toEqual({
       dateDebut: "2026-09-01",
@@ -556,6 +558,7 @@ describe("rubrics — note globale calculée (jamais stockée)", () => {
       vacances: [],
       rubriques: RUBRIQUES,
       colloscope: null,
+      layout: DEFAULT_REPORT_LAYOUT,
     });
   });
 

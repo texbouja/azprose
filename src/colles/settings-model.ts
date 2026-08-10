@@ -10,6 +10,11 @@
  *    d'une planche est la somme des rubriques, toujours calculée au rendu.
  */
 import type { RubriquesParMatiere } from "@/colles/types";
+import {
+  DEFAULT_REPORT_LAYOUT,
+  normalizeReportLayout,
+  type ReportLayout,
+} from "@/colles/report-layout";
 
 /** Une période de vacances (bornes incluses, YYYY-MM-DD). */
 export interface ColleVacances {
@@ -56,6 +61,11 @@ export interface CollesSettings {
   rubriques: RubriquesParMatiere;
   /** Colloscope importé (null tant que rien n'est importé). */
   colloscope: ColloscopeImport | null;
+  /** Gabarit du rapport de colle (5 zones à templates `{{…}}`) — depuis la
+   *  refonte des réglages « Impression », il vit ICI (sous-section Colles →
+   *  Tab Templates) et plus dans printSettings (séparation des deux gabarits,
+   *  printing.md §2.3). Persiste dans `cfg.colles.layout`. */
+  layout: ReportLayout;
 }
 
 const DEFAULT_RUBRIQUES: RubriquesParMatiere = {
@@ -103,6 +113,7 @@ export const DEFAULT_COLLES_SETTINGS: CollesSettings = {
   vacances: [],
   rubriques: DEFAULT_RUBRIQUES,
   colloscope: null,
+  layout: DEFAULT_REPORT_LAYOUT,
 };
 
 /** Nom du tableau spreadsheet d'une classe (utilisé par l'import et la pile DataFilter). */
@@ -145,5 +156,9 @@ export function normalizeCollesSettings(v: CollesSettings): CollesSettings {
     vacances: Array.isArray(v.vacances) ? v.vacances : [],
     rubriques: v.rubriques && typeof v.rubriques === "object" ? v.rubriques : DEFAULT_RUBRIQUES,
     colloscope: normalizeColloscopeImport(v.colloscope),
+    // Normalisation EN PROFONDEUR du gabarit : un layout hérité (persisté dans
+    // cfg.print.style.layout avant la refonte, migré par config-sync) peut
+    // manquer des zones/champs — complète avec le layout par défaut.
+    layout: normalizeReportLayout(v.layout),
   };
 }

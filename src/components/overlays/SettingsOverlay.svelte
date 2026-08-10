@@ -39,6 +39,7 @@ import { userProfile, type UserRole } from "@/stores/user-profile.svelte";
 import { exportCalendar, importCalendar, clearCalendar } from "@/lib/calendar-persistence";
 import { collesSettings, type CollesSettings } from "@/stores/colles-settings.svelte";
 import { MATIERE_KEYS, REPORT_VARS, importColloscope, type ColleRubrique, type ReportCssFile, type ReportLayout, type ReportZoneLayout } from "@/colles";
+import { MD_VARS } from "@/lib/print-templates";
 import type { ImportResult } from "@/lib/spreadsheet/import";
 import ColloscopeImportDialog from "@/components/settings/ColloscopeImportDialog.svelte";
 
@@ -52,8 +53,8 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "printing" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques";
-type SectionId = "markdown" | "general" | "latex" | "colles";
+type ModuleId = "general" | "prose-writing" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques";
+type SectionId = "markdown" | "general" | "latex" | "colles" | "printing";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
   {
@@ -74,7 +75,6 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "general",        labelKey: "settings.module.general" },
       { id: "prose-writing", labelKey: "settings.module.prose" },
       { id: "apercu",        labelKey: "settings.module.apercu" },
-      { id: "printing",      labelKey: "settings.module.printing" },
       { id: "presentation",  labelKey: "settings.module.presentation" },
       { id: "mathjax",       labelKey: "settings.module.mathjax" },
       { id: "callouts",      labelKey: "settings.module.callouts" },
@@ -96,10 +96,18 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "colles-rubriques", labelKey: "settings.module.collesRubriques" },
     ],
   },
+  {
+    id: "printing",
+    labelKey: "settings.section.printing",
+    modules: [
+      { id: "printing-general", labelKey: "settings.module.printingGeneral" },
+      { id: "printing-colles", labelKey: "settings.module.printingColles" },
+    ],
+  },
 ];
 
 let activeModule = $state<ModuleId>("editor");
-let expandedSections = $state(new Set<SectionId>(["general", "markdown", "latex", "colles"]));
+let expandedSections = $state(new Set<SectionId>(["general", "markdown", "latex", "colles", "printing"]));
 
 // ── Réglages des colles (Dates + Rubriques) ────────────────────────────────
 let cs = $derived(collesSettings.current);
@@ -155,11 +163,13 @@ function removeVacance(idx: number) {
   }));
 }
 
-// ── Gabarit du rapport de colle (PrintStyle.layout) ─────────────────────────
+// ── Gabarit du rapport de colle (collesSettings.layout) ─────────────────────
 // 5 zones d'ORDRE FIXE (titre, sousTitre, metadonnees, corps, evaluation),
-// chacune avec un template {{…}} et une classe CSS supplémentaire. L'écriture
-// est SYNCHRONE (pas de debounce) : la persistance config.json est déjà
-// débouncée dans config-sync, et un patch synchrone garde les boutons
+// chacune avec un template {{…}} et une classe CSS supplémentaire. Depuis la
+// refonte des réglages « Impression » (printing.md §2.3), le gabarit vit dans
+// collesSettings (sous-section Colles → Tab Templates) — plus dans printSettings.
+// L'écriture est SYNCHRONE (pas de debounce) : la persistance config.json est
+// déjà débouncée dans config-sync, et un patch synchrone garde les boutons
 // d'insertion de variables cohérents avec le texte tapé (jamais de perte).
 const REPORT_ZONES = [
   { key: "titre", labelKey: "settings.reportZone.titre" },
@@ -170,10 +180,10 @@ const REPORT_ZONES = [
 ] as const;
 type ReportZoneKey = (typeof REPORT_ZONES)[number]["key"];
 
-let layout = $derived(printSettings.current.layout);
+let layout = $derived(collesSettings.current.layout);
 
 function patchLayout(patch: Partial<ReportLayout>) {
-  printSettings.patch({ layout: { ...layout, ...patch } });
+  collesSettings.update((prev) => ({ ...prev, layout: { ...layout, ...patch } }));
 }
 
 function patchZone(zone: ReportZoneKey, patch: Partial<ReportZoneLayout>) {
@@ -324,6 +334,13 @@ let pvs = $derived(previewSettings.current);
 let prt = $derived(printSettings.current);
 let prs = $derived(presentationSettings.current);
 let csvStyle = $derived(csvSettings.current);
+
+// Tabs DANS les sous-sections de la section « Impression » (décision
+// utilisateur : sidebar 2 niveaux conservée, tabs uniquement dans les
+// sous-sections Styles/Templates — printing.md §2.3).
+type PrintingTab = "styles" | "templates";
+let printGeneralTab = $state<PrintingTab>("styles");
+let printCollesTab = $state<PrintingTab>("styles");
 
 // Debounced text input: delays store write so typing stays snappy.
 const _inputTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1141,90 +1158,132 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             </div>
           {/if}
 
-          {#if activeModule === "printing"}
-            <p class="mdv-settings__hint">{t("settings.printingHint")}</p>
-
-            {@render policesSectionPrint()}
-
-            <p class="mdv-settings__section-title">{t("settings.typography")}</p>
-            <div class="mdv-settings__sliders">
-              <div class="mdv-settings__slider-row">
-                <span class="mdv-settings__slider-label">{t("settings.fontSize")}</span>
-                <Slider min={12} max={24} step={1} value={prt.fontSize} onchange={(ev) => printSettings.patch({ fontSize: ev.value })} />
-                <span class="mdv-settings__slider-value">{prt.fontSize} px</span>
-              </div>
-              <div class="mdv-settings__slider-row">
-                <span class="mdv-settings__slider-label">{t("settings.lineHeight")}</span>
-                <Slider min={1.3} max={2.2} step={0.05} value={prt.lineHeight} onchange={(ev) => printSettings.patch({ lineHeight: ev.value })} />
-                <span class="mdv-settings__slider-value">{prt.lineHeight.toFixed(2)}</span>
-              </div>
-              <div class="mdv-settings__slider-row">
-                <span class="mdv-settings__slider-label">{t("settings.columnWidth")}</span>
-                <Slider min={500} max={1200} step={10} value={prt.maxWidth} onchange={(ev) => printSettings.patch({ maxWidth: ev.value })} />
-                <span class="mdv-settings__slider-value">{prt.maxWidth} px</span>
-              </div>
-            </div>
-
-            {@render titresSectionPrint()}
-
-            <p class="mdv-settings__section-title">{t("settings.reportLayout")}</p>
-            <p class="mdv-settings__hint">{t("settings.reportLayoutHint")}</p>
-            <p class="mdv-settings__hint">{t("settings.reportIfHint")}</p>
-
-            {#each REPORT_ZONES as z (z.key)}
-              {@const zone = layout[z.key] as ReportZoneLayout}
-              {@const vars = REPORT_VARS.filter((v) => v.zones.includes(z.key))}
-              <div class="mdv-settings__report-zone">
-                <div class="mdv-settings__report-zone-head">
-                  <span class="mdv-settings__report-zone-name">{t(z.labelKey)}</span>
-                  <label class="mdv-settings__report-zone-class">
-                    <span>{t("settings.reportZoneClass")}</span>
-                    <input
-                      type="text"
-                      value={zone.class}
-                      oninput={(e) => patchZone(z.key, { class: e.currentTarget.value })}
-                    />
-                  </label>
-                </div>
-                <div style="font-family: var(--font-ui); font-size: 12px;">
-                  <TextArea
-                    value={zone.template}
-                    title={t("settings.reportZoneTemplate")}
-                    onchange={(ev) => patchZone(z.key, { template: ev.value })}
-                  />
-                </div>
-                <div class="mdv-settings__report-vars">
-                  {#each vars as v (v.name)}
-                    <button
-                      type="button"
-                      class="mdv-settings__report-var"
-                      title={`${v.label} — ${t("settings.reportInsertVar")}`}
-                      onclick={() => insertReportVar(z.key, v.name)}
-                    >{("{{" + v.name + "}}")}</button>
-                  {/each}
-                </div>
-              </div>
-            {/each}
-
-            <p class="mdv-settings__section-title">{t("settings.reportCssFiles")}</p>
-            <p class="mdv-settings__hint">{t("settings.reportCssFilesHint")}</p>
-            <div class="mdv-settings__report-cssfiles">
-              {#each layout.cssFiles ?? [] as f (f.name)}
-                <div class="mdv-settings__report-cssfile">
-                  <span class="mdv-settings__report-cssfile-name" title={f.name}>{f.name}</span>
-                  <button type="button" class="mdv-settings__colles-del" onclick={() => removeCssFile(f.name)}>{t("settings.reportRemoveCssFile")}</button>
-                </div>
-              {/each}
-              <button type="button" class="mdv-settings__report-css-add" onclick={addCssFiles} disabled={cssFilesLoading}>
-                {t("settings.reportAddCssFiles")}
+          {#if activeModule === "printing-general"}
+            <div class="mdv-settings__tabs" role="tablist">
+              <button type="button" class="mdv-settings__tab" class:is-active={printGeneralTab === "styles"} role="tab" onclick={() => (printGeneralTab = "styles")}>
+                {t("settings.tab.styles")}
+              </button>
+              <button type="button" class="mdv-settings__tab" class:is-active={printGeneralTab === "templates"} role="tab" onclick={() => (printGeneralTab = "templates")}>
+                {t("settings.tab.templates")}
               </button>
             </div>
 
-            <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
-            <p class="mdv-settings__hint">{t("settings.customCssPrintHint")}</p>
-            <div style="font-family: var(--font-ui); font-size: 12px;">
-              <TextArea value={prt.customCss} onchange={(ev) => debounceInput("css-print", ev.value, (v) => printSettings.patch({ customCss: v }))} />
+            {#if printGeneralTab === "styles"}
+              <p class="mdv-settings__hint">{t("settings.printingHint")}</p>
+
+              {@render policesSectionPrint()}
+
+              <p class="mdv-settings__section-title">{t("settings.typography")}</p>
+              <div class="mdv-settings__sliders">
+                <div class="mdv-settings__slider-row">
+                  <span class="mdv-settings__slider-label">{t("settings.fontSize")}</span>
+                  <Slider min={12} max={24} step={1} value={prt.fontSize} onchange={(ev) => printSettings.patch({ fontSize: ev.value })} />
+                  <span class="mdv-settings__slider-value">{prt.fontSize} px</span>
+                </div>
+                <div class="mdv-settings__slider-row">
+                  <span class="mdv-settings__slider-label">{t("settings.lineHeight")}</span>
+                  <Slider min={1.3} max={2.2} step={0.05} value={prt.lineHeight} onchange={(ev) => printSettings.patch({ lineHeight: ev.value })} />
+                  <span class="mdv-settings__slider-value">{prt.lineHeight.toFixed(2)}</span>
+                </div>
+                <div class="mdv-settings__slider-row">
+                  <span class="mdv-settings__slider-label">{t("settings.columnWidth")}</span>
+                  <Slider min={500} max={1200} step={10} value={prt.maxWidth} onchange={(ev) => printSettings.patch({ maxWidth: ev.value })} />
+                  <span class="mdv-settings__slider-value">{prt.maxWidth} px</span>
+                </div>
+              </div>
+
+              {@render titresSectionPrint()}
+
+              <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
+              <p class="mdv-settings__hint">{t("settings.customCssPrintHint")}</p>
+              <div style="font-family: var(--font-ui); font-size: 12px;">
+                <TextArea value={prt.customCss} onchange={(ev) => debounceInput("css-print", ev.value, (v) => printSettings.patch({ customCss: v }))} />
+              </div>
+            {:else}
+              <p class="mdv-settings__section-title">{t("settings.printShellTitle")}</p>
+              <p class="mdv-settings__hint">{t("settings.printShellHint")}</p>
+              <p class="mdv-settings__hint">{t("settings.printShellLogoHint")}</p>
+
+              <p class="mdv-settings__section-title">{t("settings.printVarsTitle")}</p>
+              <p class="mdv-settings__hint">{t("settings.printVarsHint")}</p>
+              <div class="mdv-settings__report-vars">
+                {#each MD_VARS as v (v.name)}
+                  <span class="mdv-settings__report-var--static" title={v.label}>{("{{" + v.name + "}}")}</span>
+                {/each}
+              </div>
+            {/if}
+          {/if}
+
+          {#if activeModule === "printing-colles"}
+            <div class="mdv-settings__tabs" role="tablist">
+              <button type="button" class="mdv-settings__tab" class:is-active={printCollesTab === "styles"} role="tab" onclick={() => (printCollesTab = "styles")}>
+                {t("settings.tab.styles")}
+              </button>
+              <button type="button" class="mdv-settings__tab" class:is-active={printCollesTab === "templates"} role="tab" onclick={() => (printCollesTab = "templates")}>
+                {t("settings.tab.templates")}
+              </button>
             </div>
+
+            {#if printCollesTab === "styles"}
+              <p class="mdv-settings__section-title">{t("settings.reportCssFiles")}</p>
+              <p class="mdv-settings__hint">{t("settings.reportCssFilesHint")}</p>
+              <div class="mdv-settings__report-cssfiles">
+                {#each layout.cssFiles ?? [] as f (f.name)}
+                  <div class="mdv-settings__report-cssfile">
+                    <span class="mdv-settings__report-cssfile-name" title={f.name}>{f.name}</span>
+                    <button type="button" class="mdv-settings__colles-del" onclick={() => removeCssFile(f.name)}>{t("settings.reportRemoveCssFile")}</button>
+                  </div>
+                {/each}
+                <button type="button" class="mdv-settings__report-css-add" onclick={addCssFiles} disabled={cssFilesLoading}>
+                  {t("settings.reportAddCssFiles")}
+                </button>
+              </div>
+
+              <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
+              <p class="mdv-settings__hint">{t("settings.customCssReportHint")}</p>
+              <div style="font-family: var(--font-ui); font-size: 12px;">
+                <TextArea value={layout.customCss} onchange={(ev) => debounceInput("css-report", ev.value, (v) => patchLayout({ customCss: v }))} />
+              </div>
+            {:else}
+              <p class="mdv-settings__section-title">{t("settings.reportLayout")}</p>
+              <p class="mdv-settings__hint">{t("settings.reportLayoutHint")}</p>
+              <p class="mdv-settings__hint">{t("settings.reportIfHint")}</p>
+
+              {#each REPORT_ZONES as z (z.key)}
+                {@const zone = layout[z.key] as ReportZoneLayout}
+                {@const vars = REPORT_VARS.filter((v) => v.zones.includes(z.key))}
+                <div class="mdv-settings__report-zone">
+                  <div class="mdv-settings__report-zone-head">
+                    <span class="mdv-settings__report-zone-name">{t(z.labelKey)}</span>
+                    <label class="mdv-settings__report-zone-class">
+                      <span>{t("settings.reportZoneClass")}</span>
+                      <input
+                        type="text"
+                        value={zone.class}
+                        oninput={(e) => patchZone(z.key, { class: e.currentTarget.value })}
+                      />
+                    </label>
+                  </div>
+                  <div style="font-family: var(--font-ui); font-size: 12px;">
+                    <TextArea
+                      value={zone.template}
+                      title={t("settings.reportZoneTemplate")}
+                      onchange={(ev) => patchZone(z.key, { template: ev.value })}
+                    />
+                  </div>
+                  <div class="mdv-settings__report-vars">
+                    {#each vars as v (v.name)}
+                      <button
+                        type="button"
+                        class="mdv-settings__report-var"
+                        title={`${v.label} — ${t("settings.reportInsertVar")}`}
+                        onclick={() => insertReportVar(z.key, v.name)}
+                      >{("{{" + v.name + "}}")}</button>
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+            {/if}
           {/if}
 
           {#if activeModule === "presentation"}
@@ -1849,8 +1908,12 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           <button type="button" class="mdv-settings__reset" onclick={() => previewSettings.reset()}>
             {t("settings.reset")}
           </button>
-        {:else if activeModule === "printing"}
+        {:else if activeModule === "printing-general"}
           <button type="button" class="mdv-settings__reset" onclick={() => printSettings.reset()}>
+            {t("settings.reset")}
+          </button>
+        {:else if activeModule === "printing-colles"}
+          <button type="button" class="mdv-settings__reset" onclick={() => collesSettings.reset()}>
             {t("settings.reset")}
           </button>
         {:else if activeModule === "presentation"}

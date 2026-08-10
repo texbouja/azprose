@@ -27,6 +27,7 @@ import {
   postRenderDom,
 } from "@/markdown";
 import { invoke } from "@tauri-apps/api/core";
+import { collesSettings } from "@/stores/colles-settings.svelte";
 import { printSettings } from "@/stores/markdown-settings.svelte";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { buildReportPrintCss } from "@/lib/prose-style-css";
@@ -146,7 +147,7 @@ function assembleReportHtml(data: ColleReportData): string {
     mathjaxConfig: buildMathJaxConfig(),
     preamble: mathJaxPreamble.current,
     printCss: buildReportPrintCss(printSettings.current),
-    layout: printSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
+    layout: collesSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
   });
 }
 

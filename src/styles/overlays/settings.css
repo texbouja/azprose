@@ -759,6 +759,41 @@ body:has(.mdv-overlay--settings) {
   flex-wrap: wrap;
   gap: 4px;
 }
+.mdv-settings__tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.mdv-settings__tab {
+  padding: 5px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+.mdv-settings__tab:hover {
+  color: var(--fg);
+}
+.mdv-settings__tab.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.mdv-settings__report-var--static {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.mdv-settings__report-var--static + .mdv-settings__report-var--static {
+  margin-left: 0;
+}
 .mdv-settings__report-var {
   padding: 1px 8px;
   border: 1px solid var(--border);
