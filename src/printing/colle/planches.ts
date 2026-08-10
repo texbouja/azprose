@@ -3,7 +3,7 @@
  *
  * Ce module est PUR (testable sans DOM ni Tauri) : il assemble le document
  * HTML d'impression. La partie DOM/IPC (rendu des fragments markdown + appel
- * du backend) vit dans `pdf-planches-render.ts` — séparée pour que les tests
+ * du backend) vit dans `planches-render.ts` — séparée pour que les tests
  * bun n'importent jamais la chaîne Svelte (stores `$state`).
  *
  * Pattern : le PATTERN GÉNÉRAL md→PDF (src/lib/pdf-export.ts → mdprinter.rs) —
@@ -34,7 +34,7 @@ import {
   renderReportLayoutCss,
   type ColleReportData,
   type ReportLayout,
-} from "./report-layout";
+} from "./layout";
 import {
   DEFAULT_PLANCHES_PRINT_REQUEST,
   HEADER_FOOTER_RESERVE_MM,
@@ -163,7 +163,7 @@ const DEFAULT_MATHJAX_CONFIG = `
  * Assemble le document HTML d'impression — PUR (testable sans DOM) : une
  * rangée de `req.columns` planches par page (2 par défaut). Chaque planche =
  * `renderReportLayout` (le gabarit `.rp` des emails — moteur de layout de
- * report-layout.ts) SANS son bloc `<style>` embarqué (le CSS complet —
+ * layout.ts) SANS son bloc `<style>` embarqué (le CSS complet —
  * `renderReportLayoutCss` + `buildPlanchesPrintCss(req)` — est injecté UNE
  * seule fois dans le `<head>` ; MathJax CDN typeset les maths brutes `\(…\)`
  * produites par la pipeline markdown).

@@ -32,15 +32,15 @@ import { printSettings } from "@/stores/markdown-settings.svelte";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { buildReportPrintCss } from "@/lib/prose-style-css";
 import { buildMathJaxConfig } from "@/lib/pdf-export";
-import { rubriquesFor, sumMaxScore, sumNotes } from "./rubrics";
-import type { CollePlanche, RubriquesParMatiere } from "./types";
+import { rubriquesFor, sumMaxScore, sumNotes } from "@/colles/rubrics";
+import type { CollePlanche, RubriquesParMatiere } from "@/colles/types";
 import {
   assembleReportImageHtml,
   buildReportEmailHtml,
   buildReportSubject,
   type ColleReportData,
 } from "./email";
-import { DEFAULT_REPORT_LAYOUT } from "./report-layout";
+import { DEFAULT_REPORT_LAYOUT } from "./layout";
 
 export interface ColleReportOptions {
   theme: string;

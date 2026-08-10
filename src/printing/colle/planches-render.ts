@@ -1,7 +1,7 @@
 /**
  * Rendu DOM + IPC de l'impression des planches de colles (round 18).
  *
- * Ce module est le pendant IMPUR de `pdf-planches.ts` (qui est pur et
+ * Ce module est le pendant IMPUR de `planches.ts` (qui est pur et
  * testable) : il rend les fragments markdown de TOUTES les planches (pipeline
  * complète — callouts, images, maths), assemble le document via
  * `assemblePrintHtml` (mise en page `req.print`, défaut A4 paysage 2 colonnes)
@@ -14,11 +14,11 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog"; // statique : déjà eager (app.svelte)
-import { parsePlanches } from "./parse";
+import { parsePlanches } from "@/colles/parse";
 import { buildReportData } from "./email-render";
-import { assemblePrintHtml, type CollePrintOptions } from "./pdf-planches";
-import { DEFAULT_REPORT_LAYOUT } from "./report-layout";
-import type { RubriquesParMatiere } from "./types";
+import { assemblePrintHtml, type CollePrintOptions } from "./planches";
+import { DEFAULT_REPORT_LAYOUT } from "./layout";
+import type { RubriquesParMatiere } from "@/colles/types";
 import { buildMathJaxConfig } from "@/lib/pdf-export";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collesSettings } from "@/stores/colles-settings.svelte";

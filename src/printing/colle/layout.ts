@@ -45,7 +45,7 @@
  * catalogue (`{{blocProg}}`, `{{blocEnonce}}`, `{{blocEval}}`, `{{rubriques}}`,
  * `{{observations}}`) ET restent appelables directement (rétro-compat tests).
  */
-import type { ColleMeta } from "./types";
+import type { ColleMeta } from "@/colles/types";
 import {
   escHtml,
   renderTemplateText,

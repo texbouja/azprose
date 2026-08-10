@@ -4,9 +4,9 @@ import {
   buildPlanchesPrintCss,
   chunkPairs,
   PRINT_PAGE_CSS,
-} from "../src/colles/pdf-planches";
-import type { ColleReportData } from "../src/colles/email";
-import { REPORT_PAGE_CSS } from "../src/colles/email";
+} from "../src/printing/colle/planches";
+import type { ColleReportData } from "../src/printing/colle/email";
+import { REPORT_PAGE_CSS } from "../src/printing/colle/email";
 import { DEFAULT_PLANCHES_PRINT_REQUEST, HEADER_FOOTER_RESERVE_MM, type PrintRequest } from "../src/lib/print-request";
 
 /** Données minimale d'un rapport (fragments rendus factices). */

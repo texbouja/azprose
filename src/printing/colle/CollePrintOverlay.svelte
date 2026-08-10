@@ -3,7 +3,7 @@
    * CollePrintOverlay — module d'impression "colle" (planches PDF).
    *
    * Wrapper du noyau overlay : branche le contrat colle (persistance
-   * `.azprose/print/colle.json`, builders pdf-planches-render, compteur de
+   * `.azprose/print/colle.json`, builders planches-render, compteur de
    * planches, état vide bruyant) et fournit le snippet `extra` : checkbox
    * « avec/sans évaluation » (réglage du dernier rendu, poussée vers le
    * contrat à l'export/aperçu) + compteur de planches.

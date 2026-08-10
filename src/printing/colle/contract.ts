@@ -4,12 +4,12 @@
  *
  * Le contrat est STATIQUE : il branche le noyau overlay sur la persistance
  * par type (`core/settings.ts`), le compteur de planches (`parsePlanches`,
- * synchrone), et les builders de pdf-planches-render. La checkbox
+ * synchrone), et les builders de planches-render. La checkbox
  * « avec/sans évaluation » est un réglage du DERNIER RENDU (comme les autres
  * champs du PrintRequest) : le snippet colle la pousse via `setIncludeEval`
  * et les builders la relisent à l'instant de l'export/aperçu.
  */
-import { exportPlanchesPdf, previewPlanchesPdf, type CollePrintRequest } from "@/colles/pdf-planches-render";
+import { exportPlanchesPdf, previewPlanchesPdf, type CollePrintRequest } from "./planches-render";
 import { parsePlanches } from "@/colles";
 import { DEFAULT_PLANCHES_PRINT_REQUEST } from "@/lib/print-request";
 import { getRootPath } from "@/stores/root-path.svelte";

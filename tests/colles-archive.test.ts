@@ -12,7 +12,7 @@ import {
   slugPart,
   splitEleveName,
   stripCivility,
-} from "../src/colles/archive";
+} from "../src/printing/colle/archive";
 import type { CollePlanche } from "../src/colles/types";
 
 /** Planche minimale pour les tests de nommage. */

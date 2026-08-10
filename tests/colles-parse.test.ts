@@ -14,7 +14,7 @@ import {
 import { writeBackColleKeys } from "../src/colles/write-back";
 import { matiereKey, rubriquesFor, sumMaxScore, sumNotes } from "../src/colles/rubrics";
 import { normalizeCollesSettings, colloscopeTableName } from "../src/colles/settings-model";
-import { DEFAULT_REPORT_LAYOUT } from "../src/colles/report-layout";
+import { DEFAULT_REPORT_LAYOUT } from "../src/printing/colle/layout";
 import type { ColleMeta, RubriquesParMatiere } from "../src/colles/types";
 
 const SAMPLE = `---

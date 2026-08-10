@@ -2,9 +2,10 @@
  * Builders CSS des rendus d'impression — module PUR (testable sans DOM ni
  * chaîne Svelte). Consommé par :
  *  - `lib/pdf-export.ts` (md→PDF : scope `.mdv-prose`) ;
- *  - `colles/email-render.ts` (email PNG + archivage PNG : scope du gabarit
- *    `.rp`) ;
- *  - `colles/pdf-planches-render.ts` (impression des planches : scope `.rp`).
+ *  - `printing/colle/email-render.ts` (email PNG + archivage PNG : scope du
+ *    gabarit `.rp`) ;
+ *  - `printing/colle/planches-render.ts` (impression des planches : scope
+ *    `.rp`).
  *
  * `buildPreviewProseCss` (plus bas) est le builder du rendu d'APERÇU à
  * l'écran (scope `.mdv-prose`, polices de titres comprises) — partagé entre

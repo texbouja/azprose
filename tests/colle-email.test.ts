@@ -1,5 +1,5 @@
 /**
- * Tests des gabarits email des rapports de colles (src/colles/email.ts).
+ * Tests des gabarits email des rapports de colles (src/printing/colle/email.ts).
  *
  * Depuis le round 10 le CORPS de l'email est une IMAGE PNG (le format SVG
  * est supprimé au round 16 ; la capture est faite par headless Chrome depuis
@@ -28,7 +28,7 @@ import {
   formatNoteValue,
   formatReportDate,
   type ColleReportData,
-} from "@/colles/email";
+} from "@/printing/colle/email";
 
 const base: ColleReportData = {
   meta: {

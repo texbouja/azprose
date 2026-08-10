@@ -107,7 +107,7 @@ export const DEFAULT_PRINT_REQUEST: PrintRequest = {
 /**
  * Défauts d'impression des PLANCHES DE COLLES (mode « planches » du
  * PrintOverlay) : la configuration ACTUELLE historiquement encodée en dur
- * dans pdf-planches.ts — A4 paysage, marges 10 mm, deux planches par page
+ * dans planches.ts — A4 paysage, marges 10 mm, deux planches par page
  * côte à côte (une par colonne), écart 4 mm entre colonnes. Le gabarit
  * `.rp` (course/dense/simple) est ignoré par l'assembleur planches ; la
  * persistance est SÉPARÉE de celle du md (`print-planches.json`).

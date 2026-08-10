@@ -20,13 +20,13 @@
  *    construit par mailer.rs en multipart/related. Gmail-safe : ne produit
  *    jamais de `<style>`/`<script>`/`<svg>`.
  *
- * Depuis la refonte du gabarit (module `report-layout.ts`), la PAGE est
+ * Depuis la refonte du gabarit (module `layout.ts`), la PAGE est
  * produite par le MOTEUR de layout configurable (5 zones, templates à
  * variables `{{…}}`, CSS du gabarit + fichiers CSS) — `buildReportContent`
  * est un simple wrapper du moteur avec le layout PAR DÉFAUT. La signature
  * « Bien cordialement » a été supprimée du moteur (décision utilisateur).
  *
- * Les helpers, le CSS et les builders de blocs vivent dans `report-layout.ts`
+ * Les helpers, le CSS et les builders de blocs vivent dans `layout.ts`
  * et sont ré-exportés ici pour la rétro-compat des importeurs.
  */
 import {
@@ -37,7 +37,7 @@ import {
   escHtml,
   type ReportLayout,
   type ColleReportData,
-} from "./report-layout";
+} from "./layout";
 import { assemblePrintDocument, REPORT_READY_TITLE } from "@/printing/core/document";
 
 export {
@@ -54,7 +54,7 @@ export {
   buildReportObs,
   type ColleReportData,
   type ColleReportRubric,
-} from "./report-layout";
+} from "./layout";
 
 /** Content-ID de l'image inline dans le multipart/related (mailer.rs). */
 export const REPORT_CID = "rapport@azprose";
@@ -98,7 +98,7 @@ export function buildReportContent(
 /**
  * Marqueur de fin de rendu posé par le lifecycle script — pollé par le backend
  * headless (mdprinter.rs `REPORT_READY_TITLE`) avant la capture PNG. Distinct
- * du marqueur d'impression `azprose-print-ready` (pdf-export.ts / pdf-planches).
+ * du marqueur d'impression `azprose-print-ready` (pdf-export.ts / planches.ts).
  * Défini dans le noyau printing (src/printing/core/document.ts), ré-exporté ici
  * pour préserver l'API historique de ce module.
  */
@@ -119,7 +119,7 @@ export interface ReportImageOptions {
 /**
  * Le DOCUMENT HTML auto-suffisant capturé par headless Chrome (round 19) :
  * remplace le DOM monté dans l'app + html-to-image. Structure identique aux
- * documents d'impression (pdf-planches.ts `assemblePrintHtml`) — `<head>`
+ * documents d'impression (planches.ts `assemblePrintHtml`) — `<head>`
  * MathJax CDN + CSS complet, `<body>` la page du rapport SANS son bloc
  * `<style>` embarqué (tout le CSS — gabarit + printCss — est injecté dans le
  * `<head>`, dans cet ordre : à spécificité égale le dernier bloc gagne).

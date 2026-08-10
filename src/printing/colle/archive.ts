@@ -18,7 +18,7 @@
  *   l'élève séparés par un underscore (l'élève est stocké « Prénom Nom » → le
  *   nom de fichier est « Nom_Prénom »), référence de semaine « semXX ».
  */
-import type { CollePlanche } from "./types";
+import type { CollePlanche } from "@/colles/types";
 
 /** Racine du dossier d'archivage, à la racine du projet (vault). */
 export const ARCHIVE_ROOT = "Colles";

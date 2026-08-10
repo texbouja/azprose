@@ -1,7 +1,7 @@
 /**
  * Moteur de gabarit à variables `{{…}}` — module PUR (testable sans DOM ni
  * Tauri), détaché des colles pour devenir le moteur CENTRAL des rendus de
- * documents (handouts). `src/colles/report-layout.ts` en est le premier
+ * documents (handouts). `src/printing/colle/layout.ts` en est le premier
  * consommateur (gabarit configurable du rapport de colle) ; les layouts par
  * type de document (cours, exercices, devoir, …) l'utiliseront aussi.
  *

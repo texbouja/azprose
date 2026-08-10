@@ -28,8 +28,8 @@
     renderReportImages,
     ReportRenderCancelled,
     type ColleReportImage,
-  } from "@/colles/email-render";
-  import { archiveImages } from "@/colles/archive-render";
+  } from "@/printing/colle/email-render";
+  import { archiveImages } from "@/printing/colle/archive-render";
   import { dirname } from "@/lib/files";
   import { sendColleEmails, type ColleEmailMessage, type SendFailure } from "@/colles/email-send";
   import { cancelWeekPrompt } from "@/colles/week-overrides.svelte";

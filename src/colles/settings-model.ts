@@ -14,7 +14,7 @@ import {
   DEFAULT_REPORT_LAYOUT,
   normalizeReportLayout,
   type ReportLayout,
-} from "@/colles/report-layout";
+} from "@/printing/colle/layout";
 
 /** Une période de vacances (bornes incluses, YYYY-MM-DD). */
 export interface ColleVacances {

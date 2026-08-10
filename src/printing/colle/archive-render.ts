@@ -23,18 +23,18 @@ import { mkdir, writeFile, exists } from "@tauri-apps/plugin-fs";
 import { dirname, joinPath } from "@/lib/files";
 import { ReportRenderCancelled, type ColleReportImage } from "./email-render";
 import { archiveRelativePath, plancheDateIso } from "./archive";
-import { readColloscope } from "./import-colloscope";
+import { readColloscope } from "@/colles/import-colloscope";
 import {
   weekNumberForDate,
   weeksFromDates,
   lundiOf,
   type ColleWeek,
-} from "./weeks";
+} from "@/colles/weeks";
 import {
   manualWeekNumber,
   requestManualWeekNumber,
-} from "./week-overrides.svelte";
-import type { CollePlanche } from "./types";
+} from "@/colles/week-overrides.svelte";
+import type { CollePlanche } from "@/colles/types";
 
 /** base64 → Uint8Array (écriture binaire sur disque). */
 function base64ToBytes(b64: string): Uint8Array {

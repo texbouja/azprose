@@ -9,7 +9,7 @@
    * pas.
    */
   import { getT, language } from "@/lib/i18n";
-  import { plancheDateIso } from "@/colles/archive";
+  import { plancheDateIso } from "@/printing/colle/archive";
   import {
     cancelWeekPrompt,
     confirmWeekPrompt,

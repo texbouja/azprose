@@ -14,7 +14,7 @@
  */
 import type { CollePlanche } from "./types";
 import { lundiOf } from "./weeks";
-import { plancheDateIso } from "./archive";
+import { plancheDateIso } from "@/printing/colle/archive";
 
 interface PendingRequest {
   planche: CollePlanche;

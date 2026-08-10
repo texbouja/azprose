@@ -12,7 +12,7 @@
  *    capture (PNG) ou l'impression (PDF).
  *
  * Avant ce module, les 3 cibles réécrivaient chacune ce squelette
- * (pdf-export.ts `assembleHtml`, pdf-planches.ts `assemblePrintHtml`,
+ * (pdf-export.ts `assembleHtml`, planches.ts `assemblePrintHtml`,
  * email.ts `assembleReportImageHtml`) — le refactor les fait toutes passer
  * par ici SANS changer le rendu.
  */

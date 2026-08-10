@@ -1,5 +1,5 @@
 /**
- * Moteur de gabarit du rapport de colle (report-layout.ts) — module PUR.
+ * Moteur de gabarit du rapport de colle (layout.ts) — module PUR.
  *
  * Contrat testé :
  *  - ORDRE FIXE des 5 zones ; template VIDE → zone masquée ;
@@ -28,7 +28,7 @@ import {
   escHtml,
   type ColleReportData,
   type ReportEachContext,
-} from "@/colles/report-layout";
+} from "@/printing/colle/layout";
 
 const base: ColleReportData = {
   meta: {
