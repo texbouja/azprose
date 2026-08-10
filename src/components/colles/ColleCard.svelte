@@ -28,6 +28,7 @@
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import { collesSettings } from "@/stores/colles-settings.svelte";
+  import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
   import { rubriquesFor, sumMaxScore, sumNotes } from "@/colles";
   import type { CollePlanche } from "@/colles";
   import ColleNoteForm, { type ColleDraft } from "./ColleNoteForm.svelte";
@@ -35,10 +36,14 @@
   let {
     planche,
     filePath = null as string | null,
+    tabId = null as string | null,
     onEval,
   }: {
     planche: CollePlanche;
     filePath?: string | null;
+    /** Id de session du tab side (phase 3 C) — porté par les intents wikilink
+     *  (décision figée au clic, matrice cas 1). */
+    tabId?: string | null;
     onEval?: (
       index: number,
       keys: {
@@ -190,6 +195,7 @@
   $effect(() => {
     const el = bodyEl;
     if (!el) return;
+    const tid = tabId; // capture réactive — le closure lit `tid` au clic
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest("a");
       if (!a) return;
@@ -219,10 +225,13 @@
       if (a.classList.contains("wikilink")) {
         const fullpath = a.getAttribute("data-wikilink-fullpath");
         const heading = a.getAttribute("data-wikilink-heading");
+        // Décision figée au clic (matrice cas 1) : le mode nav du tab SOURCE
+        // est lu ICI, jamais par le reducer (course asynchrone).
+        const navMode = tid ? getPreviewNavStore().isNavMode(tid) : false;
         if (fullpath) {
           e.preventDefault();
           window.dispatchEvent(
-            new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading } }),
+            new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading, tabId: tid, navMode } }),
           );
           return;
         }
@@ -230,7 +239,7 @@
         if (target) {
           e.preventDefault();
           window.dispatchEvent(
-            new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading } }),
+            new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading, tabId: tid, navMode } }),
           );
         }
         return;

@@ -51,10 +51,12 @@ export interface NavDeps {
    *  la rune splitRatio de l'app. */
   unexpandSide: () => void;
   // ── actions stores (historique preview + cibles de rendu) ──
-  navPush: (path: string) => void;
-  navBack: () => string | null;
-  navForwardStep: (path: string) => string | null;
-  navPushForward: (path: string) => void;
+  // Historique PAR TAB (matrice cas 2) : `tabId` = tab side auquel la pile
+  // appartient ; sans tabId, les opérations sont des no-op sûrs.
+  navPush: (path: string, tabId?: string | null) => void;
+  navBack: (tabId?: string | null) => string | null;
+  navForwardStep: (path: string, tabId?: string | null) => string | null;
+  navPushForward: (path: string, tabId?: string | null) => void;
   setScrollTarget: (heading: string) => void;
   setSyncLine: (line: number, path?: string) => void;
   /** Setter de la rune `jumpToLine` (0-based) de l'éditeur main. */
@@ -90,10 +92,12 @@ export function normNavPath(p: string): string {
   return p.replace(/\\/g, "/").split("/").filter((s) => s !== ".").join("/");
 }
 
-/** Pile d'historique preview : enregistre la page courante avant un saut. */
+/** Pile d'historique preview : enregistre la page courante avant un saut.
+ *  Historique PAR TAB (matrice cas 2) : le push est tagué avec le tab side
+ *  ACTIF — c'est lui qui va naviguer et donc la pile qu'il faut remplir. */
 function pushCurrentIfAny(deps: NavDeps): void {
   const cur = deps.sideActivePath();
-  if (cur) deps.navPush(cur);
+  if (cur) deps.navPush(cur, deps.pm.side.activeTabId);
 }
 
 /** Règle « clic sidebar → le viewer COUPLÉ suit » : si le tab éditeur main
@@ -176,15 +180,23 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
  *  - EN mode nav (bouton) : navigation IN-PLACE du tab preview actif ; le
  *    mode nav ayant libéré le couplage, l'éditeur lié ne suit pas.
  *  `newTab` (intent wikilink-open-new) n'est plus émis par les liens de
- *  preview — conservé pour Home alt + autres émetteurs (éditeur main). */
-async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | null | undefined, newTab: boolean): Promise<void> {
+ *  preview — conservé pour Home alt + autres émetteurs (éditeur main).
+ *
+ *  Décision FIGÉE au clic (matrice cas 1) : `navMode` est le mode navigation
+ *  du tab SOURCE `tabId`, LU PAR L'ÉMETTEUR au moment du clic (la résolution
+ *  de la cible dans le handler peut prendre du temps pendant que
+ *  l'utilisateur bascule le mode). Ce saga exécute la décision figée — elle
+ *  ne relit JAMAIS `deps.isPreviewNavMode()` (course asynchrone). Le
+ *  relâchement de couplage cible le tab SOURCE figé (jamais le tab actif
+ *  courant). */
+async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | null | undefined, newTab: boolean, tabId: string | null, navMode: boolean): Promise<void> {
   if (newTab) {
     await openFile(deps, path, { silent: true });
     if (heading) deps.setScrollTarget(heading);
     void deps.trackMtime(path);
     return;
   }
-  if (!deps.isPreviewNavMode()) {
+  if (!navMode) {
     // Hors mode nav : NOUVEAU tab viewer side (jamais l'éditeur main).
     const normFile = normNavPath(path);
     const existing = deps.pm.side.tabs.find(
@@ -200,10 +212,12 @@ async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | n
     void deps.trackMtime(path);
     return;
   }
-  // Mode nav : in-place dans le preview. Le mode nav a libéré le couplage du
-  // viewer actif ; on le confirme (idempotent) — l'éditeur lié ne suit pas.
-  const activeSide = deps.pm.side.activeTabId;
-  if (activeSide) deps.pm.linkPreview(activeSide, null);
+  // Mode nav (décision figée au clic) : in-place dans le tab SOURCE. Le mode
+  // nav a libéré le couplage de ce viewer ; on le confirme (idempotent) — la
+  // libération cible le tab SOURCE figé `tabId`, jamais le tab actif courant
+  // (qui a pu changer pendant la résolution asynchrone de la cible).
+  const srcId = tabId ?? deps.pm.side.activeTabId;
+  if (srcId) deps.pm.linkPreview(srcId, null);
   pushCurrentIfAny(deps);
   await deps.pm.openInSide(path, { preview: true, fallbackToActive: true });
   if (heading) deps.setScrollTarget(heading);
@@ -212,7 +226,12 @@ async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | n
 
 /** Saut TOC/backlinks/tags — ouvre dans le tab éditeur actif (routage max
  *  vers la preview si fullscreen), applique line (1-based → 0-based) et/ou
- *  heading. */
+ *  heading. Règle « clic sidebar → le viewer COUPLÉ suit » (matrice) : le
+ *  viewer couplé au tab éditeur actif est re-pointé vers la cible — cohérent
+ *  avec `open-active` (les sauts TOC/backlinks/tags sont des navigations
+ *  sidebar au même titre que les clics de l'explorateur). Le gating
+ *  « hors mode nav » est implicite : un viewer EN mode nav n'a AUCUN couplage
+ *  (le toggle l'a libéré), donc syncCoupledViewer ne peut jamais le repointe. */
 async function jumpToFile(deps: NavDeps, path: string, line: number | null | undefined, heading: string | null | undefined): Promise<void> {
   const rp = deps.rootPath();
   if (isHelpPath(path, rp)) {
@@ -238,6 +257,33 @@ async function jumpToFile(deps: NavDeps, path: string, line: number | null | und
     } else if (line0 != null) {
       deps.setSyncLine(line0, normFile);
     }
+  }
+  // Cas 7 (matrice) : le viewer couplé suit le saut — TOC, backlinks et tags
+  // passent TOUS par jump-to-file (jamais de bloc manquant pour ces sources).
+  syncCoupledViewer(deps, normFile);
+}
+
+/** Saut TOC sidebar (table des matières) : la cible remonte dans le VIEWER
+ *  side — jamais l'éditeur main (décision utilisateur). Réutilise la
+ *  politique de navigation wikilink (`wikilinkNavigate`) : EN mode nav
+ *  (décision FIGÉE au clic — `navMode`/`tabId` du tab viewer source lu par
+ *  l'émetteur) → navigation in-place du tab SOURCE + historique ; HORS mode
+ *  nav → NOUVEAU tab viewer side (dédup), jamais l'éditeur. L'aide intégrée
+ *  reste routée en doc (jamais l'éditeur main). Cible de rendu : `heading`
+ *  prioritaire (id immune aux décalages de transclusion), sinon `line`
+ *  1-based → 0-based liée au chemin normalisé (racines de branches — début de
+ *  fichier). Le scroll IMMÉDIAT d'un preview déjà rendu est porté par
+ *  `azprose:preview-jump-line` (app.svelte, après l'intention) — les cibles
+ *  posées ici couvrent le rendu suivant. */
+async function tocNavigate(deps: NavDeps, path: string, line: number | null | undefined, heading: string | null | undefined, tabId: string | null, navMode: boolean): Promise<void> {
+  const rp = deps.rootPath();
+  if (isHelpPath(path, rp)) {
+    await deps.openDocArticle(path, heading ?? undefined);
+    return;
+  }
+  await wikilinkNavigate(deps, path, heading, false, tabId, navMode);
+  if (!heading && line != null) {
+    deps.setSyncLine(line - 1, normNavPath(path));
   }
 }
 
@@ -288,24 +334,30 @@ function previewNavMode(deps: NavDeps, tabId: string, on: boolean): void {
   deps.setPreviewNavMode(tabId, on);
 }
 
-/** Bouton Home du preview — index.md lié, in-place ou nouvel onglet. */
+/** Bouton Home du preview — index.md lié, in-place ou nouvel onglet. Le
+ *  bouton Home in-place n'existe QUE visible en mode nav (TabActions), donc
+ *  la décision est figée par construction : `navMode = true` pour
+ *  `newTab=false`. L'émetteur Home alt (nouvel onglet) passe `newTab=true`. */
 async function previewHome(deps: NavDeps, newTab: boolean): Promise<void> {
   const rp = deps.rootPath();
   const cur = deps.pm.side.activePath ?? deps.activePath();
   if (!rp || !cur) return;
   const target = await findLinkedIndexMd({ rootPath: rp, currentFilePath: cur, readText: deps.readText });
   if (!target) return;
-  await wikilinkNavigate(deps, target, null, newTab);
+  await wikilinkNavigate(deps, target, null, newTab, deps.pm.side.activeTabId, !newTab);
 }
 
 /** Historique preview : back / forward (le tab preview navigue, l'éditeur
- *  lié suit ; les brouillons non sauvegardés sont parqués — politique A). */
+ *  lié suit ; les brouillons non sauvegardés sont parqués — politique A).
+ *  Historique PAR TAB (matrice cas 2) : on opère la pile du tab side ACTIF —
+ *  c'est l'onglet visible qui a reçu le clic back/forward. */
 async function navHistory(deps: NavDeps, direction: "back" | "forward"): Promise<void> {
   const cur = deps.sideActivePath();
-  if (!cur) return;
-  const next = direction === "back" ? deps.navBack() : deps.navForwardStep(cur);
+  const tabId = deps.pm.side.activeTabId;
+  if (!cur || !tabId) return;
+  const next = direction === "back" ? deps.navBack(tabId) : deps.navForwardStep(cur, tabId);
   if (!next) return;
-  if (direction === "back") deps.navPushForward(cur);
+  if (direction === "back") deps.navPushForward(cur, tabId);
   deps.setSideVisible(true);
   await deps.pm.openInSide(next, { preview: true, fallbackToActive: true });
   const r = await followPreviewNavigation(deps.pm, next);
@@ -395,11 +447,13 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
     case "open-active":
       return openActive(deps, intent.path, intent.newTab ?? false);
     case "wikilink-navigate":
-      return wikilinkNavigate(deps, intent.path, intent.heading ?? null, false);
+      return wikilinkNavigate(deps, intent.path, intent.heading ?? null, false, intent.tabId ?? null, intent.navMode);
     case "wikilink-open-new":
-      return wikilinkNavigate(deps, intent.path, intent.heading ?? null, true);
+      return wikilinkNavigate(deps, intent.path, intent.heading ?? null, true, intent.tabId ?? null, false);
     case "jump-to-file":
       return jumpToFile(deps, intent.path, intent.line ?? null, intent.heading ?? null);
+    case "toc-navigate":
+      return tocNavigate(deps, intent.path, intent.line ?? null, intent.heading ?? null, intent.tabId ?? null, intent.navMode);
     case "jump-to-line":
       return jumpToLine(deps, intent.line, intent.path ?? null, intent.sessionId ?? null);
     case "preview-open-editor":

@@ -79,6 +79,9 @@ export class PanelManager {
     onSessionChange?: (data: PanelManagerSession) => void;
     onFileOpen?: (path: string) => void;
     onError?: (title: string, message: string) => void;
+    /** Fermeture d'un onglet (matrice cas 3) — forwardée aux deux PanelState
+     *  pour la purge des états par tab (mode nav, historique). */
+    onTabClosed?: (tabId: string, tab: Tab) => void;
     /** Source unique du contenu par chemin (phase 7, idée E) — passée aux
      *  deux PanelState ; optionnelle (tests sans store → lecture disque). */
     content?: ContentStore;
@@ -89,6 +92,7 @@ export class PanelManager {
       onSessionChange: opts?.onSessionChange
         ? () => opts.onSessionChange!(pm.toJSON())
         : undefined,
+      onTabClosed: opts?.onTabClosed,
     }, opts?.content);
     this.side = new PanelState("side", {
       onFileOpen: opts?.onFileOpen,
@@ -96,6 +100,7 @@ export class PanelManager {
       onSessionChange: opts?.onSessionChange
         ? () => opts.onSessionChange!(pm.toJSON())
         : undefined,
+      onTabClosed: opts?.onTabClosed,
     }, opts?.content);
   }
 

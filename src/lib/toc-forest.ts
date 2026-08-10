@@ -85,9 +85,14 @@ export interface BuildTocForestOptions {
   getIndex?: (rootPath: string) => Promise<Map<string, string>>;
   /** Nombre maximal de niveaux de transclusion (0 = racine seule). */
   maxDepth?: number;
+  /** Cherche l'index.md lié au fichier de référence (mécanisme Home) et affiche
+   *  SA TOC. `false` = TOC STRICTE du fichier de référence (mode édition :
+   *  aucun autre md n'est lançable depuis la TOC). Défaut : true. */
+  linkedIndex?: boolean;
 }
 
-const DEFAULT_MAX_DEPTH = 3;
+/** Nombre maximal de niveaux de transclusion par défaut (mode navigation). */
+export const DEFAULT_MAX_DEPTH = 3;
 
 function dirnameOf(p: string): string {
   return dirname(p);
@@ -273,18 +278,21 @@ export async function buildTocForest(
   const { rootPath, referencePath, referenceSource, readText } = opts;
   const getIndex = opts.getIndex;
   const maxDepth = opts.maxDepth ?? DEFAULT_MAX_DEPTH;
+  const linkedIndex = opts.linkedIndex ?? true;
   const rootNorm = normIndexPath(rootPath);
   const refNorm = normIndexPath(referencePath);
 
   // 1. Home : index.md lié au fichier de référence (si la recherche réussit,
-  //    c'est la TOC de CE fichier qui est affichée).
-  const index = await findLinkedIndexMd({
-    rootPath,
-    currentFilePath: refNorm,
-    readText,
-    maxLevels: 3,
-  });
-  const displayPath = index ?? refNorm;
+  //    c'est la TOC de CE fichier qui est affichée). Désactivé en mode édition
+  //    (`linkedIndex: false`) : la TOC reste strictement celle de la référence.
+  const displayPath = linkedIndex
+    ? (await findLinkedIndexMd({
+        rootPath,
+        currentFilePath: refNorm,
+        readText,
+        maxLevels: 3,
+      })) ?? refNorm
+    : refNorm;
 
   // 2. Contenu du fichier affiché : buffer live du fichier de référence quand
   //    on l'affiche lui-même, sinon lecture disque.
@@ -296,8 +304,10 @@ export async function buildTocForest(
   // Phases 6/6bis : la structure du plan n'a pas changé → la forêt est
   // INCHANGÉE, on la retourne telle quelle (aucune re-lecture des fichiers
   // liés, aucune re-transclusion). Le hit exige aussi le même fichier affiché
-  // (un index.md lié créé/supprimé change displayPath à clé identique).
-  const key = `${refNorm}::${rootNorm}`;
+  // (un index.md lié créé/supprimé change displayPath à clé identique) ET les
+  // mêmes réglages de construction (maxDepth/linkedIndex) : un changement de
+  // mode navigation/édition n'est jamais servi par une forêt obsolète.
+  const key = `${refNorm}::${rootNorm}::d${maxDepth}::h${linkedIndex ? 1 : 0}`;
   const hash = structuralTocHash(content);
   if (memo && memo.key === key && memo.hash === hash && memo.forest?.displayPath === displayPath) {
     return memo.forest;

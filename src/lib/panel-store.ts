@@ -95,6 +95,10 @@ export type PanelCallbacks = {
   onSessionChange?: (data: PanelSessionData) => void;
   onFileOpen?: (path: string) => void;
   onError?: (title: string, message: string) => void;
+  /** Fermeture d'un onglet (après le retrait de la liste) — permet à l'app de
+   *  purger les états PAR TAB (mode nav preview, historique back/forward —
+   *  matrice cas 3 : ces états meurent avec l'onglet). */
+  onTabClosed?: (tabId: string, tab: Tab) => void;
 };
 
 /**
@@ -500,6 +504,9 @@ export class PanelState {
       const next = this.tabs[Math.min(idx, this.tabs.length - 1)];
       this.activeTabId = next?.id ?? null;
     }
+    // Case 3 (matrice) : purge des états par tab APRÈS le retrait — l'app
+    // écoute onTabClosed pour purger mode nav + pile d'historique.
+    this.cbs.onTabClosed?.(tabId, tab);
     this.notify();
   }
 

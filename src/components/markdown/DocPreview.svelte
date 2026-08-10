@@ -36,9 +36,13 @@ import { getT, language } from "@/lib/i18n";
 let {
   value = "",
   filePath = null as string | null,
+  tabId = null as string | null,
 }: {
   value?: string;
   filePath?: string | null;
+  /** Id de session du tab side (phase 3 C) — porté par les intents wikilink
+   *  externes (décision figée au clic, matrice cas 1). */
+  tabId?: string | null;
 } = $props();
 
 let t = $derived(getT($language));
@@ -293,6 +297,7 @@ $effect(() => {
   if (!articleEl) return;
   const el = articleEl;
   const root = getRootPath();
+  const tid = tabId; // capture réactive — le closure lit `tid` au clic
   const onClick = (e: MouseEvent) => {
     const a = (e.target as HTMLElement).closest("a");
     if (!a) return;
@@ -331,8 +336,11 @@ $effect(() => {
       }
       e.preventDefault();
       const target = a.getAttribute("data-wikilink-target");
+      // Décision figée : le lecteur doc = mode nav TACITE (les wikilinks de la
+      // doc naviguent toujours en place dans le tab doc) — jamais la lecture
+      // de `isPreviewNavMode()` par le reducer (cas 1 de la matrice).
       window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", {
-        detail: { path: fullpath ?? undefined, target: target ?? undefined, heading },
+        detail: { path: fullpath ?? undefined, target: target ?? undefined, heading, tabId: tid, navMode: true },
       }));
       return;
     }

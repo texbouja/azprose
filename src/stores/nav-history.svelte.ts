@@ -1,54 +1,80 @@
 /** Wikilink navigation history — back/forward stacks for the preview panel.
- *  Thin $state wrapper over the pure logic in @/lib/nav-stack (unit-tested
- *  under bun — Svelte runes are not compiled by bun). */
+ *  Thin $state wrapper over the pure logic in @/lib/nav-history-tabs
+ *  (unit-tested under bun — Svelte runes are not compiled by bun).
+ *
+ *  Since the matrix fix (case 2), the history is PER PREVIEW TAB (clé =
+ *  tabId du side panel) : deux onglets de preview ouverts côte à côte ne
+ *  partagent plus la même pile — chaque onglet a son propre back/forward,
+ *  comme un navigateur. La pile d'un onglet meurt avec lui (purge à la
+ *  fermeture, case 3). L'API accepte `tabId` en option : sans tabId, les
+ *  opérations sont des no-op sûrs (aucune pile à toucher). */
+import { createNavHistoryTabs } from "@/lib/nav-history-tabs";
 
-import {
-  createNavStack,
-  navStackBack,
-  navStackCanGoBack,
-  navStackCanGoForward,
-  navStackForward,
-  navStackForwardStep,
-  navStackPush,
-  navStackPushForward,
-  type NavStack,
-} from "@/lib/nav-stack";
+const tabs = createNavHistoryTabs();
+/** Version réactive GLOBALE — bump à chaque mutation d'une pile (la
+ *  réactivité de $state ne traverse pas le Map ; les consommateurs dérivent
+ *  sur `revision`). */
+let version = $state(0);
 
-let _stack: NavStack = $state(createNavStack());
-
-export function navHistory() {
+export function navHistory(tabId: string | null | undefined) {
   return {
-    get canGoBack() { return navStackCanGoBack(_stack); },
-    get canGoForward() { return navStackCanGoForward(_stack); },
-    get revision() { return _stack.revision; },
+    get canGoBack() { return tabs.canGoBack(tabId); },
+    get canGoForward() { return tabs.canGoForward(tabId); },
+    get revision() { return version; },
   };
 }
 
-/** Push current path onto back stack, clear forward. Called before navigating. */
-export function navPush(currentPath: string): void {
-  navStackPush(_stack, currentPath);
+/** Push current path onto the tab's back stack, clear its forward. Called
+ *  before navigating. No-op sans tabId (aucune pile à taguer). */
+export function navPush(currentPath: string, tabId?: string | null): void {
+  if (!tabId) return;
+  tabs.push(currentPath, tabId);
+  version++;
 }
 
-/** Pop back stack → returns the path or null. */
-export function navBack(): string | null {
-  return navStackBack(_stack);
+/** Pop the tab's back stack → returns the path or null. */
+export function navBack(tabId?: string | null): string | null {
+  if (!tabId) return null;
+  const next = tabs.back(tabId);
+  version++;
+  return next;
 }
 
-/** Pop forward stack → returns the path or null. */
-export function navForward(): string | null {
-  return navStackForward(_stack);
+/** Pop the tab's forward stack → returns the path or null. */
+export function navForward(tabId?: string | null): string | null {
+  if (!tabId) return null;
+  const next = tabs.forward(tabId);
+  version++;
+  return next;
 }
 
-/** Step forward: pop forward + push `currentPath` onto back, preserving the
- *  remaining forward entries (multi-step forward navigation). Used by the
- *  app's forward flow — a plain navPush would clear the redo list. */
-export function navForwardStep(currentPath: string): string | null {
-  return navStackForwardStep(_stack, currentPath);
+/** Step forward: pop forward + push `currentPath` onto the tab's back,
+ *  preserving the remaining forward entries (multi-step forward navigation).
+ *  Used by the app's forward flow — a plain navPush would clear the redo
+ *  list. */
+export function navForwardStep(currentPath: string, tabId?: string | null): string | null {
+  if (!tabId) return null;
+  const next = tabs.forwardStep(currentPath, tabId);
+  version++;
+  return next;
 }
 
-/** Push onto forward stack — called after going back. */
-export function navPushForward(path: string): void {
-  navStackPushForward(_stack, path);
+/** Push onto the tab's forward stack — called after going back. */
+export function navPushForward(path: string, tabId?: string | null): void {
+  if (!tabId) return;
+  tabs.pushForward(path, tabId);
+  version++;
+}
+
+/** Purge the tab's stack — appelé à la fermeture de l'onglet (case 3 : la
+ *  pile d'un onglet meurt avec lui). No-op si aucune pile n'existe. */
+export function purgeNavHistory(tabId: string | null | undefined): void {
+  if (tabs.purge(tabId)) version++;
+}
+
+/** Purge complète (toutes les piles) — ex. restauration de session. */
+export function resetNavHistory(): void {
+  if (tabs.reset()) version++;
 }
 
 // ── Action callbacks (set by app.svelte) ────────────────────────

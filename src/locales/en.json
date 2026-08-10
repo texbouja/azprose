@@ -394,6 +394,7 @@
   "colle.sendMissingCount": "{count} student(s) without an email address (\"Email\" column of the roster).",
   "colle.sendNoEmail": "no email address",
   "colle.sendEmpty": "No report with an email address in this note.",
+  "colle.sendEmptySource": "Cannot open send: the note could not be read.",
   "colle.sendMissingProfile": "Incomplete sender: set your Gmail address and app password in the profile settings.",
   "colle.sendProfileHint": "Sending uses your Gmail account (smtp.gmail.com:587). The app password is generated in your Google account (two-factor authentication required).",
   "colle.sendOpenSettings": "Open settings",

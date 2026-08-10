@@ -100,7 +100,7 @@ import { datagridFindBySource, datagridCreateFromSpreadsheet, datagridRename } f
 import { dataBus } from "@/lib/data/bus";
 import { runCommand } from "@/lib/data/commands";
 import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
-import { navPush, navBack, navForwardStep, navPushForward, setNavActions } from "@/stores/nav-history.svelte";
+import { navPush, navBack, navForwardStep, navPushForward, purgeNavHistory, setNavActions } from "@/stores/nav-history.svelte";
 import {
   createLatexState,
   cleanLatexAux, cleanLatexAuxAndOutput, cleanLatexAll,
@@ -230,6 +230,14 @@ let pm = new PanelManager({
   onError: (title, message) => {
     notifications.setLoadError({ title, message });
   },
+  // Matrice cas 3 : la fermeture d'un onglet purge ses états PAR TAB —
+  // mode nav preview et pile d'historique meurent avec l'onglet (références
+  // tardives : previewNav est défini plus bas, le callback ne court qu'à la
+  // fermeture, après l'init complète).
+  onTabClosed: (tabId) => {
+    previewNav.clearTab(tabId);
+    purgeNavHistory(tabId);
+  },
 });
 
 // Reactive panel version — incremented after every panel mutation to trigger
@@ -290,6 +298,31 @@ let tocRefSource = $derived.by(() => {
   // Sinon : contenu LIVE du fichier retenu, via le store (autorité unique) —
   // la frappe dans l'éditeur met la TOC à jour au fil de l'eau.
   return tocRefPath ? contentFor(tocRefPath) : null;
+});
+
+// Mode navigation du tab VIEWER qui fournit la référence TOC : la TOC
+// n'étend son plan aux branches transcluses (forêt complète) QUE dans ce
+// mode — hors mode nav (mode édition), la TOC est STRICTE : seuls les titres
+// du .md affiché, ni branche transcluse ni remontée index.md (aucun autre md
+// lançable depuis la TOC). Tab doc (aide intégrée) : non concerné — helpMode
+// dans TocPanel prime (catalogue complet quoi qu'il arrive).
+let tocNavMode = $derived.by(() => {
+  _panelVersion;
+  const tab = pm.side.activeTab;
+  if (!tab || tab.kind === "doc" || extFromPath(tab.path) !== "md") return false;
+  const nav = getPreviewNavStore();
+  void nav.version; // réactivité : le mode nav est un état $state du store
+  return nav.isNavMode(tab.id);
+});
+
+// Id du tab viewer side qui fournit la référence TOC (celui dont tocNavMode
+// est lu) — figé au clic dans la navigation TOC (matrice cas 1) : le reducer
+// `toc-navigate` navigue dans le tab SOURCE, jamais le tab actif courant.
+let tocNavTabId = $derived.by(() => {
+  _panelVersion;
+  const tab = pm.side.activeTab;
+  if (!tab || tab.kind === "doc" || extFromPath(tab.path) !== "md") return null;
+  return tab.id;
 });
 
 // Mode aide : l'article de la doc intégrée actuellement affiché dans le
@@ -553,7 +586,7 @@ onMount(() => {
     setSideVisible: (v) => { sideVisible = v; pm.sideVisible = v; },
     setScrollTarget: (target) => { setScrollTarget(target); },
     setSyncLine:    (line) => { setSyncLine(line); },
-    navPush:        (path) => { navPush(path); },
+    navPush:        (path) => { navPush(path, pm.side.activeTabId); },
     ls,
     pm,
     openFileInTab: async (path, opts) => { await openFileInTab(path, opts); },
@@ -762,8 +795,9 @@ async function openDocArticle(path: string, heading?: string): Promise<void> {
   // Le store lit le contenu depuis le disque (.azprose/help, matérialisé par
   // ensureHelpInstalled) — source = savedContent, lecture seule, jamais de draft.
   await pm.openDoc(path, { silent: true });
-  // Sauvegardé dans l'historique de navigation comme une vraie page.
-  if (sideActivePath) navPush(sideActivePath);
+  // Sauvegardé dans l'historique de navigation comme une vraie page —
+  // pile du tab DOC actif (matrice cas 2 : historique par tab side).
+  if (sideActivePath) navPush(sideActivePath, pm.side.activeTabId);
   if (heading) {
     setScrollTarget(heading);
     window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", {
@@ -800,6 +834,33 @@ $effect(() => {
   };
   window.addEventListener("azprose:jump-to-file", onJumpFile);
   return () => window.removeEventListener("azprose:jump-to-file", onJumpFile);
+});
+
+$effect(() => {
+  const onTocNavigate = async (e: Event) => {
+    const { path, line, heading, tabId, navMode } = (e as CustomEvent<{
+      path: string; line?: number; heading?: string; tabId?: string | null; navMode?: boolean;
+    }>).detail;
+    if (!path) return;
+    // Clic TOC → la cible remonte dans le VIEWER side (jamais l'éditeur main —
+    // décision utilisateur) : le reducer `toc-navigate` réutilise la politique
+    // wikilink (mode nav figé au clic → in-place + historique ; sinon nouveau
+    // tab viewer), l'aide intégrée reste routée en doc.
+    const isHelp = isHelpPath(path, getRootPath());
+    await navigate(navDeps, { type: "toc-navigate", path, line, heading, tabId, navMode: navMode === true });
+    // Notification de rendu (le reducer ne touche pas au DOM) : un preview déjà
+    // rendu scrolle immédiatement ; le pending store couvre un preview encore
+    // en cours de rendu. Les articles doc se scrollent eux-mêmes (openDocArticle).
+    if (!isHelp && (line != null || heading != null)) {
+      const normFile = path.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
+      const line0 = line != null ? line - 1 : undefined;
+      window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", {
+        detail: { path: normFile, line: line0, heading },
+      }));
+    }
+  };
+  window.addEventListener("azprose:toc-navigate", onTocNavigate);
+  return () => window.removeEventListener("azprose:toc-navigate", onTocNavigate);
 });
 
 // Journal date click → create or open daily note (wired from JournalCalendarPanel)
@@ -1304,26 +1365,27 @@ const handleToggleConsole = () => {
 
 /**
  * Envoi des rapports de colles par email (TabActions → azprose:colle-send).
- * La source est lue LIVE depuis l'onglet (main ou side) au moment du clic :
- * les notes/programme écrits en write-back sont toujours inclus.
+ * La source est lue LIVE depuis le STORE de contenu (contentFor — autorité,
+ * phase 7) au moment du clic : les notes/programme écrits en write-back sont
+ * toujours inclus. Les reflets `tab.source` des onglets SIDE preview sont
+ * vides (le rendu lit le store) — les lire casserait le dialogue (« overlay
+ * sans contenu »).
  */
-$effect(() => {
-  const onColleSend = (e: Event) => {
-    const detail = (e as CustomEvent).detail as { filePath?: string | null };
-    if (!detail.filePath) return;
-    const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
-    const target = norm(detail.filePath);
-    const mainTab = pm.main.tabs.find((t: any) => norm(t.path) === target);
-    const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
-    const source = mainTab?.source ?? sideTab?.source;
-    if (source === undefined) return;
-    colleSendPath = detail.filePath;
-    colleSendSource = source;
-    colleSendOpen = true;
-  };
-  window.addEventListener("azprose:colle-send", onColleSend);
-  return () => window.removeEventListener("azprose:colle-send", onColleSend);
-});
+  $effect(() => {
+    const onColleSend = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { filePath?: string | null };
+      if (!detail.filePath) return;
+      const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
+      const target = norm(detail.filePath);
+      const source = contentFor(target);
+      if (!source) return;
+      colleSendPath = detail.filePath;
+      colleSendSource = source;
+      colleSendOpen = true;
+    };
+    window.addEventListener("azprose:colle-send", onColleSend);
+    return () => window.removeEventListener("azprose:colle-send", onColleSend);
+  });
 
 // Bascule de la VUE sidebar Links (commande palette open-links). Convention
 // VSCode : si la vue est déjà active et la sidebar ouverte, on la ferme ;
@@ -1339,8 +1401,11 @@ const toggleLinksView = () => {
 
 /**
  * Impression des planches de colles (TabActions → azprose:colle-print).
- * Même pattern que l'envoi : la source est lue LIVE depuis l'onglet (main ou
- * side) au moment du clic, pour inclure les write-backs non sauvegardés.
+ * Même pattern que l'envoi : la source est lue LIVE depuis le STORE de
+ * contenu (contentFor — autorité, phase 7) au moment du clic, pour inclure
+ * les write-backs non sauvegardés. Les reflets `tab.source` des onglets SIDE
+ * preview sont vides — les lire laisserait le PrintOverlay sans boutons
+ * Preview/Export (« ready » avec 0 planches).
  * Depuis l'intégration au PrintOverlay (mode « planches »), l'ouverture
  * réutilise le même état d'overlay — mode positionné ici.
  */
@@ -1350,10 +1415,8 @@ $effect(() => {
     if (!detail.filePath) return;
     const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
     const target = norm(detail.filePath);
-    const mainTab = pm.main.tabs.find((t: any) => norm(t.path) === target);
-    const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
-    const source = mainTab?.source ?? sideTab?.source;
-    if (source === undefined) return;
+    const source = contentFor(target);
+    if (!source) return;
     printOverlayPath = detail.filePath;
     printOverlaySource = source;
     printOverlayMode = "planches";
@@ -1666,6 +1729,8 @@ let cmds = $derived(
       {activePath}
       tocRefPath={tocRefPath}
       tocRefSource={tocRefSource}
+      tocNavMode={tocNavMode}
+      tocNavTabId={tocNavTabId}
       helpActivePath={helpActivePath}
       width={sidebarWidth.current}
       onWidthChange={(next) => sidebarWidth.current = next}

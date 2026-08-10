@@ -144,6 +144,23 @@ describe("buildTocForest — choix du fichier affiché", () => {
     expect(forest.displayPath).toBe("/vault/notes/index.md");
     expect(headingsOf(forest.root!)).toEqual(["Notes"]);
   });
+
+  test("linkedIndex: false → TOC STRICTE de la référence (ni index lié, ni branche)", async () => {
+    // Le vault contient un index.md racine ET un index lié : mode édition, la
+    // TOC ne doit refléter QUE le .md affiché — aucune remontée Home.
+    const fs = fakeFs({
+      "/vault/index.md": "# R\n\n[[chapitre-1]]\n",
+      "/vault/notes/index.md": "# Notes\n\n[[note]]\n",
+      "/vault/notes/note.md": "# Journal\n\n## Partie A\n\n[[../index]]\n",
+    });
+    const forest = await build("/vault/notes/note.md", { readText: fs, linkedIndex: false, maxDepth: 0 });
+    expect(forest.displayPath).toBe("/vault/notes/note.md");
+    expect(forest.root?.path).toBe("/vault/notes/note.md");
+    expect(collectHeadings(forest.root!)).toEqual(["Journal", "Partie A"]);
+    // Aucune branche transcluse (le lien [[../index]] reste un titre de note,
+    // jamais une branche de navigation).
+    expect(collectBranches(forest.root!)).toHaveLength(0);
+  });
 });
 
 describe("buildTocForest — branches transcluses (wikilinks conformes)", () => {
@@ -423,6 +440,35 @@ describe("buildTocForest — mémoïsation par hash structural (phases 6/6bis)",
     expect(rebuilt).not.toBe(first);
     expect(rebuilt.displayPath).toBe("/vault/index.md");
     expect(collectBranches(rebuilt.root!)).toHaveLength(1);
+  });
+
+  test("changement de maxDepth (bascule mode navigation ↔ édition) → rebuild, jamais de forêt obsolète", async () => {
+    // Même fichier, même contenu : seul maxDepth change (3 → 0). La clé du
+    // memo inclut maxDepth — sinon la bascule servirait la forêt de l'autre
+    // mode (branches fantômes en édition, ou forêt appauvrie en navigation).
+    const files: Record<string, string> = {
+      "/vault/chapitre-1.md": "# Chapitre 1\n",
+    };
+    const readText = countingFs(files).readText;
+    const memo = makeTocMemo();
+    const base = {
+      rootPath: ROOT,
+      referencePath: "/vault/notes/note.md",
+      readText,
+      getIndex: INDEX,
+      referenceSource: "# Note\n\n[[chapitre-1]]\n",
+    };
+    const nav = await buildTocForest({ ...base, maxDepth: 3 }, memo);
+    expect(collectBranches(nav.root!)).toHaveLength(1);
+
+    const edit = await buildTocForest({ ...base, maxDepth: 0 }, memo);
+    expect(edit).not.toBe(nav);
+    expect(collectBranches(edit.root!)).toHaveLength(0);
+
+    // Retour en navigation : forêt complète reconstruite (pas l'édition).
+    const navAgain = await buildTocForest({ ...base, maxDepth: 3 }, memo);
+    expect(navAgain).not.toBe(edit);
+    expect(collectBranches(navAgain.root!)).toHaveLength(1);
   });
 
   test("structuralHash exposé sur la forêt (hash du contenu affiché)", async () => {

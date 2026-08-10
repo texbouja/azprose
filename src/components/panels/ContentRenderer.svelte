@@ -83,6 +83,7 @@ let {
   <LazyDocPreview
     value={contentFor(tab.path)}
     filePath={tab.path}
+    tabId={tab.id}
   />
 {:else if isPdfPath(tab.path)}
   <LazyPdfViewer
@@ -98,6 +99,7 @@ let {
   <LazyCollePreview
     value={contentFor(tab.path)}
     filePath={tab.path}
+    tabId={tab.id}
   />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}
   <LazySlideDeck

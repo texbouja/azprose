@@ -16,9 +16,11 @@
   let {
     value = "",
     filePath = null as string | null,
+    tabId = null as string | null,
   }: {
     value?: string;
     filePath?: string | null;
+    tabId?: string | null;
   } = $props();
 
   let t = $derived(getT($language));
@@ -160,6 +162,7 @@
         <ColleCard
           planche={planches[current]}
           {filePath}
+          {tabId}
           onEval={handleEval}
         />
       </div>

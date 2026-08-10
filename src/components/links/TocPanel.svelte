@@ -5,6 +5,7 @@
   import { getFileIndex } from "@/lib/vault-index";
   import {
     buildTocForest,
+    DEFAULT_MAX_DEPTH,
     type TocFileNode,
     type TocNode,
   } from "@/lib/toc-forest";
@@ -22,6 +23,19 @@
     /** Contenu LIVE du fichier de référence (frappes non sauvegardées).
      *  `null` = à lire sur disque (racine de la doc intégrée). */
     source = null as string | null,
+    /** Mode navigation du viewer (tab side) : SEUL mode où la TOC étend le
+     *  plan aux branches transcluses (maxDepth 3 + remontée index.md). Hors
+     *  mode nav (mode édition), la TOC est STRICTE : seuls les titres du .md
+     *  affiché — jamais de branche transcluse, jamais d'index.md lié (aucun
+     *  autre md lançable depuis la TOC). Sans effet en mode aide (helpMode
+     *  prime : le catalogue complet s'affiche quoi qu'il arrive). */
+    navMode = false as boolean,
+    /** Id du tab VIEWER side qui fournit la référence TOC (celui dont
+     *  `navMode` est lu). Voyage avec l'événement de navigation — la décision
+     *  « mode nav » est FIGÉE au clic (matrice cas 1) : le reducer navigue
+     *  dans le tab SOURCE figé, jamais le tab actif courant. `null` quand la
+     *  référence vient de l'éditeur main (aucun viewer side). */
+    navTabId = null as string | null,
     /** Mode aide : article de la doc intégrée ACTUELLEMENT affiché dans le
      *  lecteur (surbrillance de sa branche + dépli par défaut). */
     helpActivePath = null as string | null,
@@ -134,6 +148,11 @@
               referenceSource: src ?? undefined,
               readText,
               getIndex: getFileIndex,
+              // Mode navigation → forêt complète (transclusions + index.md
+              // lié) ; mode édition → TOC STRICTE du fichier affiché (maxDepth
+              // 0 : aucune branche, linkedIndex false : aucune remontée Home).
+              maxDepth: navMode ? DEFAULT_MAX_DEPTH : 0,
+              linkedIndex: navMode,
             }, tocMemo);
         if (version !== buildVersion) return; // requête obsolète
         forest = f;
@@ -295,11 +314,17 @@
   }
 
   function navigate(path: string, line: number, heading?: string): void {
+    // Décision FIGÉE au clic (matrice cas 1) : `navMode`/`navTabId` sont lus
+    // ICI, au moment du clic, et voyagent avec l'intention — le reducer ne
+    // relit JAMAIS l'état du mode navigation (course asynchrone). La cible
+    // remonte dans le VIEWER side, jamais l'éditeur main (décision
+    // utilisateur) : le reducer `toc-navigate` réutilise la politique
+    // wikilink (mode nav → in-place + historique ; sinon nouveau tab viewer).
     window.dispatchEvent(
-      new CustomEvent("azprose:jump-to-file", {
-        // line = 1-based source line (editor jump); heading = raw text for the
-        // id-based preview scroll (immune to transclusion line shifts).
-        detail: { path, line, heading },
+      new CustomEvent("azprose:toc-navigate", {
+        // line = 1-based source line (rendu preview) ; heading = raw text for
+        // the id-based preview scroll (immune to transclusion line shifts).
+        detail: { path, line, heading, tabId: navTabId, navMode },
       }),
     );
   }

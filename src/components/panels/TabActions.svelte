@@ -203,7 +203,9 @@ let sideItems = $derived.by(() => {
         })) },
     );
     if (navMode) {
-      const hist = navHistory();
+      // Historique PAR TAB (matrice cas 2) : la pile de l'onglet ACTIF —
+      // c'est lui qui a reçu le clic et qui va naviguer.
+      const hist = navHistory(activeTab?.id);
       items.push(
         { comp: "icon", icon: "wxi-home", id: "home", text: t("preview.home"), pinned: true,
           handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-home")) },

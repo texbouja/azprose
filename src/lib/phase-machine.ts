@@ -9,8 +9,17 @@
  * ramène la machine à un état connu sans passer par l'alphabet.
  *
  * PUR (aucune dépendance) — testable sous bun, réactive dans les composants
- * via `let machine = $state(createPhaseMachine(...))` : les mutations passent
- * par le proxy Svelte → `machine.current` est tracké dans le template.
+ * via `let machine = $state(createPhaseMachine(...))`.
+ *
+ * RÉACTIVITÉ Svelte 5 : la phase courante est une PROPRIÉTÉ DATA de l'objet
+ * (jamais une closure) et les transitions passent par `this`. Le proxy
+ * `$state` de Svelte ne crée une source que pour les propriétés WRITABLE —
+ * un getter readonly (descripteur non-writable) n'est jamais tracké et le
+ * template reste figé sur l'état du premier rendu. En écrivant
+ * `this.current = …`, la mutation traverse le trap `set` du proxy → la
+ * source est mise à jour → `machine.current` relu dans le template/`$derived`
+ * est invalidé. Sans proxy (bun, tests), `this` est l'objet brut → le
+ * comportement est identique (les méthodes restent pures).
  */
 
 /** Définition d'une phase : son nom + son alphabet (événement → destination). */
@@ -58,32 +67,31 @@ export function createPhaseMachine<S extends string, E extends string>(
       }
     }
   }
-  // La phase courante vit dans une closure (variable `let`), exposée via un
-  // GETTER : l'interface reste `readonly current` côté consommateur (aucune
-  // assignation possible de l'extérieur), et le getter est tracké par le
-  // proxy `$state` de Svelte dans les composants.
-  let current: S = transitions.initial;
-  return {
-    get current(): S {
-      return current;
-    },
+  // La phase courante est une PROPRIÉTÉ de l'objet (pas une closure) et les
+  // transitions passent par `this` : quand le consommateur enveloppe l'objet
+  // dans `$state(...)`, l'assignation `this.current = …` traverse le trap
+  // `set` du proxy Svelte → les lecteurs de `machine.current` (template,
+  // $derived) sont invalidés. Sans proxy, `this` est l'objet brut (pure).
+  const machine = {
+    current: transitions.initial,
     send(event: E): boolean {
-      const state = byName.get(current);
+      const state = byName.get(this.current);
       if (!state) return false;
       const dest = state.on[event];
       if (dest === undefined) return false; // hors alphabet → ignoré
-      current = dest;
+      this.current = dest;
       return true;
     },
     accepts(event: E): boolean {
-      const state = byName.get(current);
+      const state = byName.get(this.current);
       return !!state && state.on[event] !== undefined;
     },
     is(...phases: S[]): boolean {
-      return phases.includes(current);
+      return phases.includes(this.current);
     },
     reset(to: S): void {
-      current = to;
+      this.current = to;
     },
   };
+  return machine;
 }

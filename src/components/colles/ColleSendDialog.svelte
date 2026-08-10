@@ -136,15 +136,23 @@
   // parse léger + lancement du rendu de fond (les images arrivent au fil de
   // l'eau, Preview/envoi/archivage lisent le cache).
   $effect(() => {
-    if (!open || !source) {
-      // Fermeture (ou première ouverture sans source) : annule le rendu de
-      // fond éventuel et rejette toute demande de numéro de semaine en
-      // attente — jamais de Promise pendante qui bloquerait l'UI.
+    if (!open) {
+      // Fermeture : annule le rendu de fond éventuel et rejette toute demande
+      // de numéro de semaine en attente — jamais de Promise pendante qui
+      // bloquerait l'UI.
       cancelWeekPrompt();
       renderAbort?.abort();
       renderAbort = null;
       renderPromise = null;
       machine.reset("idle"); // cycle de vie : retour à l'état de départ
+      return;
+    }
+    if (!source) {
+      // Ouvert SANS source (repli défensif — l'app lit le store, phase 7) :
+      // état d'erreur EXPLICITE au lieu d'un overlay vide (machine "idle"
+      // sans branche de template = barre de titre seule).
+      machine.reset("error");
+      error = t("colle.sendEmptySource");
       return;
     }
     let cancelled = false;

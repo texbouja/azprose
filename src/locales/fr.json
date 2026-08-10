@@ -376,6 +376,7 @@
   "colle.sendMissingCount": "{count} élève(s) sans adresse email (colonne « Email » du colloscope).",
   "colle.sendNoEmail": "pas d'adresse email",
   "colle.sendEmpty": "Aucune planche avec une adresse email dans cette note.",
+  "colle.sendEmptySource": "Impossible d'ouvrir l'envoi : la note n'a pas pu être lue.",
   "colle.sendMissingProfile": "Expéditeur incomplet : renseignez votre adresse Gmail et votre mot de passe d'application dans les réglages du profil.",
   "colle.sendProfileHint": "L'envoi passe par votre compte Gmail (smtp.gmail.com:587). Le mot de passe d'application se génère dans votre compte Google (authentification à deux facteurs requise).",
   "colle.sendOpenSettings": "Ouvrir les réglages",

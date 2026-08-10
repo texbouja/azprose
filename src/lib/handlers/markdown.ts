@@ -58,9 +58,12 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       tick()
     }
 
-    // wikilink navigation from preview: in-place (re-uses the preview tab and
-    // re-associates it with the rendered file) unless Alt+click, which
-    // opens a NEW tab via azprose:wikilink-open-new.
+    // wikilink navigation from preview: le handler ne décide PAS du routage —
+    // il résout la cible (monde réel : LSP oxide, walk du vault) puis poste
+    // l'intention avec la DÉCISION FIGÉE au clic (`tabId` + `navMode`, lus par
+    // l'émetteur — matrice cas 1). Le reducer exécute cette décision sans
+    // relire l'état de mode navigation (course asynchrone : la résolution
+    // peut durer pendant que l'utilisateur bascule le mode).
     void (async () => {
 
       const resolveTarget = async (detail: { path?: string; target?: string }): Promise<string | null> => {
@@ -85,29 +88,37 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       }
 
       const onWikilinkNavigate = (e: Event) => {
-        const detail = (e as CustomEvent).detail as { path?: string; target?: string; heading?: string | null }
+        const detail = (e as CustomEvent).detail as {
+          path?: string; target?: string; heading?: string | null; tabId?: string | null; navMode?: boolean
+        }
         const heading = detail.heading ?? null
+        const tabId = detail.tabId ?? null
+        // Décision figée au clic (matrice cas 1) : `navMode` voyage avec
+        // l'intention — le reducer ne relit jamais isPreviewNavMode().
+        const navMode = detail.navMode === true
         void (async () => {
           const path = await resolveTarget(detail)
           if (!path) return
-          // Navigation IN PLACE : le reducer réutilise le tab preview (preview:
-          // true, fallbackToActive), établit/ré-associe previewLinkedTabId et
-          // fait suivre l'éditeur lié (politique A : edits parkés + notification).
-          postNavIntent({ type: "wikilink-navigate", path, heading })
+          postNavIntent({ type: "wikilink-navigate", path, heading, tabId, navMode })
         })()
       }
       window.addEventListener("azprose:wikilink-navigate", onWikilinkNavigate)
       cleanups.push(() => window.removeEventListener("azprose:wikilink-navigate", onWikilinkNavigate))
 
-      // Alt+clic: open in a NEW tab (dedup handled by PanelState.open —
-      // an already-open tab is activated, not duplicated).
+      // Lien wikilink « nouvel onglet » (conservé pour compat API — plus émis
+      // par les viewers depuis la matrice : la décision cas 1 route
+      // directement). Le reducer ouvre en NOUVEL onglet éditeur (dédup par
+      // PanelState.open — un tab déjà ouvert est activé, pas dupliqué).
       const onWikilinkOpenNew = (e: Event) => {
-        const detail = (e as CustomEvent).detail as { path?: string; target?: string; heading?: string | null }
+        const detail = (e as CustomEvent).detail as {
+          path?: string; target?: string; heading?: string | null; tabId?: string | null
+        }
         const heading = detail.heading ?? null
+        const tabId = detail.tabId ?? null
         void (async () => {
           const path = await resolveTarget(detail)
           if (!path) return
-          postNavIntent({ type: "wikilink-open-new", path, heading })
+          postNavIntent({ type: "wikilink-open-new", path, heading, tabId })
         })()
       }
       window.addEventListener("azprose:wikilink-open-new", onWikilinkOpenNew)

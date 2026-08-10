@@ -22,6 +22,7 @@ import { getRootPath } from "@/stores/root-path.svelte";
 import { clearScrollTarget, consumeScrollTarget } from "@/stores/scroll-target.svelte";
 import { consumeSyncLine, setSyncLine } from "@/stores/sync-line.svelte";
 import { getPreviewFocusStore } from "@/stores/preview-focus.svelte";
+import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
 
 let {
   value = "",
@@ -326,6 +327,7 @@ $effect(() => {
 $effect(() => {
   if (!articleEl) return;
   const el = articleEl;
+  const tid = tabId; // capture réactive — le closure lit `tid` au clic
   const onClick = (e: MouseEvent) => {
     const a = (e.target as HTMLElement).closest("a");
     if (!a) return;
@@ -346,24 +348,28 @@ $effect(() => {
       return;
     }
 
-    // Wikilink with resolved full path: open directly. Le routage (mode nav :
-    // in-place dans le preview / hors mode nav : onglet éditeur) est décidé
-    // par le reducer via l'état de mode navigation du tab. Alt+clic est
-    // SUPPRIMÉ (matrice de navigation) — hors mode nav l'éditeur reçoit la
-    // cible, pas un comportement alt spécifique.
+    // Wikilink with resolved full path: open directly. Décision FIGÉE AU CLIC
+    // (matrice cas 1) : le mode nav du tab SOURCE (`tid`) est lu ICI — jamais
+    // par le reducer, qui exécute la décision sans relire l'état (course
+    // asynchrone : la résolution de la cible peut durer pendant que
+    // l'utilisateur bascule le mode). `navMode` voyage avec l'intention.
+    // Hors mode nav : NOUVEAU tab viewer side (jamais l'éditeur main —
+    // l'éditeur ne s'atteint que par double-clic / « Ouvrir dans l'éditeur »).
+    // Alt+clic est SUPPRIMÉ (matrice de navigation).
     if (a.classList.contains("wikilink")) {
       const fullpath = a.getAttribute("data-wikilink-fullpath");
       const heading = a.getAttribute("data-wikilink-heading");
+      const navMode = tid ? getPreviewNavStore().isNavMode(tid) : false;
       if (fullpath) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading } }));
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading, tabId: tid, navMode } }));
         return;
       }
       // Fallback: dispatch with target name for app.svelte resolution
       const target = a.getAttribute("data-wikilink-target");
       if (target) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading } }));
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading, tabId: tid, navMode } }));
       }
       return;
     }

@@ -219,7 +219,7 @@ test("(a) wikilink HORS mode nav : ouvre un NOUVEAU tab viewer side (jamais l'é
     async (p, o) => void opened.push({ path: p, opts: o });
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "wikilink-navigate", path: "/b.md" });
+  await navigate(deps, { type: "wikilink-navigate", path: "/b.md", navMode: false });
 
   // Décision utilisateur : un clic wikilink ouvre un NOUVEAU tab viewer side
   // (forceNew — jamais l'éditeur main, jamais le tab doc), aucun couplage
@@ -234,9 +234,12 @@ test("(a) wikilink EN mode nav : openInSide en fallbackToActive, jamais de ré-a
   const opened: Array<{ path: string; opts: unknown }> = [];
   (pm.openInSide as unknown as (p: string, o?: unknown) => Promise<void>) =
     async (p, o) => void opened.push({ path: p, opts: o });
-  const deps = makeDeps(pm, { isPreviewNavMode: () => true });
+  // Décision FIGÉE au clic (matrice cas 1) : `navMode` voyage avec l'intention
+  // — le reducer ne relit JAMAIS `isPreviewNavMode()` (ici laissée à son défaut
+  // `false`, contradictoire : prouve que l'intention fait foi).
+  const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "wikilink-navigate", path: "/b.md" });
+  await navigate(deps, { type: "wikilink-navigate", path: "/b.md", navMode: true });
 
   // Le fallbackToActive est bien transmis — c'est la garde de pickOpenTarget
   // (testée pure ci-dessus) qui protège le tab doc, pas un code ad hoc. Le
@@ -247,14 +250,72 @@ test("(a) wikilink EN mode nav : openInSide en fallbackToActive, jamais de ré-a
   expect(pm.previewLinkedTabId).toBeNull();
 });
 
+// ── matrice cas 1 : décision FIGÉE au clic (tabId + navMode dans l'intention)
+// L'émetteur lit le mode nav du tab SOURCE au moment du clic ; le reducer
+// exécute la décision SANS relire `isPreviewNavMode()` (course asynchrone :
+// la résolution de la cible dans le handler peut durer pendant que
+// l'utilisateur bascule le mode).
+
+test("cas 1 : navMode figé gouverne — le reducer ne relit JAMAIS isPreviewNavMode()", async () => {
+  const pm = minimalFakePm();
+  const opened: Array<{ path: string; opts: unknown }> = [];
+  (pm.openInSide as unknown as (p: string, o?: unknown) => Promise<void>) =
+    async (p, o) => void opened.push({ path: p, opts: o });
+  // `isPreviewNavMode` THROWE : si le reducer la lisait (comportement
+  // historique), la navigation échouerait — ici elle réussit, preuve que
+  // l'intention fait foi.
+  const deps = makeDeps(pm, {
+    isPreviewNavMode: () => { throw new Error("isPreviewNavMode ne doit pas être relue"); },
+  });
+
+  await navigate(deps, { type: "wikilink-navigate", path: "/b.md", tabId: "s1", navMode: true });
+  expect(opened).toHaveLength(1);
+  expect(opened[0].opts).toEqual({ preview: true, fallbackToActive: true });
+
+  await navigate(deps, { type: "wikilink-navigate", path: "/c.md", tabId: "s1", navMode: false });
+  expect(opened).toHaveLength(2);
+  expect(opened[1].opts).toEqual({ preview: true, forceNew: true, silent: true });
+});
+
+test("cas 1 : le relâchement de couplage cible le tab SOURCE figé (tabId), pas le tab actif courant", async () => {
+  const pm = new PanelManager();
+  seed(
+    pm,
+    [{ id: "t1", path: "/a.md" }],
+    [
+      { id: "s1", path: "/a.md", preview: true, renderMode: "preview" },
+      { id: "s2", path: "/b.md", preview: true, renderMode: "preview" },
+      { id: "s3", path: "/c.md", preview: true, renderMode: "preview" }, // cible déjà seedée → dédup, pas de lecture FS
+    ],
+    { sideActive: "s2" }, // au moment où le reducer s'exécute, s1 n'est PLUS actif
+  );
+  pm.linkPreview("s1", "t1");
+  const opened: Array<{ path: string; opts: unknown }> = [];
+  const origOpen = pm.openInSide.bind(pm);
+  pm.openInSide = (async (p: string, o?: unknown) => {
+    opened.push({ path: p, opts: o });
+    return origOpen(p, o as never);
+  }) as typeof pm.openInSide;
+  const deps = makeDeps(pm);
+
+  // Le clic a eu lieu dans s1 (mode nav figé) ; l'utilisateur a basculé sur s2
+  // pendant la résolution. La libération du couplage doit viser s1 (tabId),
+  // jamais s2.
+  await navigate(deps, { type: "wikilink-navigate", path: "/c.md", tabId: "s1", navMode: true });
+
+  expect(pm.linkedEditorTabId("s1")).toBeNull(); // couplage de la SOURCE libéré
+  expect(pm.linkedEditorTabId("s2")).toBeNull(); // s2 n'a jamais été couplé
+  expect(opened[0].opts).toEqual({ preview: true, fallbackToActive: true });
+});
+
 // ── (b) le lien preview↔éditeur s'établit sur l'éditeur ACTIF ──
 
 test("(b) EN mode nav, première navigation : IN-PLACE dans le preview, AUCUN lien (éditeur détaché)", async () => {
   const pm = new PanelManager();
   seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
-  const deps = makeDeps(pm, { isPreviewNavMode: () => true });
+  const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
+  await navigate(deps, { type: "wikilink-navigate", path: "/a.md", navMode: true });
 
   // Le preview affiche la cible (dédup → sélection) mais n'est PAS lié à
   // l'éditeur : le mode nav en fait un navigateur autonome (l'éditeur ne suit
@@ -270,7 +331,7 @@ test("(b) HORS mode nav, lien existant : la cible va au viewer (dédup), l'édit
   pm.linkPreview("s1", "t1");
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
+  await navigate(deps, { type: "wikilink-navigate", path: "/a.md", navMode: false });
 
   // Dédup par chemin → le viewer s1 est sélectionné ; l'éditeur t1 n'est PAS
   // sélectionné (la navigation wikilink ne va jamais à l'éditeur). Le couplage
@@ -285,9 +346,9 @@ test("(b) EN mode nav, lien existant : navigation IN-PLACE du preview + LIBÉRAT
   const pm = new PanelManager();
   seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }]);
   pm.linkPreview("s1", "t1");
-  const deps = makeDeps(pm, { isPreviewNavMode: () => true });
+  const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "wikilink-navigate", path: "/a.md" });
+  await navigate(deps, { type: "wikilink-navigate", path: "/a.md", navMode: true });
 
   // Le mode nav navigue le preview IN-PLACE (dédup → sélection) et LIBÈRE le
   // couplage du viewer actif : l'éditeur lié ne suit plus (décision utilisateur).
@@ -767,4 +828,156 @@ test("open-active : clic sidebar → le viewer COUPLÉ suit (repoint vers la cib
   await navigate(deps, { type: "open-active", path: "/b.md" });
 
   expect(repointed).toEqual(["s1→/b.md"]);
+});
+
+test("cas 7 : jump-to-file (TOC/backlinks/tags) → le viewer COUPLÉ suit aussi", async () => {
+  // La règle « le viewer couplé suit » vaut pour TOUTES les navigations
+  // sidebar : un saut TOC/backlinks/tags (jump-to-file) ouvre l'éditeur ET
+  // re-pointe le viewer couplé — même bloc que open-active. Le gating
+  // « hors mode nav » est implicite : un viewer en mode nav n'a AUCUN couplage
+  // (le toggle l'a libéré), donc syncCoupledViewer ne peut jamais le toucher.
+  const repointed: string[] = [];
+  const pm = {
+    main: { activeTabId: "t1", activePath: "/docs/suites.md", tabs: [] },
+    side: {
+      visible: true,
+      activeTabId: "s1",
+      activeTab: undefined,
+      tabs: [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }],
+      repoint: async (tabId: string, path: string) => {
+        repointed.push(`${tabId}→${path}`);
+        return { ok: true, parked: false };
+      },
+    },
+    findTabByPath: () => null, // pas de tab main existant → openInMain (fake no-op)
+    openInMain: async () => {},
+    sideTabLinkedTo: (mainId: string) => (mainId === "t1" ? "s1" : null),
+    trackMtime: async () => {},
+  } as unknown as PanelManager;
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "jump-to-file", path: "/docs/suites.md", heading: "Propriétés" });
+
+  expect(repointed).toEqual(["s1→/docs/suites.md"]);
+  expect(deps.calls.setScrollTarget).toEqual(["Propriétés"]);
+});
+
+// ── TOC : routage viewer (toc-navigate) ─────────────────────────────────────
+// Décision utilisateur : le clic TOC remonte la cible dans le VIEWER side —
+// JAMAIS l'éditeur main. Le reducer `toc-navigate` réutilise la politique
+// wikilink (décision navMode/tabId FIGÉE au clic par l'émetteur — le reducer
+// ne relit jamais l'état du mode nav) ; l'aide intégrée reste routée en doc.
+// Cible de rendu : heading prioritaire (id immune aux décalages), sinon line
+// 1-based → 0-based liée au chemin normalisé (racines de branches).
+
+/** Faux PanelManager d'enregistrement pour toc-navigate : openInMain THROW si
+ *  appelé — l'éditeur main ne doit JAMAIS être touché par ce routage. */
+function recordingFakePm() {
+  const links = new Map<string, string | null>();
+  const calls = {
+    openInSide: [] as Array<[string, Record<string, unknown> | undefined]>,
+    openInMain: [] as string[],
+    select: [] as string[],
+    link: [] as Array<[string, string | null]>,
+  };
+  const pm = {
+    main: { activeTabId: "t1", activePath: "/a.md", tabs: [] },
+    side: {
+      visible: false,
+      activeTabId: "s1",
+      activeTab: undefined,
+      activePath: "/a.md",
+      tabs: [{ id: "s1", path: "/a.md", preview: true, renderMode: "preview" }],
+      select: (id: string) => void calls.select.push("side:" + id),
+      repoint: async () => ({ ok: true, parked: false }),
+    },
+    openInSide: async (p: string, o?: Record<string, unknown>) => { calls.openInSide.push([p, o]); },
+    openInMain: async () => { throw new Error("toc-navigate ne doit jamais ouvrir l'éditeur main"); },
+    linkPreview: (s: string, m: string | null) => { calls.link.push([s, m]); links.set(s, m); },
+    linkedEditorTabId: (s: string) => links.get(s) ?? null,
+  } as unknown as PanelManager;
+  return { pm, calls };
+}
+
+test("toc-navigate EN mode nav (décision figée) : IN-PLACE dans le tab source + historique", async () => {
+  const { pm, calls } = recordingFakePm();
+  const deps = makeDeps(pm);
+
+  await navigate(deps, {
+    type: "toc-navigate", path: "/docs/fiche.md", heading: "Propriétés", tabId: "s1", navMode: true,
+  });
+
+  // In-place dans le tab SOURCE figé : openInSide avec fallbackToActive (le
+  // tab actif est re-pointé) — JAMAIS openInMain.
+  expect(calls.openInSide).toEqual([["/docs/fiche.md", { preview: true, fallbackToActive: true }]]);
+  expect(calls.openInMain).toHaveLength(0);
+  // Le couplage du tab SOURCE est libéré (le mode nav l'a déjà libéré — idempotent).
+  expect(calls.link).toEqual([["s1", null]]);
+  // Historique : la page courante est poussée avant le saut (pile du tab side).
+  expect(deps.calls.navPush).toEqual(["/a.md"]);
+  // Cible de rendu : heading prioritaire, PAS de syncLine.
+  expect(deps.calls.setScrollTarget).toEqual(["Propriétés"]);
+  expect(deps.calls.setSyncLine).toHaveLength(0);
+  expect(deps.calls.setJumpToLine).toHaveLength(0);
+  expect(deps.calls.setEditorModeRaw).toBe(0);
+});
+
+test("toc-navigate HORS mode nav : NOUVEAU tab viewer side, JAMAIS l'éditeur main", async () => {
+  const { pm, calls } = recordingFakePm();
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", heading: "Définition", tabId: null, navMode: false });
+
+  expect(calls.openInSide).toEqual([["/docs/fiche.md", { preview: true, forceNew: true, silent: true }]]);
+  expect(calls.openInMain).toHaveLength(0);
+  expect(deps.calls.navPush).toHaveLength(0); // pas de navigation in-place → pas d'historique
+  expect(deps.calls.setScrollTarget).toEqual(["Définition"]);
+  expect(pm.sideVisible).toBe(true);
+});
+
+test("toc-navigate HORS mode nav, cible déjà ouverte en side : dédup → select", async () => {
+  const { pm, calls } = recordingFakePm();
+  pm.side.tabs = [{ id: "s1", path: "/docs/fiche.md", preview: true, renderMode: "preview" }];
+  pm.side.activePath = "/docs/fiche.md";
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", heading: "Définition", navMode: false });
+
+  expect(calls.select).toEqual(["side:s1"]); // dédup par chemin → sélection, pas de nouvel onglet
+  expect(calls.openInSide).toHaveLength(0);
+  expect(calls.openInMain).toHaveLength(0);
+  expect(deps.calls.setScrollTarget).toEqual(["Définition"]);
+});
+
+test("toc-navigate racine de branche (line seule) : syncLine 1-based → 0-based liée au chemin", async () => {
+  const { pm, calls } = recordingFakePm();
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", line: 3, tabId: null, navMode: false });
+
+  expect(deps.calls.setScrollTarget).toHaveLength(0);
+  expect(deps.calls.setSyncLine).toEqual(["/docs/fiche.md"]);
+  // C'est le VIEWER qui scroll : aucune cible éditeur posée (pas de setJumpToLine,
+  // pas de mode éditeur).
+  expect(deps.calls.setJumpToLine).toHaveLength(0);
+  expect(deps.calls.setEditorModeRaw).toBe(0);
+  expect(calls.openInMain).toHaveLength(0);
+});
+
+test("toc-navigate : chemin doc → openDocArticle (jamais viewer ni éditeur)", async () => {
+  const { pm, calls } = recordingFakePm();
+  let docCalled: { path: string; heading?: string } | null = null;
+  const deps = makeDeps(pm, {
+    openDocArticle: async (p, h) => { docCalled = { path: p, heading: h }; },
+  });
+
+  await navigate(deps, {
+    type: "toc-navigate", path: "/vault/.azprose/help/guide.md", heading: "Liens", tabId: "s1", navMode: true,
+  });
+
+  expect(docCalled).toEqual({ path: "/vault/.azprose/help/guide.md", heading: "Liens" });
+  expect(calls.openInSide).toHaveLength(0);
+  expect(calls.openInMain).toHaveLength(0);
+  expect(deps.calls.setScrollTarget).toHaveLength(0);
+  expect(deps.calls.setSyncLine).toHaveLength(0);
 });

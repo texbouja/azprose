@@ -145,6 +145,13 @@
         planchesReady = n > 0;
         machine.send(n ? "loaded" : "empty");
         if (!n) error = t("colle.printEmpty");
+      } else if (isPlanches) {
+        // Mode planches SANS source (repli défensif — l'app lit le store,
+        // phase 7) : état vide BRUYANT, jamais des boutons muets.
+        planchesCount = 0;
+        planchesReady = false;
+        error = t("colle.printEmpty");
+        machine.send("empty");
       } else {
         machine.send("loaded");
       }

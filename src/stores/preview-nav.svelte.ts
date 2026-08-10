@@ -15,6 +15,9 @@ export interface PreviewNavStore {
   isNavMode(tabId: string | null | undefined): boolean;
   /** Pose/retire le mode navigation du tab `tabId` (no-op si inchangé). */
   setNavMode(tabId: string | null | undefined, on: boolean): void;
+  /** Purge du tab `tabId` — appelé à la fermeture de l'onglet (matrice cas 3 :
+   *  le mode est un état d'interaction qui meurt avec l'onglet). */
+  clearTab(tabId: string | null | undefined): void;
   /** Purge complète (aucun tab en mode nav). */
   reset(): void;
 }
@@ -37,6 +40,10 @@ export function getPreviewNavStore(): PreviewNavStore {
       if (on) modes.set(tabId, true);
       else modes.delete(tabId);
       version++;
+    },
+    clearTab(tabId: string | null | undefined): void {
+      if (!tabId) return;
+      if (modes.delete(tabId)) version++;
     },
     reset(): void {
       if (modes.size > 0) {

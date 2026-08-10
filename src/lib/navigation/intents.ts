@@ -44,15 +44,34 @@ export type NavIntent =
   /** Navigation wikilink : HORS mode nav, ouvre un NOUVEAU tab viewer side
    *  (jamais l'éditeur main — décision utilisateur ; éditeur uniquement par
    *  double-clic) ; EN mode nav, navigation IN-PLACE du tab preview actif.
-   *  C'est le remplaçant typé de `azprose:wikilink-navigate`. */
-  | { type: "wikilink-navigate"; path: string; heading?: string | null }
+   *  C'est le remplaçant typé de `azprose:wikilink-navigate`.
+   *
+   *  Décision FIGÉE au clic (matrice cas 1) : `navMode` est le mode navigation
+   *  du tab SOURCE `tabId` LU PAR L'ÉMETTEUR au moment du clic (course
+   *  asynchrone : la résolution de la cible peut prendre du temps pendant que
+   *  l'utilisateur bascule le mode). Le reducer exécute cette décision — il ne
+   *  relit JAMAIS `isPreviewNavMode()`. DocPreview émet `navMode: true`
+   *  (lecteur doc = mode nav tacite) ; MarkdownPreview/ColleCard lisent le
+   *  store au clic. */
+  | { type: "wikilink-navigate"; path: string; heading?: string | null; tabId?: string | null; navMode: boolean }
   /** Alt+clic wikilink : NOUVEL onglet éditeur. Remplaçant typé de
-   *  `azprose:wikilink-open-new`. */
-  | { type: "wikilink-open-new"; path: string; heading?: string | null }
+   *  `azprose:wikilink-open-new`. N'est plus émis par les liens de preview —
+   *  la décision cas 1 route directement (le nouveau tab passe par Home alt). */
+  | { type: "wikilink-open-new"; path: string; heading?: string | null; tabId?: string | null }
   /** Saut TOC/backlinks/tags : ouvre dans le tab éditeur actif (routage max
    *  vers la preview si fullscreen), applique line (1-based, convertie en
    *  0-based) et/ou heading. Remplaçant typé de `azprose:jump-to-file`. */
   | { type: "jump-to-file"; path: string; line?: number | null; heading?: string | null }
+  /** Saut TOC (table des matières sidebar) : la cible remonte dans le VIEWER
+   *  side — jamais l'éditeur main (décision utilisateur). Réutilise la
+   *  politique de navigation wikilink : EN mode nav (décision FIGÉE au clic,
+   *  `navMode`/`tabId` du tab viewer source lu par l'émetteur) → navigation
+   *  in-place + historique ; HORS mode nav → NOUVEAU tab viewer side (dédup),
+   *  jamais l'éditeur. L'aide intégrée reste routée en doc (jamais l'éditeur
+   *  main). Scroll : `heading` prioritaire (id immune aux décalages de
+   *  transclusion), sinon `line` 1-based (racines de branches — début de
+   *  fichier). Remplaçant typé de `azprose:toc-navigate`. */
+  | { type: "toc-navigate"; path: string; line?: number | null; heading?: string | null; tabId?: string | null; navMode: boolean }
   /** Saut dbl-clic preview : cible le fichier RENDU (tab side), 0-based.
    *  Remplaçant typé de `azprose:jump-to-line`. `sessionId` = id du tab side
    *  émetteur (phase 3 C) : le reducer le résout via la table de liens
