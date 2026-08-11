@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { PanelManager } from "@/lib/panel-manager";
+import { tabContentKind } from "@/lib/panel-store";
 import type { LatexState } from "@/latex";
 
 export type EditorMode = "raw" | "prose" | "preview" | "presentation" | "colle";
@@ -25,6 +26,29 @@ export interface EditorModeDeps {
   notify: { setInfo: (msg: string) => void };
 }
 
+/** Tab viewer side affichant DÉJÀ `path` — d'abord celui lié à l'éditeur
+ *  courant (réutilisation historique), sinon TOUT tab de fichier sur ce chemin
+ *  (indépendant ou lié à un autre éditeur) : on l'active et on le couple —
+ *  JAMAIS de doublon (décision utilisateur : le bouton Preview active le
+ *  couplage avec un tab viewer déjà ouvert sur le même md). `forceNew` ne
+ *  s'applique que si AUCUN tab n'affiche le fichier. L'invariant « couplé ⇒
+ *  MÊME md » reste satisfait (même chemin) et `linkPreview` découple
+ *  automatiquement l'autre éditeur éventuel (invariant « un seul viewer couplé
+ *  par éditeur »). */
+function findSideTabFor(ctx: EditorModeDeps, path: string | null): { id: string } | null {
+  if (!path) return null;
+  const linkedId = ctx.pm.main.activeTabId;
+  const linked = ctx.pm.side.tabs.find(
+    (t: any) => t.path === path && ctx.pm.linkedEditorTabId(t.id) === linkedId,
+  );
+  if (linked) return linked;
+  return (
+    ctx.pm.side.tabs.find(
+      (t: any) => t.path === path && tabContentKind(t.kind) === "file",
+    ) ?? null
+  );
+}
+
 export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
   if (ctx.presentationFs && mode !== "presentation") {
     ctx.setPresentationFs(false);
@@ -45,13 +69,14 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
       break;
     case "preview": {
       if (!isPreviewable) return;
-      // Réutilise UNIQUEMENT un tab side déjà lié à l'éditeur actif. Un tab
-      // preview NON associé (ex. viewer créé par le routage maximisé, ou
-      // preview d'un autre éditeur) n'est JAMAIS ré-affecté : un NOUVEL
-      // onglet est créé (forceNew) puis lié — le couplage éditeur↔preview
-      // exige que le tab preview soit l'image du tab éditeur courant.
-      const linkedId = ctx.pm.main.activeTabId;
-      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath && ctx.pm.linkedEditorTabId(t.id) === linkedId);
+      // Réutilise un tab side affichant DÉJÀ ce md — d'abord celui lié à
+      // l'éditeur actif, sinon tout tab de fichier sur ce chemin (décision
+      // utilisateur : JAMAIS de doublon — le bouton Preview active le couplage
+      // avec un tab viewer déjà ouvert). Un tab preview NON associé n'est
+      // ré-affecté que s'il affiche le MÊME fichier (le couplage éditeur↔preview
+      // exige que le tab preview soit l'image du tab éditeur courant) ; sinon un
+      // NOUVEL onglet est créé (forceNew) puis lié.
+      const existing = findSideTabFor(ctx, ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "preview");
         ctx.pm.side.select(existing.id);
@@ -76,8 +101,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
     case "presentation": {
       if (!isMd) return;
       ctx.setProsemarkOn(true);
-      const linkedId = ctx.pm.main.activeTabId;
-      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath && ctx.pm.linkedEditorTabId(t.id) === linkedId);
+      const existing = findSideTabFor(ctx, ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "presentation");
         ctx.pm.side.select(existing.id);
@@ -100,8 +124,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
       if (!isMd) return;
       // Le main panel reste sur l'éditeur (règle structurelle) ; la vue colles
       // s'ouvre dans le side panel avec renderMode "colle".
-      const linkedId = ctx.pm.main.activeTabId;
-      const existing = ctx.pm.side.tabs.find((t: any) => t.path === ctx.activePath && ctx.pm.linkedEditorTabId(t.id) === linkedId);
+      const existing = findSideTabFor(ctx, ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "colle");
         ctx.pm.side.select(existing.id);

@@ -41,6 +41,7 @@ export class PanelManager {
    *  — callers must pass the side tab id they just opened/activated
    *  explicitly, never read it back speculatively. */
   private previewLinks = new Map<string, string>();
+  private onSessionChange?: (data: PanelManagerSession) => void;
 
   /** Main editor tab linked to the ACTIVE side tab, if any (legacy getter
    *  used by followPreviewNavigation and the reducer guard). */
@@ -57,12 +58,18 @@ export class PanelManager {
   linkPreview(sideTabId: string, mainTabId: string | null): void {
     if (mainTabId === null) {
       this.previewLinks.delete(sideTabId);
-      return;
+    } else {
+      for (const [sId, mId] of this.previewLinks) {
+        if (sId !== sideTabId && mId === mainTabId) this.previewLinks.delete(sId);
+      }
+      this.previewLinks.set(sideTabId, mainTabId);
     }
-    for (const [sId, mId] of this.previewLinks) {
-      if (sId !== sideTabId && mId === mainTabId) this.previewLinks.delete(sId);
-    }
-    this.previewLinks.set(sideTabId, mainTabId);
+    // Le couplage est un ÉTAT DE SESSION : notifier déclenche onSessionChange →
+    // toJSON (qui persiste `linkedTo` sur les tabs side) → saveSession. Sans
+    // quoi un couplage créé par linkPreview seul (ex. bouton Preview) n'était
+    // JAMAIS persisté — localStorage gardait `linkedTo: null` (bug constaté :
+    // couplage perdu au redémarrage). Idempotent : toJSON est un getter pur.
+    this.onSessionChange?.(this.toJSON());
   }
 
   /** Side viewer tab coupled to `mainTabId`, or null (reverse lookup). */
@@ -95,6 +102,7 @@ export class PanelManager {
     content?: ContentStore;
   }) {
     const pm = this;
+    this.onSessionChange = opts?.onSessionChange;
     this.main = new PanelState("main", {
       onFileOpen: opts?.onFileOpen,
       onSessionChange: opts?.onSessionChange

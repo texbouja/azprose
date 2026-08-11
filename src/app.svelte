@@ -525,15 +525,21 @@ onMount(() => {
     isProjectWindow,
     myLabel,
     saveAllDirtyDrafts,
+    saveSessionNow,
     flushSessionMirror,
     t,
   });
 
   // Sauvegarde des brouillons sur perte de focus (stratégie VSCode hot-exit).
 // localStorage est synchrone : pas de risque de perte sur crash.
+// `saveSessionNow` (seul écrivain de localStorage) est ajouté aux chemins de
+// quit/hide : sans lui, le couplage éditeur↔viewer (linkedTo) créé par
+// linkPreview n'était persisté que par une mutation ultérieure — au quit le
+// localStorage gardait l'état d'avant le couplage (bug : couplage perdu au
+// redémarrage). Le miroir portable reste un repli (lu si localStorage vide).
   const onBlur = () => saveAllDirtyDrafts();
-  const onVisibility = () => { if (document.visibilityState === "hidden") { saveAllDirtyDrafts(); flushSessionMirror(); } };
-  const onBeforeUnload = () => { saveAllDirtyDrafts(); flushSessionMirror(); };
+  const onVisibility = () => { if (document.visibilityState === "hidden") { saveAllDirtyDrafts(); saveSessionNow(); flushSessionMirror(); } };
+  const onBeforeUnload = () => { saveAllDirtyDrafts(); saveSessionNow(); flushSessionMirror(); };
   window.addEventListener("blur", onBlur);
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("beforeunload", onBeforeUnload);

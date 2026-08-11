@@ -76,8 +76,13 @@ export function setupSessionRestore(
               // legacy sauvegardées avant la persistance du couplage.
               restorePreviewLinks(ctx.pm, session.side);
               if (!cancelled && session.side.activePath) {
-                const sideTab = ctx.findTabByPath(session.side.activePath);
-                if (sideTab) ctx.pm.side.select(sideTab.id);
+                // Sélectionne le tab SIDE actif de la session dans le panel
+                // SIDE (par chemin normalisé) — jamais via findTabByPath qui
+                // ne cherche que dans le panel MAIN : sélectionner un id de
+                // tab main dans le panel side ne correspond à aucun tab (bug :
+                // au boot, le tab side actif restauré ne redevenait pas celui
+                // de la session).
+                selectSideActiveTab(ctx.pm, session.side.activePath);
                 ctx.setSideVisible(true);
               }
             }
@@ -196,3 +201,14 @@ export function restorePreviewLinks(
 }
 
 const normPath = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
+
+/** Sélectionne le tab SIDE actif de la session au boot — cherché dans le
+ *  panel SIDE par chemin normalisé (les tabs side sont restaurés via
+ *  openInSide → ids régénérés, le chemin est le seul identifiant stable).
+ *  Ne JAMAIS chercher dans le panel main (session-utils.findTabByPath) puis
+ *  sélectionner cet id dans le panel side : l'id n'y existe pas (bug fixé). */
+export function selectSideActiveTab(pm: PanelManager, activePath: string | null): void {
+  if (!activePath) return;
+  const sideTab = pm.side.tabs.find((t) => normPath(t.path) === normPath(activePath));
+  if (sideTab) pm.side.select(sideTab.id);
+}

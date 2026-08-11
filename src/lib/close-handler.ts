@@ -10,6 +10,10 @@ export interface CloseHandlerDeps {
   isProjectWindow: boolean
   myLabel: string
   saveAllDirtyDrafts: () => void
+  /** Écrit la session (couplages linkedTo compris) dans localStorage — le
+   *  seul écrivain de localStorage ; appelé AVANT flushSessionMirror pour que
+   *  le quit persiste TOUT l'état, pas seulement le miroir portable. */
+  saveSessionNow: () => void
   flushSessionMirror: () => void
   t: (key: string, params?: Record<string, string>) => string
 }
@@ -31,6 +35,7 @@ export function setupCloseHandler(ctx: CloseHandlerDeps) {
         }
       }
       ctx.saveAllDirtyDrafts();
+      ctx.saveSessionNow();
       ctx.flushSessionMirror();
       await getCalendarStore().flush();
       if (ctx.isProjectWindow) {

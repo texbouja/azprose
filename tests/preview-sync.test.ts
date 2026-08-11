@@ -11,11 +11,12 @@ import { expect, test } from "bun:test";
   };
 })();
 
-import { PanelManager } from "../src/lib/panel-manager";
+import { PanelManager, type PanelManagerSession } from "../src/lib/panel-manager";
 import { ContentStore, type ContentFs } from "../src/lib/content-store";
-import { restorePreviewLinks } from "../src/lib/session-restore";
+import { restorePreviewLinks, selectSideActiveTab } from "../src/lib/session-restore";
 import type { SessionSideData } from "../src/lib/session";
-import { setSessionScope } from "../src/lib/session";
+import { setSessionScope, saveSession, loadSession } from "../src/lib/session";
+import { findTabByPath } from "../src/lib/session-utils";
 import { navigate, type NavDeps } from "../src/lib/navigation";
 import { followPreviewNavigation } from "../src/lib/preview-follow";
 
@@ -348,4 +349,96 @@ test("runtime : repoint éditeur échoué → ROMPT le couplage (viewer navigue 
   expect(res.parked).toBe(false);
   expect(pm.linkedEditorTabId(sideId)).toBeNull();
   expect(pm.main.activePath).toBe("/a.md");
+});
+
+// ── Correctifs sauvegarde (session 3 fixes) : la persistance du couplage ne
+// dépendait pas d'une mutation ultérieure ni du quit (linkPreview était muet
+// pour la session, localStorage gardait linkedTo: null) ──
+
+test("save : linkPreview NOTIFIE la session — linkedTo est persisté DÈS le couplage, et la rupture aussi", async () => {
+  const store = new ContentStore(makeFakeFs(files));
+  let sessionData: PanelManagerSession | null = null;
+  const pm = new PanelManager({
+    content: store,
+    onSessionChange: (d) => { sessionData = d; },
+  });
+  await pm.openInMain("/a.md");
+  const mainId = pm.main.activeTabId!;
+  await pm.side.open("/a.md", { preview: true, forceNew: true });
+  const sideId = pm.side.activeTabId!;
+  // L'ouverture du viewer a notifié (session portée linkedTo: null explicite).
+  // NB : toJSON ne sérialise pas les ids (régénérés au restore) — recherche par chemin.
+  expect(sessionData).not.toBeNull();
+  expect(sessionData!.side.tabs.find((t) => t.path === "/a.md")?.linkedTo).toBeNull();
+
+  // Couplage (bouton Preview) : la notification est SYNCHRONE — la session
+  // porte déjà le couplage, sans attendre une mutation ultérieure.
+  pm.linkPreview(sideId, mainId);
+  expect(sessionData!.side.tabs.find((t) => t.path === "/a.md")?.linkedTo).toBe("/a.md");
+
+  // Rupture (mode nav / repoint échoué) : notifiée aussi → null explicite.
+  pm.linkPreview(sideId, null);
+  expect(sessionData!.side.tabs.find((t) => t.path === "/a.md")?.linkedTo).toBeNull();
+});
+
+test("E2E couplage : linkPreview → saveSession → localStorage → boot → couplage restauré (bug : gardait null)", async () => {
+  const store = new ContentStore(makeFakeFs(files));
+  const pm = new PanelManager({ content: store });
+  await pm.openInMain("/a.md");
+  const mainId = pm.main.activeTabId!;
+  await pm.side.open("/a.md", { preview: true, forceNew: true });
+  const sideId = pm.side.activeTabId!;
+  pm.linkPreview(sideId, mainId);
+
+  // Quit (close-handler / beforeunload) : l'état complet est écrit dans
+  // localStorage — le couplage compris (c'était le trou : seul le miroir
+  // portable était écrit au quit, et localStorage gardait linkedTo: null).
+  const data = pm.toJSON();
+  saveSession({ main: data.main, side: { ...data.side, visible: true } });
+
+  // Boot : loadSession → openInSide (ids régénérés) → restorePreviewLinks.
+  const loaded = loadSession();
+  expect(loaded.side.tabs.find((t) => t.path === "/a.md")?.linkedTo).toBe("/a.md");
+
+  const pm2 = new PanelManager({ content: store });
+  await pm2.openInMain("/a.md");
+  await pm2.openInSide("/a.md", { silent: true });
+  pm2.side.tabs = pm2.side.tabs.map((t) => ({ ...t, preview: true }));
+  restorePreviewLinks(pm2, loaded.side);
+
+  const sideA = pm2.side.tabs.find((t) => t.path === "/a.md")!;
+  const mainA = pm2.main.tabs.find((t) => t.path === "/a.md")!;
+  expect(pm2.linkedEditorTabId(sideA.id)).toBe(mainA.id);
+});
+
+test("boot : le tab side ACTIF de la session est sélectionné dans le panel SIDE (bug : id cherché dans main)", async () => {
+  const store = new ContentStore(makeFakeFs(files));
+  const pm = new PanelManager({ content: store });
+  await pm.openInMain("/a.md");
+  await pm.openInMain("/b.md");
+  await pm.openInSide("/a.md", { silent: true });
+  await pm.openInSide("/b.md", { silent: true });
+  pm.side.tabs = pm.side.tabs.map((t) => ({ ...t, preview: true }));
+
+  // La session dit : tab side actif = /b.md (l'ordre de restauration finit
+  // sur /a.md — le select du boot doit rétablir /b.md).
+  const sideSession: SessionSideData = {
+    tabs: [
+      { path: "/a.md", title: "a.md" },
+      { path: "/b.md", title: "b.md" },
+    ],
+    activePath: "/b.md",
+    visible: true,
+  };
+
+  // Comportement BUGUÉ (avant correctif) : findTabByPath cherche dans le panel
+  // MAIN, puis on sélectionne cet id dans le panel side → aucun tab ne matche.
+  const wrong = findTabByPath(pm, sideSession.activePath!);
+  expect(wrong).not.toBeUndefined();
+  if (wrong) pm.side.select(wrong.id as string);
+  expect(pm.side.activePath).not.toBe("/b.md"); // l'id main est invalide en side
+
+  // Correctif : la résolution se fait dans le panel SIDE → /b.md est rétabli.
+  selectSideActiveTab(pm, sideSession.activePath);
+  expect(pm.side.activePath).toBe("/b.md");
 });
