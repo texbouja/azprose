@@ -1,7 +1,12 @@
-import { PanelState, type Tab, type TabSource } from "./panel-store";
+import { PanelState, tabContentKind, type Tab, type TabSource } from "./panel-store";
 import type { ContentStore } from "./content-store";
 
 export type LayoutMode = "main" | "main+side";
+
+/** Normalisation de chemin partagée (drop des segments `.`) — utilisée par
+ *  le couplage persisté (linkedTo) et findTabByPath : une session ne doit pas
+ *  perdre un couplage à cause d'un `/a/./b.md` vs `/a/b.md`. */
+const normPath = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
 
 export type PanelManagerSession = {
   main: ReturnType<PanelState["toJSON"]>;
@@ -23,7 +28,10 @@ export class PanelManager {
    *  double-click / « Ouvrir dans l'éditeur » from the viewer (OUTSIDE nav
    *  mode). Entering nav mode RELEASES the coupling; exiting does NOT
    *  re-couple. While coupled, a sidebar click makes the viewer follow the
-   *  editor. Never persisted; re-established when the user re-launches.
+   *  editor. Persisted as `linkedTo` (path of the coupled main tab) on the
+   *  side tab session entries by `toJSON` — the registry itself is ids-only
+   *  runtime state (ids are REGENERATED at restore), `fromJSON` rebuilds it
+   *  by resolving the saved paths.
    *
    *  Invariant « un seul viewer couplé par éditeur » : coupling a viewer to an
    *  editor tab automatically de-couples any OTHER viewer already coupled to
@@ -287,14 +295,9 @@ export class PanelManager {
   }
 
   findTabByPath(path: string): { panel: "main" | "side"; tab: Tab } | null {
-    const norm = (p: string) =>
-      p
-        .split("/")
-        .filter((s) => s !== ".")
-        .join("/");
-    const target = norm(path);
+    const target = normPath(path);
     for (const panel of [this.main, this.side]) {
-      const tab = panel.tabs.find((t) => norm(t.path) === target);
+      const tab = panel.tabs.find((t) => normPath(t.path) === target);
       if (tab) return { panel: panel.id as "main" | "side", tab };
     }
     return null;
@@ -314,9 +317,27 @@ export class PanelManager {
   }
 
   toJSON(): PanelManagerSession {
+    const side = this.side.toJSON();
     return {
       main: this.main.toJSON(),
-      side: this.side.toJSON(),
+      side: {
+        ...side,
+        tabs: side.tabs.map((t, i) => {
+          // Persiste le couplage éditeur↔viewer SUR les tabs side : `linkedTo` =
+          // chemin du tab éditeur main couplé à CET instant (l'identité stable
+          // à travers les redémarrages — les ids de tabs sont régénérés au
+          // restore). Zip par index : toJSON mappe 1:1 this.side.tabs (aucun
+          // filtre) — pas de recherche par chemin, le tab side et son entrée
+          // JSON occupent la même position. Un lien périmé (tab éditeur fermé)
+          // ne résout aucun tab main → champ absent (couplage mort).
+          const sideTab = this.side.tabs[i];
+          const linkedId = sideTab ? this.previewLinks.get(sideTab.id) : undefined;
+          const linked = linkedId
+            ? this.main.tabs.find((mt) => mt.id === linkedId)
+            : undefined;
+          return { ...t, linkedTo: linked?.path ?? undefined };
+        }),
+      },
       layout: this.layout,
       splitRatio: this.splitRatio,
     };
@@ -351,6 +372,27 @@ export class PanelManager {
       if (movedActive) this.side.activeTabId = movedActive.id;
       this.side.visible = true;
       this.layout = "main+side";
+    }
+
+    // Reconstruit le couplage éditeur↔viewer persisté par toJSON (`linkedTo` =
+    // chemin du tab éditeur main couplé). Les ids des tabs sont RÉGÉNÉRÉS à la
+    // restauration : résolution par chemin vers les tabs main reconstruits. Un
+    // `linkedTo` dont le tab main n'existe pas (fichier illisible au restore)
+    // → pas de lien : le couplage explicite prime, JAMAIS de repli par chemin
+    // ici (une déduction heuristique pourrait coupler au mauvais éditeur). Les
+    // sessions legacy (sans linkedTo) sont gérées par restorePreviewLinks.
+    this.previewLinks.clear();
+    for (const sideTab of this.side.tabs) {
+      if (tabContentKind(sideTab.kind) !== "file" || !sideTab.path) continue;
+      const entry = data.side.tabs.find(
+        (e) => normPath(e.path) === normPath(sideTab.path),
+      );
+      const linkedPath = entry?.linkedTo;
+      if (!linkedPath) continue;
+      const mainTab = this.main.tabs.find(
+        (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(linkedPath),
+      );
+      if (mainTab) this.previewLinks.set(sideTab.id, mainTab.id);
     }
   }
 

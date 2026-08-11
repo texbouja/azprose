@@ -87,7 +87,7 @@ export type Tab = {
 };
 
 export type PanelSessionData = {
-  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string; datafilterIds?: string[] }[];
+  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string; datafilterIds?: string[]; /** Couplage éditeur↔viewer persisté — chemin du tab éditeur main couplé, rempli par PanelManager.toJSON pour les tabs side (les ids de tabs ne survivent pas au redémarrage). Absent = viewer indépendant ou session legacy. */ linkedTo?: string | null }[];
   activePath: string | null;
 };
 

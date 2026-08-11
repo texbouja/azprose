@@ -14,6 +14,7 @@ import { expect, test } from "bun:test";
 import { PanelManager } from "../src/lib/panel-manager";
 import { ContentStore, type ContentFs } from "../src/lib/content-store";
 import { restorePreviewLinks } from "../src/lib/session-restore";
+import type { SessionSideData } from "../src/lib/session";
 import { setSessionScope } from "../src/lib/session";
 import { navigate, type NavDeps } from "../src/lib/navigation";
 
@@ -177,6 +178,102 @@ test("restore : pas de re-couplage quand le chemin n'existe pas en main (viewer 
   await pm.openInSide("/b.md", { silent: true }); // /b.md n'a pas d'équivalent main
 
   restorePreviewLinks(pm);
+
+  expect(pm.linkedEditorTabId(pm.side.activeTabId!)).toBeNull();
+});
+
+// ── Couplage PERSISTÉ (linkedTo) : le couplage éditeur↔viewer survit au
+// redémarrage, même quand le viewer a divergé du chemin du tab éditeur lié ──
+
+test("session : toJSON persiste le couplage (linkedTo) et fromJSON le restaure", async () => {
+  const store = new ContentStore(makeFakeFs(files));
+  const pm = new PanelManager({ content: store });
+  await openLinked(pm, "/a.md");
+
+  const json = pm.toJSON();
+  // Le viewer couplé porte linkedTo = chemin du tab éditeur lié.
+  expect(json.side.tabs.find((t) => t.path === "/a.md")?.linkedTo).toBe("/a.md");
+
+  // Un viewer INDÉPENDANT (ouvert par wikilink hors mode nav) n'écrit PAS de
+  // linkedTo — jamais de faux couplage persisté.
+  await pm.openInSide("/b.md", { silent: true });
+  expect(pm.toJSON().side.tabs.find((t) => t.path === "/b.md")?.linkedTo).toBeUndefined();
+
+  // Redémarrage simulé : fromJSON régénère les ids, le couplage revit.
+  const pm2 = new PanelManager({ content: store });
+  pm2.fromJSON(json);
+  const sideTab = pm2.side.tabs.find((t) => t.path === "/a.md")!;
+  const mainTab = pm2.main.tabs.find((t) => t.path === "/a.md")!;
+  expect(pm2.linkedEditorTabId(sideTab.id)).toBe(mainTab.id);
+  expect(pm2.sideTabLinkedTo(mainTab.id)).toBe(sideTab.id);
+});
+
+test("session : couplage vers un tab éditeur RE-POINTÉ — linkedTo = chemin actuel du tab lié", async () => {
+  const store = new ContentStore(makeFakeFs(files));
+  const pm = new PanelManager({ content: store });
+  const { mainId, sideId } = await openLinked(pm, "/a.md");
+  // Le tab éditeur LIÉ est re-pointé vers /c.md (sidebar, preview-follow) et le
+  // viewer RESTE sur /a.md (repoint viewer silencieux échoué, navigation
+  // openFile sans synchro : journal, oxide…). Le couplage tab→tab est intact —
+  // c'est lui qui doit survivre au redémarrage, pas un appariement par chemin.
+  await pm.main.repoint(mainId, "/c.md", { silent: true });
+  expect(pm.side.activePath).toBe("/a.md");
+  expect(pm.main.tabs.find((t) => t.id === mainId)?.path).toBe("/c.md");
+  expect(pm.linkedEditorTabId(sideId)).toBe(mainId);
+
+  const json = pm.toJSON();
+  expect(json.side.tabs.find((t) => t.path === "/a.md")?.linkedTo).toBe("/c.md");
+
+  const pm2 = new PanelManager({ content: store });
+  pm2.fromJSON(json);
+  const sideA = pm2.side.tabs.find((t) => t.path === "/a.md")!;
+  const mainC = pm2.main.tabs.find((t) => t.path === "/c.md")!;
+  expect(pm2.linkedEditorTabId(sideA.id)).toBe(mainC.id);
+});
+
+test("session : restorePreviewLinks — le couplage persisté (linkedTo) prime sur le path-match", async () => {
+  // Boot simulé : main /a.md (éditeur indépendant) + /c.md (tab lié re-pointé) ;
+  // le viewer /a.md est COUPLÉ au tab /c.md — le path-match legacy aurait
+  // couplé à tort le viewer au tab /a.md.
+  const store = new ContentStore(makeFakeFs(files));
+  const pm = new PanelManager({ content: store });
+  await pm.openInMain("/a.md");
+  const mainA = pm.main.activeTabId!;
+  await pm.openInMain("/c.md");
+  const mainC = pm.main.activeTabId!;
+  await pm.openInSide("/a.md", { silent: true });
+  const sideA = pm.side.activeTabId!;
+  pm.side.tabs = pm.side.tabs.map((t) => ({ ...t, preview: true }));
+  pm.main.select(mainA);
+
+  // Session persistée : l'entrée side /a.md porte linkedTo=/c.md (explicite).
+  const sideSession: SessionSideData = {
+    tabs: [{ path: "/a.md", title: "a.md", linkedTo: "/c.md" }],
+    activePath: "/a.md",
+    visible: true,
+  };
+  restorePreviewLinks(pm, sideSession);
+
+  expect(pm.linkedEditorTabId(sideA)).toBe(mainC);
+  expect(pm.sideTabLinkedTo(mainA)).toBeNull();
+});
+
+test("session : linkedTo sans tab main au restore → pas de lien (couplage explicite mort, jamais de repli)", async () => {
+  const store = new ContentStore(makeFakeFs(files));
+  const pm = new PanelManager({ content: store });
+  await pm.openInMain("/a.md");
+  await pm.openInSide("/b.md", { silent: true });
+  pm.side.tabs = pm.side.tabs.map((t) => ({ ...t, preview: true }));
+
+  // linkedTo=/c.md mais AUCUN tab main /c.md au restore (fichier illisible) :
+  // le couplage explicite est mort avec son éditeur — pas de déduction par
+  // chemin qui pourrait coupler au mauvais éditeur.
+  const sideSession: SessionSideData = {
+    tabs: [{ path: "/b.md", title: "b.md", linkedTo: "/c.md" }],
+    activePath: "/b.md",
+    visible: true,
+  };
+  restorePreviewLinks(pm, sideSession);
 
   expect(pm.linkedEditorTabId(pm.side.activeTabId!)).toBeNull();
 });

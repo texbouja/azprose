@@ -52,6 +52,11 @@ export interface SessionTab {
   title: string;
   sourceType?: "latex";
   renderMode?: "raw" | "prose" | "preview" | "presentation" | "colle";
+  /** Couplage éditeur↔viewer persisté (chemin du tab éditeur main couplé) —
+   *  rempli par PanelManager.toJSON sur les tabs side ; lu au boot par
+   *  `restorePreviewLinks` pour re-coupler par chemin (les ids sont régénérés).
+   *  Absent = viewer indépendant ou session legacy (repli path-match). */
+  linkedTo?: string | null;
 }
 
 export interface PanelSessionData {

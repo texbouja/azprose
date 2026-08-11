@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { loadSession, saveSession, saveLastFile, loadLastFile } from "@/lib/session";
+import type { SessionSideData } from "@/lib/session";
 import { loadProjectSession } from "@/lib/project-session";
 import { tabContentKind } from "@/lib/panel-store";
 import type { PanelManager } from "@/lib/panel-manager";
@@ -70,8 +71,10 @@ export function setupSessionRestore(
               // précédemment restaurés au lieu d'en créer un par entrée). Le flag
               // sert à la ré-affectation en place des navigations open(…, { preview: true }).
               ctx.pm.side.tabs = ctx.pm.side.tabs.map(t => ({ ...t, preview: true }));
-              // Restaure le couplage éditeur↔viewer (voir restorePreviewLinks).
-              restorePreviewLinks(ctx.pm);
+              // Restaure le couplage éditeur↔viewer (voir restorePreviewLinks) :
+              // linkedTo persisté d'abord, repli path-match pour les sessions
+              // legacy sauvegardées avant la persistance du couplage.
+              restorePreviewLinks(ctx.pm, session.side);
               if (!cancelled && session.side.activePath) {
                 const sideTab = ctx.findTabByPath(session.side.activePath);
                 if (sideTab) ctx.pm.side.select(sideTab.id);
@@ -119,13 +122,25 @@ export function setupSessionRestore(
 }
 
 /**
- * Restaure le couplage éditeur↔viewer par CHEMIN après la restauration des
- * tabs (boot). Le registre `previewLinks` du PanelManager est un état runtime
- * — jamais persisté — et les ids de tabs sont RÉGÉNÉRÉS au restore : le
- * chemin est le seul identifiant stable de la session. Un tab side de
- * fichier affichant le même chemin qu'un tab main est donc re-couplé — la
- * synchro éditeur→viewer (« le viewer couplé suit le tab éditeur recyclé »)
- * redevient active après redémarrage.
+ * Restaure le couplage éditeur↔viewer après la restauration des tabs (boot).
+ * Le registre `previewLinks` du PanelManager est un état runtime ids-only —
+ * jamais persisté tel quel — et les ids de tabs sont RÉGÉNÉRÉS au restore :
+ * le chemin est le seul identifiant stable de la session.
+ *
+ * Deux sources, dans l'ordre :
+ *  1. **Couplage PERSISTÉ** (`linkedTo`, écrit par PanelManager.toJSON sur les
+ *     entrées side) : chemin du tab éditeur main couplé à la sauvegarde — le
+ *     viewer couplé est re-couplé vers CE tab, même si son chemin diffère de
+ *     celui du viewer (repoint silencieux échoué, navigation openFile sans
+ *     synchro viewer : journal, oxide…). C'est l'information EXPLICITE, jamais
+ *     une déduction — le couplage ne se perd plus au redémarrage. Si le tab
+ *     main cible n'existe pas au restore (fichier illisible), PAS de repli par
+ *     chemin : le couplage explicite est mort avec son éditeur.
+ *  2. **Repli legacy path-match** (sessions sauvegardées avant linkedTo) : un
+ *     tab side de fichier affichant le même chemin qu'un tab main est re-couplé
+ *     — la synchro éditeur→viewer redevient active après redémarrage. Faux
+ *     positif bénin documenté : viewer indépendant + éditeur du même fichier →
+ *     le viewer suit l'éditeur (règle de défaut attendue).
  *
  * Sûr par construction :
  *  - le mode nav n'est PAS persisté (état d'interaction éphémère par tab) →
@@ -133,16 +148,29 @@ export function setupSessionRestore(
  *    viewer qui aurait été volontairement libéré ;
  *  - l'invariant « un seul viewer couplé par éditeur » est maintenu par
  *    `linkPreview` (coupler un viewer découple automatiquement l'autre).
- *  - le cas où l'utilisateur n'AVAIT pas de couplage (viewer indépendant
- *    ouvert par wikilink hors mode nav) produit un faux positif bénin : le
- *    viewer suit l'éditeur — c'est la règle de défaut attendue.
  */
-export function restorePreviewLinks(pm: PanelManager): void {
+export function restorePreviewLinks(
+  pm: PanelManager,
+  sideSession?: SessionSideData,
+): void {
   for (const s of pm.side.tabs) {
     if (tabContentKind(s.kind) !== "file" || !s.path) continue;
-    const mainTab = pm.main.tabs.find(
-      (t) => tabContentKind(t.kind) === "file" && t.path === s.path,
+    // L'entrée de session du viewer restauré, par chemin (les tabs side sont
+    // dédupliqués par chemin → correspondance unique).
+    const entry = sideSession?.tabs.find(
+      (e) => normPath(e.path) === normPath(s.path),
     );
-    if (mainTab) pm.linkPreview(s.id, mainTab.id);
+    const target = entry?.linkedTo
+      ? // Couplage persisté : le tab éditeur main couplé à la sauvegarde.
+        pm.main.tabs.find(
+          (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(entry.linkedTo!),
+        )
+      : // Session legacy : repli par chemin (viewer ↔ éditeur du même fichier).
+        pm.main.tabs.find(
+          (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(s.path),
+        );
+    if (target) pm.linkPreview(s.id, target.id);
   }
 }
+
+const normPath = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
