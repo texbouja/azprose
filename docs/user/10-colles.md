@@ -68,6 +68,9 @@ programme: Suites numériques — suites adjacentes
 > [!note] Ce que l'application fait de ces blocs
 > Le mode **colle** — l'étoile affichée dans la barre d'outils de l'aperçu d'une note dont les métadonnées portent `type: colle` — transforme la note en **feuille de colles** : une carte par élève, avec navigation entre les planches, saisie de l'évaluation (notes par rubrique, observations) et enregistrement direct dans le bloc de données. Voir la note d'exemple [[2026-01-07]].
 
+> [!tip] Donnez vie aux données dans le texte
+> Les valeurs du front matter de la note du jour sont injectables dans votre compte rendu : avec `date: 2026-01-07` en tête de note, écrivez « Bilan de la journée du {{date}} » et le rendu affiche la date. Ajoutez vos propres champs (`matiere`, `theme`…) et utilisez-les dans le texte — la résolution se fait à chaque rendu, la source ne bouge pas. Voir le chapitre 7, [[07-front-matter|Les métadonnées]].
+
 ### 2. Relier élèves et matières
 
 Chaque fiche d'élève est une note dédiée. M. Boujaida relie la colle à la fiche de l'élève et à la fiche de la matière — rien de plus que des [[03-wikilinks|wikilinks]] :

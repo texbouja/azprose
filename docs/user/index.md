@@ -13,7 +13,7 @@ Bienvenue dans le guide d'AZprose ! Ce guide vous accompagne pas à pas dans la 
 4. **[[04-transclusions|Embarquer une note]]** — intégrer le contenu d'une note dans une autre avec les *transclusions*.
 5. **[[05-callouts|Les encadrés]]** — mettre un passage en valeur avec les *callouts*, y compris personnalisés.
 6. **[[06-vue-liens|La vue Liens]]** — le sommaire de la note, les *backlinks* et les *tags*.
-7. **[[07-front-matter|Les métadonnées]]** — les données structurées en tête de note (le *front matter* YAML).
+7. **[[07-front-matter|Les métadonnées]]** — les données structurées en tête de note (le *front matter* YAML), réutilisables dans votre texte avec `{{champ}}`.
 8. **[[08-journal|Les notes quotidiennes]]** — le journal de bord daté (les *daily notes*).
 9. **[[09-impression|Imprimer en PDF]]** — exporter vos notes en PDF : principe, dialogue, gabarits et réglages.
 10. **[[10-colles|Les colles]]** — le cas d'usage complet : préparer, suivre et envoyer les colles.

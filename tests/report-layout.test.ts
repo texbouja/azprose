@@ -295,7 +295,8 @@ describe("resolveReportVar", () => {
     expect(resolveReportVar("email", doc)?.value).toBe("k.boujaida@example.ma");
     expect(resolveReportVar("website", doc)?.value).toBe("boujaida.example.ma");
     expect(resolveReportVar("preauteur", doc)?.value).toBe("Pr.");
-    expect(resolveReportVar("type", doc)?.value).toBe("colle");
+    // `type` est un commutateur logique, jamais affiché dans les gabarits.
+    expect(resolveReportVar("type", doc)).toBeNull();
     // clé ABSENTE → inconnue (null), pas « vide ».
     expect(resolveReportVar("centre", base)).toBeNull();
     expect(resolveReportVar("website", base)).toBeNull();

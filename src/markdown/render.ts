@@ -13,8 +13,9 @@ import { shiftRangesToSource, unshiftTransclusionLine } from "./transclusion-lin
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import { slugify } from "./slugify";
 import { stripColleSeparators } from "@/colles";
-import { humanizeDocType, parseMetaFence, type DocType } from "@/lib/doc-meta";
+import { DOC_FIELD_LABELS, DOC_TYPE_HINTS, DOC_TYPE_LABELS, parseMetaFence, type DocType } from "@/lib/doc-meta";
 import { parseFrontMatter } from "@/lib/front-matter";
+import { renderBodyTemplates, templateDocSource } from "@/lib/doc-template";
 import { imgMime, uint8ToBase64 } from "@/lib/image-uri";
 
 // ── HTML escape utilities ────────────────────────────────
@@ -185,50 +186,16 @@ md.use(footnote);
 // ── Fences de métadonnées (```meta / ```colle) — carte d'en-tête lisible ────
 
 /**
- * Ordre d'affichage des champs dans la carte d'en-tête.
- *  - COLLE : ordre historique (parité visuelle du rendu colle).
- *  - générique : catalogue document, matière en tête, sans élève/colleur/salle.
+ * Carte d'en-tête d'un fence de métadonnées. Les libellés viennent du
+ * registre UNIQUE `DOC_FIELD_LABELS` (doc-meta) — l'ancienne distinction
+ * meta/colle est supprimée ; les champs absents sont simplement filtrés.
  */
-const COLLE_FIELD_LABELS: Array<[string, string]> = [
-  ["matiere", "Matière"],
-  ["colleur", "Colleur"],
-  ["eleve", "Élève"],
-  ["date", "Date"],
-  ["creneau", "Créneau"],
-  ["salle", "Salle"],
-  ["classe", "Classe"],
-  ["groupe", "Groupe"],
-];
-
-const DOC_FIELD_LABELS: Array<[string, string]> = [
-  ["matiere", "Matière"],
-  ["classe", "Classe"],
-  ["date", "Date"],
-  ["creneau", "Créneau"],
-  ["centre", "Centre"],
-  ["ville", "Ville"],
-  ["filiere", "Filière"],
-  ["session", "Session"],
-  ["duree", "Durée"],
-  ["document", "Document"],
-  ["theme", "Thème"],
-  ["origine", "Origine"],
-  ["auteur", "Auteur"],
-  ["email", "Email"],
-  ["website", "Site web"],
-];
-
-function renderMetaPlaceholder(
-  index: number,
-  type: DocType,
-  meta: Record<string, string>,
-  isColle: boolean,
-): string {
+function renderMetaPlaceholder(index: number, type: DocType, meta: Record<string, string>): string {
   const metaJson = escapeAttr(JSON.stringify(meta));
-  const labels = isColle
-    ? COLLE_FIELD_LABELS
-    : DOC_FIELD_LABELS;
-  const fields = labels
+  const hint = DOC_TYPE_HINTS[type]
+    ? `<p class="colle-block__hint">${escapeHtml(DOC_TYPE_HINTS[type])}</p>`
+    : "";
+  const fields = DOC_FIELD_LABELS
     .filter(([k]) => meta[k] != null && meta[k] !== "")
     .map(([k, label]) => {
       const v = meta[k];
@@ -240,14 +207,10 @@ function renderMetaPlaceholder(
       );
     })
     .join("");
-  const badge = humanizeDocType(type);
-  const hint = isColle
-    ? `<p class="colle-block__hint">Fiche de colle — ouvrir la vue « Colles » pour l'évaluation</p>`
-    : "";
   return (
     `<div class="colle-block" data-colle-index="${index}" data-colle-meta="${metaJson}">` +
     `<div class="colle-block__head">` +
-    `<span class="colle-block__badge">${escapeHtml(badge)}</span>${fields}` +
+    `<span class="colle-block__badge">${escapeHtml(DOC_TYPE_LABELS[type])}</span>${fields}` +
     `</div>` +
     hint +
     `</div>`
@@ -266,7 +229,7 @@ md.renderer.rules.fence = ((tokens, idx, _options, env, _self) => {
     const rEnv = env as Record<string, unknown>;
     const pIndex = (rEnv.colleIndex as number) ?? 0;
     rEnv.colleIndex = pIndex + 1;
-    return renderMetaPlaceholder(pIndex, fence.type, fence.meta, fence.type === "colle");
+    return renderMetaPlaceholder(pIndex, fence.type, fence.meta);
   }
 
   if (!highlighter) return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
@@ -347,13 +310,22 @@ export async function renderMarkdown(
   filePath?: string,
   rootPath?: string,
 ): Promise<RenderResult> {
-  const { meta, body, fmLineCount } = parseFrontMatter(src);
-  let content = body;
+  const { meta, values, body, fmLineCount } = parseFrontMatter(src);
+  // Templating AU RENDU : les variables YAML du front-matter (`{{var}}`,
+  // blocs `{{#if}}`/`{{#each}}`) sont résolues dans le corps à chaque rendu —
+  // modifier le front-matter change le rendu, la source .md n'est jamais
+  // écrite. Les fences de code sont sautés (code verbatim).
+  let content = renderBodyTemplates(body, values);
   const ranges: TransclusionRange[] = [];
 
-  // Resolve ![[file]] transclusions before markdown-it rendering
+  // Resolve ![[file]] transclusions before markdown-it rendering. Les
+  // `{{var}}` d'un fichier transclu se résolvent d'abord avec les valeurs du
+  // FICHIER MAÎTRE, en repli avec celles du fichier transclu.
   if (filePath) {
-    content = await resolveTransclusions(content, filePath, 0, new Set(), rootPath, ranges);
+    content = await resolveTransclusions(
+      content, filePath, 0, new Set(), rootPath, ranges, undefined, undefined,
+      (s) => templateDocSource(s, values),
+    );
   }
   // Ranges are computed in BODY coordinates (front matter already stripped);
   // data-sline is stamped in ORIGINAL source coordinates (map[0] + fmOffset).

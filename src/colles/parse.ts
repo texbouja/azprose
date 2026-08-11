@@ -15,7 +15,7 @@
  * ```colle — aucune disposition particulière (double `---`, titre `# Colles`)
  * n'est requise pour marquer le début de la section.
  */
-import { parse } from "yaml";
+import { parseYamlMap } from "@/lib/doc-meta";
 import { parseFrontMatter } from "@/lib/front-matter";
 import type { ColleMeta, CollePlanche, CollesSection } from "./types";
 
@@ -48,22 +48,15 @@ export function isHrLine(line: string): boolean {
 
 /**
  * Parse le contenu YAML d'un bloc ```` ```colle ```` en ColleMeta BRUTE (le
- * dict `notes` et toute clé libre sont préservés pour le write-back — ne PAS
- * passer par le parseur plat `parseMetaYaml`, il aplatirait les dicts).
+ * dict `notes` et toute clé libre sont préservés pour le write-back).
+ * Passe par le parser YAML UNIFIÉ `parseYamlMap` (doc-meta) — l'unique source
+ * de vérité pour front-matter et fences.
  * BRUT = aucune normalisation : la valeur `type` du YAML est conservée telle
  * quelle ; le forçage `type = "colle"` (nom du fence autoritaire) est le rôle
  * de `parseMetaFence` au rendu. {} si vide, invalide ou non-objet.
  */
 export function parseColleYaml(blockSource: string): ColleMeta {
-  const trimmed = blockSource.trim();
-  if (!trimmed) return {};
-  try {
-    const doc = parse(trimmed);
-    if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return {};
-    return doc as ColleMeta;
-  } catch {
-    return {};
-  }
+  return parseYamlMap(blockSource) as ColleMeta;
 }
 
 function isEmptyLine(line: string): boolean {

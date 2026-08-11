@@ -179,7 +179,9 @@ async function assembleHtml(
   const fm = parseFrontMatter(src);
   const logo = await resolveLogoValue(fm.meta.logo, filePath, readFile);
   const altlogo = (fm.meta.altlogo ?? "").trim() || null;
-  const body = renderPrintTemplate(template, { content: tmp.innerHTML, title, date, logo, altlogo });
+  // `fm.values` expose TOUTES les variables YAML du front-matter à la coquille
+  // (sauf `type` et booléens — règles du moteur de templating).
+  const body = renderPrintTemplate(template, { content: tmp.innerHTML, title, date, logo, altlogo }, fm.values);
 
   // 6. Assemble — squelette commun du noyau printing (head CSS + MathJax CDN
   //    + préambule + lifecycle), marqueur `azprose-print-ready`.

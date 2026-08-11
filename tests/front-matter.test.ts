@@ -57,4 +57,32 @@ date: 2026-08-08
     expect(fm.meta).toEqual({});
     expect(fm.fmLineCount).toBe(0);
   });
+
+  it("values = vue STRUCTURÉE (booléens, nombres, tableaux, objets)", () => {
+    const fm = parseFrontMatter(`---
+type: cours
+matiere: Maths
+publie: true
+note: 15.5
+chapitres:
+  - suites
+  - limites
+notes:
+  rub1: 5
+---`);
+    expect(fm.values).toEqual({
+      type: "cours",
+      matiere: "Maths",
+      publie: true,
+      note: 15.5,
+      chapitres: ["suites", "limites"],
+      notes: { rub1: 5 },
+    });
+  });
+
+  it("values reflète meta une fois aplati (même règle d'affichage)", () => {
+    const fm = parseFrontMatter("---\nmatiere: Maths\npublie: true\nabsent: false\n---\nx");
+    expect(fm.meta).toEqual({ matiere: "Maths", publie: "true" });
+    expect(fm.values.publie).toBe(true);
+  });
 });

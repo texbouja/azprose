@@ -86,6 +86,7 @@ export async function resolveTransclusions(
   ranges?: TransclusionRange[],
   fs: TransclusionFs = tauriTransclusionFs,
   getIndex: (rootPath: string) => Promise<Map<string, string>> = getFileIndex,
+  templateSource?: (includedSource: string) => string,
 ): Promise<string> {
   if (depth >= MAX_DEPTH) return src;
 
@@ -145,6 +146,11 @@ export async function resolveTransclusions(
     try {
       let included = await fs.readText(absTarget);
 
+      // Templating du fichier transclu (hook du fichier maître) AVANT toute
+      // extraction de section : les `{{var}}` sont résolus sur le contenu
+      // complet, la portée est « maître puis transclu » (doc-template).
+      if (templateSource) included = templateSource(included);
+
       // Extract section if fragment specified
       if (fragment) {
         if (fragment.startsWith("^")) {
@@ -157,7 +163,7 @@ export async function resolveTransclusions(
       // Recurse into nested transclusions
       const childAncestors = new Set(ancestors);
       childAncestors.add(absTarget);
-      included = await resolveTransclusions(included, absTarget, depth + 1, childAncestors, rootPath, undefined, fs, getIndex);
+      included = await resolveTransclusions(included, absTarget, depth + 1, childAncestors, rootPath, undefined, fs, getIndex, templateSource);
 
       // Track transclusion range (only at depth 0 = top-level) — la position
       // du marqueur est `result.length` AVANT d'ajouter le contenu.

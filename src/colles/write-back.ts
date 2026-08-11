@@ -17,7 +17,7 @@
  */
 import { stringify } from "yaml";
 import { findFichesSection, isFenceClose, isFenceOpen, parseColleYaml } from "./parse";
-import { isColleMetaFence, parseMetaFence } from "@/lib/doc-meta";
+import { parseMetaFence, docTypeSwitches } from "@/lib/doc-meta";
 import type { ColleMeta } from "./types";
 
 interface FenceRange {
@@ -36,7 +36,8 @@ function fenceLang(line: string): "colle" | "meta" {
  * Localise le `index`-ième fence de COLLE à partir de `startLine`. Seuls les
  * fences dont le TYPE est "colle" comptent (```` ```colle ````, ou ```` ```meta ````
  * avec `type: colle`) — un ```` ```meta ```` de cours/exercices présent dans la
- * section ne décale pas le comptage du write-back.
+ * section ne décale pas le comptage du write-back. Le dispatch se fait via le
+ * commutateur générique `docTypeSwitches(...).isColle` (aucun privilège de type).
  */
 function locateFence(lines: string[], startLine: number, index: number): FenceRange | null {
   const n = lines.length;
@@ -48,7 +49,7 @@ function locateFence(lines: string[], startLine: number, index: number): FenceRa
       while (j < n && !isFenceClose(lines[j])) j++;
       const end = Math.min(j, n - 1);
       const content = lines.slice(i + 1, end).join("\n");
-      if (isColleMetaFence(parseMetaFence(fenceLang(lines[i]), content))) {
+      if (docTypeSwitches(parseMetaFence(fenceLang(lines[i]), content).type).isColle) {
         if (seen === index) return { start: i, end };
         seen++;
       }

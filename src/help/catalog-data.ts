@@ -1,8 +1,8 @@
 // GÉNÉRÉ AUTOMATIQUEMENT par scripts/sync-help.mjs — ne pas éditer à la main.
-// La source de vérité est docs/user/ ; ce fichier est régénéré via
-// `bun run help` (scénario explicite) après chaque édition de la doc.
+// La source de vérité est docs/user/ ; ce fichier est régénéré à chaque passe
+// (hooks predev/prebuild/pretauri).
 
-export const HELP_VERSION = "f0fd6e6cf065";
+export const HELP_VERSION = "3f2bd3016507";
 
 export const catalog = [
   { path: "index.md", title: "AZprose — Guide utilisateur" },

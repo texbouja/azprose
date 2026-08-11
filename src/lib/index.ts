@@ -49,17 +49,32 @@ export {
 } from "./files";
 export { basename, dirname, joinPath } from "./paths-utils";
 export {
+  DOC_FIELD_LABELS,
   DOC_META_FIELDS,
   DOC_TYPES,
+  DOC_TYPE_HINTS,
+  DOC_TYPE_LABELS,
+  displayYamlValue,
+  docTypeSwitches,
+  flattenYamlMap,
   humanizeDocType,
-  isColleMetaFence,
   isDocType,
   normalizeDocType,
   parseMetaFence,
   parseMetaYaml,
+  parseYamlMap,
   type DocType,
+  type DocTypeSwitch,
+  type DocTypeSwitches,
   type ParsedMetaFence,
 } from "./doc-meta";
+export {
+  resolveDocEach,
+  resolveDocVar,
+  renderBodyTemplates,
+  templateDocSource,
+  templateOutsideFences,
+} from "./doc-template";
 export {
   DEFAULT_PRINT_REQUEST,
   PAPER_FORMATS,

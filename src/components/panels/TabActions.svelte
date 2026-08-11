@@ -7,6 +7,7 @@ import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import { parseFrontMatter } from "@/lib/front-matter";
+import { docTypeSwitches, normalizeDocType } from "@/lib/doc-meta";
 import SlideModeRadio from "./SlideModeRadio.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
 import { navHistory, getNavActions } from "@/stores/nav-history.svelte";
@@ -142,19 +143,21 @@ let isMain = $derived(panelId === "main");
 // universel — le seul lancé par le bouton Preview de l'éditeur, et le seul à
 // survivre au recyclage d'un tab (panel-store `recycleRenderMode` réarme tout
 // mode viewer sur "preview" quand le fichier change). Un fichier peut déclarer
-// un mode alternatif, exposé comme BASCULE dans la toolbar de ce tab viewer :
-//   - `type: colle` (front matter) → vue planches (CollePreview) ;
-//   - tout autre .md → SlideDeck (« Presentation ») — le cas particulier PAR
-//     DÉFAUT du viewer généraliste (bascule historique du viewer).
+// un mode alternatif, exposé comme BASCULE dans la toolbar de ce tab viewer.
+// Les COMMUTATEURS de type (doc-meta, `docTypeSwitches`) décident, sans
+// privilège de type : `type: colle` → vue planches (CollePreview, commutateur
+// `.isColle`) ; tout autre .md → SlideDeck (« Presentation », mode d'affichage
+// du viewer généraliste). Une future vue dédiée lira son propre commutateur
+// (ex. `.isBanque` pour une banque d'exercices) — même pattern.
 // La bascule ne permute qu'entre preview ↔ mode alternatif : un recyclage
 // retombe TOUJOURS sur le mode général (décision utilisateur).
-let altMode = $derived<"colle" | "presentation" | null>(
-  isMd
-    ? parseFrontMatter(activeTab?.source ?? "").meta.type === "colle"
-      ? "colle"
-      : "presentation"
-    : null,
-);
+let altMode = $derived.by<"colle" | "presentation" | null>(() => {
+  if (!isMd) return null;
+  const switches = docTypeSwitches(
+    normalizeDocType(parseFrontMatter(activeTab?.source ?? "").values.type),
+  );
+  return switches.isColle ? "colle" : "presentation";
+});
 
 // Mode navigation du tab side actif (store par tab, jamais persisté) — lu
 // réactivement via la version du store (rune $state du module).

@@ -17,7 +17,8 @@
  * data URI via un lecteur de fichier INJECTABLE (tests sans Tauri).
  */
 
-import { renderTemplateText, escHtml, type TemplateResolve } from "@/lib/handout-layout";
+import { renderTemplateText, escHtml, type ResolveEach, type TemplateResolve } from "@/lib/handout-layout";
+import { resolveDocEach, resolveDocVar } from "@/lib/doc-template";
 import { imgMime, uint8ToBase64 } from "@/lib/image-uri";
 import { dirname, joinPath } from "@/lib/paths-utils";
 import type { VarDef } from "@/printing/core/vars";
@@ -129,10 +130,17 @@ export interface PrintTemplateContext {
  * `content` est inséré brut (HTML du document) ; title/date/altlogo échappés ;
  * `logo` est échappé aussi (il est inséré dans l'attribut `src` — l'échappage
  * est inoffensif pour les data URI et correct pour les URL).
+ *
+ * `vars` (optionnel) = valeurs YAML STRUCTURÉES du document (front-matter) :
+ * elles deviennent des variables de la coquille, résolues avec les règles
+ * du moteur de templating (type → null, booléen false → invisible, tableaux
+ * joints par « · », `{{#each}}` sur les listes…). Sans `vars`, seules les
+ * variables du contexte sont disponibles.
  */
 export function renderPrintTemplate(
   template: PrintTemplate,
   ctx: PrintTemplateContext,
+  vars?: Record<string, unknown>,
 ): string {
   const resolve: TemplateResolve = (name) => {
     switch (name) {
@@ -147,10 +155,13 @@ export function renderPrintTemplate(
       case "altlogo":
         return ctx.altlogo ? { value: ctx.altlogo, raw: false } : null;
       default:
-        return null;
+        return vars ? resolveDocVar(name, vars) : null;
     }
   };
-  return renderTemplateText(template.html, resolve);
+  const resolveEach: ResolveEach | undefined = vars
+    ? (name) => resolveDocEach(name, vars)
+    : undefined;
+  return renderTemplateText(template.html, resolve, resolveEach);
 }
 
 /** Titre d'impression par défaut : basename sans extension. */

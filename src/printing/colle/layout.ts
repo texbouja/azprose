@@ -52,7 +52,7 @@ import {
   type ResolveEach,
   type ResolveResult,
 } from "@/lib/handout-layout";
-import { DOC_META_FIELDS } from "@/lib/doc-meta";
+import { DOC_META_FIELDS, displayYamlValue } from "@/lib/doc-meta";
 import type { VarDef } from "@/printing/core/vars";
 
 export { escHtml } from "@/lib/handout-layout";
@@ -451,15 +451,14 @@ function metaValue(
     case "note": return data.note === null ? "" : formatNoteValue(data.note);
     case "noteMax": return formatNoteValue(data.noteMax);
     case "colleur": return data.colleur ?? "";
+    case "type": return ""; // commutateur logique, jamais affiché (règle unifiée)
     default: {
       // Champ générique (catalogue document ou clé libre) présent dans la
-      // meta de la planche — tableau joint par « · », objet (dict `notes`)
-      // ignoré (rien de lisible à afficher), clé absente → "".
+      // meta de la planche — règles d'affichage UNIFIÉES (displayYamlValue) :
+      // tableau joint « · », objet ignoré (rien de lisible), booléen false →
+      // invisible, clé absente → "".
       if (!Object.prototype.hasOwnProperty.call(m, key)) return "";
-      const v = (m as Record<string, unknown>)[key];
-      if (v === null || v === undefined) return "";
-      if (typeof v === "object") return Array.isArray(v) ? (v as unknown[]).join(" · ") : "";
-      return String(v);
+      return displayYamlValue((m as Record<string, unknown>)[key])?.value ?? "";
     }
   }
 }
@@ -513,6 +512,11 @@ export function resolveReportVar(
     case "rubriques": return { value: buildReportRubrics(data.rubricRows), raw: true };
     case "observations": return { value: buildReportObs(data.observationsHtml), raw: true };
     default:
+      // `type` est un COMMUTATEUR logique — jamais une variable d'affichage
+      // dans les gabarits (règle unifiée doc-template) : toutes les formes
+      // (`{{type}}`, `{{meta:type}}`, `{{meta.type}}`, `{{metaRow:type}}`)
+      // sont invisibles.
+      if (name === "type" || name === "meta:type" || name === "meta.type") return null;
       // `{{metaRow:<champ>}}` : ligne « Champ : valeur » précomposée
       // (`<dt>/<dd>`), pour la zone Métadonnées — tous les champs du catalogue
       // document + la ligne d'info colle (date, creneau, salle, classe,
@@ -540,18 +544,12 @@ export function resolveReportVar(
       }
       // `{{champ}}` générique du catalogue document (centre, ville, filiere,
       // session, duree, document, theme, origine, auteur, email, website,
-      // preauteur, type, …) : résolu si la planche porte la clé — sinon null
+      // preauteur, …) : résolu si la planche porte la clé — sinon null
       // (→ invisible au rendu). Garde `hasOwnProperty` (pas d'héritage).
+      // Valeurs affichées avec les règles UNIFIÉES (displayYamlValue).
       if (Object.prototype.hasOwnProperty.call(m, name)) {
-        const v = (m as Record<string, unknown>)[name];
-        if (v === null || v === undefined) return { value: "", raw: false };
-        if (typeof v === "object") {
-          return {
-            value: Array.isArray(v) ? (v as unknown[]).join(" · ") : "",
-            raw: false,
-          };
-        }
-        return { value: String(v), raw: false };
+        const r = displayYamlValue((m as Record<string, unknown>)[name]);
+        return r ? { value: r.value, raw: false } : { value: "", raw: false };
       }
       return null;
   }
