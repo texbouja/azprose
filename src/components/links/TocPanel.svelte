@@ -6,6 +6,9 @@
   import {
     buildTocForest,
     DEFAULT_MAX_DEPTH,
+    outlineFoldKeys,
+    tocFileKey,
+    tocHeadingKey,
     type TocFileNode,
     type TocNode,
   } from "@/lib/toc-forest";
@@ -63,38 +66,30 @@
   /** Nœuds repliés, par identité (`path#ligne` headings, `file:path` branches). */
   let collapsed = $state<Set<string>>(new Set());
 
-  // Mode « plan condensé » (bouton du header) : masque TOUTES les rangées de
-  // niveau ≥ 3 — seuls H1 et H2 restent visibles (le plan « se replie » sur les
-  // deux premiers niveaux). C'est un FILTRE DE RENDU : `hiddenInOutline`
-  // garde les rangées dans le snippet ; il n'ajoute rien à `collapsed` (les
-  // replis manuels de l'utilisateur restent orthogonaux au mode). `$state`
-  // car le snippet doit se re-rendre quand le mode change.
+  // Mode « plan condensé » (bouton du header) : replie la TOC pour ne laisser
+  // voir que les headings H1 et H2. C'est une VRAIE opération de repli sur
+  // `collapsed` (`outlineFoldKeys`, toc-forest) — jamais un filtre de rendu :
+  // les niveaux ≥ 2 sont pliés mais RESTENT dans l'arbre, chaque nœud est
+  // dépliable à la main (déplier un H2 montre ses sous-sections, elles-mêmes
+  // pliées). La désactivation RESTAURE le repli manuel d'avant (vue
+  // transitoire). `$state` : l'état du bouton, reflété par le header.
   let outlineActive = $state(false);
+
+  /** Snapshot du repli manuel avant activation — restauré à la désactivation. */
+  let outlineSnapshot: Set<string> | null = null;
 
   /** Bascule le mode « plan condensé ». Retourne le nouvel état (actif ?). */
   export function toggleOutline(): boolean {
     outlineActive = !outlineActive;
+    if (outlineActive) {
+      outlineSnapshot = new Set(collapsed);
+      collapsed = outlineFoldKeys(forest?.root ?? null, collapsed);
+    } else if (outlineSnapshot) {
+      collapsed = new Set(outlineSnapshot);
+      outlineSnapshot = null;
+    }
     onOutlineChange?.(outlineActive);
     return outlineActive;
-  }
-
-  /** Rangée masquée en mode condensé : tout titre de niveau ≥ 3, et toute
-   *  branche dont le plus haut titre est lui-même ≥ 3 (sinon ses H1/H2 restent
-   *  visibles et seuls ses propres H3+ sont masqués par la règle des titres). */
-  function hiddenInOutline(node: TocNode): boolean {
-    if (!outlineActive) return false;
-    if (node.kind === "heading") return node.entry.level >= 3;
-    return firstHeadingLevel(node.children) >= 3;
-  }
-
-  /** Plus petit niveau de titre de la sous-forêt (Infinity si aucun titre). */
-  function firstHeadingLevel(children: TocNode[]): number {
-    for (const c of children) {
-      if (c.kind === "heading") return c.entry.level;
-      const l = firstHeadingLevel(c.children);
-      if (l !== Infinity) return l;
-    }
-    return Infinity;
   }
 
   // Anti-flicker : un changement de fichier (clé) vide l'arbre et affiche
@@ -130,6 +125,7 @@
       forest = null;
       error = false;
       collapsed = new Set();
+      outlineSnapshot = null;
       // Un changement de fichier désactive le mode condensé (le plan précédent
       // n'a plus de sens) et le header est averti pour refléter le bouton.
       outlineActive = false;
@@ -163,8 +159,12 @@
         // manuel — seules la racine index.md (jamais repliée) et la branche de
         // l'article courant sont dépliées par défaut.
         if (helpMode && f.root) seedHelpDefaults(f.root);
-        // Pas de ré-application du mode condensé ici : c'est un filtre de
-        // rendu (`hiddenInOutline`), il s'applique au nouvel arbre de lui-même.
+        // Pas de ré-application du repli ici : `outlineFoldKeys` s'applique à
+        // l'activation, et les clés de repli (`path#line`, `file:path`)
+        // survivent à la reconstruction (le set `collapsed` n'est pas remis à
+        // zéro en cours de frappe). Un titre NOUVEAU apparaît donc déplié —
+        // c'est le comportement voulu (on replie à nouveau avec le bouton si
+        // besoin) ; un repli manuel fait pendant le mode reste en place.
         error = false;
         onStateChange?.({
           total: helpMode ? countArticles(f.root) : countHeadings(f.root),
@@ -217,7 +217,7 @@
   /** Clé de repli d'une branche fichier par chemin (mode aide : `filePath`
    *  est la racine index.md, pas la branche de l'article courant). */
   function fileKeyOfPath(path: string): string {
-    return `file:${path}`;
+    return tocFileKey(path);
   }
 
   /** Clés des branches fichier sur le chemin menant à `current` (lui inclus) —
@@ -292,11 +292,11 @@
   }
 
   function fileKey(node: TocFileNode): string {
-    return `file:${node.path}`;
+    return tocFileKey(node.path);
   }
 
   function headingKey(node: Extract<TocNode, { kind: "heading" }>): string {
-    return `${node.path}#${node.entry.line}`;
+    return tocHeadingKey(node.path, node.entry.line);
   }
 
   /** Clé d'identité d'un nœud pour {#each}. Fonction JS classique — un
@@ -360,67 +360,65 @@
 </script>
 
 {#snippet renderNode(node: TocNode, depth: number)}
-  {#if !hiddenInOutline(node)}
-    <li class="toc__row">
-      <div class="toc__rowline">
-        <span class="toc__ghost" style:width={5 * depth + "px"}></span>
-        {#if node.kind === "file"}
+  <li class="toc__row">
+    <div class="toc__rowline">
+      <span class="toc__ghost" style:width={5 * depth + "px"}></span>
+      {#if node.kind === "file"}
+        <button
+          type="button"
+          class="toc__chevron"
+          aria-label={t("toc.toggle")}
+          aria-expanded={!isCollapsed(fileKey(node))}
+          onclick={() => toggle(fileKey(node))}
+        >
+          <i class="wxi {isCollapsed(fileKey(node)) ? "wxi-chevron-right" : "wxi-chevron-down"}"></i>
+        </button>
+        <button
+          type="button"
+          class="toc__branch-label"
+          class:is-current={node.path === helpActivePath}
+          onclick={() => navigateFile(node)}
+          title={node.path}
+        >
+          <i class="wxi wxi-file-text"></i>
+          <span class="toc__text">{node.label}</span>
+        </button>
+      {:else}
+        {#if node.children.length > 0}
           <button
             type="button"
             class="toc__chevron"
             aria-label={t("toc.toggle")}
-            aria-expanded={!isCollapsed(fileKey(node))}
-            onclick={() => toggle(fileKey(node))}
+            aria-expanded={!isCollapsed(headingKey(node))}
+            onclick={() => toggle(headingKey(node))}
           >
-            <i class="wxi {isCollapsed(fileKey(node)) ? "wxi-chevron-right" : "wxi-chevron-down"}"></i>
-          </button>
-          <button
-            type="button"
-            class="toc__branch-label"
-            class:is-current={node.path === helpActivePath}
-            onclick={() => navigateFile(node)}
-            title={node.path}
-          >
-            <i class="wxi wxi-file-text"></i>
-            <span class="toc__text">{node.label}</span>
+            <i class="wxi {isCollapsed(headingKey(node)) ? "wxi-chevron-right" : "wxi-chevron-down"}"></i>
           </button>
         {:else}
-          {#if node.children.length > 0}
-            <button
-              type="button"
-              class="toc__chevron"
-              aria-label={t("toc.toggle")}
-              aria-expanded={!isCollapsed(headingKey(node))}
-              onclick={() => toggle(headingKey(node))}
-            >
-              <i class="wxi {isCollapsed(headingKey(node)) ? "wxi-chevron-right" : "wxi-chevron-down"}"></i>
-            </button>
-          {:else}
-            <span class="toc__chevron toc__chevron--empty"></span>
-          {/if}
-          <button
-            type="button"
-            class="toc__item"
-            style:padding-left={6 + (node.entry.level - minLevel) * 6 + "px"}
-            onclick={() => navigate(node.path, node.entry.line, node.entry.text)}
-            title={node.entry.text}
-          >
-            <span class="toc__text">{node.entry.text}</span>
-            {#if !helpMode}
-              <span class="toc__line">L{node.entry.line}</span>
-            {/if}
-          </button>
+          <span class="toc__chevron toc__chevron--empty"></span>
         {/if}
-      </div>
-      {#if !isCollapsed(node.kind === "file" ? fileKey(node) : headingKey(node)) && node.children.length > 0}
-        <ul class="toc__list">
-          {#each node.children as child (keyOf(child))}
-            {@render renderNode(child, depth + 1)}
-          {/each}
-        </ul>
+        <button
+          type="button"
+          class="toc__item"
+          style:padding-left={6 + (node.entry.level - minLevel) * 6 + "px"}
+          onclick={() => navigate(node.path, node.entry.line, node.entry.text)}
+          title={node.entry.text}
+        >
+          <span class="toc__text">{node.entry.text}</span>
+          {#if !helpMode}
+            <span class="toc__line">L{node.entry.line}</span>
+          {/if}
+        </button>
       {/if}
-    </li>
-  {/if}
+    </div>
+    {#if !isCollapsed(node.kind === "file" ? fileKey(node) : headingKey(node)) && node.children.length > 0}
+      <ul class="toc__list">
+        {#each node.children as child (keyOf(child))}
+          {@render renderNode(child, depth + 1)}
+        {/each}
+      </ul>
+    {/if}
+  </li>
 {/snippet}
 
 <div class="toc">

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { buildTocForest, type TocFileNode, type TocForest, type TocNode } from "@/lib/toc-forest";
+import {
+  buildTocForest,
+  outlineFoldKeys,
+  tocFileKey,
+  tocHeadingKey,
+  type TocFileNode,
+  type TocForest,
+  type TocNode,
+} from "@/lib/toc-forest";
 import { makeTocMemo } from "@/lib/toc-cache";
 
 /**
@@ -479,5 +487,63 @@ describe("buildTocForest — mémoïsation par hash structural (phases 6/6bis)",
     const forest = await build("/vault/notes/note.md", { readText: fs });
     expect(forest.structuralHash).toMatch(/^[0-9a-f]{1,8}$/);
     expect(forest.structuralHash).not.toBe("");
+  });
+});
+
+describe("outlineFoldKeys — repli du « plan condensé » (H1+H2 visibles, arbre intact)", () => {
+  test("helpers de clés : formats stables", () => {
+    expect(tocFileKey("/a/b.md")).toBe("file:/a/b.md");
+    expect(tocHeadingKey("/a/b.md", 7)).toBe("/a/b.md#7");
+  });
+
+  test("plie tous les titres ≥ 2, déplie les H1 et les branches à H1/H2", async () => {
+    const forest = await build("/vault/index.md");
+    const folded = outlineFoldKeys(forest.root, new Set());
+    // H1 dépliés (la vue H1+H2 tient sa promesse).
+    expect(folded.has(tocHeadingKey("/vault/index.md", 1))).toBe(false);
+    expect(folded.has(tocHeadingKey("/vault/chapitre-1.md", 1))).toBe(false);
+    expect(folded.has(tocHeadingKey("/vault/fiche-1.md", 1))).toBe(false);
+    // Branches portant des H1/H2 : dépliées (leurs H1/H2 restent visibles).
+    expect(folded.has(tocFileKey("/vault/chapitre-1.md"))).toBe(false);
+    expect(folded.has(tocFileKey("/vault/fiche-1.md"))).toBe(false);
+    // H2 pliés (Section 1.1 l.3, Section 1.2 l.7, Section 2.1 l.3).
+    expect(folded.has(tocHeadingKey("/vault/chapitre-1.md", 3))).toBe(true);
+    expect(folded.has(tocHeadingKey("/vault/chapitre-1.md", 7))).toBe(true);
+    expect(folded.has(tocHeadingKey("/vault/chapitre-2.md", 3))).toBe(true);
+    // H3 plié (au-delà de H2 : Détail A l.3 de fiche-1).
+    expect(folded.has(tocHeadingKey("/vault/fiche-1.md", 3))).toBe(true);
+  });
+
+  test("préserve les replis manuels (un H2 replié à la main le reste)", async () => {
+    const forest = await build("/vault/index.md");
+    const manual = new Set([
+      tocFileKey("/vault/chapitre-1.md"),
+      tocHeadingKey("/vault/chapitre-1.md", 7),
+      tocFileKey("/vault/index.md"), // racine repliée à la main (mode aide)
+    ]);
+    const folded = outlineFoldKeys(forest.root, manual);
+    // Un repli manuel déjà conforme survit (H2 plié).
+    expect(folded.has(tocHeadingKey("/vault/chapitre-1.md", 7))).toBe(true);
+    // Le repli manuel d'une branche à H1/H2 est levé : la vue H1+H2 prime.
+    expect(folded.has(tocFileKey("/vault/chapitre-1.md"))).toBe(false);
+    // La racine n'est JAMAIS touchée (page de garde / fichier affiché).
+    expect(folded.has(tocFileKey("/vault/index.md"))).toBe(true);
+  });
+
+  test("plie une branche sans titre H1/H2 (plus haut titre ≥ 3), contenu dépliable", async () => {
+    const deepFiles = {
+      "/vault/deep.md": "# Sommaire\n\n[[annexe]]\n",
+      "/vault/annexe.md": "### A.1\n\n#### A.1.1\n",
+    };
+    const deepIndex = fakeIndex({ deep: "/vault/deep.md", annexe: "/vault/annexe.md" });
+    const forest = await build("/vault/deep.md", { readText: fakeFs(deepFiles), getIndex: deepIndex });
+    const folded = outlineFoldKeys(forest.root, new Set());
+    // La branche annexe (top H3) est PLIÉE — mais ses titres restent pliés
+    // eux aussi (dépliage progressif, jamais de suppression d'arbre).
+    expect(folded.has(tocFileKey("/vault/annexe.md"))).toBe(true);
+    expect(folded.has(tocHeadingKey("/vault/annexe.md", 1))).toBe(true);
+    expect(folded.has(tocHeadingKey("/vault/annexe.md", 3))).toBe(true);
+    // La racine (fichier affiché) n'est jamais pliée.
+    expect(folded.has(tocFileKey("/vault/deep.md"))).toBe(false);
   });
 });

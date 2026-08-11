@@ -224,6 +224,67 @@ interface BuildCtx {
   maxDepth: number;
 }
 
+// ── Repli du « plan condensé » (bouton du header TOC) ────────────────────────
+
+/** Clé de repli d'une branche fichier — format `file:<path>` (identité stable
+ *  des nœuds fichier dans le set `collapsed` du panneau TOC). */
+export function tocFileKey(path: string): string {
+  return `file:${path}`;
+}
+
+/** Clé de repli d'un heading — format `<path>#<ligne>` (ligne 1-based du
+ *  titre dans son fichier). */
+export function tocHeadingKey(path: string, line: number): string {
+  return `${path}#${line}`;
+}
+
+/** Plus petit niveau de titre de la sous-forêt (Infinity si aucun titre). */
+export function firstHeadingLevel(children: TocNode[]): number {
+  for (const c of children) {
+    if (c.kind === "heading") return c.entry.level;
+    const l = firstHeadingLevel(c.children);
+    if (l !== Infinity) return l;
+  }
+  return Infinity;
+}
+
+/**
+ * Repli du mode « plan condensé » : copie de `collapsed` où la sous-forêt des
+ * niveaux ≥ 2 est PLIÉE — seuls les H1 (dépliés) et les H2 (pliés) restent
+ * visibles. C'est une VRAIE opération sur les clés de repli, jamais un filtre
+ * de rendu : chaque nœud reste dans l'arbre et reste DÉPLIABLE un à un (déplier
+ * un H2 montre ses sous-sections, elles-mêmes pliées). Règles :
+ *  - heading de niveau ≥ 2 → plié ; niveau 1 → DÉPLIÉ (la vue « H1+H2 » tient
+ *    sa promesse même si l'utilisateur avait replié un H1 à la main) ;
+ *  - branche fichier (hors racine) dont le plus haut titre est ≥ 3 → pliée
+ *    (aucun H1/H2 à montrer — son contenu reste accessible au dépliage) ;
+ *    sinon dépliée (ses H1/H2 restent visibles) ;
+ *  - la racine n'est jamais touchée (chemin racine affiché, page de garde du
+ *    manuel en mode aide — repli manuel préservé).
+ */
+export function outlineFoldKeys(root: TocFileNode | null, collapsed: Set<string>): Set<string> {
+  const next = new Set(collapsed);
+  const walk = (children: TocNode[]) => {
+    for (const c of children) {
+      if (c.kind === "file") {
+        if (!c.root) {
+          const key = tocFileKey(c.path);
+          if (firstHeadingLevel(c.children) >= 3) next.add(key);
+          else next.delete(key);
+        }
+        walk(c.children);
+      } else {
+        const key = tocHeadingKey(c.path, c.entry.line);
+        if (c.entry.level >= 2) next.add(key);
+        else next.delete(key);
+        walk(c.children);
+      }
+    }
+  };
+  if (root) walk(root.children);
+  return next;
+}
+
 /** Construit le nœud fichier d'un document : arbre de ses titres + branches
  *  transcluses (récursives, anti-cycle, bornées par maxDepth). */
 async function buildFileNode(
