@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { loadSession, saveSession, saveLastFile, loadLastFile } from "@/lib/session";
 import type { SessionSideData } from "@/lib/session";
 import { loadProjectSession } from "@/lib/project-session";
-import { tabContentKind } from "@/lib/panel-store";
+import { tabContentKind, type Tab } from "@/lib/panel-store";
 import type { PanelManager } from "@/lib/panel-manager";
 
 export interface SessionRestoreDeps {
@@ -127,20 +127,33 @@ export function setupSessionRestore(
  * jamais persisté tel quel — et les ids de tabs sont RÉGÉNÉRÉS au restore :
  * le chemin est le seul identifiant stable de la session.
  *
- * Deux sources, dans l'ordre :
- *  1. **Couplage PERSISTÉ** (`linkedTo`, écrit par PanelManager.toJSON sur les
- *     entrées side) : chemin du tab éditeur main couplé à la sauvegarde — le
- *     viewer couplé est re-couplé vers CE tab, même si son chemin diffère de
- *     celui du viewer (repoint silencieux échoué, navigation openFile sans
- *     synchro viewer : journal, oxide…). C'est l'information EXPLICITE, jamais
- *     une déduction — le couplage ne se perd plus au redémarrage. Si le tab
- *     main cible n'existe pas au restore (fichier illisible), PAS de repli par
- *     chemin : le couplage explicite est mort avec son éditeur.
- *  2. **Repli legacy path-match** (sessions sauvegardées avant linkedTo) : un
- *     tab side de fichier affichant le même chemin qu'un tab main est re-couplé
- *     — la synchro éditeur→viewer redevient active après redémarrage. Faux
- *     positif bénin documenté : viewer indépendant + éditeur du même fichier →
- *     le viewer suit l'éditeur (règle de défaut attendue).
+ * Règle forte (décision utilisateur) : en état de couplage, un tab éditeur et
+ * un tab viewer affichent strictement le MÊME md — un état divergent est
+ * IMPOSSIBLE (ruptures runtime + gardes au save/restore). Cette fonction n'en
+ * restaure donc jamais un : la cohérence `linkedTo == chemin du viewer` est la
+ * seule porte d'entrée.
+ *
+ * Deux familles de sessions :
+ *  1. **Modernes** (au moins un tab side porte la clé `linkedTo`, écrite
+ *     SYSTÉMATIQUEMENT string|null par PanelManager.toJSON) : `linkedTo` est
+ *     EXPLICITE et fait foi.
+ *      - `linkedTo` = chemin (cohérent, == chemin du viewer par construction)
+ *        → re-couplage vers le tab éditeur main de ce chemin. Si ce tab
+ *        n'existe pas au restore (fichier illisible) → PAS de repli : le
+ *        couplage explicite est mort avec son éditeur.
+ *      - `linkedTo` = null → viewer EXPLICITEMENT indépendant, JAMAIS re-couplé
+ *        (l'ancien path-match déduisait un couplage là où l'utilisateur avait
+ *        choisi l'indépendance — l'information est désormais persistée).
+ *      - `linkedTo` ≠ chemin du viewer (donnée corrompue ou session d'une
+ *        version antérieure au correctif règle forte) → IGNORÉ : jamais d'état
+ *        divergent restauré, et PAS de repli path-match non plus (le champ
+ *        explicite fait foi, y compris pour dire « rien »).
+ *  2. **Legacy** (aucune clé `linkedTo`) : repli path-match historique — un tab
+ *     side de fichier affichant le même chemin qu'un tab main est re-couplé.
+ *     Faux positif bénin documenté : viewer indépendant + éditeur du même
+ *     fichier → le viewer suit l'éditeur (règle de défaut attendue). Transition
+ *     de migration : dès le premier changement de session, toJSON écrit
+ *     `linkedTo` partout et la session devient moderne.
  *
  * Sûr par construction :
  *  - le mode nav n'est PAS persisté (état d'interaction éphémère par tab) →
@@ -153,6 +166,7 @@ export function restorePreviewLinks(
   pm: PanelManager,
   sideSession?: SessionSideData,
 ): void {
+  const modern = sideSession?.tabs.some((e) => "linkedTo" in e) ?? false;
   for (const s of pm.side.tabs) {
     if (tabContentKind(s.kind) !== "file" || !s.path) continue;
     // L'entrée de session du viewer restauré, par chemin (les tabs side sont
@@ -160,15 +174,23 @@ export function restorePreviewLinks(
     const entry = sideSession?.tabs.find(
       (e) => normPath(e.path) === normPath(s.path),
     );
-    const target = entry?.linkedTo
-      ? // Couplage persisté : le tab éditeur main couplé à la sauvegarde.
-        pm.main.tabs.find(
-          (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(entry.linkedTo!),
-        )
-      : // Session legacy : repli par chemin (viewer ↔ éditeur du même fichier).
-        pm.main.tabs.find(
-          (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(s.path),
+    let target: Tab | undefined;
+    if (modern) {
+      const linkedPath = entry?.linkedTo;
+      // Règle forte : un linkedTo cohérent (== chemin du viewer) est la seule
+      // porte d'entrée — un chemin divergent (donnée corrompue) est IGNORÉ.
+      if (linkedPath && normPath(linkedPath) === normPath(s.path)) {
+        target = pm.main.tabs.find(
+          (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(linkedPath),
         );
+      }
+    } else {
+      // Session legacy (sans clé linkedTo) : repli par chemin (viewer ↔
+      // éditeur du même fichier).
+      target = pm.main.tabs.find(
+        (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(s.path),
+      );
+    }
     if (target) pm.linkPreview(s.id, target.id);
   }
 }

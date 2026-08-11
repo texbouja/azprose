@@ -104,8 +104,13 @@ function pushCurrentIfAny(deps: NavDeps): void {
  *  actif est couplé à un tab viewer side, re-pointe ce viewer vers `path`
  *  (politique A identique à followPreviewNavigation : park + preferDraft, le
  *  tab lié n'est jamais un onglet d'outil et son flag `preview` est retiré à
- *  chaque repoint). No-op sans couplage ou si déjà sur la cible. */
-function syncCoupledViewer(deps: NavDeps, path: string): void {
+ *  chaque repoint). No-op sans couplage ou si déjà sur la cible.
+ *
+ *  Règle forte « couplé ⇒ MÊME md » : le repoint est ATTENDU et, s'il ÉCHOUE
+ *  (fichier illisible), le couplage est ROMPU — jamais un couple éditeur↔viewer
+ *  divergent (le viewer reste sur son fichier, l'éditeur a bougé). L'appelant
+ *  doit `await` cette fonction (le repoint est asynchrone). */
+async function syncCoupledViewer(deps: NavDeps, path: string): Promise<void> {
   const mainId = deps.pm.main.activeTabId;
   if (!mainId) return;
   const sideId = deps.pm.sideTabLinkedTo(mainId);
@@ -114,7 +119,8 @@ function syncCoupledViewer(deps: NavDeps, path: string): void {
   const tab = side.tabs.find((t) => t.id === sideId);
   if (!tab || tabContentKind(tab.kind) !== "file" || !tab.path) return;
   if (normNavPath(tab.path) === normNavPath(path)) return;
-  void side.repoint(sideId, path, { preferDraft: true, silent: true });
+  const res = await side.repoint(sideId, path, { preferDraft: true, silent: true });
+  if (!res.ok) deps.pm.linkPreview(sideId, null);
   void deps.trackMtime(path);
 }
 
@@ -157,7 +163,7 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
   if (newTab) {
     await deps.pm.openInMain(path);
     void deps.trackMtime(path);
-    syncCoupledViewer(deps, path);
+    await syncCoupledViewer(deps, path);
     return;
   }
   if (deps.expandedPanel() === "side" && isMarkdownPath(path)) {
@@ -168,7 +174,7 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
   }
   await deps.pm.openInMainActiveTab(path);
   void deps.trackMtime(path);
-  syncCoupledViewer(deps, path);
+  await syncCoupledViewer(deps, path);
 }
 
 /** Navigation wikilink (décision utilisateur) :
@@ -260,7 +266,7 @@ async function jumpToFile(deps: NavDeps, path: string, line: number | null | und
   }
   // Cas 7 (matrice) : le viewer couplé suit le saut — TOC, backlinks et tags
   // passent TOUS par jump-to-file (jamais de bloc manquant pour ces sources).
-  syncCoupledViewer(deps, normFile);
+  await syncCoupledViewer(deps, normFile);
 }
 
 /** Saut TOC sidebar (table des matières) : la cible remonte dans le VIEWER

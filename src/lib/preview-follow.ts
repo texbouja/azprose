@@ -65,8 +65,15 @@ export async function followPreviewNavigation(
     return { followed: true, parked: false };
   }
 
-  // Repoint du tab lié (politique A : park + preferDraft).
+  // Repoint du tab lié (politique A : park + preferDraft). Règle forte « couplé
+  // ⇒ MÊME md » : si le repoint ÉCHOUE (fichier illisible), le tab éditeur lié
+  // ne peut pas suivre le viewer → le couplage est ROMPU (le viewer navigue
+  // seul, jamais un couple divergent éditeur↔viewer).
   const res = await pm.main.repoint(linkedId, target, { preferDraft: true });
-  if (res.ok) pm.main.select(linkedId);
-  return { followed: res.ok, parked: res.parked };
+  if (!res.ok) {
+    pm.linkPreview(pm.side.activeTabId!, null);
+    return { followed: false, parked: false };
+  }
+  pm.main.select(linkedId);
+  return { followed: true, parked: res.parked };
 }

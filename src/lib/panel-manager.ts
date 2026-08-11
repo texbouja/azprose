@@ -323,19 +323,41 @@ export class PanelManager {
       side: {
         ...side,
         tabs: side.tabs.map((t, i) => {
-          // Persiste le couplage éditeur↔viewer SUR les tabs side : `linkedTo` =
-          // chemin du tab éditeur main couplé à CET instant (l'identité stable
-          // à travers les redémarrages — les ids de tabs sont régénérés au
-          // restore). Zip par index : toJSON mappe 1:1 this.side.tabs (aucun
-          // filtre) — pas de recherche par chemin, le tab side et son entrée
-          // JSON occupent la même position. Un lien périmé (tab éditeur fermé)
-          // ne résout aucun tab main → champ absent (couplage mort).
-          const sideTab = this.side.tabs[i];
-          const linkedId = sideTab ? this.previewLinks.get(sideTab.id) : undefined;
-          const linked = linkedId
-            ? this.main.tabs.find((mt) => mt.id === linkedId)
-            : undefined;
-          return { ...t, linkedTo: linked?.path ?? undefined };
+          // Persiste le couplage éditeur↔viewer SUR les tabs side : `linkedTo`
+          // = chemin du tab éditeur main couplé à CET instant. Règle forte
+          // « couplé ⇒ MÊME md » : ce chemin est TOUJOURS le chemin du viewer
+          // lui-même (l'éditeur lié affiche le même fichier) — la garde de
+          // cohérence ci-dessous rend un état divergent IMPOSSIBLE à persister.
+          // Résolution (jamais d'écriture dans le registre — getter pur) :
+          //  - id du tab main lié vivant + cohérent (même chemin normalisé que
+          //    le viewer) → son chemin ;
+          //  - id mort (tab éditeur fermé) → repli par chemin du viewer : si le
+          //    même fichier est rouvert en main, le couplage revit (seul tab
+          //    possible par dédup) ; sinon couplage mort → null ;
+          //  - divergence (chemins ≠, repoint silencieux non rompu) → null ;
+          //  - pas d'entrée (viewer indépendant) → null.
+          // `linkedTo` est TOUJOURS écrit (string | null) : au restore, null =
+          // viewer EXPLICITEMENT indépendant — jamais re-couplé par déduction
+          // (le path-match ne s'applique qu'aux sessions sans la clé).
+          const sTab = this.side.tabs[i];
+          let linkedPath: string | null = null;
+          if (sTab) {
+            const linkedId = this.previewLinks.get(sTab.id);
+            if (linkedId) {
+              const linked = this.main.tabs.find((mt) => mt.id === linkedId);
+              if (linked) {
+                if (normPath(linked.path) === normPath(sTab.path)) {
+                  linkedPath = linked.path;
+                }
+              } else {
+                const sameFile = this.main.tabs.find(
+                  (mt) => tabContentKind(mt.kind) === "file" && normPath(mt.path) === normPath(sTab.path),
+                );
+                linkedPath = sameFile?.path ?? null;
+              }
+            }
+          }
+          return { ...t, linkedTo: linkedPath };
         }),
       },
       layout: this.layout,
@@ -375,12 +397,14 @@ export class PanelManager {
     }
 
     // Reconstruit le couplage éditeur↔viewer persisté par toJSON (`linkedTo` =
-    // chemin du tab éditeur main couplé). Les ids des tabs sont RÉGÉNÉRÉS à la
-    // restauration : résolution par chemin vers les tabs main reconstruits. Un
-    // `linkedTo` dont le tab main n'existe pas (fichier illisible au restore)
-    // → pas de lien : le couplage explicite prime, JAMAIS de repli par chemin
-    // ici (une déduction heuristique pourrait coupler au mauvais éditeur). Les
-    // sessions legacy (sans linkedTo) sont gérées par restorePreviewLinks.
+    // chemin du tab éditeur main couplé, TOUJOURS == chemin du viewer par la
+    // règle forte). Les ids des tabs sont RÉGÉNÉRÉS à la restauration :
+    // résolution par chemin vers les tabs main reconstruits. Garde de
+    // COHÉRENCE : un linkedTo ≠ chemin du viewer (donnée corrompue ou état
+    // divergent écrit par une version antérieure) est IGNORÉ — jamais un
+    // couple éditeur↔viewer divergent restauré. Un linkedTo cohérent dont le
+    // tab main n'existe pas (fichier illisible au restore) → pas de lien : le
+    // couplage explicite est mort avec son éditeur.
     this.previewLinks.clear();
     for (const sideTab of this.side.tabs) {
       if (tabContentKind(sideTab.kind) !== "file" || !sideTab.path) continue;
@@ -389,6 +413,7 @@ export class PanelManager {
       );
       const linkedPath = entry?.linkedTo;
       if (!linkedPath) continue;
+      if (normPath(linkedPath) !== normPath(sideTab.path)) continue;
       const mainTab = this.main.tabs.find(
         (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(linkedPath),
       );
