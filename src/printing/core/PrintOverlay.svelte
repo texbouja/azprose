@@ -107,20 +107,20 @@
     </div>
 
     <div class="print-overlay__body">
-      {#if core.machine.current === "loading"}
+      {#if core.state.machine.current === "loading"}
         <p class="print-overlay__status">{t("print.loading")}</p>
-      {:else if core.machine.current === "previewing"}
+      {:else if core.state.machine.current === "previewing"}
         <p class="print-overlay__status">{t("print.previewing")}</p>
-      {:else if core.machine.current === "exporting"}
+      {:else if core.state.machine.current === "exporting"}
         <p class="print-overlay__status">{t("print.exporting")}</p>
-      {:else if core.machine.current === "error"}
-        <p class="print-overlay__error">{core.error}</p>
-      {:else if core.machine.current === "ready"}
+      {:else if core.state.machine.current === "error"}
+        <p class="print-overlay__error">{core.state.error}</p>
+      {:else if core.state.machine.current === "ready"}
         {#if extra}
           {@render extra({
-            req: core.req,
-            count: core.count,
-            canExport: core.canExport,
+            req: core.state.req,
+            count: core.state.count,
+            canExport: core.state.canExport,
             patch: core.patch,
             patchMargins: core.patchMargins,
           })}
@@ -131,7 +131,7 @@
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.template")}</span>
             <Combo
-              value={core.req.template}
+              value={core.state.req.template}
               options={TEMPLATE_OPTIONS}
               onchange={(ev) => core.patch({ template: ev.value as PrintTemplateId })}
             />
@@ -143,7 +143,7 @@
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.paper")}</span>
             <Combo
-              value={core.req.paper}
+              value={core.state.req.paper}
               options={PAPER_OPTIONS}
               onchange={(ev) => core.patch({ paper: ev.value as PaperFormat })}
             />
@@ -151,7 +151,7 @@
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.orientation")}</span>
             <Segmented
-              value={core.req.orientation}
+              value={core.state.req.orientation}
               options={[
                 { id: "portrait", label: t("print.portrait") },
                 { id: "landscape", label: t("print.landscape") },
@@ -161,26 +161,26 @@
           </label>
         </div>
 
-        {#if core.req.paper === "custom"}
+        {#if core.state.req.paper === "custom"}
           <div class="print-overlay__grid">
             <label class="print-overlay__field">
               <span class="print-overlay__label">{t("print.paperWidthMm")}</span>
               <Counter
-                value={core.req.customPaper?.width ?? 210}
+                value={core.state.req.customPaper?.width ?? 210}
                 min={50}
                 max={600}
                 step={1}
-                onchange={(ev) => core.patch({ customPaper: { ...(core.req.customPaper ?? { width: 210, height: 297 }), width: ev.value } })}
+                onchange={(ev) => core.patch({ customPaper: { ...(core.state.req.customPaper ?? { width: 210, height: 297 }), width: ev.value } })}
               />
             </label>
             <label class="print-overlay__field">
               <span class="print-overlay__label">{t("print.paperHeightMm")}</span>
               <Counter
-                value={core.req.customPaper?.height ?? 297}
+                value={core.state.req.customPaper?.height ?? 297}
                 min={50}
                 max={600}
                 step={1}
-                onchange={(ev) => core.patch({ customPaper: { ...(core.req.customPaper ?? { width: 210, height: 297 }), height: ev.value } })}
+                onchange={(ev) => core.patch({ customPaper: { ...(core.state.req.customPaper ?? { width: 210, height: 297 }), height: ev.value } })}
               />
             </label>
           </div>
@@ -190,19 +190,19 @@
         <div class="print-overlay__grid">
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.marginTop")}</span>
-            <Counter value={core.req.margins.top} min={0} max={50} step={0.5} onchange={(ev) => core.patchMargins({ top: ev.value })} />
+            <Counter value={core.state.req.margins.top} min={0} max={50} step={0.5} onchange={(ev) => core.patchMargins({ top: ev.value })} />
           </label>
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.marginBottom")}</span>
-            <Counter value={core.req.margins.bottom} min={0} max={50} step={0.5} onchange={(ev) => core.patchMargins({ bottom: ev.value })} />
+            <Counter value={core.state.req.margins.bottom} min={0} max={50} step={0.5} onchange={(ev) => core.patchMargins({ bottom: ev.value })} />
           </label>
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.marginLeft")}</span>
-            <Counter value={core.req.margins.left} min={0} max={50} step={0.5} onchange={(ev) => core.patchMargins({ left: ev.value })} />
+            <Counter value={core.state.req.margins.left} min={0} max={50} step={0.5} onchange={(ev) => core.patchMargins({ left: ev.value })} />
           </label>
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.marginRight")}</span>
-            <Counter value={core.req.margins.right} min={0} max={50} step={0.5} onchange={(ev) => core.patchMargins({ right: ev.value })} />
+            <Counter value={core.state.req.margins.right} min={0} max={50} step={0.5} onchange={(ev) => core.patchMargins({ right: ev.value })} />
           </label>
         </div>
 
@@ -211,7 +211,7 @@
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.columns")}</span>
             <Combo
-              value={String(core.req.columns)}
+              value={String(core.state.req.columns)}
               options={[
                 { id: "1", label: "1" },
                 { id: "2", label: "2" },
@@ -222,7 +222,7 @@
           </label>
           <label class="print-overlay__field">
             <span class="print-overlay__label">{t("print.columnGap")}</span>
-            <Counter value={core.req.columnGap} min={2} max={30} step={1} onchange={(ev) => core.patch({ columnGap: ev.value })} />
+            <Counter value={core.state.req.columnGap} min={2} max={30} step={1} onchange={(ev) => core.patch({ columnGap: ev.value })} />
           </label>
         </div>
 
@@ -231,12 +231,12 @@
           <span class="print-overlay__label">{t("print.headerFooter")}</span>
           <div class="print-overlay__hf">
             <Text
-              value={core.req.header}
+              value={core.state.req.header}
               placeholder={t("print.headerPlaceholder")}
               onchange={(ev) => core.patch({ header: String(ev.value ?? "") })}
             />
             <Text
-              value={core.req.footer}
+              value={core.state.req.footer}
               placeholder={t("print.footerPlaceholder")}
               onchange={(ev) => core.patch({ footer: String(ev.value ?? "") })}
             />
@@ -252,15 +252,15 @@
               min={0.5}
               max={2}
               step={0.05}
-              value={core.req.scale}
+              value={core.state.req.scale}
               onchange={(ev) => core.patch({ scale: ev.value })}
             />
-            <span class="print-overlay__value">{Math.round(core.req.scale * 100)}%</span>
+            <span class="print-overlay__value">{Math.round(core.state.req.scale * 100)}%</span>
           </label>
           <label class="print-overlay__field print-overlay__switch">
             <span class="print-overlay__label">{t("print.printBackground")}</span>
             <Switch
-              value={core.req.printBackground}
+              value={core.state.req.printBackground}
               onchange={(ev) => core.patch({ printBackground: ev.value })}
             />
           </label>
@@ -268,24 +268,24 @@
             <label class="print-overlay__field print-overlay__switch">
               <span class="print-overlay__label">{t("print.expandLinks")}</span>
               <Switch
-                value={core.req.expandLinks}
+                value={core.state.req.expandLinks}
                 onchange={(ev) => core.patch({ expandLinks: ev.value })}
               />
             </label>
           {/if}
         </div>
 
-        {#if contract.features.expandLinks && core.req.expandLinks}
+        {#if contract.features.expandLinks && core.state.req.expandLinks}
           <p class="print-overlay__hint">{t("print.expandLinksHint")}</p>
         {/if}
         <p class="print-overlay__hint">{t("print.mathHint")}</p>
       {/if}
     </div>
 
-    {#if core.machine.current === "ready" || core.machine.current === "error"}
+    {#if core.state.machine.current === "ready" || core.state.machine.current === "error"}
       <div class="print-overlay__actions">
         <Button variant="ghost" onclick={onClose}>{t("common.cancel")}</Button>
-        {#if core.canExport}
+        {#if core.state.canExport}
           <Button variant="outline" onclick={core.handlePreview}>{t("print.preview")}</Button>
           <Button variant="solid" onclick={core.handleExport}>{t("print.export")}</Button>
         {/if}

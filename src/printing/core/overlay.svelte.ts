@@ -17,12 +17,24 @@
  * sources `open`/`source`/`filePath` sont passées en getters pour être lues
  * à l'instant T (le $effect n'enregistre que les dépendances qu'il lit).
  *
- * PIÈGE RÉACTIVITÉ (corrigé — même bug que ColleSendDialog, cf. commentaire
+ * PIÈGE RÉACTIVITÉ 1 (découvert par l'investigation des boutons manquants) :
+ * ne JAMAIS retourner `req`/`error`/`count`/`canExport` directement dans
+ * l'objet de la factory — le compilateur Svelte unwrap les $state en
+ * `$.get(...)` dans le littéral retourné : le composant recevrait des
+ * SNAPSHOTS figées au montage (machine "idle" → canExport false, count 0,
+ * req = défauts) et l'UI resterait gelée même quand la machine passe en
+ * "ready" (symptôme « overlay sans boutons aperçu/export »). L'état exposé
+ * est donc un objet `state` dont les propriétés sont des GETTERS relus à
+ * chaque accès — seuls `machine` (proxy) et les getters sont réactifs.
+ *
+ * PIÈGE RÉACTIVITÉ 2 (corrigé — même bug que ColleSendDialog, cf. commentaire
  * du reset) : un $effect qui LIT `machine` (reset) ET dont les `.then`
  * MUTENT `machine` (send) se re-planifie en boucle — la machine ne reste
  * jamais en "ready" et les boutons Aperçu/Export (rendus seulement en phase
  * "ready" stable) disparaissent. Toute lecture de `machine` dans l'effet
- * doit passer par `untrack`.
+ * doit passer par `untrack`. (NB : avec l'implémentation actuelle de
+ * `createPhaseMachine`, `reset`/`send` n'écrivent que `this.current` sans le
+ * lire — l'untrack est un garde-fou, pas une nécessité mesurée.)
  */
 import { untrack } from "svelte";
 import { createPhaseMachine, type PhaseDef, type PhaseMachine } from "@/lib/phase-machine";
@@ -70,15 +82,22 @@ export interface PrintOverlayHost {
 }
 
 export interface PrintOverlayCore {
-  machine: PhaseMachine<PrintPhase, PrintEvent>;
-  /** Requête d'impression éditée (réactive). */
-  req: PrintRequest;
-  /** Message d'erreur courant (phase "error"). */
-  error: string;
-  /** Nombre de feuilles à imprimer (md : 1 ; colle : planches). */
-  count: number;
-  /** L'export est-il possible (phase ready + feuilles non vides) ? */
-  canExport: boolean;
+  /**
+   * État RÉACTIF exposé au composant : les propriétés sont des GETTERS relus
+   * à chaque accès (jamais des snapshots — cf. piège réactivité 1 du
+   * docstring). `machine` est le proxy de la machine à états.
+   */
+  state: {
+    machine: PhaseMachine<PrintPhase, PrintEvent>;
+    /** Requête d'impression éditée (réactive). */
+    req: PrintRequest;
+    /** Message d'erreur courant (phase "error"). */
+    error: string;
+    /** Nombre de feuilles à imprimer (md : 1 ; colle : planches). */
+    count: number;
+    /** L'export est-il possible (phase ready + feuilles non vides) ? */
+    canExport: boolean;
+  };
   patch: (p: Partial<PrintRequest>) => void;
   patchMargins: (p: Partial<PrintRequest["margins"]>) => void;
   handlePreview: () => Promise<void>;
@@ -148,6 +167,29 @@ export function createPrintOverlayCore(
 
   const canExport = $derived(machine.current === "ready" && contract.canExport(count));
 
+  /**
+   * État exposé au composant — GETTERS relus à chaque accès. NE PAS retourner
+   * les $state directement (snapshots — piège réactivité 1 du docstring) :
+   * le compilateur unwrap `req`/`canExport`/... en `$.get(...)` dans l'objet
+   * retourné de la factory, figeant l'UI au montage. Ici, chaque propriété est
+   * évaluée à la lecture ; `machine` est le proxy (réactif par lui-même).
+   */
+  const state = $state({
+    machine,
+    get req(): PrintRequest {
+      return req;
+    },
+    get error(): string {
+      return error;
+    },
+    get count(): number {
+      return count;
+    },
+    get canExport(): boolean {
+      return canExport;
+    },
+  });
+
   function patch(p: Partial<PrintRequest>) {
     req = { ...req, ...p };
   }
@@ -202,11 +244,7 @@ export function createPrintOverlayCore(
   }
 
   return {
-    machine,
-    req,
-    error,
-    count,
-    canExport,
+    state,
     patch,
     patchMargins,
     handlePreview,
