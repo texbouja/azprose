@@ -57,6 +57,13 @@ export interface NavDeps {
   navBack: (tabId?: string | null) => string | null;
   navForwardStep: (path: string, tabId?: string | null) => string | null;
   navPushForward: (path: string, tabId?: string | null) => void;
+  // Historique de MONTAGE du pinned slot (Phase D) — piles PAR FORMAT, runtime
+  // (jamais persistées, R10) : le slot est un tab qui change de contenu, la
+  // pile appartient au slot du format, pas au tab qui l'occupe.
+  pinnedPush: (format: string | null | undefined, path: string) => void;
+  pinnedBack: (format?: string | null) => string | null;
+  pinnedForwardStep: (format: string | null | undefined, current: string) => string | null;
+  pinnedPushForward: (format: string | null | undefined, path: string) => void;
   setScrollTarget: (heading: string) => void;
   setSyncLine: (line: number, path?: string) => void;
   /** Setter de la rune `jumpToLine` (0-based) de l'éditeur main. */
@@ -147,17 +154,73 @@ async function openFile(deps: NavDeps, path: string, opts?: OpenInTabOptions): P
  *  jamais de doublon pinned), sinon l'espace libre (repli laissé à
  *  l'appelant). Échec de re-point (fichier illisible, tab épinglé fermé
  *  entre-temps) → repli espace libre aussi : jamais d'erreur muette sur un
- *  clic destiné au pinned. */
-async function openInProperSpace(deps: NavDeps, path: string): Promise<boolean> {
+ *  clic destiné au pinned.
+ *
+ *  Historique de MONTAGE (Phase D — D8/R10) : chaque montage empile le contenu
+ *  QUITTÉ sur la pile du format (runtime, jamais persisté) — c'est ce qui rend
+ *  le bouton « remonter » possible. `history: false` pour les montages qui
+ *  SONT déjà une navigation d'historique (retour/avance : la pile est gérée
+ *  par l'appelant).
+ *
+ *  Sphère pinned (D4) : après le re-point, le viewer COMPAGNON suit le slot
+ *  (`syncCoupledViewer` — le compagnon .md est couplé à l'éditeur épinglé ; un
+ *  compagnon PDF ne l'est jamais, la liaison passant par le PDF du maître). */
+async function openInProperSpace(deps: NavDeps, path: string, opts?: { history?: boolean }): Promise<boolean> {
   const format = tabPinFormat(path);
   if (!format) return false;
   const pinned = deps.pm.pinnedMainTab(format);
   if (!pinned) return false;
+  const previous = pinned.path;
   const res = await deps.pm.main.repoint(pinned.id, path, { preferDraft: true, silent: true });
   if (!res.ok) return false;
   deps.pm.main.select(pinned.id);
+  if (opts?.history !== false && previous && normNavPath(previous) !== normNavPath(path)) {
+    deps.pinnedPush(format, previous);
+  }
   void deps.trackMtime(path);
+  await syncCoupledViewer(deps, path);
   return true;
+}
+
+/** Monte `path` dans le PINNED slot de son format (re-point + historique de
+ *  montage + compagnon qui suit) — `false` si aucun slot n'est épinglé pour ce
+ *  format ou si le montage échoue. Exposé pour l'inverse search (règle 1.3 :
+ *  l'inverse search ne concerne QUE les pinned tabs) : la mutation de session
+ *  reste faite ICI, dans le reducer. */
+export function mountInPinnedSlot(deps: NavDeps, path: string): Promise<boolean> {
+  return openInProperSpace(deps, path);
+}
+
+/** Historique de montage du pinned slot (Phase D — D6/D7) : « remonter » /
+ *  « redescendre » dans les contenus successivement montés dans le slot du
+ *  `format`. Mêmes actions depuis la tabaction de l'éditeur épinglé et celle
+ *  de son viewer compagnon.
+ *
+ *  D6 « pas de rewind » : le retour re-monte le FICHIER quitté et retrouve son
+ *  buffer dans son dernier état (park + `preferDraft` du re-point) — aucun
+ *  rebuild n'est déclenché. Un re-point impossible (fichier disparu) REND la
+ *  pile intacte : l'entrée est ré-empilée, l'utilisateur est notifié. */
+async function pinnedHistoryNav(deps: NavDeps, format: string, direction: "back" | "forward"): Promise<void> {
+  const pinned = deps.pm.pinnedMainTab(format);
+  if (!pinned) return;
+  const current = pinned.path;
+  const next = direction === "back"
+    ? deps.pinnedBack(format)
+    : deps.pinnedForwardStep(format, current);
+  if (!next) return;
+  if (direction === "back") deps.pinnedPushForward(format, current);
+  const routed = await openInProperSpace(deps, next, { history: false });
+  if (routed) return;
+  // Remise en état : une pile ne perd jamais d'entrée sur un échec de montage.
+  if (direction === "back") {
+    // `forwardStep(next)` dépile le forward qu'on vient d'empiler ET ré-empile
+    // `next` sur le back — l'inverse exact de l'opération ratée.
+    deps.pinnedForwardStep(format, next);
+  } else {
+    deps.pinnedBack(format);
+    deps.pinnedPushForward(format, next);
+  }
+  deps.notifyInfo(deps.t("nav.remountFailed", { name: basename(next) }));
 }
 
 /** Clic sidebar — tab ACTIF du bon panel. Règle « click = alt-click » pour
@@ -525,6 +588,10 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
       return navHistory(deps, "back");
     case "preview-forward":
       return navHistory(deps, "forward");
+    case "pinned-back":
+      return pinnedHistoryNav(deps, intent.format, "back");
+    case "pinned-forward":
+      return pinnedHistoryNav(deps, intent.format, "forward");
     case "doc-navigate":
       return docNavigate(deps, intent.path, intent.heading);
     case "open-help":

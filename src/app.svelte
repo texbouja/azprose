@@ -49,6 +49,7 @@ import { sidebarView } from "@/stores/sidebar-view.svelte";
 import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
+import { tabPinFormat, tabSpace } from "@/lib/panel-store";
 import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
@@ -58,7 +59,7 @@ import { ensureHelpInstalled, helpIndexPath, isHelpPath } from "@/lib/help-insta
 // Import STATIQUE (jamais mélangé avec du dynamique) : index-home est déjà
 // dans le chunk principal via LinksView → TocPanel → toc-forest — un dynamic
 // import ici ne découperait AUCUN chunk (avertissement INEFFECTIVE_DYNAMIC_IMPORT).
-import { navigate, navigateVoid, bridgeEvent, type NavDeps, type NavIntent } from "@/lib/navigation";
+import { navigate, navigateVoid, bridgeEvent, mountInPinnedSlot, type NavDeps, type NavIntent } from "@/lib/navigation";
 import { writeBackColleKeys } from "@/colles/write-back";
 import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
 import PrintOverlay from "@/components/overlays/PrintOverlay.svelte";
@@ -101,6 +102,14 @@ import { dataBus } from "@/lib/data/bus";
 import { runCommand } from "@/lib/data/commands";
 import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
 import { navPush, navBack, navForwardStep, navPushForward, purgeNavHistory, setNavActions } from "@/stores/nav-history.svelte";
+import {
+  pinnedPush,
+  pinnedBack,
+  pinnedForwardStep,
+  pinnedPushForward,
+  purgePinnedHistory,
+  setPinnedNavActions,
+} from "@/stores/pinned-history.svelte";
 import {
   createLatexState,
   cleanLatexAux, cleanLatexAuxAndOutput, cleanLatexAll,
@@ -234,9 +243,12 @@ let pm = new PanelManager({
   // mode nav preview et pile d'historique meurent avec l'onglet (références
   // tardives : previewNav est défini plus bas, le callback ne court qu'à la
   // fermeture, après l'init complète).
-  onTabClosed: (tabId) => {
+  onTabClosed: (tabId, tab) => {
     previewNav.clearTab(tabId);
     purgeNavHistory(tabId);
+    // Phase D : la pile de MONTAGE appartient au slot épinglé — fermer le slot
+    // la purge (runtime, jamais persistée — R10).
+    if (tabSpace(tab) === "pinned") purgePinnedHistory(tabPinFormat(tab.path));
   },
 });
 
@@ -567,6 +579,12 @@ onMount(() => {
     navigateVoid(navDeps, { type: "preview-forward" });
   };
   setNavActions({ goBack: navGoBack, goForward: navGoForward });
+  // Historique de MONTAGE du pinned slot (Phase D) : mêmes actions depuis la
+  // tabaction de l'éditeur épinglé et celle de son viewer compagnon (D7).
+  setPinnedNavActions({
+    goBack: (format: string) => navigateVoid(navDeps, { type: "pinned-back", format }),
+    goForward: (format: string) => navigateVoid(navDeps, { type: "pinned-forward", format }),
+  });
 
   // Unlink the editor↔preview pairing when the preview tab disappears (closed
   // by the user): the link is re-established on the next preview launch. The
@@ -1333,6 +1351,9 @@ const editorModeCtx: EditorModeDeps = {
   extFromPath,
   invoke,
   notify: notifications,
+  // Inverse search → PINNED slot (Phase D, règle 1.3) : la mutation de session
+  // passe par le reducer, jamais par l'util.
+  mountInPinnedSlot: (path: string) => mountInPinnedSlot(navDeps, path),
 };
 
 const handleJumpToLine = (line: number, path?: string | null, sessionId?: string | null) => jumpToLineUtil(editorModeCtx, line, path ?? undefined, sessionId ?? undefined);
@@ -1566,6 +1587,10 @@ let navDeps: NavDeps = {
   navBack,
   navForwardStep,
   navPushForward,
+  pinnedPush,
+  pinnedBack,
+  pinnedForwardStep,
+  pinnedPushForward,
   setScrollTarget,
   setSyncLine,
   setJumpToLine: (line: number) => { jumpToLine = line; },
@@ -1860,6 +1885,10 @@ let cmds = $derived(
           buildRev={ls.buildRev}
           latexBuildFailed={ls.buildFailed}
           onTogglePin={(id, pinned) => {
+            const tab = pm.main.tabs.find((x) => x.id === id);
+            // Phase D : (dé)signer le slot d'un format REPART de zéro — la pile
+            // de montage appartient au slot, pas au tab qui l'occupait avant.
+            if (tab) purgePinnedHistory(tabPinFormat(tab.path));
             pm.setMainPinned(id, pinned);
             // Adoption du viewer PDF latex (R7 — mécanisme maître) : épingler
             // un tex (maître OU fichier inclus) adopte le viewer du dernier

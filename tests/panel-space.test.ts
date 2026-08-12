@@ -379,7 +379,7 @@ test("propriétaire (R7) : le viewer PDF reste dans la sphère quand un AUTRE fo
   // mécanisme maître (le tex épinglé devient le PROPRIÉTAIRE du viewer).
   expect(pm.adoptLatexViewer("/out/main.pdf")).toBe(true);
   expect(tabSpace(pm.side.tabs[0])).toBe("pinned");
-  expect(pm.side.tabs[0].pinnedOwner).toBe("/main.tex");
+  expect(pm.side.tabs[0].pinnedOwner).toBe("tex");
 
   // Épingler un .md (autre format, autre sphère) ne libère PAS le viewer PDF.
   pm.setMainPinned("md", true);

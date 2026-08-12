@@ -11,6 +11,7 @@ import { docTypeSwitches, normalizeDocType } from "@/lib/doc-meta";
 import SlideModeRadio from "./SlideModeRadio.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
 import { navHistory, getNavActions } from "@/stores/nav-history.svelte";
+import { pinnedHistory, getPinnedNavActions } from "@/stores/pinned-history.svelte";
 import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
 
 // Register SlideModeRadio as a custom toolbar item
@@ -29,9 +30,15 @@ let {
   onToggleColles,
   onToggleFullscreen,
   onCommand,
+  /** Format du PINNED slot dont ce tab fait partie (Phase D — D7) : posé pour
+   *  l'éditeur épinglé ET pour son viewer compagnon (mêmes actions dans les
+   *  deux tabactions), `null` partout ailleurs. Les boutons d'historique de
+   *  montage ne concernent QUE les pinned tabs (règle 1.3). */
+  pinnedFormat = null as string | null,
 }: {
   activeTab?: Tab | null;
   panelId?: string;
+  pinnedFormat?: string | null;
   viewportEl?: HTMLElement | null;
   renderMode?: RenderMode;
   onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
@@ -169,6 +176,26 @@ let navMode = $derived.by(() => {
 
 /* ── Toolbar items — reactive on mode + renderMode + slideMode ── */
 
+// Historique de MONTAGE du pinned slot (Phase D — D6/D7) : « remonter » /
+// « redescendre » dans les contenus successivement montés dans le slot. Les
+// MÊMES boutons apparaissent dans la tabaction de l'éditeur épinglé et dans
+// celle de son viewer compagnon (`pinnedFormat` posé des deux côtés). À ne pas
+// confondre avec le back/forward WIKILINK du viewer (mode nav, par tab side) :
+// celui-ci suit le SLOT, pas un onglet de preview.
+let pinnedHistItems = $derived.by(() => {
+  if (!pinnedFormat) return [] as any[];
+  const hist = pinnedHistory(pinnedFormat);
+  void hist.revision;
+  return [
+    { comp: "icon", icon: "wxi-arrow-left", text: t("pinned.back"), pinned: true,
+      disabled: !hist.canGoBack,
+      handler: () => getPinnedNavActions().goBack(pinnedFormat!) },
+    { comp: "icon", icon: "wxi-arrow-right", text: t("pinned.forward"), pinned: true,
+      disabled: !hist.canGoForward,
+      handler: () => getPinnedNavActions().goForward(pinnedFormat!) },
+  ];
+});
+
 let mainItems = $derived.by(() => {
   if (isMd) {
     // Navigation preview (back/forward) : réservée à la toolbar SIDE — les
@@ -177,6 +204,7 @@ let mainItems = $derived.by(() => {
     // l'éditeur »). L'éditeur suit désormais le preview (tab lié) ; les
     // boutons ⌘[ / ⌘] restent disponibles globalement.
     const items: any[] = [
+      ...pinnedHistItems,
       { spacer: true },
       { comp: "button", icon: "wxi-code", text: t("tabs.raw"),
         type: renderMode === "raw" ? "pressed" : "",
@@ -193,6 +221,7 @@ let mainItems = $derived.by(() => {
     return items;
   }
   if (isTex) return [
+    ...pinnedHistItems,
     { spacer: true },
     { comp: "button", icon: "wxi-file-down", text: t("tabs.build"),
       handler: () => onLatexBuild?.() },
@@ -200,15 +229,18 @@ let mainItems = $derived.by(() => {
       handler: () => onLatexViewer?.() },
   ];
   if (isCsv) return [
+    ...pinnedHistItems,
     { comp: "button", icon: "wxi-table", text: "Grille",
       type: renderMode === "preview" ? "pressed" : "",
       handler: () => onSetEditorMode?.("preview") },
   ];
-  return [];
+  return pinnedHistItems.length ? [...pinnedHistItems, { spacer: true }] : [];
 });
 
 let sideItems = $derived.by(() => {
-  const items: any[] = [];
+  // Viewer COMPAGNON de la sphère pinned : mêmes boutons d'historique de
+  // montage que l'éditeur épinglé (D7) — tout à gauche, avant le mode nav.
+  const items: any[] = [...pinnedHistItems];
 
   // Left: preview navigation — mode nav + back/forward (wikilink history) +
   // home (rootPath/index.md), shown ONLY for the .md PREVIEW tab in MODE

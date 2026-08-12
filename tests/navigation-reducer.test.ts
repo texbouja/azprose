@@ -15,6 +15,7 @@ import { PanelManager } from "../src/lib/panel-manager";
 import { pickOpenTarget } from "../src/lib/panel-store";
 import { setSessionScope } from "../src/lib/session";
 import { navigate, type NavDeps } from "../src/lib/navigation";
+import { createPinnedHistory } from "../src/lib/pinned-history";
 
 // Tests du REDUCER de navigation (phase 1, idée A) — couvrent les 3
 // incohérences historiques du rapport architecture-review :
@@ -85,6 +86,10 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
   calls: {
     navPush: string[];
     navPushForward: string[];
+    /** Historique de MONTAGE du pinned slot (Phase D) — pile RÉELLE par format
+     *  (le module `@/lib/pinned-history` est pur : on l'utilise tel quel plutôt
+     *  qu'un espion, pour tester le comportement de bout en bout). */
+    pinnedPush: { format: string; path: string }[];
     setScrollTarget: (string | null)[];
     setSyncLine: (string | null)[];
     setJumpToLine: number[];
@@ -93,9 +98,11 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
     notifyError: { title: string; message: string }[];
   };
 } {
+  const slots = createPinnedHistory();
   const calls = {
     navPush: [] as string[],
     navPushForward: [] as string[],
+    pinnedPush: [] as { format: string; path: string }[],
     setScrollTarget: [] as (string | null)[],
     setSyncLine: [] as (string | null)[],
     setJumpToLine: [] as number[],
@@ -116,6 +123,14 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
     navBack: () => null,
     navForwardStep: () => null,
     navPushForward: (p) => void calls.navPushForward.push(p),
+    // Pile de montage RÉELLE (module pur) + trace des push pour les assertions.
+    pinnedPush: (f, p) => {
+      calls.pinnedPush.push({ format: f ?? "", path: p });
+      slots.push(f, p);
+    },
+    pinnedBack: (f) => slots.back(f),
+    pinnedForwardStep: (f, cur) => slots.forwardStep(f, cur),
+    pinnedPushForward: (f, p) => slots.pushForward(f, p),
     setScrollTarget: (h) => void calls.setScrollTarget.push(h),
     setSyncLine: (l, p) => void calls.setSyncLine.push(p ?? null),
     setJumpToLine: (l) => void calls.setJumpToLine.push(l),
@@ -1130,4 +1145,123 @@ test("toc-navigate : chemin doc → openDocArticle (jamais viewer ni éditeur)",
   expect(calls.openInMain).toHaveLength(0);
   expect(deps.calls.setScrollTarget).toHaveLength(0);
   expect(deps.calls.setSyncLine).toHaveLength(0);
+});
+
+// ── Phase D : historique de MONTAGE du pinned slot ──────────────────────────
+
+/** Fake PanelManager dont le pinned slot CHANGE de contenu à chaque re-point
+ *  (le slot est un tab qui se re-pointe — c'est ce que l'historique suit). */
+function pinnedSlotFakePm(opts: { start?: string; fail?: string } = {}) {
+  const { start = "/a.md", fail } = opts;
+  const slot = { id: "p1", path: start };
+  const repointed: string[] = [];
+  const pm = {
+    main: {
+      activeTabId: "t1",
+      get activePath() { return slot.path; },
+      tabs: [],
+      repoint: async (id: string, path: string) => {
+        if (fail && path === fail) return { ok: false, parked: false };
+        repointed.push(`${id}→${path}`);
+        slot.path = path;
+        return { ok: true, parked: false };
+      },
+      select: () => {},
+    },
+    side: { visible: false, activeTabId: null, activeTab: undefined, tabs: [] },
+    pinnedMainTab: (f: string) => (f === "md" ? slot : null),
+    sideTabLinkedTo: () => null,
+    openInMainActiveTab: async () => { throw new Error("repli libre non attendu"); },
+    openInMain: async () => { throw new Error("repli libre non attendu"); },
+    openInSide: async () => { throw new Error("openInSide non attendu"); },
+    trackMtime: async () => {},
+  } as unknown as PanelManager;
+  return { pm, slot, repointed };
+}
+
+test("Phase D : chaque montage dans le slot empile le contenu QUITTÉ", async () => {
+  const { pm, slot } = pinnedSlotFakePm({ start: "/a.md" });
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md" });
+  await navigate(deps, { type: "open-active", path: "/c.md" });
+
+  expect(slot.path).toBe("/c.md");
+  expect(deps.calls.pinnedPush).toEqual([
+    { format: "md", path: "/a.md" },
+    { format: "md", path: "/b.md" },
+  ]);
+});
+
+test("Phase D : re-monter le MÊME contenu n'empile rien", async () => {
+  const { pm } = pinnedSlotFakePm({ start: "/a.md" });
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/a.md" });
+
+  expect(deps.calls.pinnedPush).toEqual([]);
+});
+
+test("Phase D : pinned-back remonte le contenu quitté, pinned-forward redescend", async () => {
+  const { pm, slot } = pinnedSlotFakePm({ start: "/a.md" });
+  const deps = makeDeps(pm);
+  await navigate(deps, { type: "open-active", path: "/b.md" });
+
+  await navigate(deps, { type: "pinned-back", format: "md" });
+  expect(slot.path).toBe("/a.md");
+  // Le retour n'empile PAS de nouvelle entrée de montage (c'est une navigation
+  // d'historique, pas un montage neuf) — sinon la pile grossirait à l'infini.
+  expect(deps.calls.pinnedPush).toEqual([{ format: "md", path: "/a.md" }]);
+
+  await navigate(deps, { type: "pinned-forward", format: "md" });
+  expect(slot.path).toBe("/b.md");
+});
+
+test("Phase D : pinned-back sans pile, ou sans slot épinglé → no-op", async () => {
+  const { pm, slot, repointed } = pinnedSlotFakePm({ start: "/a.md" });
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "pinned-back", format: "md" });
+  expect(repointed).toEqual([]);
+  expect(slot.path).toBe("/a.md");
+
+  // Format sans slot épinglé : rien ne se passe (jamais d'erreur).
+  await navigate(deps, { type: "pinned-back", format: "tex" });
+  expect(repointed).toEqual([]);
+});
+
+test("Phase D : échec de re-montage → pile INTACTE (retour re-jouable) + info", async () => {
+  const { pm, slot } = pinnedSlotFakePm({ start: "/a.md", fail: "/a.md" });
+  const deps = makeDeps(pm);
+  await navigate(deps, { type: "open-active", path: "/b.md" }); // pile : [/a.md]
+
+  await navigate(deps, { type: "pinned-back", format: "md" });
+
+  // Le fichier /a.md n'est plus lisible : le slot n'a pas bougé, l'utilisateur
+  // est informé, et l'entrée reste dans la pile (rien n'est perdu).
+  expect(slot.path).toBe("/b.md");
+  expect(deps.calls.notifyInfo).toHaveLength(1);
+  await navigate(deps, { type: "pinned-back", format: "md" });
+  expect(deps.calls.notifyInfo).toHaveLength(2);
+});
+
+test("Phase D : le viewer COMPAGNON suit le slot (D4 — sync structurelle)", async () => {
+  const { pm, slot } = pinnedSlotFakePm({ start: "/a.md" });
+  const sideRepointed: string[] = [];
+  (pm as unknown as { sideTabLinkedTo: (id: string) => string | null }).sideTabLinkedTo = () => "s1";
+  (pm as unknown as { side: unknown }).side = {
+    visible: false,
+    activeTabId: "s1",
+    tabs: [{ id: "s1", path: "/a.md", title: "a", source: "", savedContent: "" }],
+    repoint: async (id: string, path: string) => {
+      sideRepointed.push(`${id}→${path}`);
+      return { ok: true, parked: false };
+    },
+  };
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md" });
+
+  expect(slot.path).toBe("/b.md");
+  expect(sideRepointed).toEqual(["s1→/b.md"]);
 });

@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { PanelManager } from "@/lib/panel-manager";
-import type { Tab } from "@/lib/panel-store";
+import { tabPinFormat, tabSpace, type Tab } from "@/lib/panel-store";
 import PanelContainer from "./PanelContainer.svelte";
 import type { TypographySettings } from "@/lib/typography";
 
@@ -76,6 +76,24 @@ let {
 
 let splitResizeState: { startX: number; startRatio: number } | null = null;
 
+/** Format du PINNED slot dont le tab actif fait partie (Phase D) : l'éditeur
+ *  ÉPINGLÉ lui-même (main) ou son viewer COMPAGNON (side, résolu via
+ *  `pinnedOwner` — la liaison tient en excursion) ; `null` pour tout tab
+ *  libre. Les boutons d'historique de montage ne s'affichent que là (règle
+ *  1.3 : les tabs libres n'ont pas de pile de montage). Dérivé des props
+ *  `tabs`/`sideTabs` (snapshots réactifs fournis par l'app). */
+let mainPinnedFormat = $derived.by(() => {
+  const tab = tabs.find(t => t.id === activeTabId);
+  return tab && tabSpace(tab) === "pinned" ? tabPinFormat(tab.path) : null;
+});
+
+let sidePinnedFormat = $derived.by(() => {
+  const tab = sideTabs.find(t => t.id === sideActiveTabId);
+  if (!tab || tabSpace(tab) !== "pinned" || !tab.pinnedOwner) return null;
+  const owner = tabs.find(t => t.id === tab.pinnedOwner);
+  return owner ? tabPinFormat(owner.path) : null;
+});
+
 function startResize(e: PointerEvent) {
   const container = (e.currentTarget as HTMLElement).parentElement;
   if (!container) return;
@@ -127,6 +145,7 @@ function startResize(e: PointerEvent) {
     onCloseTab={(id) => panelManager.closeMainTab(id)}
     {latexBuildFailed}
     {onTogglePin}
+    pinnedFormat={mainPinnedFormat}
   />
   {#if sideVisible}
     <div
@@ -157,6 +176,7 @@ function startResize(e: PointerEvent) {
     {onViewerFullscreen}
     {onTabDoubleClick}
     {latexBuildFailed}
+    pinnedFormat={sidePinnedFormat}
   />
   {/if}
 </div>

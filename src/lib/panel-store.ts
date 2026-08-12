@@ -53,14 +53,14 @@ export function tabSpace(tab: { space?: TabSpace }): TabSpace {
 }
 
 /**
- * Clé de l'ÉDITEUR propriétaire d'un viewer de la sphère pinned (Phase C) :
- * `pinnedOwner` s'il est posé (viewer dont le contenu diffère de l'éditeur —
- * PDF du maître, R7), sinon le contenu du viewer lui-même (compagnon « même
- * contenu », cas .md). Sert à décider quels viewers restent dans la sphère
- * (commutation d'épingle) et lesquels se ferment avec leur éditeur (R4).
+ * Le tab side est-il le COMPAGNON de la sphère pinned de l'éditeur `editorId` ?
+ * (Phase C) — appartenance = `space: "pinned"` + `pinnedOwner` = id du tab
+ * éditeur. Sert à décider quels viewers restent dans la sphère (commutation
+ * d'épingle), lesquels suivent le slot en excursion (D4) et lesquels se
+ * ferment avec leur éditeur (R4).
  */
-export function pinnedOwnerKey(tab: Pick<Tab, "path" | "kind" | "datafilterIds" | "pinnedOwner">): string {
-  return tab.pinnedOwner ?? tabContentKey(tab);
+export function isPinnedCompanionOf(tab: Pick<Tab, "space" | "pinnedOwner">, editorId: string): boolean {
+  return tabSpace(tab) === "pinned" && tab.pinnedOwner === editorId;
 }
 
 /**
@@ -165,12 +165,14 @@ export type Tab = {
   /** Espace pinned/libre (Phase A) — RUNTIME, NON persisté (absent = libre). */
   space?: TabSpace;
   /**
-   * PROPRIÉTAIRE d'un viewer de la sphère pinned (Phase C) — `tabContentKey`
-   * de l'ÉDITEUR épinglé dont ce viewer est le compagnon. RUNTIME, NON
-   * persisté. Absent = le viewer s'appartient (compagnon « même contenu »,
-   * cas .md). Nécessaire quand le contenu du viewer DIFFÈRE de celui de
-   * l'éditeur : viewer .tex = PDF du MAÎTRE (R7) — sans lui, un viewer PDF
-   * serait libéré au moindre épinglage d'un autre format.
+   * PROPRIÉTAIRE d'un viewer de la sphère pinned (Phase C) — `id` du TAB
+   * éditeur épinglé dont ce viewer est le compagnon. RUNTIME, NON persisté
+   * (comme `space` : les deux meurent au boot, R9).
+   *
+   * C'est un id de TAB, pas une clé de contenu : le pinned slot est un tab
+   * qui CHANGE de contenu (excursion, re-point par la sidebar) — une clé de
+   * contenu deviendrait périmée au premier saut, et le viewer PDF du maître
+   * (R7) serait libéré alors que la liaison doit tenir « même en excursion ».
    */
   pinnedOwner?: string;
 };

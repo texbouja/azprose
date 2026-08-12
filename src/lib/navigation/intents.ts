@@ -103,6 +103,15 @@ export type NavIntent =
   | { type: "preview-back" }
   /** Historique preview : retour avant. Remplaçant typé de navGoForward. */
   | { type: "preview-forward" }
+  /** Historique de MONTAGE du pinned slot (Phase D — D6/D7) : remonte au
+   *  contenu précédemment monté dans le slot du `format` (md, tex…). Émis par
+   *  la tabaction de l'éditeur épinglé ET par celle de son viewer compagnon
+   *  (mêmes actions). Le retour retrouve le buffer dans son dernier état, sans
+   *  rebuild. Concerne les PINNED SEULS (les tabs libres n'ont pas de pile de
+   *  montage — chaque navigation y ouvre/active un tab). */
+  | { type: "pinned-back"; format: string }
+  /** Historique de montage du pinned slot : redescend d'un cran. */
+  | { type: "pinned-forward"; format: string }
   /** Navigation doc intégrée (DocPreview) — jamais l'éditeur main.
    *  Remplaçant typé de `azprose:doc-navigate`. */
   | { type: "doc-navigate"; path: string; heading?: string }

@@ -41,8 +41,12 @@ let {
    *  reflètent les éditeurs épinglés) ; le side n'a pas de pin. Fallback :
    *  `panel.setPinned` simple. */
   onTogglePin,
+  /** Format du PINNED slot dont le tab actif de CE panel fait partie (Phase D)
+   *  — calculé par PanelLayout (seul à voir les deux panels). */
+  pinnedFormat = null as string | null,
 }: {
   panel: PanelState;
+  pinnedFormat?: string | null;
   tabs?: Tab[];
   activeTabId?: string | null;
   onSourceChange?: (source: string) => void;
@@ -128,6 +132,7 @@ function handleViewerFullscreen() {
       {onExportPdf}
       {onToggleRenderMode}
       {onToggleColles}
+      {pinnedFormat}
       onToggleFullscreen={handleViewerFullscreen}
       onCommand={handleViewerCommand}
     />

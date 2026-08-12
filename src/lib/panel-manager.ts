@@ -1,4 +1,4 @@
-import { PanelState, normPath, pinnedOwnerKey, tabContentKind, tabContentKey, tabSpace, type Tab, type TabSource, type TabSpace } from "./panel-store";
+import { PanelState, isPinnedCompanionOf, normPath, tabContentKind, tabContentKey, tabSpace, type Tab, type TabSource, type TabSpace } from "./panel-store";
 import type { ContentStore } from "./content-store";
 
 export type LayoutMode = "main" | "main+side";
@@ -169,34 +169,35 @@ export class PanelManager {
   /**
    * Réaligne les viewers SIDE sur les éditeurs épinglés (Phase C — R1/R2) :
    * - ADOPTION : un viewer LIBRE du même contenu qu'un éditeur épinglé devient
-   *   son compagnon de la sphère pinned (jamais un doublon pinned : si la
-   *   sphère de cet éditeur a déjà un viewer, le libre reste libre) et est
-   *   COUPLÉ à cet éditeur — le compagnon .md suit le contenu du pinned
-   *   (D4, sync structurelle : même contenu) ;
-   * - LIBÉRATION : un viewer pinned dont l'éditeur PROPRIÉTAIRE
-   *   (`pinnedOwnerKey` — le PDF du maître appartient au tex épinglé, R7)
-   *   n'est plus épinglé redevient libre.
+   *   son compagnon (`pinnedOwner` = id de l'éditeur ; jamais deux compagnons
+   *   pour un même éditeur) et est COUPLÉ à lui — le compagnon .md suit le
+   *   contenu du pinned slot (D4, sync structurelle) ;
+   * - LIBÉRATION : un viewer pinned dont l'éditeur propriétaire n'est plus
+   *   épinglé (commutation, dé-épinglage, fermeture) redevient libre.
    */
   private syncPinnedViewers(): void {
-    const pinnedEditors = new Map(
-      this.main.tabs.filter(t => tabSpace(t) === "pinned").map(t => [tabContentKey(t), t] as const),
-    );
+    const pinnedEditors = this.main.tabs.filter(t => tabSpace(t) === "pinned");
+    const pinnedIds = new Set(pinnedEditors.map(t => t.id));
     for (const t of [...this.side.tabs]) {
       if (tabSpace(t) === "pinned") {
-        if (!pinnedEditors.has(pinnedOwnerKey(t))) this.side.setSpace(t.id, "free");
+        if (!t.pinnedOwner || !pinnedIds.has(t.pinnedOwner)) this.side.setSpace(t.id, "free");
         continue;
       }
       const key = tabContentKey(t);
-      const editor = pinnedEditors.get(key);
+      const editor = pinnedEditors.find(e => tabContentKey(e) === key);
       if (!editor) continue;
-      const taken = this.side.tabs.some(v => tabSpace(v) === "pinned" && pinnedOwnerKey(v) === key);
-      if (taken) continue;
-      this.side.setSpace(t.id, "pinned");
+      if (this.side.tabs.some(v => isPinnedCompanionOf(v, editor.id))) continue;
+      this.side.setSpace(t.id, "pinned", editor.id);
       // Couplage du compagnon : le viewer affiche le MÊME contenu que
       // l'éditeur épinglé (invariant « couplé ⇒ même fichier » respecté), donc
       // il le suit dès la prochaine navigation du pinned slot.
       this.linkPreview(t.id, editor.id);
     }
+  }
+
+  /** Le viewer compagnon de la sphère pinned de `editorTabId`, ou null. */
+  pinnedCompanion(editorTabId: string): Tab | null {
+    return this.side.tabs.find(t => isPinnedCompanionOf(t, editorTabId)) ?? null;
   }
 
   /** Le tab éditeur épinglé du `format` (md, tex, …) dans le MAIN, ou null.
@@ -215,10 +216,9 @@ export class PanelManager {
   closeMainTab(tabId: string): void {
     const tab = this.main.tabs.find(t => t.id === tabId);
     const wasPinned = tab != null && tabSpace(tab) === "pinned";
-    const key = tab ? tabContentKey(tab) : null;
     this.main.close(tabId);
-    if (wasPinned && key != null) {
-      const viewers = this.side.tabs.filter(t => tabSpace(t) === "pinned" && pinnedOwnerKey(t) === key);
+    if (wasPinned) {
+      const viewers = this.side.tabs.filter(t => isPinnedCompanionOf(t, tabId));
       viewers.forEach(v => this.side.close(v.id));
     }
   }
@@ -260,7 +260,7 @@ export class PanelManager {
     const target = normPath(pdfPath);
     const viewer = this.side.tabs.find((t) => normPath(t.path) === target);
     if (!viewer) return false;
-    this.side.setSpace(viewer.id, "pinned", tabContentKey(pinnedTex));
+    this.side.setSpace(viewer.id, "pinned", pinnedTex.id);
     return true;
   }
 
@@ -280,7 +280,7 @@ export class PanelManager {
       this.layout = "main+side";
       return;
     }
-    return this.openInSide(path, { sourceType, space: "pinned", pinnedOwner: tabContentKey(pinnedTex) });
+    return this.openInSide(path, { sourceType, space: "pinned", pinnedOwner: pinnedTex.id });
   }
 
   /** Ouvre `path` dans le tab ACTIF du SIDE panel (clic sidebar simple sur

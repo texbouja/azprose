@@ -24,6 +24,11 @@ export interface EditorModeDeps {
   extFromPath: (path: string) => string;
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   notify: { setInfo: (msg: string) => void };
+  /** Monte `path` dans le PINNED slot de son format via le reducer (Phase D —
+   *  re-point + historique de montage + compagnon qui suit) ; `false` si aucun
+   *  slot n'est épinglé pour ce format. Injecté par l'app (le reducer est le
+   *  seul à muter la session de navigation). */
+  mountInPinnedSlot?: (path: string) => Promise<boolean>;
 }
 
 /** Tab viewer side affichant DÉJÀ `path` — d'abord celui lié à l'éditeur
@@ -57,13 +62,15 @@ function findSideTabFor(ctx: EditorModeDeps, path: string | null): { id: string 
   );
 }
 
-/** Space cible du viewer du bouton Preview/Présentation/Colle (Phase C) :
- *  la sphère pinned si l'éditeur actif est épinglé (le compagnon vit dans
- *  l'espace pinned), sinon libre. */
-function viewerSpace(ctx: EditorModeDeps): "pinned" | undefined {
+/** Options d'espace du viewer du bouton Preview/Présentation/Colle (Phase C) :
+ *  la sphère pinned si l'éditeur actif est épinglé — le viewer devient son
+ *  COMPAGNON (`pinnedOwner` = id du slot, la liaison tient en excursion) ;
+ *  sinon espace libre (aucune option). */
+function viewerSpaceOpts(ctx: EditorModeDeps): { space?: "pinned"; pinnedOwner?: string } {
   const id = ctx.pm.main.activeTabId;
   const editor = ctx.pm.main.tabs.find((t: any) => t.id === id);
-  return editor != null && tabSpace(editor) === "pinned" ? "pinned" : undefined;
+  if (editor == null || tabSpace(editor) !== "pinned") return {};
+  return { space: "pinned", pinnedOwner: editor.id };
 }
 
 export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
@@ -100,7 +107,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, space: viewerSpace(ctx) }).catch(() => {});
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, ...viewerSpaceOpts(ctx) }).catch(() => {});
         const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "preview");
         ctx.setSideVisible(true);
@@ -125,7 +132,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, space: viewerSpace(ctx) }).catch(() => {});
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, ...viewerSpaceOpts(ctx) }).catch(() => {});
         const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "presentation");
         ctx.setSideVisible(true);
@@ -148,7 +155,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, space: viewerSpace(ctx) }).catch(() => {});
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, ...viewerSpaceOpts(ctx) }).catch(() => {});
         const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "colle");
         ctx.setSideVisible(true);
@@ -187,14 +194,25 @@ export async function gutterClick(ctx: EditorModeDeps, line: number) {
   }
 }
 
+/**
+ * Inverse search (PDF → source). Sphère pinned (Phase D — règle 1.3
+ * « historique de montage, inverse search et drafts ne concernent QUE les
+ * pinned tabs ») : si un slot du format est épinglé, la source est montée DANS
+ * le slot (re-point, historique de montage empilé) — y compris pour un fichier
+ * INCLUS (excursion : le viewer reste sur le PDF du maître, R7). Sans slot
+ * épinglé, comportement historique : tab existant activé, sinon ouverture.
+ */
 export async function inverseSync(ctx: EditorModeDeps, file: string, line: number) {
   const normFile = file.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
-  const found = ctx.pm.findTabByPath(normFile);
-  if (found && found.panel === "main") {
-    ctx.pm.main.select(found.tab.id);
-  } else {
-    const ext = ctx.extFromPath(normFile);
-    await ctx.pm.openInMain(normFile, { silent: true, preview: true, sourceType: ext === "tex" ? "latex" : undefined });
+  const ext = ctx.extFromPath(normFile);
+  const mounted = await ctx.mountInPinnedSlot?.(normFile);
+  if (!mounted) {
+    const found = ctx.pm.findTabByPath(normFile);
+    if (found && found.panel === "main") {
+      ctx.pm.main.select(found.tab.id);
+    } else {
+      await ctx.pm.openInMain(normFile, { silent: true, preview: true, sourceType: ext === "tex" ? "latex" : undefined });
+    }
   }
   ctx.setJumpToLine(line - 1);
   setEditorMode(ctx, "raw");
