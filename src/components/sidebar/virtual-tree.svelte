@@ -120,7 +120,7 @@
         // tracking (all months stay expanded until manually collapsed).
         mdvRowClickFeature<VNode>({
           onAltAction: (item) => onSelect(item.getId(), true),
-          onAltShiftAction: (item) => onSelect(item.getId(), false, true),
+          onShiftAction: (item) => onSelect(item.getId(), false, true),
         }),
         sveltePropsFeature,
       ],

@@ -165,51 +165,19 @@ test("open : dédup par espace — le même fichier peut être épinglé ET libr
   expect(tabSpace(p.activeTab!)).toBe("free");
 });
 
-test("openInActiveTab : un tab épinglé n'est JAMAIS re-pointé par une ouverture libre", async () => {
-  const { fs } = makeFakeFs({ "/a.md": "hello", "/b.md": "world" });
-  const store = new ContentStore(fs);
-  const p = new PanelState("main", {}, store);
-
-  await p.open("/a.md", { space: "pinned" });
-  const pinnedId = p.activeTabId!;
-
-  // Cible libre : le tab actif (épinglé) n'est pas ré-affecté — nouveau tab.
-  await p.openInActiveTab("/b.md");
-  expect(p.activeTabId).not.toBe(pinnedId);
-  expect(p.activePath).toBe("/b.md");
-  expect(tabSpace(p.activeTab!)).toBe("free");
-  // Le pinned reste intact sur /a.md.
-  expect(p.tabs.find(t => t.id === pinnedId)?.path).toBe("/a.md");
-  expect(tabSpace(p.tabs.find(t => t.id === pinnedId)!)).toBe("pinned");
-});
-
-test("openInActiveTab : re-point du tab actif dans le MÊME espace (comportement libre historique)", async () => {
-  const { fs } = makeFakeFs({ "/a.md": "hello", "/b.md": "world" });
-  const store = new ContentStore(fs);
-  const p = new PanelState("main", {}, store);
-
-  await p.open("/a.md"); // libre
-  const id = p.activeTabId!;
-  await p.openInActiveTab("/b.md");
-  expect(p.activeTabId).toBe(id); // même tab re-pointé
-  expect(p.activePath).toBe("/b.md");
-});
-
 // ── Phase A : pickOpenTarget filtré par espace ─────────────────────────────
 
 test("pickOpenTarget : un tab ÉPINGLÉ n'est jamais la cible d'une ouverture libre", () => {
   const pinned = mkTab({ id: "pin", path: "/a.md", preview: true, space: "pinned" });
   const free = mkTab({ id: "free", path: "/b.md", preview: true });
   const tabs = [pinned, free];
-  // Réaffectation preview libre : le tab libre preview est choisi, jamais le pinned.
-  expect(pickOpenTarget(tabs, "pin", true, undefined, "free")).toEqual({ id: "free", isFallback: false });
-  // fallbackToActive : le tab actif épinglé n'est pas ré-affecté par une cible
-  // libre — le relais retombe sur le tab preview du MÊME espace (jamais le pinned).
-  expect(pickOpenTarget(tabs, "pin", true, true, "free")).toEqual({ id: "free", isFallback: false });
-  // Sans preview libre disponible, plus de cible → nouveau tab.
-  expect(pickOpenTarget([pinned], "pin", true, true, "free")).toEqual({ id: null, isFallback: false });
+  // Ré-affectation d'un onglet éphémère : le tab LIBRE est choisi, jamais le
+  // pinned (isolation des espaces — R3).
+  expect(pickOpenTarget(tabs, true, "free")).toEqual({ id: "free", isFallback: false });
+  // Sans éphémère libre disponible → nouveau tab (le pinned reste intact).
+  expect(pickOpenTarget([pinned], true, "free")).toEqual({ id: null, isFallback: false });
   // Une cible épinglée, elle, peut ré-affecter le tab épinglé.
-  expect(pickOpenTarget(tabs, "pin", true, true, "pinned")).toEqual({ id: "pin", isFallback: true });
+  expect(pickOpenTarget(tabs, true, "pinned")).toEqual({ id: "pin", isFallback: false });
 });
 
 // ── Phase C : sphère pinned (adoption, libération, fermeture couplée) ───────

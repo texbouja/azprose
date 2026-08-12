@@ -159,17 +159,15 @@ function minimalFakePm(): PanelManager {
 
 // ── (a) le tab doc n'est JAMAIS ré-affecté ──
 
-test("pickOpenTarget (garde pure) : le tab doc actif n'est jamais choisi par fallbackToActive", () => {
+test("pickOpenTarget (garde pure) : le tab doc (aide) n'est jamais ré-affecté", () => {
   const tabs = [
-    { id: "s1", path: "/help/index.md", kind: "doc" },
+    { id: "s1", path: "/help/index.md", kind: "doc", preview: true },
     { id: "s2", path: "/a.md", preview: true },
   ];
-  // fallback sur le tab doc actif : garde `!active.kind` → pas de fallback ;
-  // la réutilisation d'un preview NON-doc reste possible (s2).
-  expect(pickOpenTarget(tabs, "s1", true, true)).toEqual({ id: "s2", isFallback: false });
-  // Sans aucun preview réutilisable → NOUVEAU tab (le doc n'est jamais touché).
-  expect(pickOpenTarget([{ id: "s1", path: "/help/index.md", kind: "doc" }], "s1", true, true))
-    .toEqual({ id: null, isFallback: false });
+  // La réutilisation ne retient que les tabs de FICHIER : le lecteur d'aide
+  // n'est jamais vampirisé, même marqué éphémère.
+  expect(pickOpenTarget(tabs, true)).toEqual({ id: "s2", isFallback: false });
+  expect(pickOpenTarget([tabs[0]], true)).toEqual({ id: null, isFallback: false });
 });
 
 test("(a) wikilink HORS mode nav : ouvre un NOUVEAU tab viewer side (jamais l'éditeur main)", async () => {

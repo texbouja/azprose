@@ -5,11 +5,15 @@ export interface MdvRowClickOptions<T> {
    *  un nouvel onglet). La ligne est sélectionnée/focusée d'abord ; aucune
    *  `primaryAction` n'est déclenchée. */
   onAltAction?: (item: ItemInstance<T>) => void;
-  /** Alt+Maj+clic sur une ligne NON-dossier : action tertiaire (ex. ouvrir
-   *  dans un viewer libre, Phase B — routage). La ligne est
-   *  sélectionnée/focusée d'abord ; aucune `primaryAction` n'est
-   *  déclenchée. */
-  onAltShiftAction?: (item: ItemInstance<T>) => void;
+  /** MAJ+clic sur une ligne NON-dossier : action tertiaire (ouvrir dans un
+   *  viewer libre side). La ligne est sélectionnée/focusée d'abord ; aucune
+   *  `primaryAction` n'est déclenchée.
+   *
+   *  Le geste de SÉLECTION ÉTENDUE (plage) qui occupait Maj+clic est déplacé
+   *  sur ALT+MAJ+clic : les deux capacités coexistent, seul le déclencheur
+   *  change (le tableau de bord des gestes est : clic = ouvrir, alt+clic =
+   *  slot épinglé, maj+clic = viewer side, alt+maj+clic = plage). */
+  onShiftAction?: (item: ItemInstance<T>) => void;
 }
 
 /**
@@ -40,18 +44,19 @@ export const mdvRowClickFeature = <T>(opts?: MdvRowClickOptions<T>): FeatureImpl
         ...props,
         onClick: (e: MouseEvent) => {
           if (e.shiftKey && e.altKey) {
-            // Alt+Shift+click (Phase B) : action tertiaire (viewer libre) —
-            // sélection & focus d'abord, jamais de primaryAction. Le branch
-            // shift SEUL reste la sélection étendue.
-            if (!item.isFolder()) opts?.onAltShiftAction?.(item);
-            tree.setSelectedItems([item.getId()]);
-            tree.getDataRef<SelectionDataRef>().current.selectUpToAnchorId = item.getId();
+            // Alt+Maj+clic : SÉLECTION ÉTENDUE (plage) — le geste qui occupait
+            // Maj+clic seul avant que celui-ci ne serve à ouvrir un viewer.
+            item.selectUpTo(e.ctrlKey || e.metaKey);
             item.setFocused();
             tree.updateDomFocus();
             return;
           }
           if (e.shiftKey) {
-            item.selectUpTo(e.ctrlKey || e.metaKey);
+            // Maj+clic : viewer libre side — sélection & focus d'abord, jamais
+            // de primaryAction (le fichier ne s'ouvre pas dans l'éditeur).
+            if (!item.isFolder()) opts?.onShiftAction?.(item);
+            tree.setSelectedItems([item.getId()]);
+            tree.getDataRef<SelectionDataRef>().current.selectUpToAnchorId = item.getId();
             item.setFocused();
             tree.updateDomFocus();
             return;

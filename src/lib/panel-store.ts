@@ -207,34 +207,19 @@ export type PanelCallbacks = {
  * Décide du tab à ré-affecter lors d'un `open(path, { preview: true })`.
  * (fonction PURE — testable sans Tauri/fs ; consommée par `PanelState.open`).
  *
- * Priorités :
- * 1. `fallbackToActive` (navigation « tab actif » : wikilink du viewer, sidebar
- *    maximisée, back & forward) → re-pointe le tab ACTIF du panneau (le clic a
- *    lieu dans le tab visible), pourvu que ce soit un tab de FICHIER (kind non
- *    défini — un tab custom/spreadsheet/datafilter ne peut pas être ré-affecté)
- *    ET du MÊME ESPACE que la cible (un tab épinglé n'est JAMAIS ré-affecté
- *    par une ouverture libre — R3, isolation des espaces).
- *    C'est le comportement « clic simple = tab actif », indépendant du flag
- *    `preview` (perdu par un restore de session ou une ré-affectation
- *    openInActiveTab) — sans lui, chaque clic créait un NOUVEL onglet.
- * 2. sinon, un tab existant marqué `preview: true` (mécanique historique de
- *    ré-affectation en place) — du même espace que la cible.
- * 3. sinon → nouveau tab (`id: null`).
+ * Une seule règle depuis la rectification des rôles de clic : un tab existant
+ * marqué `preview: true` (onglet ÉPHÉMÈRE, mécanique historique) est
+ * ré-affecté, dans le même espace que la cible ; sinon → nouveau tab.
+ *
+ * Le repli « re-pointer le tab ACTIF » (`fallbackToActive`) est SUPPRIMÉ : il
+ * portait le comportement « clic simple = recycler l'onglet visible », que la
+ * rectification 1 abolit (clic normal = nouveau tab, en toute circonstance).
  */
 export function pickOpenTarget(
   tabs: Tab[],
-  activeTabId: string | null,
   wantPreview: boolean,
-  fallbackToActive: boolean | undefined,
   space: TabSpace = "free",
 ): { id: string | null; isFallback: boolean } {
-  if (wantPreview && fallbackToActive) {
-    const active = tabs.find(t => t.id === activeTabId);
-    // Uniquement les tabs de FICHIER (kind undefined legacy ou "file") du même
-    // espace que la cible — jamais un tab doc/data (ré-affecter l'aide ou un
-    // outil = vampirisation), jamais un tab épinglé (isolation des espaces).
-    if (active && tabContentKind(active.kind) === "file" && tabSpace(active) === space) return { id: active.id, isFallback: true };
-  }
   if (wantPreview) {
     // Le tab doc (aide intégrée) et les tabs d'OUTILS ne sont JAMAIS
     // ré-affectés par un preview normal — seuls les tabs de fichier le sont,
@@ -339,7 +324,7 @@ export class PanelState {
     this.cbs.onSessionChange?.(this.toJSON());
   }
 
-  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; fallbackToActive?: boolean; forceNew?: boolean; space?: TabSpace; pinnedOwner?: string }): Promise<void> {
+  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; forceNew?: boolean; space?: TabSpace; pinnedOwner?: string }): Promise<void> {
     if (!isOpenablePath(path)) {
       if (!opts?.silent) {
         this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
@@ -379,7 +364,7 @@ export class PanelState {
     // réutiliser un tab preview NON associé casserait le couplage éditeur↔preview).
     const targetInfo = opts?.forceNew
       ? { id: null as string | null, isFallback: false as boolean }
-      : pickOpenTarget(this.tabs, this.activeTabId, wantPreview, opts?.fallbackToActive, space);
+      : pickOpenTarget(this.tabs, wantPreview, space);
     const target = targetInfo.id != null ? this.tabs.find(t => t.id === targetInfo.id) : undefined;
     const title = basename(normalized);
     const id = target?.id ?? crypto.randomUUID();
@@ -467,86 +452,6 @@ export class PanelState {
       this.notify();
       if (!opts?.silent) throw err;
       return;
-    }
-    this.notify();
-  }
-
-  /**
-   * - si un tab du panel affiche déjà `path` → simple activation (dédup) ;
-   * - sinon RE-POINTE le tab actif vers `path` : le brouillon non enregistré
-   *   du tab est PARKÉ avant le mouvement (mécanique `repoint`), la cible est
-   *   lue (avec `preferDraft` éventuel), et le tab perd son flag `preview`.
-   * L'ancien onglet reste accessible via back/forward du preview (il vient
-   * d'être remplacé dans le tab actif, pas fermé).
-   * PDF/images : pas de lecture texte — source vide, viewer dédié.
-   * Sans tab actif, se comporte comme `open` (nouveau tab).
-   */
-  async openInActiveTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; sourceType?: TabSource; space?: TabSpace }): Promise<void> {
-    if (!isOpenablePath(path)) {
-      if (!opts?.silent) {
-        this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
-      }
-      return;
-    }
-    const normalized = normPath(path);
-    // Espace cible (Phase A) : par défaut libre. Dédup PAR ESPACE — un tab
-    // épinglé affichant le fichier n'absorbe pas une ouverture libre (et
-    // inversement, R3) : seule la dédup intra-espace est activée.
-    const space = opts?.space ?? "free";
-    // Dédup : un tab du même ESPACE affiche déjà le fichier → activation simple.
-    const existing = this.tabs.find(t => normPath(t.path) === normalized && tabSpace(t) === space);
-    if (existing) {
-      this.activeTabId = existing.id;
-      this.notify();
-      return;
-    }
-
-    const active = this.activeTab;
-    // Le tab doc (aide intégrée) et les tabs d'OUTILS ne sont jamais ré-affectés
-    // par une navigation « tab actif » : un clic sidebar pendant la lecture de
-    // l'aide ne doit pas détruire le lecteur, et un outil (spreadsheet/calendar)
-    // ne peut pas être re-pointé vers un fichier — on crée un onglet dédié.
-    // Phase A : le tab actif n'est re-pointé que s'il est du MÊME ESPACE que la
-    // cible — un clic sidebar avec un éditeur épinglé crée un tab libre au lieu
-    // d'écraser le pinned (isolation des espaces, fondation du routage B).
-    const previous = active && tabContentKind(active.kind) === "file" && tabSpace(active) === space ? { ...active } : null;
-    const id = previous?.id ?? crypto.randomUUID();
-
-    // Park du brouillon du tab actif AVANT de le ré-affecter (mécanique repoint).
-    if (previous && tabContentKind(previous.kind) !== "data" && !isPdfPath(previous.path) && !isImagePath(previous.path) && previous.source !== previous.savedContent) {
-      this.parkContent(previous.path, previous.source);
-    }
-
-    if (previous) {
-      this.tabs = this.tabs.map(t =>
-        t.id === id
-          ? { ...t, path: normalized, title: basename(normalized), source: "", savedContent: "", preview: false, sourceType: opts?.sourceType, renderMode: recycleRenderMode(t.renderMode) }
-          : t,
-      );
-    } else {
-      this.tabs = [...this.tabs, { id, title: basename(normalized), path: normalized, source: "", savedContent: "", preview: false, sourceType: opts?.sourceType, ...(space === "pinned" ? { space } : {}) }];
-    }
-    this.activeTabId = id;
-    this.cbs.onFileOpen?.(normalized);
-    this.notify();
-
-    if (!isPdfPath(normalized) && !isImagePath(normalized)) {
-      try {
-        const { source: src, saved } = await this.readContent(normalized, { preferDraft: opts?.preferDraft });
-        this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: src, savedContent: saved } : t);
-      } catch (err) {
-        // Échec de lecture : restaure l'état précédent du tab (le brouillon
-        // parké reste intact — l'utilisateur ne perd rien).
-        if (previous) {
-          this.tabs = this.tabs.map(t => t.id === id ? previous : t);
-        } else {
-          this.tabs = this.tabs.filter(t => t.id !== id);
-          this.activeTabId = this.tabs[this.tabs.length - 1]?.id ?? null;
-        }
-        this.notify();
-        if (!opts?.silent) throw err;
-        return;
-      }
     }
     this.notify();
   }

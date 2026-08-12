@@ -164,27 +164,14 @@ test("repoint sur tab MAIN : modes éditeur raw/prose préservés", async () => 
   expect(p.activeTab!.renderMode).toBe("prose");
 });
 
-test("open ré-affectation (fallbackToActive) : renderMode viewer réarmé sur preview", async () => {
+test("open ré-affectation d'un onglet éphémère : renderMode viewer réarmé sur preview", async () => {
   const { fs } = makeFakeFs({ "/a.md": "a", "/b.md": "b" });
   const store = new ContentStore(fs);
   const p = new PanelState("side", {}, store);
-  await p.open("/a.md");
+  await p.open("/a.md", { preview: true });
   p.setRenderMode(p.activeTabId!, "colle");
 
-  await p.open("/b.md", { preview: true, fallbackToActive: true });
-
-  expect(p.activePath).toBe("/b.md");
-  expect(p.activeTab!.renderMode).toBe("preview");
-});
-
-test("openInActiveTab : renderMode viewer réarmé sur preview", async () => {
-  const { fs } = makeFakeFs({ "/a.md": "a", "/b.md": "b" });
-  const store = new ContentStore(fs);
-  const p = new PanelState("side", {}, store);
-  await p.open("/a.md");
-  p.setRenderMode(p.activeTabId!, "presentation");
-
-  await p.openInActiveTab("/b.md");
+  await p.open("/b.md", { preview: true });
 
   expect(p.activePath).toBe("/b.md");
   expect(p.activeTab!.renderMode).toBe("preview");

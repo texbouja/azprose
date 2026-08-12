@@ -18,7 +18,7 @@
  */
 
 import type { PanelManager } from "@/lib/panel-manager";
-import { isOpenablePath, isImagePath, isPdfPath, isMarkdownPath } from "@/lib/files";
+import { isOpenablePath, isImagePath, isPdfPath } from "@/lib/files";
 import { isHelpPath, helpIndexPath } from "@/lib/help-install";
 import { tabContentKind, tabPinFormat, tabSpace } from "@/lib/panel-store";
 import { basename } from "@/lib/paths-utils";
@@ -271,11 +271,13 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean, viewer: 
     void deps.trackMtime(path);
     return;
   }
-  if (deps.expandedPanel() === "side" && isMarkdownPath(path)) {
-    await deps.pm.openInSide(path, { preview: true, fallbackToActive: true });
-    void deps.trackMtime(path);
-    return;
-  }
+  // MAXIMISÉ ≠ ONGLET UNIQUE (rectification) : le routage ne change PAS quand
+  // le side est maximisé — sa barre d'onglets reste entièrement fonctionnelle,
+  // et l'ancien détournement « clic = navigation IN-PLACE du viewer » est
+  // supprimé. Dans la sphère pinned, l'éditeur épinglé suit en silence le
+  // montage (il sera à jour dès la dé-maximisation) et son compagnon visible
+  // navigue — c'est exactement ce que fait `openInProperSpace`.
+  //
   // RECTIFICATION 1 — rôles des clics INVERSÉS (le cas « aucun slot épinglé »
   // ne laissait aucune règle claire au clic simple) :
   //  - clic NORMAL (action sans intention) = ouvrir dans un NOUVEAU tab, en

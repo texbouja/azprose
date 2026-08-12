@@ -22,7 +22,6 @@ export interface OpenOptions {
   silent?: boolean;
   preview?: boolean;
   sourceType?: TabSource;
-  fallbackToActive?: boolean;
 }
 
 /** Options d'ouverture éditeur (openFileInTab legacy). */
