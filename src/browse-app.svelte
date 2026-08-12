@@ -16,6 +16,7 @@ import { readText } from "@/lib/files";
 import { basename } from "@/lib";
 import { extFromPath } from "@/lib/editor-languages";
 import { setRootPath } from "@/stores/root-path.svelte";
+import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { getFileIndex } from "@/lib/vault-index";
 import {
   createNavStack,
@@ -50,12 +51,28 @@ let error = $state<string | null>(null);
 /** Pile back/forward de CETTE fenêtre (browser-like, jamais persistée). */
 const stack = $state(createNavStack());
 
-async function load(next: string): Promise<boolean> {
+/** Message TRANSIENT affiché au-dessus du contenu (cible introuvable, format
+ *  non lisible ici) : un clic de navigation qui ne produit rien est
+ *  indiscernable d'une panne — la fenêtre doit toujours dire ce qu'elle fait. */
+let notice = $state<string | null>(null);
+let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function say(message: string): void {
+  notice = message;
+  if (noticeTimer) clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { notice = null; }, 4000);
+}
+
+async function load(next: string, heading?: string | null): Promise<boolean> {
   try {
     value = await readText(next);
     path = next;
     rev++;
     error = null;
+    // Ancre du wikilink (`[[note#titre]]`) : le store est consommé par
+    // MarkdownPreview APRÈS le rendu — il faut donc la poser avant que le
+    // nouveau contenu ne soit rendu, pas après.
+    if (heading) setScrollTarget(heading);
     void getCurrentWindow().setTitle(basename(next));
     return true;
   } catch {
@@ -65,11 +82,17 @@ async function load(next: string): Promise<boolean> {
 }
 
 /** Navigation d'un lien : empile la page courante, charge la cible. Un échec
- *  de chargement laisse la pile intacte (rien n'est perdu). */
-async function navigateTo(next: string): Promise<void> {
-  if (!next || next === path) return;
+ *  de chargement laisse la pile intacte (rien n'est perdu). Même cible que la
+ *  page courante : on ne bouge pas, mais l'ancre est honorée (aller à une
+ *  section de la page affichée). */
+async function navigateTo(next: string, heading?: string | null): Promise<void> {
+  if (!next) return;
+  if (next === path) {
+    if (heading) setScrollTarget(heading);
+    return;
+  }
   const previous = path;
-  const ok = await load(next);
+  const ok = await load(next, heading);
   if (ok) navStackPush(stack, previous);
 }
 
@@ -105,19 +128,27 @@ onMount(() => {
   void load(path);
 
   const onWikilink = (e: Event) => {
-    const detail = (e as CustomEvent).detail as { path?: string; target?: string };
+    const detail = (e as CustomEvent).detail as {
+      path?: string; target?: string; heading?: string | null;
+    };
     void (async () => {
       const next = await resolveTarget(detail);
-      // Seuls les documents lisibles ici naviguent en place : un PDF ou une
-      // image reste l'affaire de la fenêtre de projet (jamais de rendu partiel).
-      if (next && ["md", "markdown", "txt", "tex", "typ"].includes(extFromPath(next))) {
-        void navigateTo(next);
+      if (!next) {
+        say(t("nav.wikilinkUnresolved", { name: detail.target ?? "?" }));
+        return;
       }
+      // Formats lisibles ICI (le PDF aura son propre onglet viewer — chantier
+      // fenêtre NAV, phase « formats »).
+      if (["md", "markdown", "txt", "tex", "typ"].includes(extFromPath(next))) {
+        void navigateTo(next, detail.heading ?? null);
+        return;
+      }
+      say(t("browse.unsupportedHere", { name: basename(next) }));
     })();
   };
   const onDocNav = (e: Event) => {
-    const detail = (e as CustomEvent).detail as { path?: string };
-    if (detail.path) void navigateTo(detail.path);
+    const detail = (e as CustomEvent).detail as { path?: string; heading?: string };
+    if (detail.path) void navigateTo(detail.path, detail.heading ?? null);
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.altKey && e.key === "ArrowLeft") { e.preventDefault(); void goBack(); }
@@ -161,6 +192,12 @@ onMount(() => {
     </button>
     <span class="browse__title" title={path}>{basename(path)}</span>
   </header>
+
+  {#if notice}
+    <!-- Message TRANSIENT : il informe SANS masquer la page en cours de
+         lecture (une cible introuvable ne doit pas coûter la page affichée). -->
+    <p class="browse__notice" role="status">{notice}</p>
+  {/if}
 
   <main class="browse__body">
     {#if error}
@@ -225,6 +262,15 @@ onMount(() => {
   display: grid;
   grid-template-rows: 1fr;
   overflow: hidden;
+}
+.browse__notice {
+  flex: none;
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 13px;
+  color: var(--color-error);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 .browse__error {
   padding: 1.5rem;

@@ -446,6 +446,7 @@
   "preview.forward": "Forward",
   "browse.open": "Open in a navigation window",
   "browse.loadFailed": "Cannot open {name}.",
+  "browse.unsupportedHere": "{name} cannot be opened in the navigation window.",
   "nav.wikilinkUnresolved": "Link not found: {name}",
   "pinned.back": "Back to the previously mounted file (pinned tab)",
   "pinned.forward": "Forward in the pinned tab history",
