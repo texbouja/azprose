@@ -936,7 +936,10 @@ async function openFileInTab(path: string, opts?: { preferDraft?: boolean; silen
 }
 
 function closeTab(id: string) {
-  pm.main.close(id);
+  // Règle couplée R4 (Phase C) : fermer un éditeur ÉPINGLÉ ferme aussi le
+  // viewer de sa sphère — quel que soit le canal (croix, ctrl+w, commande,
+  // menu contextuel), jamais `pm.main.close` en direct.
+  pm.closeMainTab(id);
 }
 
 /**
@@ -1615,6 +1618,22 @@ const handleResetTypography = () => {
   typography.current = { ...DEFAULT_TYPOGRAPHY };
 };
 
+/** Ouvre le PDF compilé dans le side — sphère pinned si l'éditeur tex est
+ *  épinglé (Phase C — R7 : viewer = dernier PDF compilé, mécanisme maître
+ *  `rootFilePath`+`dependencies`, jamais de doublon pinned). Message
+ *  « absence totale » : aucun PDF généré (échec de compilation, toast). */
+const openLatexViewerPdf = async () => {
+  if (!ls.viewerPdfPath) {
+    notifications.setInfo(t("latex.noPdf"));
+    return;
+  }
+  await pm.openLatexViewerPdf(ls.viewerPdfPath);
+  if (!sideVisible) {
+    sideVisible = true;
+    pm.sideVisible = true;
+  }
+};
+
 let cmds = $derived(
   buildCommands({
     newFile: fo.newFile,
@@ -1676,12 +1695,12 @@ let cmds = $derived(
     latexBuild: async () => {
       if (!activePath) return;
       await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
-      if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); sideVisible = true; }
+      await openLatexViewerPdf();
     },
     latexViewPdf: async () => {
       if (!activePath) return;
       if (!ls.viewerPdfPath) await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
-      if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); if (!sideVisible) { sideVisible = true; pm.sideVisible = true; } }
+      await openLatexViewerPdf();
     },
     toggleConsole: handleToggleConsole,
     toggleViewPanel: handleToggleSidebar,
@@ -1839,14 +1858,22 @@ let cmds = $derived(
           forwardToPage={forwardTargetPage}
           onInverseSync={handleInverseSync}
           buildRev={ls.buildRev}
+          latexBuildFailed={ls.buildFailed}
+          onTogglePin={(id, pinned) => {
+            pm.setMainPinned(id, pinned);
+            // Adoption du viewer PDF latex (R7 — mécanisme maître) : épingler
+            // un tex (maître OU fichier inclus) adopte le viewer du dernier
+            // PDF compilé comme compagnon de la sphère pinned.
+            if (pinned && ls.viewerPdfPath) pm.adoptLatexViewer(ls.viewerPdfPath);
+          }}
           onSetEditorMode={activePath && (extFromPath(activePath) === "md" || extFromPath(activePath) === "csv" || extFromPath(activePath) === "tsv") ? handleSetEditorMode : undefined}
           onLatexViewer={activePath && extFromPath(activePath) === "tex" ? async () => {
             if (!ls.viewerPdfPath) await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true);
-            if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); if (!sideVisible) { sideVisible = true; pm.sideVisible = true; } }
+            await openLatexViewerPdf();
           } : undefined}
           onLatexBuild={activePath && extFromPath(activePath) === "tex" ? async () => {
             await handleLatexBuild(ls, activePath, handleSave, handleSaveAll, () => consoleOpen = true, () => consoleTab = "log");
-            if (ls.viewerPdfPath) { await pm.openInSide(ls.viewerPdfPath, { sourceType: "latex" }); sideVisible = true; }
+            await openLatexViewerPdf();
           } : undefined}
           onExportPdf={activePath && extFromPath(activePath) === "md" ? handleExportPdf : undefined}
           onToggleRenderMode={handleToggleSideRenderMode}

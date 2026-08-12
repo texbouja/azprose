@@ -7,6 +7,10 @@ export interface LatexState {
   dependencies: string[];
   savingForBuild: boolean;
   rootFilePath: string | null;
+  /** Dernier build en ÉCHEC (aucun PDF produit — Phase C, D5) : le viewer
+   *  garde le DERNIER BUFFER VALIDE (`viewerPdfPath`/`buildRev` inchangés),
+   *  le container affiche le message d'échec ; `false` après un build réussi. */
+  buildFailed: boolean;
 }
 
 export function createLatexState(): LatexState {
@@ -19,6 +23,7 @@ export function createLatexState(): LatexState {
     dependencies: [],
     savingForBuild: false,
     rootFilePath: null,
+    buildFailed: false,
   };
 }
 

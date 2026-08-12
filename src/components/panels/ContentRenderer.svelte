@@ -33,6 +33,10 @@ import type { TypographySettings } from "@/lib/typography";
 import { getTexlabClient } from "@/lib/lsp/texlab";
 import { getMarkdownOxideClient } from "@/lib/lsp/markdown-oxide";
 import { contentFor, contentVersionOf } from "@/stores/content.svelte";
+import { getT } from "@/lib/i18n";
+import { language } from "@/lib/i18n";
+
+let t = $derived(getT($language));
 
 let {
   tab = null as Tab | null,
@@ -50,6 +54,10 @@ let {
   buildRev = 0,
   onToggleFullscreen,
   viewerFullscreenOn = false,
+  /** Phase C — D5 : dernier build LaTeX en échec. Affiche le bandeau dans le
+   *  CONTAINER du viewer PDF (jamais dans le PDFViewer) — le viewer garde le
+   *  dernier buffer valide (`rev` n'a pas bougé, garde-fou build.ts). */
+  latexBuildFailed = false,
 }: {
   tab?: Tab | null;
   panelId?: string;
@@ -68,6 +76,7 @@ let {
   buildRev?: number;
   onToggleFullscreen?: () => void;
   viewerFullscreenOn?: boolean;
+  latexBuildFailed?: boolean;
 } = $props();
 
 // texlab and markdown-oxide start lazily on first .tex/.md file open
@@ -88,13 +97,25 @@ let {
     tabId={tab.id}
   />
 {:else if isPdfPath(tab.path)}
-  <LazyPdfViewer
-    path={tab.path}
-    rev={buildRev}
-    page={forwardToPage}
-    {onInverseSync}
-    {onToggleFullscreen}
-  />
+  <!-- CONTAINER du viewer PDF (Phase C — D5) : le message d'échec s'affiche
+       ICI, jamais dans le PDFViewer, qui garde le DERNIER BUFFER VALIDE. -->
+  <div class="mdv-pdf-container">
+    {#if tab.sourceType === "latex" && latexBuildFailed}
+      <div class="mdv-tex-banner" role="status">
+        <i class="wxi-alert-circle" aria-hidden="true"></i>
+        <span>{t("latex.buildFailedBanner")}</span>
+      </div>
+    {/if}
+    <div class="mdv-pdf-container__body">
+      <LazyPdfViewer
+        path={tab.path}
+        rev={buildRev}
+        page={forwardToPage}
+        {onInverseSync}
+        {onToggleFullscreen}
+      />
+    </div>
+  </div>
 {:else if isImagePath(tab.path)}
   <ImageViewer path={tab.path} />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "colle"}
@@ -154,3 +175,32 @@ let {
     filePath={tab.path}
   />
 {/if}
+
+<style>
+.mdv-pdf-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.mdv-pdf-container__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.mdv-tex-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 13px;
+  color: var(--color-error);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.mdv-tex-banner .wxi-alert-circle {
+  flex: none;
+}
+</style>

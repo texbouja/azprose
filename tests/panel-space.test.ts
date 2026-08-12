@@ -211,3 +211,200 @@ test("pickOpenTarget : un tab ÉPINGLÉ n'est jamais la cible d'une ouverture li
   // Une cible épinglée, elle, peut ré-affecter le tab épinglé.
   expect(pickOpenTarget(tabs, "pin", true, true, "pinned")).toEqual({ id: "pin", isFallback: true });
 });
+
+// ── Phase C : sphère pinned (adoption, libération, fermeture couplée) ───────
+
+import { PanelManager } from "../src/lib/panel-manager";
+
+/** Seed main+side sur des chemins distincts, tous libres. */
+function seedPm(pm: PanelManager, main: Array<[string, string]>, side: Array<[string, string]>) {
+  pm.main.tabs = main.map(([id, path]) => ({
+    id, title: path.split("/").pop()!, path, source: "", savedContent: "",
+  }));
+  pm.main.activeTabId = main[0]?.[0] ?? null;
+  pm.side.tabs = side.map(([id, path]) => ({
+    id, title: path.split("/").pop()!, path, source: "", savedContent: "",
+  }));
+  pm.side.activeTabId = side[0]?.[0] ?? null;
+}
+
+test("setSpace : marque un tab pinned puis le libère (champ absent = libre)", () => {
+  const p = new PanelState("side");
+  p.tabs = [mkTab({ id: "s1", path: "/a.md" })];
+  p.setSpace("s1", "pinned");
+  expect(tabSpace(p.tabs[0])).toBe("pinned");
+  p.setSpace("s1", "free");
+  expect(tabSpace(p.tabs[0])).toBe("free");
+  // Le champ est retiré (absent = libre) — jamais persisté par toJSON.
+  expect(p.toJSON().tabs[0]).not.toHaveProperty("space");
+});
+
+test("adoption (R1 round 5) : épingler un éditeur ADOPTE le viewer side du même contenu", () => {
+  const pm = new PanelManager();
+  seedPm(pm, [["a", "/a.md"]], [["s1", "/a.md"]]);
+  expect(tabSpace(pm.side.tabs[0])).toBe("free");
+
+  pm.setMainPinned("a", true);
+  // Le viewer /a.md (libre) devient le compagnon de la sphère pinned.
+  expect(tabSpace(pm.side.tabs[0])).toBe("pinned");
+
+  // Dé-épingler : le compagnon redevient libre.
+  pm.setMainPinned("a", false);
+  expect(tabSpace(pm.side.tabs[0])).toBe("free");
+});
+
+test("adoption : la commutation libère le viewer de l'ancien pinned, adopte celui du nouveau", () => {
+  const pm = new PanelManager();
+  seedPm(pm, [["a", "/a.md"], ["b", "/b.md"]], [["s1", "/a.md"], ["s2", "/b.md"]]);
+
+  pm.setMainPinned("a", true);
+  expect(tabSpace(pm.side.tabs[0])).toBe("pinned");
+  expect(tabSpace(pm.side.tabs[1])).toBe("free");
+
+  // Épingler b commute a (libre) → s2 adopté, s1 libéré.
+  pm.setMainPinned("b", true);
+  expect(tabSpace(pm.side.tabs[0])).toBe("free");
+  expect(tabSpace(pm.side.tabs[1])).toBe("pinned");
+});
+
+test("adoption : le compagnon adopté est COUPLÉ à l'éditeur épinglé (D4 — il suit son contenu)", () => {
+  const pm = new PanelManager();
+  seedPm(pm, [["a", "/a.md"]], [["s1", "/a.md"]]);
+  expect(pm.linkedEditorTabId("s1")).toBeNull();
+
+  pm.setMainPinned("a", true);
+
+  expect(pm.linkedEditorTabId("s1")).toBe("a");
+});
+
+test("adoption : un viewer d'un AUTRE contenu n'est jamais adopté", () => {
+  const pm = new PanelManager();
+  seedPm(pm, [["a", "/a.md"]], [["s1", "/other.md"]]);
+  pm.setMainPinned("a", true);
+  expect(tabSpace(pm.side.tabs[0])).toBe("free");
+});
+
+test("fermeture couplée (R4) : fermer le pinned éditeur ferme son viewer pinned ; l'inverse non", () => {
+  const pm = new PanelManager();
+  seedPm(pm, [["a", "/a.md"], ["b", "/b.md"]], [["s1", "/a.md"], ["s2", "/b.md"]]);
+  pm.setMainPinned("a", true);
+  expect(tabSpace(pm.side.tabs[0])).toBe("pinned");
+
+  // Fermer un éditeur LIBRE : aucun viewer ne bouge.
+  pm.closeMainTab("b");
+  expect(pm.side.tabs).toHaveLength(2);
+
+  // Fermer le pinned : son viewer pinned part aussi (R4 — inverse non).
+  pm.closeMainTab("a");
+  expect(pm.main.tabs.map(t => t.id)).toEqual([]);
+  expect(pm.side.tabs.map(t => t.id)).toEqual(["s2"]);
+  expect(tabSpace(pm.side.tabs[0])).toBe("free");
+
+  // Fermer un viewer (side) ne ferme JAMAIS l'éditeur.
+  pm.closeMainTab("b"); // b n'existe plus (fermé) → no-op
+  pm.side.close("s2");
+  expect(pm.side.tabs).toHaveLength(0);
+});
+
+test("openInSide space: pinned : le viewer du bouton preview d'un éditeur épinglé vit dans la sphère pinned", async () => {
+  const { fs } = makeFakeFs({ "/a.md": "hello" });
+  const store = new ContentStore(fs);
+  const pm = new PanelManager({ content: store });
+  await pm.openInMain("/a.md", { space: "pinned" });
+  const pinnedId = pm.main.activeTabId!;
+  expect(tabSpace(pm.main.activeTab!)).toBe("pinned");
+
+  await pm.openInSide("/a.md", { preview: true, forceNew: true, space: "pinned" });
+  expect(tabSpace(pm.side.activeTab!)).toBe("pinned");
+
+  // Dédup PAR ESPACE : une ré-ouverture libre du même contenu crée un viewer
+  // LIBRE séparé (R2/R3 — duplication inter-espaces légale).
+  await pm.openInSide("/a.md", { preview: true, forceNew: true });
+  expect(pm.side.tabs).toHaveLength(2);
+  expect(pm.side.tabs.filter(t => t.path === "/a.md" && tabSpace(t) === "pinned")).toHaveLength(1);
+  expect(pm.side.tabs.filter(t => t.path === "/a.md" && tabSpace(t) === "free")).toHaveLength(1);
+  expect(tabSpace(pm.side.activeTab!)).toBe("free");
+});
+
+// ── Phase C : viewer PDF latex (R7 — mécanisme maître, sphère pinned) ────────
+
+test("openLatexViewerPdf : éditeur tex épinglé → viewer pinned (sphère pinned)", async () => {
+  const { fs } = makeFakeFs({ "/main.tex": "\\documentclass{article}", "/out/main.pdf": "%PDF-1.4" });
+  const store = new ContentStore(fs);
+  const pm = new PanelManager({ content: store });
+  await pm.openInMain("/main.tex", { space: "pinned" });
+  expect(tabSpace(pm.main.activeTab!)).toBe("pinned");
+
+  await pm.openLatexViewerPdf("/out/main.pdf");
+
+  expect(pm.side.tabs).toHaveLength(1);
+  expect(pm.side.activeTab?.path).toBe("/out/main.pdf");
+  expect(tabSpace(pm.side.activeTab!)).toBe("pinned");
+});
+
+test("openLatexViewerPdf : adoption — un viewer libre du même PDF est adopté, jamais un doublon pinned", async () => {
+  const { fs } = makeFakeFs({ "/main.tex": "\\documentclass{article}", "/out/main.pdf": "%PDF-1.4" });
+  const store = new ContentStore(fs);
+  const pm = new PanelManager({ content: store });
+  await pm.openInMain("/main.tex", { space: "pinned" });
+  await pm.openInSide("/out/main.pdf", { sourceType: "latex" }); // déjà ouvert, libre
+  expect(pm.side.tabs).toHaveLength(1);
+  expect(tabSpace(pm.side.activeTab!)).toBe("free");
+
+  await pm.openLatexViewerPdf("/out/main.pdf");
+
+  expect(pm.side.tabs).toHaveLength(1); // adoption, PAS de doublon pinned
+  expect(tabSpace(pm.side.activeTab!)).toBe("pinned");
+});
+
+test("openLatexViewerPdf : éditeur tex NON épinglé → viewer libre (comportement historique)", async () => {
+  const { fs } = makeFakeFs({ "/main.tex": "\\documentclass{article}", "/out/main.pdf": "%PDF-1.4" });
+  const store = new ContentStore(fs);
+  const pm = new PanelManager({ content: store });
+  await pm.openInMain("/main.tex");
+  expect(tabSpace(pm.main.activeTab!)).toBe("free");
+
+  await pm.openLatexViewerPdf("/out/main.pdf");
+
+  expect(pm.side.activeTab?.path).toBe("/out/main.pdf");
+  expect(tabSpace(pm.side.activeTab!)).toBe("free");
+});
+
+test("propriétaire (R7) : le viewer PDF reste dans la sphère quand un AUTRE format est épinglé", () => {
+  const pm = new PanelManager();
+  seedPm(pm, [["tex", "/main.tex"], ["md", "/note.md"]], [["pdf", "/out/main.pdf"]]);
+
+  pm.setMainPinned("tex", true);
+  // Le PDF n'a pas le contenu de l'éditeur : l'adoption passe par le
+  // mécanisme maître (le tex épinglé devient le PROPRIÉTAIRE du viewer).
+  expect(pm.adoptLatexViewer("/out/main.pdf")).toBe(true);
+  expect(tabSpace(pm.side.tabs[0])).toBe("pinned");
+  expect(pm.side.tabs[0].pinnedOwner).toBe("/main.tex");
+
+  // Épingler un .md (autre format, autre sphère) ne libère PAS le viewer PDF.
+  pm.setMainPinned("md", true);
+  expect(tabSpace(pm.side.tabs[0])).toBe("pinned");
+
+  // Dé-épingler le tex propriétaire, en revanche, le libère.
+  pm.setMainPinned("tex", false);
+  expect(tabSpace(pm.side.tabs[0])).toBe("free");
+  expect(pm.side.tabs[0].pinnedOwner).toBeUndefined();
+});
+
+test("adoptLatexViewer : sans tex épinglé, aucune adoption (espace libre inchangé)", () => {
+  const pm = new PanelManager();
+  seedPm(pm, [["tex", "/main.tex"]], [["pdf", "/out/main.pdf"]]);
+  expect(pm.adoptLatexViewer("/out/main.pdf")).toBe(false);
+  expect(tabSpace(pm.side.tabs[0])).toBe("free");
+});
+
+test("fermeture couplée (R4) : fermer le tex épinglé ferme son viewer PDF (contenus différents)", () => {
+  const pm = new PanelManager();
+  seedPm(pm, [["tex", "/main.tex"]], [["pdf", "/out/main.pdf"], ["other", "/other.pdf"]]);
+  pm.setMainPinned("tex", true);
+  pm.adoptLatexViewer("/out/main.pdf");
+
+  pm.closeMainTab("tex");
+
+  expect(pm.side.tabs.map(t => t.id)).toEqual(["other"]);
+});

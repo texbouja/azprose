@@ -36,6 +36,8 @@ let {
   viewerFullscreenOn = false,
   onViewerFullscreen,
   onTabDoubleClick,
+  latexBuildFailed = false,
+  onTogglePin,
 }: {
   panelManager: PanelManager;
   tabs?: Tab[];
@@ -68,6 +70,8 @@ let {
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
   onTabDoubleClick?: (id: string) => void;
+  latexBuildFailed?: boolean;
+  onTogglePin?: (id: string, pinned: boolean) => void;
 } = $props();
 
 let splitResizeState: { startX: number; startRatio: number } | null = null;
@@ -120,6 +124,9 @@ function startResize(e: PointerEvent) {
     {onExportPdf}
     {onToggleColles}
     {onTabDoubleClick}
+    onCloseTab={(id) => panelManager.closeMainTab(id)}
+    {latexBuildFailed}
+    {onTogglePin}
   />
   {#if sideVisible}
     <div
@@ -149,6 +156,7 @@ function startResize(e: PointerEvent) {
       {viewerFullscreenOn}
     {onViewerFullscreen}
     {onTabDoubleClick}
+    {latexBuildFailed}
   />
   {/if}
 </div>

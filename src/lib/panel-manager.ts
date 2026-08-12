@@ -1,12 +1,12 @@
-import { PanelState, tabContentKind, type Tab, type TabSource } from "./panel-store";
+import { PanelState, normPath, pinnedOwnerKey, tabContentKind, tabContentKey, tabSpace, type Tab, type TabSource, type TabSpace } from "./panel-store";
 import type { ContentStore } from "./content-store";
 
 export type LayoutMode = "main" | "main+side";
 
-/** Normalisation de chemin partagée (drop des segments `.`) — utilisée par
- *  le couplage persisté (linkedTo) et findTabByPath : une session ne doit pas
- *  perdre un couplage à cause d'un `/a/./b.md` vs `/a/b.md`. */
-const normPath = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
+// `normPath` (panel-store) : normalisation de chemin partagée (drop des
+// segments `.`) — utilisée par le couplage persisté (linkedTo) et
+// findTabByPath : une session ne doit pas perdre un couplage à cause d'un
+// `/a/./b.md` vs `/a/b.md`.
 
 export type PanelManagerSession = {
   main: ReturnType<PanelState["toJSON"]>;
@@ -157,9 +157,46 @@ export class PanelManager {
    * décide dans le MAIN panel, les viewers n'ont qu'un badge). Commutation :
    * au plus un tab épinglé par format (épingler dé-épingle l'autre du même
    * format). État RUNTIME NON PERSISTÉ — jamais dans la session.
+   *
+   * Sphère pinned (Phase C — R1 round 5) : après commutation, les viewers
+   * side `space: "pinned"` reflètent les éditeurs épinglés (`syncPinnedViewers`).
    */
   setMainPinned(tabId: string, pinned: boolean): void {
     this.main.setPinned(tabId, pinned);
+    this.syncPinnedViewers();
+  }
+
+  /**
+   * Réaligne les viewers SIDE sur les éditeurs épinglés (Phase C — R1/R2) :
+   * - ADOPTION : un viewer LIBRE du même contenu qu'un éditeur épinglé devient
+   *   son compagnon de la sphère pinned (jamais un doublon pinned : si la
+   *   sphère de cet éditeur a déjà un viewer, le libre reste libre) et est
+   *   COUPLÉ à cet éditeur — le compagnon .md suit le contenu du pinned
+   *   (D4, sync structurelle : même contenu) ;
+   * - LIBÉRATION : un viewer pinned dont l'éditeur PROPRIÉTAIRE
+   *   (`pinnedOwnerKey` — le PDF du maître appartient au tex épinglé, R7)
+   *   n'est plus épinglé redevient libre.
+   */
+  private syncPinnedViewers(): void {
+    const pinnedEditors = new Map(
+      this.main.tabs.filter(t => tabSpace(t) === "pinned").map(t => [tabContentKey(t), t] as const),
+    );
+    for (const t of [...this.side.tabs]) {
+      if (tabSpace(t) === "pinned") {
+        if (!pinnedEditors.has(pinnedOwnerKey(t))) this.side.setSpace(t.id, "free");
+        continue;
+      }
+      const key = tabContentKey(t);
+      const editor = pinnedEditors.get(key);
+      if (!editor) continue;
+      const taken = this.side.tabs.some(v => tabSpace(v) === "pinned" && pinnedOwnerKey(v) === key);
+      if (taken) continue;
+      this.side.setSpace(t.id, "pinned");
+      // Couplage du compagnon : le viewer affiche le MÊME contenu que
+      // l'éditeur épinglé (invariant « couplé ⇒ même fichier » respecté), donc
+      // il le suit dès la prochaine navigation du pinned slot.
+      this.linkPreview(t.id, editor.id);
+    }
   }
 
   /** Le tab éditeur épinglé du `format` (md, tex, …) dans le MAIN, ou null.
@@ -168,6 +205,22 @@ export class PanelManager {
    *  mémorisé du retour sans rebuild arrivent en phase D. */
   pinnedMainTab(format: string): Tab | null {
     return this.main.pinnedTab(format) ?? null;
+  }
+
+  /** Ferme un tab éditeur du MAIN panel. Règle couplée (Phase C — R4) :
+   *  fermer un tab ÉPINGLÉ ferme AUSSI le viewer de sa sphère (celui dont il
+   *  est le PROPRIÉTAIRE : même contenu pour .md, PDF du maître pour .tex) —
+   *  l'inverse non (fermer le viewer ne ferme jamais l'éditeur, le bouton
+   *  preview le relance). No-op sans tab. */
+  closeMainTab(tabId: string): void {
+    const tab = this.main.tabs.find(t => t.id === tabId);
+    const wasPinned = tab != null && tabSpace(tab) === "pinned";
+    const key = tab ? tabContentKey(tab) : null;
+    this.main.close(tabId);
+    if (wasPinned && key != null) {
+      const viewers = this.side.tabs.filter(t => tabSpace(t) === "pinned" && pinnedOwnerKey(t) === key);
+      viewers.forEach(v => this.side.close(v.id));
+    }
   }
 
   openInSide(
@@ -179,11 +232,55 @@ export class PanelManager {
       sourceType?: TabSource;
       fallbackToActive?: boolean;
       forceNew?: boolean;
+      /** Espace cible (Phase C) : `"pinned"` = viewer de la sphère pinned
+       *  (bouton preview d'un éditeur épinglé), défaut libre. Dédup PAR
+       *  ESPACE — un viewer libre du même contenu n'est jamais adopté. */
+      space?: TabSpace;
+      /** Éditeur propriétaire du viewer pinned (`tabContentKey`) — à poser
+       *  quand le contenu diffère de celui de l'éditeur (PDF du maître, R7). */
+      pinnedOwner?: string;
     },
   ): Promise<void> {
     this.side.visible = true;
     this.layout = "main+side";
     return this.side.open(path, opts);
+  }
+
+  /**
+   * ADOPTE un viewer PDF déjà ouvert dans la sphère pinned du tex épinglé
+   * (Phase C — R7, MÉCANISME MAÎTRE : le PDF appartient au tex épinglé même
+   * quand celui-ci est un fichier INCLUS — la liaison tient en excursion).
+   * Le propriétaire est mémorisé (`pinnedOwner`) : le viewer n'est pas libéré
+   * par l'épinglage d'un autre format et se ferme avec son éditeur (R4).
+   * Retourne `true` si un viewer a été adopté (aucune ouverture ici).
+   */
+  adoptLatexViewer(pdfPath: string): boolean {
+    const pinnedTex = this.pinnedMainTab("tex");
+    if (!pinnedTex) return false;
+    const target = normPath(pdfPath);
+    const viewer = this.side.tabs.find((t) => normPath(t.path) === target);
+    if (!viewer) return false;
+    this.side.setSpace(viewer.id, "pinned", tabContentKey(pinnedTex));
+    return true;
+  }
+
+  /** Ouvre le PDF du viewer LaTeX (Phase C — R7). Si l'éditeur tex est épinglé
+   *  (pinned slot « tex »), le viewer appartient à la SPHÈRE PINNED :
+   *  - un viewer du même PDF déjà ouvert est ADOPTÉ (`adoptLatexViewer` —
+   *    jamais un doublon pinned, cohérent R1 « épingler adopte le viewer ») ;
+   *  - sinon ouverture `space: "pinned"` avec le tex épinglé pour propriétaire.
+   *  Éditeur non épinglé → comportement historique (espace libre). */
+  async openLatexViewerPdf(path: string, sourceType: TabSource = "latex"): Promise<void> {
+    const pinnedTex = this.pinnedMainTab("tex");
+    if (!pinnedTex) return this.openInSide(path, { sourceType });
+    if (this.adoptLatexViewer(path)) {
+      const viewer = this.side.tabs.find((t) => normPath(t.path) === normPath(path));
+      if (viewer) this.side.select(viewer.id);
+      this.side.visible = true;
+      this.layout = "main+side";
+      return;
+    }
+    return this.openInSide(path, { sourceType, space: "pinned", pinnedOwner: tabContentKey(pinnedTex) });
   }
 
   /** Ouvre `path` dans le tab ACTIF du SIDE panel (clic sidebar simple sur

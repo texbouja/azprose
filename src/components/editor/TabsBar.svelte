@@ -127,6 +127,14 @@ function endDrag(e: PointerEvent) {
       ondblclick={() => onTabDoubleClick?.(tab.id)}
     >
       <span class="mdv-tab__dot" aria-hidden="true" />
+      {#if panelId === "side" && pinned}
+        <!-- Badge pin viewer (Phase C — R1 round 5) : marqueur d'appartenance
+             à la sphère pinned, NON cliquable, pas de grisé — le pinnage se
+             décide dans le MAIN panel (l'icône cliquable n'existe que là). -->
+        <span class="mdv-tab__pin-badge" title={t("tabs.pinBadgeTitle")}>
+          <i class="wxi-pin-outline" style="font-size:13px"></i>
+        </span>
+      {/if}
       {#if pinable}
         <button
           type="button"

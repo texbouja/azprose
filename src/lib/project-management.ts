@@ -105,7 +105,8 @@ export async function handleCloseFolder(ctx: ProjectManagementDeps, path: string
     }
   }
   for (const tab of folderTabs) {
-    ctx.pm.main.close(tab.id);
+    // R4 (Phase C) : fermer un éditeur épinglé emporte le viewer de sa sphère.
+    ctx.pm.closeMainTab(tab.id);
   }
   const next = ctx.folders.current.filter((f) => f !== path);
   ctx.folders.update(() => next);

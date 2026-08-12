@@ -19,7 +19,7 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
       () => ctx.setConsoleTab("log"),
     )
     if (ctx.ls.viewerPdfPath) {
-      await ctx.pm.openInSide(ctx.ls.viewerPdfPath, { sourceType: "latex" })
+      await ctx.pm.openLatexViewerPdf(ctx.ls.viewerPdfPath)
       ctx.setSideVisible(true)
     }
   }

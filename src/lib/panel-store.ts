@@ -53,6 +53,17 @@ export function tabSpace(tab: { space?: TabSpace }): TabSpace {
 }
 
 /**
+ * Clé de l'ÉDITEUR propriétaire d'un viewer de la sphère pinned (Phase C) :
+ * `pinnedOwner` s'il est posé (viewer dont le contenu diffère de l'éditeur —
+ * PDF du maître, R7), sinon le contenu du viewer lui-même (compagnon « même
+ * contenu », cas .md). Sert à décider quels viewers restent dans la sphère
+ * (commutation d'épingle) et lesquels se ferment avec leur éditeur (R4).
+ */
+export function pinnedOwnerKey(tab: Pick<Tab, "path" | "kind" | "datafilterIds" | "pinnedOwner">): string {
+  return tab.pinnedOwner ?? tabContentKey(tab);
+}
+
+/**
  * Format d'épinglage d'un fichier = son extension (un seul éditeur épinglé par
  * format : md, tex, typ, …). `null` pour un path sans extension.
  */
@@ -153,6 +164,15 @@ export type Tab = {
   datafilterIds?: string[];
   /** Espace pinned/libre (Phase A) — RUNTIME, NON persisté (absent = libre). */
   space?: TabSpace;
+  /**
+   * PROPRIÉTAIRE d'un viewer de la sphère pinned (Phase C) — `tabContentKey`
+   * de l'ÉDITEUR épinglé dont ce viewer est le compagnon. RUNTIME, NON
+   * persisté. Absent = le viewer s'appartient (compagnon « même contenu »,
+   * cas .md). Nécessaire quand le contenu du viewer DIFFÈRE de celui de
+   * l'éditeur : viewer .tex = PDF du MAÎTRE (R7) — sans lui, un viewer PDF
+   * serait libéré au moindre épinglage d'un autre format.
+   */
+  pinnedOwner?: string;
 };
 
 export type PanelSessionData = {
@@ -292,7 +312,7 @@ export class PanelState {
     this.cbs.onSessionChange?.(this.toJSON());
   }
 
-  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; fallbackToActive?: boolean; forceNew?: boolean; space?: TabSpace }): Promise<void> {
+  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; fallbackToActive?: boolean; forceNew?: boolean; space?: TabSpace; pinnedOwner?: string }): Promise<void> {
     if (!isOpenablePath(path)) {
       if (!opts?.silent) {
         this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
@@ -350,7 +370,7 @@ export class PanelState {
     } else {
       // Nouveau tab dans l'espace cible (le champ `space` n'est posé que pour
       // un tab épinglé — absent = libre, comportement legacy préservé).
-      this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType, ...(space === "pinned" ? { space } : {}) }];
+      this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType, ...(space === "pinned" ? { space, ...(opts?.pinnedOwner ? { pinnedOwner: opts.pinnedOwner } : {}) } : {}) }];
     }
     this.activeTabId = id;
     this.cbs.onFileOpen?.(normalized);
@@ -649,6 +669,30 @@ export class PanelState {
   /** Le tab épinglé du `format` (md, tex, …) dans ce panel, ou undefined. */
   pinnedTab(format: string): Tab | undefined {
     return this.tabs.find(t => tabSpace(t) === "pinned" && tabPinFormat(t.path) === format);
+  }
+
+  /**
+   * Marque l'appartenance d'un tab à un espace (Phase C — R1, round 5) : le
+   * viewer side `space: "pinned"` porte la marque de la sphère pinned
+   * (adoption à l'épinglage, marqueur d'appartenance sur le viewer — le
+   * pinnage lui-même se décide dans le MAIN panel). Le champ absent vaut
+   * libre ; `toJSON` n'écrit jamais `space` (RUNTIME, R9).
+   *
+   * `owner` = `tabContentKey` de l'éditeur épinglé propriétaire (Phase C) —
+   * à poser quand le contenu du viewer DIFFÈRE de celui de l'éditeur (PDF du
+   * maître, R7) ; omis pour un compagnon « même contenu » (.md). Repasser en
+   * `"free"` efface toujours le propriétaire.
+   */
+  setSpace(tabId: string, space: TabSpace, owner?: string): void {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    const sameSpace = tabSpace(tab) === space;
+    const nextOwner = space === "pinned" ? owner : undefined;
+    if (sameSpace && tab.pinnedOwner === nextOwner) return;
+    this.tabs = this.tabs.map(t => t.id === tabId
+      ? { ...t, space: space === "pinned" ? space : undefined, pinnedOwner: nextOwner }
+      : t);
+    this.notify();
   }
 
   reorder(from: number, to: number): void {

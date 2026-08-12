@@ -88,6 +88,19 @@
   color: var(--accent);
 }
 
+/* Badge pin du viewer side (Phase C — R1 round 5) : marqueur d'appartenance à
+   la sphère pinned, jamais cliquable, jamais grisé — le pinnage se décide
+   dans le MAIN panel. */
+.mdv-tab__pin-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+  flex: none;
+}
+
 .mdv-tab.is-dirty .mdv-tab__dot {
   background: var(--accent);
 }

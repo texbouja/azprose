@@ -4,6 +4,9 @@ import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { latexSettings } from "@/stores/latex-settings.svelte";
 import type { LatexState } from "./types";
+import { applyLatexBuildResult, latexBuildTarget } from "./build-state";
+
+export { applyLatexBuildResult, latexBuildTarget } from "./build-state";
 
 /** Check if `savedPath` is a known dependency of the current LaTeX project
  *  and, if so, auto-trigger a build on the root file. Returns true if a build was launched. */
@@ -35,7 +38,7 @@ export async function handleLatexBuild(
   if (!activePath || state.latexBuilding) return;
 
   // Always build the root/master file if known, even if triggered from an \input
-  const buildPath = state.rootFilePath ?? activePath;
+  const buildPath = latexBuildTarget(state, activePath);
 
   state.savingForBuild = true;
   if (handleSave) await handleSave();
@@ -72,15 +75,10 @@ export async function handleLatexBuild(
     }));
     if (diags.length > 0) diagnosticsStore.set("latex", diags);
     if (diags.some((d) => d.severity === "error")) onOpenConsole?.();
-    if (res.pdf_path) {
-      state.viewerPdfPath = res.pdf_path;
-      state.buildRev++;
-      state.dependencies = res.dependencies ?? [];
-      state.rootFilePath = buildPath;
-    } else {
-      if (res.dependencies?.length) state.dependencies = res.dependencies;
-    }
+    // Garde-fou « pas de reload pdf si inchangé » + dernier buffer valide (D5).
+    applyLatexBuildResult(state, res, buildPath);
   } catch (err) {
+    state.buildFailed = true;
     diagnosticsStore.set("latex", [{ severity: "error", message: `${err}`, source: "latex" }]);
     onOpenConsole?.();
   } finally {

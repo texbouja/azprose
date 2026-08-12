@@ -54,7 +54,7 @@ export function handleKeydown(e: KeyboardEvent, ctx: KeyboardDeps) {
         void (async () => {
           await handleLatexBuild(ctx.ls, ctx.activePath!, ctx.handleSave, ctx.handleSaveAll, () => ctx.setConsoleOpen(true), () => ctx.setConsoleTab("log"));
           if (ctx.ls.viewerPdfPath) {
-            await ctx.pm.openInSide(ctx.ls.viewerPdfPath, { sourceType: "latex" });
+            await ctx.pm.openLatexViewerPdf(ctx.ls.viewerPdfPath);
             ctx.setSideVisible(true);
           }
         })();

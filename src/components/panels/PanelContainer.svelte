@@ -31,6 +31,16 @@ let {
   viewerFullscreenOn = false,
   onViewerFullscreen,
   onTabDoubleClick,
+  /** Fermeture d'un tab avec règles couplées (Phase C — R4 : fermer le pinned
+   *  éditeur ferme son viewer pinned). Fourni par le MAIN panel ; le side
+   *  garde `panel.close` simple (fermer un viewer ne ferme jamais l'éditeur). */
+  onCloseTab,
+  latexBuildFailed = false,
+  /** Épinglage d'un tab MAIN avec règles d'adoption (Phase C — R1) : fourni
+   *  par le panel main → `PanelManager.setMainPinned` (les viewers side pinned
+   *  reflètent les éditeurs épinglés) ; le side n'a pas de pin. Fallback :
+   *  `panel.setPinned` simple. */
+  onTogglePin,
 }: {
   panel: PanelState;
   tabs?: Tab[];
@@ -57,6 +67,9 @@ let {
   viewerFullscreenOn?: boolean;
   onViewerFullscreen?: () => void;
   onTabDoubleClick?: (id: string) => void;
+  onCloseTab?: (id: string) => void;
+  latexBuildFailed?: boolean;
+  onTogglePin?: (id: string, pinned: boolean) => void;
 } = $props();
 
 import { extFromPath } from "@/lib/editor-languages";
@@ -92,12 +105,12 @@ function handleViewerFullscreen() {
         {activeTabId}
         panelId={panel.id}
         onSelect={(id) => panel.select(id)}
-        onClose={(id) => panel.close(id)}
+        onClose={(id) => (onCloseTab ? onCloseTab(id) : panel.close(id))}
         onReorder={(from, to) => panel.reorder(from, to)}
         {onTabDoubleClick}
         onTogglePin={(id) => {
           const tab = tabs.find(t => t.id === id);
-          if (tab) panel.setPinned(id, tab.space !== "pinned");
+          if (tab) (onTogglePin ? onTogglePin(id, tab.space !== "pinned") : panel.setPinned(id, tab.space !== "pinned"));
         }}
       />
     </div>
@@ -137,6 +150,7 @@ function handleViewerFullscreen() {
           {buildRev}
           onToggleFullscreen={handleViewerFullscreen}
           viewerFullscreenOn={viewerFullscreenOn}
+          {latexBuildFailed}
         />
       </div>
     {/each}

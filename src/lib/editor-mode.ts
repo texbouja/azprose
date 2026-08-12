@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { PanelManager } from "@/lib/panel-manager";
-import { tabContentKind } from "@/lib/panel-store";
+import { tabContentKind, tabSpace } from "@/lib/panel-store";
 import type { LatexState } from "@/latex";
 
 export type EditorMode = "raw" | "prose" | "preview" | "presentation" | "colle";
@@ -34,19 +34,36 @@ export interface EditorModeDeps {
  *  s'applique que si AUCUN tab n'affiche le fichier. L'invariant « couplé ⇒
  *  MÊME md » reste satisfait (même chemin) et `linkPreview` découple
  *  automatiquement l'autre éditeur éventuel (invariant « un seul viewer couplé
- *  par éditeur »). */
+ *  par éditeur »).
+ *
+ *  Sphère pinned (Phase C) : quand l'ÉDITEUR ACTIF est épinglé, le viewer
+ *  compagnon vit dans la sphère pinned — la recherche est limitée aux viewers
+ *  `space: "pinned"` (dédup par ESPACE, R2/R3 : un viewer libre du même
+ *  contenu n'est jamais adopté ici — l'adoption se fait à l'épinglage). */
 function findSideTabFor(ctx: EditorModeDeps, path: string | null): { id: string } | null {
   if (!path) return null;
   const linkedId = ctx.pm.main.activeTabId;
+  const editor = ctx.pm.main.tabs.find((t: any) => t.id === linkedId);
+  const pinnedEditor = editor != null && tabSpace(editor) === "pinned";
+  const inSpace = (t: any) => !pinnedEditor || tabSpace(t) === "pinned";
   const linked = ctx.pm.side.tabs.find(
-    (t: any) => t.path === path && ctx.pm.linkedEditorTabId(t.id) === linkedId,
+    (t: any) => t.path === path && inSpace(t) && ctx.pm.linkedEditorTabId(t.id) === linkedId,
   );
   if (linked) return linked;
   return (
     ctx.pm.side.tabs.find(
-      (t: any) => t.path === path && tabContentKind(t.kind) === "file",
+      (t: any) => t.path === path && inSpace(t) && tabContentKind(t.kind) === "file",
     ) ?? null
   );
+}
+
+/** Space cible du viewer du bouton Preview/Présentation/Colle (Phase C) :
+ *  la sphère pinned si l'éditeur actif est épinglé (le compagnon vit dans
+ *  l'espace pinned), sinon libre. */
+function viewerSpace(ctx: EditorModeDeps): "pinned" | undefined {
+  const id = ctx.pm.main.activeTabId;
+  const editor = ctx.pm.main.tabs.find((t: any) => t.id === id);
+  return editor != null && tabSpace(editor) === "pinned" ? "pinned" : undefined;
 }
 
 export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
@@ -83,7 +100,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true }).catch(() => {});
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, space: viewerSpace(ctx) }).catch(() => {});
         const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "preview");
         ctx.setSideVisible(true);
@@ -108,7 +125,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true }).catch(() => {});
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, space: viewerSpace(ctx) }).catch(() => {});
         const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "presentation");
         ctx.setSideVisible(true);
@@ -131,7 +148,7 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
       } else {
-        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true }).catch(() => {});
+        ctx.pm.openInSide(ctx.activePath!, { preview: true, forceNew: true, space: viewerSpace(ctx) }).catch(() => {});
         const tab = ctx.pm.side.tabs.find((t: any) => t.id === ctx.pm.side.activeTabId);
         if (tab) ctx.pm.side.setRenderMode(tab.id, "colle");
         ctx.setSideVisible(true);
