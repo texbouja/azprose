@@ -1,5 +1,4 @@
 import { mount } from "svelte";
-import App from "./app.svelte";
 import "./styles/globals.css";
 
 const _mjPkgs: string[] = JSON.parse(
@@ -114,4 +113,15 @@ const platformClass = /Mac|iPhone|iPad|iPod/i.test(ua)
       : "is-unknown";
 document.documentElement.classList.add(platformClass);
 
-mount(App, { target: document.getElementById("root")! });
+// Deux racines possibles (Phase F) : la fenêtre de PROJET (app complète) et la
+// fenêtre fille « browser » (`?browse=<chemin>` — lecture en chaîne, back/
+// forward, aide comprise). L'import est DYNAMIQUE des deux côtés : la fenêtre
+// de navigation ne charge jamais le bundle de l'éditeur.
+const target = document.getElementById("root")!;
+if (new URLSearchParams(location.search).has("browse")) {
+  const { default: BrowseApp } = await import("./browse-app.svelte");
+  mount(BrowseApp, { target });
+} else {
+  const { default: App } = await import("./app.svelte");
+  mount(App, { target });
+}

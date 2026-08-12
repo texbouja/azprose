@@ -444,6 +444,8 @@
   "pdf.goForward": "Go forward",
   "preview.back": "Back",
   "preview.forward": "Forward",
+  "browse.open": "Open in a navigation window",
+  "browse.loadFailed": "Cannot open {name}.",
   "pinned.back": "Back to the previously mounted file (pinned tab)",
   "pinned.forward": "Forward in the pinned tab history",
   "nav.remountFailed": "Cannot go back to {name} — the file is no longer available.",

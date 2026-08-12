@@ -50,6 +50,7 @@ import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
 import { tabPinFormat, tabSpace } from "@/lib/panel-store";
+import { openBrowseWindow } from "@/lib/browse-window";
 import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
@@ -732,6 +733,22 @@ $effect(() => {
   return () => window.removeEventListener("azprose:preview-nav-mode", onNavMode);
 });
 
+// Fenêtre de NAVIGATION (Phase F — D2/R5) : bouton de la toolbar side. Ouvre
+// une fenêtre fille browser sur le fichier affiché — la session n'est PAS
+// touchée (le tab de lancement reste actif tel quel), la fenêtre se ferme avec
+// celle du projet (close-handler).
+$effect(() => {
+  const onBrowseOpen = (e: Event) => {
+    const detail = (e as CustomEvent<{ path?: string }>).detail;
+    if (!detail?.path) return;
+    void openBrowseWindow({ path: detail.path, root: getRootPath() }).catch((err) => {
+      notifications.setLoadError({ title: t("browse.open"), message: `${err}` });
+    });
+  };
+  window.addEventListener("azprose:browse-open", onBrowseOpen);
+  return () => window.removeEventListener("azprose:browse-open", onBrowseOpen);
+});
+
 // Bouton « Recharger » de la toolbar side (preview) — même procédure que le
 // save éditeur (méthode officielle VSCode) : changement EXTERNE + buffer non
 // sauvegardé → dialog de décision (fileConflict existant, l'utilisateur choisit
@@ -830,8 +847,19 @@ async function openDocArticle(path: string, heading?: string): Promise<void> {
   }
 }
 
-/** Ouvre la racine de la documentation intégrée dans un tab doc (side). */
+/** Ouvre l'aide intégrée dans une FENÊTRE de navigation (Phase F — D2 :
+ *  « l'Aide utilise le même mécanisme » que la lecture en chaîne ; la doc sort
+ *  des panneaux). Repli sur le tab doc side si la fenêtre ne peut pas s'ouvrir. */
 async function openHelp(): Promise<void> {
+  const rp = getRootPath();
+  if (rp) {
+    try {
+      await openBrowseWindow({ path: helpIndexPath(rp), root: rp, help: true });
+      return;
+    } catch {
+      // Fenêtre indisponible : l'aide reste accessible dans le side panel.
+    }
+  }
   await navigate(navDeps, { type: "open-help" });
 }
 

@@ -272,6 +272,18 @@ let sideItems = $derived.by(() => {
     }
   }
 
+  // Fenêtre de NAVIGATION (Phase F — D2/R5) : la lecture en chaîne (wikilink
+  // après wikilink, back/forward) sort des panneaux dans une fenêtre fille.
+  // Le tab de lancement reste actif tel quel — jamais de changement d'identité.
+  if (!isMain && isMd && renderMode !== "colle" && renderMode !== "presentation") {
+    items.push({
+      comp: "icon", icon: "wxi-maximize-2", text: t("browse.open"), pinned: true,
+      handler: () => activeTab && window.dispatchEvent(new CustomEvent("azprose:browse-open", {
+        detail: { path: activeTab.path },
+      })),
+    });
+  }
+
   // Left: navigation colles (bouton « Élèves » + chevrons + compteur) — vue
   // planches active dans le side panel. Le bouton « Élèves » est TOUT À
   // GAUCHE : il ouvre/ferme la sidebar INTERNE au rendu CollePreview

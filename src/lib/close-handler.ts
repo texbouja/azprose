@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { isImagePath, isPdfPath } from "@/lib";
 import { getCalendarStore } from "@/stores/calendar-store.svelte";
+import { closeBrowseChildren } from "@/lib/browse-window";
 
 export interface CloseHandlerDeps {
   tabs: { path: string; source: string; savedContent: string }[]
@@ -41,6 +42,10 @@ export function setupCloseHandler(ctx: CloseHandlerDeps) {
       if (ctx.isProjectWindow) {
         await invoke("unregister_project_window", { label: ctx.myLabel });
       }
+      // Phase F (R5) : les fenêtres filles de navigation ne survivent JAMAIS à
+      // leur fenêtre de projet — cascade explicite (le `parent` Tauri ne gère
+      // que l'empilement sur toutes les plateformes).
+      await closeBrowseChildren(ctx.myLabel);
     } catch {
       // Never trap the window on an unexpected error during the close decision.
     }

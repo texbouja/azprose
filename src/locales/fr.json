@@ -426,6 +426,8 @@
   "pdf.goForward": "Avancer",
   "preview.back": "Précédent",
   "preview.forward": "Suivant",
+  "browse.open": "Ouvrir dans une fenêtre de navigation",
+  "browse.loadFailed": "Impossible d'ouvrir {name}.",
   "pinned.back": "Remonter au fichier précédemment monté (onglet épinglé)",
   "pinned.forward": "Redescendre dans l'historique de l'onglet épinglé",
   "nav.remountFailed": "Impossible de remonter {name} — le fichier n'est plus disponible.",
