@@ -47,16 +47,20 @@ function draftKey(path: string): string {
   return DRAFT_PREFIX + scope + "::" + path;
 }
 
+/**
+ * Entrée de session (schema v2 — Phase E « pinned tabs ») : le CONTENU d'un
+ * onglet et rien d'autre. Ne sont JAMAIS persistés (runtime, R9/R10) :
+ * l'espace pinned/libre et son propriétaire, l'historique de montage, le mode
+ * navigation, le couplage éditeur↔viewer (`linkedTo`, schema v1 — reconstruit
+ * par CONTENU au boot). Les sessions v1 restent lisibles : les clés inconnues
+ * sont simplement ignorées (migration one-shot à la première sauvegarde).
+ */
 export interface SessionTab {
   path: string;
   title: string;
   sourceType?: "latex";
   renderMode?: "raw" | "prose" | "preview" | "presentation" | "colle";
-  /** Couplage éditeur↔viewer persisté (chemin du tab éditeur main couplé) —
-   *  rempli par PanelManager.toJSON sur les tabs side ; lu au boot par
-   *  `restorePreviewLinks` pour re-coupler par chemin (les ids sont régénérés).
-   *  Absent = viewer indépendant ou session legacy (repli path-match). */
-  linkedTo?: string | null;
+  kind?: "file" | "custom" | "spreadsheet" | "datafilter" | "doc";
 }
 
 export interface PanelSessionData {

@@ -121,7 +121,7 @@ function endDrag(e: PointerEvent) {
     <div
       role="tab"
       aria-selected={active}
-      class="mdv-tab{active ? " is-active" : ""}{dirty ? " is-dirty" : ""}{dragging ? " is-dragging" : ""}{isDragOver ? " is-drag-over" : ""}"
+      class="mdv-tab{active ? " is-active" : ""}{dirty ? " is-dirty" : ""}{dragging ? " is-dragging" : ""}{isDragOver ? " is-drag-over" : ""}{tab.dormant ? " is-dormant" : ""}"
       title={tab.path}
       onpointerdown={(e) => onTabPointerDown(e, tabIndex)}
       ondblclick={() => onTabDoubleClick?.(tab.id)}

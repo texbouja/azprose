@@ -1,9 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { loadSession, saveSession, saveLastFile, loadLastFile } from "@/lib/session";
-import type { SessionSideData } from "@/lib/session";
 import { loadProjectSession } from "@/lib/project-session";
-import { tabContentKind, type Tab } from "@/lib/panel-store";
+import { tabContentKind } from "@/lib/panel-store";
 import type { PanelManager } from "@/lib/panel-manager";
 
 export interface SessionRestoreDeps {
@@ -62,26 +61,34 @@ export function setupSessionRestore(
               if (active) ctx.pm.main.select(active.id);
             }
             if (session.side.visible && session.side.tabs.length > 0) {
+              // Phase E (R9) : les viewers restaurés sont DORMANTS — onglets
+              // visibles et grisés, AUCUN travail au boot (ni lecture disque ni
+              // rendu markdown/PDF, « rien que du texte pur ») ; le premier
+              // clic les monte (`PanelState.wake`). Le flag `preview` est posé
+              // d'emblée (chaque entrée crée son onglet, pas de ré-affectation).
               for (const tab of session.side.tabs) {
                 if (cancelled) break;
-                await ctx.pm.openInSide(tab.path, { silent: true, sourceType: tab.sourceType });
+                ctx.pm.side.restoreDormantTab({
+                  path: tab.path,
+                  title: tab.title,
+                  renderMode: tab.renderMode,
+                  sourceType: tab.sourceType,
+                  kind: tab.kind,
+                });
               }
-              // Les tabs du side panel sont des previews : stamp le flag `preview`
-              // APRÈS la boucle (le passer à open() ré-affecterait les onglets
-              // précédemment restaurés au lieu d'en créer un par entrée). Le flag
-              // sert à la ré-affectation en place des navigations open(…, { preview: true }).
-              ctx.pm.side.tabs = ctx.pm.side.tabs.map(t => ({ ...t, preview: true }));
-              // Restaure le couplage éditeur↔viewer (voir restorePreviewLinks) :
-              // linkedTo persisté d'abord, repli path-match pour les sessions
-              // legacy sauvegardées avant la persistance du couplage.
-              restorePreviewLinks(ctx.pm, session.side);
-              if (!cancelled && session.side.activePath) {
+              // Couplage éditeur↔viewer reconstruit PAR CONTENU (Phase E — D1 :
+              // plus aucun état de couplage persisté, les tabs se reconnaissent
+              // par leur contenu).
+              restorePreviewLinks(ctx.pm);
+              if (!cancelled) {
                 // Sélectionne le tab SIDE actif de la session dans le panel
                 // SIDE (par chemin normalisé) — jamais via findTabByPath qui
                 // ne cherche que dans le panel MAIN : sélectionner un id de
                 // tab main dans le panel side ne correspond à aucun tab (bug :
                 // au boot, le tab side actif restauré ne redevenait pas celui
-                // de la session).
+                // de la session). Sans chemin actif, le panel reste visible
+                // avec ses onglets (dormants) — la visibilité vient de la
+                // session, jamais d'un effet de bord d'ouverture.
                 selectSideActiveTab(ctx.pm, session.side.activePath);
                 ctx.setSideVisible(true);
               }
@@ -127,75 +134,26 @@ export function setupSessionRestore(
 }
 
 /**
- * Restaure le couplage éditeur↔viewer après la restauration des tabs (boot).
- * Le registre `previewLinks` du PanelManager est un état runtime ids-only —
- * jamais persisté tel quel — et les ids de tabs sont RÉGÉNÉRÉS au restore :
- * le chemin est le seul identifiant stable de la session.
+ * Reconstruit le couplage éditeur↔viewer au boot — PAR CONTENU (Phase E, D1 :
+ * « plus aucun état de couplage persisté, les tabs se reconnaissent par leurs
+ * contenus »). Un tab viewer et un tab éditeur affichant le MÊME fichier sont
+ * couplés ; tout le reste est indépendant.
  *
- * Règle forte (décision utilisateur) : en état de couplage, un tab éditeur et
- * un tab viewer affichent strictement le MÊME md — un état divergent est
- * IMPOSSIBLE (ruptures runtime + gardes au save/restore). Cette fonction n'en
- * restaure donc jamais un : la cohérence `linkedTo == chemin du viewer` est la
- * seule porte d'entrée.
+ * Le registre `previewLinks` est un état runtime ids-only et les ids de tabs
+ * sont RÉGÉNÉRÉS au restore : le contenu est le seul identifiant stable d'une
+ * session à l'autre. Le champ `linkedTo` (schema v1) n'est plus ni écrit ni
+ * lu — un couplage divergent est structurellement impossible ici, puisque la
+ * seule porte d'entrée est l'égalité des chemins.
  *
- * Deux familles de sessions :
- *  1. **Modernes** (au moins un tab side porte la clé `linkedTo`, écrite
- *     SYSTÉMATIQUEMENT string|null par PanelManager.toJSON) : `linkedTo` est
- *     EXPLICITE et fait foi.
- *      - `linkedTo` = chemin (cohérent, == chemin du viewer par construction)
- *        → re-couplage vers le tab éditeur main de ce chemin. Si ce tab
- *        n'existe pas au restore (fichier illisible) → PAS de repli : le
- *        couplage explicite est mort avec son éditeur.
- *      - `linkedTo` = null → viewer EXPLICITEMENT indépendant, JAMAIS re-couplé
- *        (l'ancien path-match déduisait un couplage là où l'utilisateur avait
- *        choisi l'indépendance — l'information est désormais persistée).
- *      - `linkedTo` ≠ chemin du viewer (donnée corrompue ou session d'une
- *        version antérieure au correctif règle forte) → IGNORÉ : jamais d'état
- *        divergent restauré, et PAS de repli path-match non plus (le champ
- *        explicite fait foi, y compris pour dire « rien »).
- *  2. **Legacy** (aucune clé `linkedTo`) : repli path-match historique — un tab
- *     side de fichier affichant le même chemin qu'un tab main est re-couplé.
- *     Faux positif bénin documenté : viewer indépendant + éditeur du même
- *     fichier → le viewer suit l'éditeur (règle de défaut attendue). Transition
- *     de migration : dès le premier changement de session, toJSON écrit
- *     `linkedTo` partout et la session devient moderne.
- *
- * Sûr par construction :
- *  - le mode nav n'est PAS persisté (état d'interaction éphémère par tab) →
- *    aucun viewer restauré n'est en mode nav, donc jamais de re-couplage d'un
- *    viewer qui aurait été volontairement libéré ;
- *  - l'invariant « un seul viewer couplé par éditeur » est maintenu par
- *    `linkPreview` (coupler un viewer découple automatiquement l'autre).
+ * L'invariant « un seul viewer couplé par éditeur » est maintenu par
+ * `linkPreview` (coupler un viewer découple automatiquement l'autre).
  */
-export function restorePreviewLinks(
-  pm: PanelManager,
-  sideSession?: SessionSideData,
-): void {
-  const modern = sideSession?.tabs.some((e) => "linkedTo" in e) ?? false;
+export function restorePreviewLinks(pm: PanelManager): void {
   for (const s of pm.side.tabs) {
     if (tabContentKind(s.kind) !== "file" || !s.path) continue;
-    // L'entrée de session du viewer restauré, par chemin (les tabs side sont
-    // dédupliqués par chemin → correspondance unique).
-    const entry = sideSession?.tabs.find(
-      (e) => normPath(e.path) === normPath(s.path),
+    const target = pm.main.tabs.find(
+      (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(s.path),
     );
-    let target: Tab | undefined;
-    if (modern) {
-      const linkedPath = entry?.linkedTo;
-      // Règle forte : un linkedTo cohérent (== chemin du viewer) est la seule
-      // porte d'entrée — un chemin divergent (donnée corrompue) est IGNORÉ.
-      if (linkedPath && normPath(linkedPath) === normPath(s.path)) {
-        target = pm.main.tabs.find(
-          (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(linkedPath),
-        );
-      }
-    } else {
-      // Session legacy (sans clé linkedTo) : repli par chemin (viewer ↔
-      // éditeur du même fichier).
-      target = pm.main.tabs.find(
-        (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(s.path),
-      );
-    }
     if (target) pm.linkPreview(s.id, target.id);
   }
 }
@@ -210,5 +168,8 @@ const normPath = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
 export function selectSideActiveTab(pm: PanelManager, activePath: string | null): void {
   if (!activePath) return;
   const sideTab = pm.side.tabs.find((t) => normPath(t.path) === normPath(activePath));
-  if (sideTab) pm.side.select(sideTab.id);
+  // `wake: false` (Phase E — R9) : l'onglet actif restauré reste DORMANT (grisé,
+  // rien de monté) ; c'est le premier clic de l'utilisateur qui le réveille —
+  // le boot ne fait « rien que du texte pur ».
+  if (sideTab) pm.side.select(sideTab.id, { wake: false });
 }

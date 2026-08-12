@@ -439,50 +439,16 @@ export class PanelManager {
     this.side.saveDrafts();
   }
 
+  /**
+   * Session SCHEMA V2 (Phase E) : le contenu des onglets, rien d'autre. Ni
+   * espace pinned/propriétaire, ni historique de montage, ni mode navigation,
+   * ni couplage (`linkedTo` du schema v1 — le couplage est reconstruit PAR
+   * CONTENU au boot, D1). Les états runtime meurent avec la session.
+   */
   toJSON(): PanelManagerSession {
-    const side = this.side.toJSON();
     return {
       main: this.main.toJSON(),
-      side: {
-        ...side,
-        tabs: side.tabs.map((t, i) => {
-          // Persiste le couplage éditeur↔viewer SUR les tabs side : `linkedTo`
-          // = chemin du tab éditeur main couplé à CET instant. Règle forte
-          // « couplé ⇒ MÊME md » : ce chemin est TOUJOURS le chemin du viewer
-          // lui-même (l'éditeur lié affiche le même fichier) — la garde de
-          // cohérence ci-dessous rend un état divergent IMPOSSIBLE à persister.
-          // Résolution (jamais d'écriture dans le registre — getter pur) :
-          //  - id du tab main lié vivant + cohérent (même chemin normalisé que
-          //    le viewer) → son chemin ;
-          //  - id mort (tab éditeur fermé) → repli par chemin du viewer : si le
-          //    même fichier est rouvert en main, le couplage revit (seul tab
-          //    possible par dédup) ; sinon couplage mort → null ;
-          //  - divergence (chemins ≠, repoint silencieux non rompu) → null ;
-          //  - pas d'entrée (viewer indépendant) → null.
-          // `linkedTo` est TOUJOURS écrit (string | null) : au restore, null =
-          // viewer EXPLICITEMENT indépendant — jamais re-couplé par déduction
-          // (le path-match ne s'applique qu'aux sessions sans la clé).
-          const sTab = this.side.tabs[i];
-          let linkedPath: string | null = null;
-          if (sTab) {
-            const linkedId = this.previewLinks.get(sTab.id);
-            if (linkedId) {
-              const linked = this.main.tabs.find((mt) => mt.id === linkedId);
-              if (linked) {
-                if (normPath(linked.path) === normPath(sTab.path)) {
-                  linkedPath = linked.path;
-                }
-              } else {
-                const sameFile = this.main.tabs.find(
-                  (mt) => tabContentKind(mt.kind) === "file" && normPath(mt.path) === normPath(sTab.path),
-                );
-                linkedPath = sameFile?.path ?? null;
-              }
-            }
-          }
-          return { ...t, linkedTo: linkedPath };
-        }),
-      },
+      side: this.side.toJSON(),
       layout: this.layout,
       splitRatio: this.splitRatio,
     };
@@ -519,26 +485,16 @@ export class PanelManager {
       this.layout = "main+side";
     }
 
-    // Reconstruit le couplage éditeur↔viewer persisté par toJSON (`linkedTo` =
-    // chemin du tab éditeur main couplé, TOUJOURS == chemin du viewer par la
-    // règle forte). Les ids des tabs sont RÉGÉNÉRÉS à la restauration :
-    // résolution par chemin vers les tabs main reconstruits. Garde de
-    // COHÉRENCE : un linkedTo ≠ chemin du viewer (donnée corrompue ou état
-    // divergent écrit par une version antérieure) est IGNORÉ — jamais un
-    // couple éditeur↔viewer divergent restauré. Un linkedTo cohérent dont le
-    // tab main n'existe pas (fichier illisible au restore) → pas de lien : le
-    // couplage explicite est mort avec son éditeur.
+    // Couplage éditeur↔viewer reconstruit PAR CONTENU (Phase E — D1 : aucun
+    // état de couplage persisté ; les ids de tabs sont régénérés au restore,
+    // le contenu est le seul identifiant stable). Un couple divergent est
+    // structurellement impossible : la seule porte d'entrée est l'égalité des
+    // chemins.
     this.previewLinks.clear();
     for (const sideTab of this.side.tabs) {
       if (tabContentKind(sideTab.kind) !== "file" || !sideTab.path) continue;
-      const entry = data.side.tabs.find(
-        (e) => normPath(e.path) === normPath(sideTab.path),
-      );
-      const linkedPath = entry?.linkedTo;
-      if (!linkedPath) continue;
-      if (normPath(linkedPath) !== normPath(sideTab.path)) continue;
       const mainTab = this.main.tabs.find(
-        (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(linkedPath),
+        (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(sideTab.path),
       );
       if (mainTab) this.previewLinks.set(sideTab.id, mainTab.id);
     }

@@ -84,6 +84,11 @@ let {
 
 {#if !tab}
   <div class="mdv-empty-state" />
+{:else if tab.dormant}
+  <!-- Onglet restauré JAMAIS monté (Phase E — R9 « rien que du texte pur ») :
+       aucun composant de rendu n'est instancié tant que l'utilisateur n'a pas
+       cliqué l'onglet ; `select` le réveille (PanelState.wake). -->
+  <div class="mdv-empty-state"></div>
 {:else if tab.kind === "custom" && tab.panelId === "calendar-editor"}
   <LazyCalendarPanel />
 {:else if tab.kind === "custom" && tab.panelId === "journal-calendar"}

@@ -175,10 +175,21 @@ export type Tab = {
    * (R7) serait libéré alors que la liaison doit tenir « même en excursion ».
    */
   pinnedOwner?: string;
+  /**
+   * Tab RESTAURÉ mais jamais monté (Phase E — R9 « rien que du texte pur ») :
+   * au boot, les viewers sont des onglets VISIBLES mais GRISÉS — ni lecture
+   * disque, ni rendu (markdown, PDF, transclusion). Le premier clic les
+   * « réveille » (`wake`) : lecture du contenu puis rendu normal.
+   * RUNTIME, non persisté (un tab restauré est toujours dormant au boot).
+   */
+  dormant?: boolean;
 };
 
 export type PanelSessionData = {
-  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string; datafilterIds?: string[]; /** Couplage éditeur↔viewer persisté — chemin du tab éditeur main couplé, rempli par PanelManager.toJSON pour les tabs side (les ids de tabs ne survivent pas au redémarrage). Absent = viewer indépendant ou session legacy. */ linkedTo?: string | null }[];
+  /** Schema v2 (Phase E) : le CONTENU des onglets, rien d'autre — ni espace
+   *  pinned, ni propriétaire, ni historique, ni couplage (`linkedTo` v1
+   *  supprimé : le couplage est reconstruit par contenu au boot). */
+  tabs: { path: string; title: string; renderMode?: RenderMode; sourceType?: TabSource; kind?: TabKind; panelId?: string; spreadsheetId?: string; datafilterIds?: string[] }[];
   activePath: string | null;
 };
 
@@ -633,8 +644,73 @@ export class PanelState {
     this.notify();
   }
 
-  select(tabId: string): void {
+  /** Active un onglet. Phase E (R9) : un onglet restauré est DORMANT — la
+   *  sélection le RÉVEILLE (lecture + rendu). `wake: false` pour la sélection
+   *  du BOOT : l'onglet actif restauré reste grisé jusqu'au premier clic
+   *  (« aucun travail de rendu au boot »). */
+  select(tabId: string, opts?: { wake?: boolean }): void {
     this.activeTabId = tabId;
+    this.notify();
+    if (opts?.wake !== false) void this.wake(tabId);
+  }
+
+  /**
+   * Restaure un tab SANS lire le disque (Phase E — R9) : le tab est visible et
+   * grisé, aucun travail de rendu au boot. Retourne son id.
+   * `source`/`savedContent` restent vides jusqu'au réveil (`wake`).
+   */
+  restoreDormantTab(entry: {
+    path: string;
+    title?: string;
+    renderMode?: RenderMode;
+    sourceType?: TabSource;
+    kind?: TabKind;
+    preview?: boolean;
+  }): string {
+    const normalized = normPath(entry.path);
+    const id = crypto.randomUUID();
+    this.tabs = [...this.tabs, {
+      id,
+      title: entry.title || basename(normalized),
+      path: normalized,
+      source: "",
+      savedContent: "",
+      preview: entry.preview ?? true,
+      renderMode: entry.renderMode,
+      sourceType: entry.sourceType,
+      kind: entry.kind,
+      dormant: true,
+    }];
+    this.notify();
+    return id;
+  }
+
+  /**
+   * Réveille un tab dormant : lecture du contenu (brouillon prioritaire) puis
+   * rendu normal. Idempotent — le flag tombe AVANT la lecture (deux clics
+   * rapides ne déclenchent qu'un chargement). Fichier devenu illisible : le
+   * tab est retiré et l'erreur remontée (même politique qu'`open`), le boot
+   * n'ayant justement rien vérifié.
+   */
+  async wake(tabId: string): Promise<void> {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !tab.dormant) return;
+    this.tabs = this.tabs.map(t => t.id === tabId ? { ...t, dormant: undefined } : t);
+    if (isPdfPath(tab.path) || isImagePath(tab.path) || tabContentKind(tab.kind) === "data") {
+      this.notify();
+      return;
+    }
+    try {
+      const { source, saved } = await this.readContent(tab.path, { preferDraft: true });
+      this.tabs = this.tabs.map(t => t.id === tabId ? { ...t, source, savedContent: saved } : t);
+      this.cbs.onFileOpen?.(tab.path);
+    } catch {
+      this.tabs = this.tabs.filter(t => t.id !== tabId);
+      if (this.activeTabId === tabId) {
+        this.activeTabId = this.tabs[this.tabs.length - 1]?.id ?? null;
+      }
+      this.cbs.onError?.("Fichier", `${basename(tab.path)}`);
+    }
     this.notify();
   }
 
