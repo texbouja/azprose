@@ -19,7 +19,6 @@ export interface EditorModeDeps {
   setJumpToLine: (v: number | null) => void;
   get jumpToCol(): number | null;
   setJumpToCol: (v: number | null) => void;
-  setForwardTargetPage: (v: number | null) => void;
   ls: LatexState;
   extFromPath: (path: string) => string;
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -31,15 +30,10 @@ export interface EditorModeDeps {
   mountInPinnedSlot?: (path: string) => Promise<boolean>;
 }
 
-/** Tab viewer side affichant DÉJÀ `path` — d'abord celui lié à l'éditeur
- *  courant (réutilisation historique), sinon TOUT tab de fichier sur ce chemin
- *  (indépendant ou lié à un autre éditeur) : on l'active et on le couple —
- *  JAMAIS de doublon (décision utilisateur : le bouton Preview active le
- *  couplage avec un tab viewer déjà ouvert sur le même md). `forceNew` ne
- *  s'applique que si AUCUN tab n'affiche le fichier. L'invariant « couplé ⇒
- *  MÊME md » reste satisfait (même chemin) et `linkPreview` découple
- *  automatiquement l'autre éditeur éventuel (invariant « un seul viewer couplé
- *  par éditeur »).
+/** Tab viewer side affichant DÉJÀ `path` : le bouton Preview l'ACTIVE au lieu
+ *  de créer un doublon (décision utilisateur) — `forceNew` ne s'applique que si
+ *  AUCUN tab n'affiche le fichier. L'identité est le CONTENU (Phase G : plus
+ *  aucun registre de couplage).
  *
  *  Sphère pinned (Phase C) : quand l'ÉDITEUR ACTIF est épinglé, le viewer
  *  compagnon vit dans la sphère pinned — la recherche est limitée aux viewers
@@ -47,14 +41,9 @@ export interface EditorModeDeps {
  *  contenu n'est jamais adopté ici — l'adoption se fait à l'épinglage). */
 function findSideTabFor(ctx: EditorModeDeps, path: string | null): { id: string } | null {
   if (!path) return null;
-  const linkedId = ctx.pm.main.activeTabId;
-  const editor = ctx.pm.main.tabs.find((t: any) => t.id === linkedId);
+  const editor = ctx.pm.main.tabs.find((t: any) => t.id === ctx.pm.main.activeTabId);
   const pinnedEditor = editor != null && tabSpace(editor) === "pinned";
   const inSpace = (t: any) => !pinnedEditor || tabSpace(t) === "pinned";
-  const linked = ctx.pm.side.tabs.find(
-    (t: any) => t.path === path && inSpace(t) && ctx.pm.linkedEditorTabId(t.id) === linkedId,
-  );
-  if (linked) return linked;
   return (
     ctx.pm.side.tabs.find(
       (t: any) => t.path === path && inSpace(t) && tabContentKind(t.kind) === "file",
@@ -114,12 +103,6 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.pm.sideVisible = true;
         ctx.bumpPanelVersion();
       }
-      // Link the side preview (now active) to the CURRENT editor tab: every
-      // navigation inside the preview re-points this tab (the editor follows
-      // the preview).
-      if (ctx.pm.side.activeTabId) {
-        ctx.pm.linkPreview(ctx.pm.side.activeTabId, ctx.pm.main.activeTabId);
-      }
       break;
     }
     case "presentation": {
@@ -138,9 +121,6 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.setSideVisible(true);
         ctx.pm.sideVisible = true;
         ctx.bumpPanelVersion();
-      }
-      if (ctx.pm.side.activeTabId) {
-        ctx.pm.linkPreview(ctx.pm.side.activeTabId, ctx.pm.main.activeTabId);
       }
       break;
     }
@@ -162,9 +142,6 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
         ctx.pm.sideVisible = true;
         ctx.bumpPanelVersion();
       }
-      if (ctx.pm.side.activeTabId) {
-        ctx.pm.linkPreview(ctx.pm.side.activeTabId, ctx.pm.main.activeTabId);
-      }
       break;
     }
   }
@@ -179,20 +156,9 @@ export function toggleSideRenderMode(ctx: EditorModeDeps) {
   if (next === "presentation") ctx.setPresentationFs(false);
 }
 
-export async function gutterClick(ctx: EditorModeDeps, line: number) {
-  if (!ctx.activePath) return;
-  const ext = ctx.extFromPath(ctx.activePath);
-  if (ext === "tex" && ctx.ls.viewerPdfPath) {
-    ctx.invoke("synctex_forward", { texPath: ctx.activePath, pdfPath: ctx.ls.viewerPdfPath, line, col: 0 })
-      .then((res: any) => {
-        if (res?.page) {
-          ctx.setForwardTargetPage(res.page);
-          setTimeout(() => { ctx.setForwardTargetPage(null); }, 0);
-        }
-      })
-      .catch((err: unknown) => ctx.notify.setInfo(`synctex forward failed: ${err}`));
-  }
-}
+// FORWARD SEARCH RETIRÉ (Phase G — D12/R15) : `synctex_forward` (clic gouttière
+// tex → page du PDF) n'a jamais fonctionné en pratique. L'INVERSE search
+// (PDF → source, `inverseSync`) est conservé — c'est lui qui sert.
 
 /**
  * Inverse search (PDF → source). Sphère pinned (Phase D — règle 1.3
@@ -218,29 +184,8 @@ export async function inverseSync(ctx: EditorModeDeps, file: string, line: numbe
   setEditorMode(ctx, "raw");
 }
 
-export async function jumpToLine(ctx: EditorModeDeps, line: number, path?: string | null, sessionId?: string | null) {
+export async function jumpToLine(ctx: EditorModeDeps, line: number, path?: string | null) {
   const target = path ?? ctx.pm.side.activeTab?.path;
-  // Phase 3 (C) : `sessionId` = id du tab side émetteur du double-clic.
-  // Résolution VIA la table de liens (phase 2 B) : si CE preview est lié à un
-  // tab éditeur main ET que le fichier rendu est celui du tab lié, le saut va
-  // directement dans ce tab — jamais un doublon créé par une recherche par
-  // chemin. Sinon (fichier rendu ≠ tab lié, ex. bloc transclusé) → repli
-  // historique : ouvrir le fichier RENDU dans l'éditeur.
-  if (target && sessionId) {
-    const linkedId = ctx.pm.linkedEditorTabId(sessionId);
-    const linked = linkedId
-      ? ctx.pm.main.tabs.find((t: any) => t.id === linkedId && (!t.kind || t.kind === "file"))
-      : null;
-    if (linked) {
-      const norm = (p: string) => p.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
-      if (norm(linked.path) === norm(target)) {
-        ctx.pm.main.select(linked.id);
-        ctx.setJumpToLine(line);
-        setEditorMode(ctx, "raw");
-        return;
-      }
-    }
-  }
   // Double-click in the preview: the jump targets the file that is RENDERED
   // (the preview tab's path — the tab is re-associated on every navigation),
   // never the file active in the main panel. The .md IS opened if it isn't

@@ -267,14 +267,20 @@ test("adoption : la commutation libère le viewer de l'ancien pinned, adopte cel
   expect(tabSpace(pm.side.tabs[1])).toBe("pinned");
 });
 
-test("adoption : le compagnon adopté est COUPLÉ à l'éditeur épinglé (D4 — il suit son contenu)", () => {
+test("adoption : le compagnon adopté APPARTIENT à la sphère de l'éditeur épinglé (D4)", () => {
   const pm = new PanelManager();
   seedPm(pm, [["a", "/a.md"]], [["s1", "/a.md"]]);
-  expect(pm.linkedEditorTabId("s1")).toBeNull();
+  expect(pm.pinnedCompanion("a")).toBeNull();
 
   pm.setMainPinned("a", true);
 
-  expect(pm.linkedEditorTabId("s1")).toBe("a");
+  // Phase G : plus de registre de couplage — l'appartenance à la sphère
+  // (`pinnedOwner` = id du slot) EST la relation qui fait suivre le compagnon.
+  expect(pm.pinnedCompanion("a")?.id).toBe("s1");
+  expect(pm.side.tabs[0].pinnedOwner).toBe("a");
+
+  pm.setMainPinned("a", false);
+  expect(pm.pinnedCompanion("a")).toBeNull();
 });
 
 test("adoption : un viewer d'un AUTRE contenu n'est jamais adopté", () => {

@@ -23,19 +23,14 @@ import { getRootPath } from "@/stores/root-path.svelte";
 import { clearScrollTarget, consumeScrollTarget } from "@/stores/scroll-target.svelte";
 import { consumeSyncLine, setSyncLine } from "@/stores/sync-line.svelte";
 import { getPreviewFocusStore } from "@/stores/preview-focus.svelte";
-import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
 
 let {
   value = "",
   filePath = null as string | null,
-  tabId = null as string | null,
   rev = 0,
 }: {
   value?: string;
   filePath?: string | null;
-  /** Id de session du tab side (phase 3 C) : porté par azprose:jump-to-line
-   *  pour que le reducer résolve le saut via la table de liens. */
-  tabId?: string | null;
   /** Version du CONTENU (phase 7, idée E) : le store bump la version du chemin
    *  à chaque load/persist — même si `value` n'a pas changé (string primitive),
    *  `rev` change → l'effet de rendu re-run. Remplace le listener
@@ -305,7 +300,6 @@ $effect(() => {
 $effect(() => {
   if (!articleEl) return;
   const el = articleEl;
-  const tid = tabId; // capture réactive — le closure lit `tid` au clic
   const onClick = (e: MouseEvent) => {
     const a = (e.target as HTMLElement).closest("a");
     if (!a) return;
@@ -326,28 +320,23 @@ $effect(() => {
       return;
     }
 
-    // Wikilink with resolved full path: open directly. Décision FIGÉE AU CLIC
-    // (matrice cas 1) : le mode nav du tab SOURCE (`tid`) est lu ICI — jamais
-    // par le reducer, qui exécute la décision sans relire l'état (course
-    // asynchrone : la résolution de la cible peut durer pendant que
-    // l'utilisateur bascule le mode). `navMode` voyage avec l'intention.
-    // Hors mode nav : NOUVEAU tab viewer side (jamais l'éditeur main —
-    // l'éditeur ne s'atteint que par double-clic / « Ouvrir dans l'éditeur »).
-    // Alt+clic est SUPPRIMÉ (matrice de navigation).
+    // Wikilink : NOUVEAU tab viewer side avec dédup par contenu (jamais
+    // l'éditeur main — il ne s'atteint que par double-clic / « Ouvrir dans
+    // l'éditeur »). La lecture EN CHAÎNE se fait dans la fenêtre fille browser
+    // (Phase F/G : plus de mode navigation dans les panneaux).
     if (a.classList.contains("wikilink")) {
       const fullpath = a.getAttribute("data-wikilink-fullpath");
       const heading = a.getAttribute("data-wikilink-heading");
-      const navMode = tid ? getPreviewNavStore().isNavMode(tid) : false;
       if (fullpath) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading, tabId: tid, navMode } }));
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading } }));
         return;
       }
       // Fallback: dispatch with target name for app.svelte resolution
       const target = a.getAttribute("data-wikilink-target");
       if (target) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading, tabId: tid, navMode } }));
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading } }));
       }
       return;
     }
@@ -417,7 +406,7 @@ $effect(() => {
         const line = Number(transcluded.dataset.transcludedLine);
         if (path) {
           window.dispatchEvent(new CustomEvent("azprose:jump-to-line", {
-            detail: { path, line: Number.isFinite(line) ? line : undefined, sessionId: tabId ?? undefined },
+            detail: { path, line: Number.isFinite(line) ? line : undefined },
           }));
         }
         return;
@@ -433,7 +422,7 @@ $effect(() => {
       const line = Number(block.dataset.sline);
       if (Number.isFinite(line)) {
         window.dispatchEvent(new CustomEvent("azprose:jump-to-line", {
-          detail: { path: filePath, line, sessionId: tabId ?? undefined },
+          detail: { path: filePath, line },
         }));
       }
     }}

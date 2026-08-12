@@ -91,7 +91,6 @@ import { setActivePath } from "@/stores/active-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
 import { getCursorLine } from "@/stores/cursor-line.svelte";
-import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
 import { getPreviewFocusStore } from "@/stores/preview-focus.svelte";
 import { getCalendarStore } from "@/stores/calendar-store.svelte";
 import { journal } from "@/stores/journal-store.svelte";
@@ -102,7 +101,6 @@ import { datagridFindBySource, datagridCreateFromSpreadsheet, datagridRename } f
 import { dataBus } from "@/lib/data/bus";
 import { runCommand } from "@/lib/data/commands";
 import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
-import { navPush, navBack, navForwardStep, navPushForward, purgeNavHistory, setNavActions } from "@/stores/nav-history.svelte";
 import {
   pinnedPush,
   pinnedBack,
@@ -145,7 +143,6 @@ import { setupCloseHandler } from "@/lib/close-handler";
 import {
   setEditorMode as setEditorModeUtil,
   toggleSideRenderMode as toggleSideRenderModeUtil,
-  gutterClick as gutterClickUtil,
   inverseSync as inverseSyncUtil,
   jumpToLine as jumpToLineUtil,
   consoleJump as consoleJumpUtil,
@@ -240,15 +237,10 @@ let pm = new PanelManager({
   onError: (title, message) => {
     notifications.setLoadError({ title, message });
   },
-  // Matrice cas 3 : la fermeture d'un onglet purge ses états PAR TAB —
-  // mode nav preview et pile d'historique meurent avec l'onglet (références
-  // tardives : previewNav est défini plus bas, le callback ne court qu'à la
-  // fermeture, après l'init complète).
-  onTabClosed: (tabId, tab) => {
-    previewNav.clearTab(tabId);
-    purgeNavHistory(tabId);
-    // Phase D : la pile de MONTAGE appartient au slot épinglé — fermer le slot
-    // la purge (runtime, jamais persistée — R10).
+  // Les états PAR TAB meurent avec l'onglet. Phase D : la pile de MONTAGE
+  // appartient au slot épinglé — fermer le slot la purge (runtime, jamais
+  // persistée — R10).
+  onTabClosed: (_tabId, tab) => {
     if (tabSpace(tab) === "pinned") purgePinnedHistory(tabPinFormat(tab.path));
   },
 });
@@ -313,31 +305,6 @@ let tocRefSource = $derived.by(() => {
   return tocRefPath ? contentFor(tocRefPath) : null;
 });
 
-// Mode navigation du tab VIEWER qui fournit la référence TOC : la TOC
-// n'étend son plan aux branches transcluses (forêt complète) QUE dans ce
-// mode — hors mode nav (mode édition), la TOC est STRICTE : seuls les titres
-// du .md affiché, ni branche transcluse ni remontée index.md (aucun autre md
-// lançable depuis la TOC). Tab doc (aide intégrée) : non concerné — helpMode
-// dans TocPanel prime (catalogue complet quoi qu'il arrive).
-let tocNavMode = $derived.by(() => {
-  _panelVersion;
-  const tab = pm.side.activeTab;
-  if (!tab || tab.kind === "doc" || extFromPath(tab.path) !== "md") return false;
-  const nav = getPreviewNavStore();
-  void nav.version; // réactivité : le mode nav est un état $state du store
-  return nav.isNavMode(tab.id);
-});
-
-// Id du tab viewer side qui fournit la référence TOC (celui dont tocNavMode
-// est lu) — figé au clic dans la navigation TOC (matrice cas 1) : le reducer
-// `toc-navigate` navigue dans le tab SOURCE, jamais le tab actif courant.
-let tocNavTabId = $derived.by(() => {
-  _panelVersion;
-  const tab = pm.side.activeTab;
-  if (!tab || tab.kind === "doc" || extFromPath(tab.path) !== "md") return null;
-  return tab.id;
-});
-
 // Mode aide : l'article de la doc intégrée actuellement affiché dans le
 // lecteur (tab side kind === "doc", chemin = l'article courant après openDoc).
 // Transmis à la TOC sidebar pour la surbrillance de la branche + le dépli par
@@ -368,7 +335,6 @@ let vimOn = $state(false);
 let prosemarkOn = $state(generalSettings.defaultEditorMode === "prose");
 let jumpToLine = $state<number | null>(null);
 let jumpToCol = $state<number | null>(null);
-let forwardTargetPage = $state<number | null>(null);
 
 let presentationFs = $state(false);
 let viewerFullscreenOn = $state(false);
@@ -569,17 +535,6 @@ onMount(() => {
 
   // ── Latex log listener, oxide events, wikilink nav → handlers ──
 
-  // — preview navigation history (back / forward) —
-  // Le reducer : le tab preview navigue ET l'éditeur lié suit (l'éditeur
-  // reflète le preview — voir followPreviewNavigation). Les brouillons non
-  // sauvegardés du tab lié sont parqués (politique A) avec une notification.
-  const navGoBack = () => {
-    navigateVoid(navDeps, { type: "preview-back" });
-  };
-  const navGoForward = () => {
-    navigateVoid(navDeps, { type: "preview-forward" });
-  };
-  setNavActions({ goBack: navGoBack, goForward: navGoForward });
   // Historique de MONTAGE du pinned slot (Phase D) : mêmes actions depuis la
   // tabaction de l'éditeur épinglé et celle de son viewer compagnon (D7).
   setPinnedNavActions({
@@ -587,16 +542,6 @@ onMount(() => {
     goForward: (format: string) => navigateVoid(navDeps, { type: "pinned-forward", format }),
   });
 
-  // Unlink the editor↔preview pairing when the preview tab disappears (closed
-  // by the user): the link is re-established on the next preview launch. The
-  // effect depends on _panelVersion — PanelState is a plain class, not a rune.
-  $effect(() => {
-    _panelVersion;
-    const hasPreviewTab = pm.side.tabs.some(
-      t => t.preview || t.renderMode === "preview" || t.renderMode === "presentation" || t.renderMode === "colle",
-    );
-    if (!hasPreviewTab) pm.clearPreviewLinks();
-  });
 
   // ── File-type handlers (latex, markdown) — lazy-loaded ──
   const handlerCtx: HandlerContext = {
@@ -611,7 +556,6 @@ onMount(() => {
     setSideVisible: (v) => { sideVisible = v; pm.sideVisible = v; },
     setScrollTarget: (target) => { setScrollTarget(target); },
     setSyncLine:    (line) => { setSyncLine(line); },
-    navPush:        (path) => { navPush(path, pm.side.activeTabId); },
     ls,
     pm,
     openFileInTab: async (path, opts) => { await openFileInTab(path, opts); },
@@ -675,62 +619,29 @@ $effect(() => setupCrashListener(crashDeps));
 
 $effect(() => {
   const onJump = (e: Event) => {
-    const detail = (e as CustomEvent<{ path?: string; line: number; sessionId?: string }>).detail;
+    const detail = (e as CustomEvent<{ path?: string; line: number }>).detail;
     navigateVoid(navDeps, {
       type: "jump-to-line",
       line: detail.line,
       path: detail.path ?? null,
-      sessionId: detail.sessionId ?? null,
     });
   };
   window.addEventListener("azprose:jump-to-line", onJump);
   return () => window.removeEventListener("azprose:jump-to-line", onJump);
 });
 
-// Preview home button → HOME dynamique du preview : le reducer (`preview-home`)
-// remonte via findLinkedIndexMd depuis le fichier courant (≤ 3 niveaux, borné
-// au vault), repli `rootPath/index.md`, sinon no-op silencieux. Clic simple =
-// navigation IN-PLACE du tab preview (associé par previewLinkedTabId) ;
-// alt+clic = NOUVEL onglet (même logique que les liens du viewer).
-$effect(() => {
-  const onHome = (e: Event) => {
-    const newTab = !!(e as CustomEvent<{ newTab?: boolean }>).detail?.newTab;
-    navigateVoid(navDeps, { type: "preview-home", newTab });
-  };
-  window.addEventListener("azprose:preview-home", onHome);
-  return () => window.removeEventListener("azprose:preview-home", onHome);
-});
-
 // Bouton « Ouvrir dans l'éditeur » du tab side (matrice) : le fichier RENDU par
 // le tab preview s'ouvre dans l'éditeur main (dédup — jamais de doublon). Le
-// reducer dé-maximise le side au besoin avant l'ouverture. `sessionId` = id du
-// tab side émetteur : HORS mode nav le reducer couple ce tab au tab éditeur ;
-// EN mode nav aucun couplage (règle utilisateur).
+// reducer dé-maximise le side au besoin avant l'ouverture. Aucun couplage n'est
+// créé (Phase G) : les tabs se reconnaissent par leur contenu.
 $effect(() => {
   const onOpenInEditor = (e: Event) => {
-    const detail = (e as CustomEvent<{ path?: string; sessionId?: string }>).detail;
+    const detail = (e as CustomEvent<{ path?: string }>).detail;
     if (!detail?.path) return;
-    navigateVoid(navDeps, {
-      type: "preview-open-editor",
-      path: detail.path,
-      sessionId: detail.sessionId ?? null,
-    });
+    navigateVoid(navDeps, { type: "preview-open-editor", path: detail.path });
   };
   window.addEventListener("azprose:preview-open-editor", onOpenInEditor);
   return () => window.removeEventListener("azprose:preview-open-editor", onOpenInEditor);
-});
-
-// Bascule du mode navigation d'un tab preview (bouton globe de la toolbar
-// side) → reducer `preview-nav-mode` : ENTRER libère le couplage de ce viewer,
-// la SORTIE ne re-couple pas (règle utilisateur).
-$effect(() => {
-  const onNavMode = (e: Event) => {
-    const detail = (e as CustomEvent<{ tabId?: string; on?: boolean }>).detail;
-    if (!detail?.tabId) return;
-    navigateVoid(navDeps, { type: "preview-nav-mode", tabId: detail.tabId, on: !!detail.on });
-  };
-  window.addEventListener("azprose:preview-nav-mode", onNavMode);
-  return () => window.removeEventListener("azprose:preview-nav-mode", onNavMode);
 });
 
 // Fenêtre de NAVIGATION (Phase F — D2/R5) : bouton de la toolbar side. Ouvre
@@ -836,9 +747,6 @@ async function openDocArticle(path: string, heading?: string): Promise<void> {
   // Le store lit le contenu depuis le disque (.azprose/help, matérialisé par
   // ensureHelpInstalled) — source = savedContent, lecture seule, jamais de draft.
   await pm.openDoc(path, { silent: true });
-  // Sauvegardé dans l'historique de navigation comme une vraie page —
-  // pile du tab DOC actif (matrice cas 2 : historique par tab side).
-  if (sideActivePath) navPush(sideActivePath, pm.side.activeTabId);
   if (heading) {
     setScrollTarget(heading);
     window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", {
@@ -890,8 +798,8 @@ $effect(() => {
 
 $effect(() => {
   const onTocNavigate = async (e: Event) => {
-    const { path, line, heading, tabId, navMode } = (e as CustomEvent<{
-      path: string; line?: number; heading?: string; tabId?: string | null; navMode?: boolean;
+    const { path, line, heading } = (e as CustomEvent<{
+      path: string; line?: number; heading?: string;
     }>).detail;
     if (!path) return;
     const isHelp = isHelpPath(path, getRootPath());
@@ -912,9 +820,9 @@ $effect(() => {
     }
     // Clic TOC → la cible remonte dans le VIEWER side (jamais l'éditeur main —
     // décision utilisateur) : le reducer `toc-navigate` réutilise la politique
-    // wikilink (mode nav figé au clic → in-place + historique ; sinon nouveau
-    // tab viewer), l'aide intégrée reste routée en doc.
-    await navigate(navDeps, { type: "toc-navigate", path, line, heading, tabId, navMode: navMode === true });
+    // wikilink (tab viewer side, dédup par contenu) ; l'aide intégrée reste
+    // routée en doc.
+    await navigate(navDeps, { type: "toc-navigate", path, line, heading });
     // Notification de rendu (le reducer ne touche pas au DOM) : un preview déjà
     // rendu scrolle immédiatement ; le pending store couvre un preview encore
     // en cours de rendu. Les articles doc se scrollent eux-mêmes (openDocArticle).
@@ -1374,7 +1282,6 @@ const editorModeCtx: EditorModeDeps = {
   setJumpToLine: (v) => { jumpToLine = v; },
   get jumpToCol() { return jumpToCol; },
   setJumpToCol: (v) => { jumpToCol = v; },
-  setForwardTargetPage: (v) => { forwardTargetPage = v; },
   ls,
   extFromPath,
   invoke,
@@ -1384,8 +1291,7 @@ const editorModeCtx: EditorModeDeps = {
   mountInPinnedSlot: (path: string) => mountInPinnedSlot(navDeps, path),
 };
 
-const handleJumpToLine = (line: number, path?: string | null, sessionId?: string | null) => jumpToLineUtil(editorModeCtx, line, path ?? undefined, sessionId ?? undefined);
-const handleGutterClick = (line: number) => gutterClickUtil(editorModeCtx, line);
+const handleJumpToLine = (line: number, path?: string | null) => jumpToLineUtil(editorModeCtx, line, path ?? undefined);
 const handleInverseSync = (file: string, line: number) => inverseSyncUtil(editorModeCtx, file, line);
 const handleConsoleJump = (line: number, col?: number | null) => consoleJumpUtil(editorModeCtx, line, col);
 const handleSetEditorMode = (mode: EditorMode) => { setEditorModeUtil(editorModeCtx, mode); _panelVersion++; };
@@ -1588,7 +1494,6 @@ $effect(() => {
 
 // ── Canal « navigate » (phase 1, idée A) : DI réelle du reducer ──────────────
 // Mode navigation des tabs preview (par tab, jamais persisté) + focus preview.
-const previewNav = getPreviewNavStore();
 const previewFocus = getPreviewFocusStore();
 // Tous les helpers ci-dessus sont définis : l'objet est construit une fois,
 // ses getters lisent l'état $state/$derived en direct (toujours frais), et ses
@@ -1599,22 +1504,9 @@ let navDeps: NavDeps = {
   activePath: () => activePath,
   sideActivePath: () => sideActivePath,
   expandedPanel: () => expandedPanel,
-  isPreviewNavMode: () => {
-    const t = pm.side.activeTab;
-    if (!t) return false;
-    // Aide intégrée (DocPreview) : le mode navigation est tacitement actif —
-    // ses wikilinks naviguent en place, jamais vers l'éditeur main.
-    if (t.kind === "doc") return true;
-    return previewNav.isNavMode(t.id);
-  },
-  setPreviewNavMode: (tabId: string, on: boolean) => previewNav.setNavMode(tabId, on),
   unexpandSide: () => {
     splitRatio = pm.unexpandPanel("side");
   },
-  navPush,
-  navBack,
-  navForwardStep,
-  navPushForward,
   pinnedPush,
   pinnedBack,
   pinnedForwardStep,
@@ -1837,8 +1729,6 @@ let cmds = $derived(
       {activePath}
       tocRefPath={tocRefPath}
       tocRefSource={tocRefSource}
-      tocNavMode={tocNavMode}
-      tocNavTabId={tocNavTabId}
       helpActivePath={helpActivePath}
       width={sidebarWidth.current}
       onWidthChange={(next) => sidebarWidth.current = next}
@@ -1901,14 +1791,12 @@ let cmds = $derived(
             pm.side.setSource(next);
             _panelVersion++;
           }}
-          onGutterClick={handleGutterClick}
           typo={typo}
           {jumpToLine}
           {jumpToCol}
           onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
           {vimOn}
           {prosemarkOn}
-          forwardToPage={forwardTargetPage}
           onInverseSync={handleInverseSync}
           buildRev={ls.buildRev}
           latexBuildFailed={ls.buildFailed}

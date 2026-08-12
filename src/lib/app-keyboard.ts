@@ -1,5 +1,6 @@
 import { shortcuts } from "@/stores/shortcuts.svelte"
-import { getNavActions } from "@/stores/nav-history.svelte"
+import { getPinnedNavActions } from "@/stores/pinned-history.svelte"
+import { tabPinFormat, tabSpace } from "@/lib/panel-store"
 import { overlays } from "@/stores/overlays.svelte"
 import { extFromPath } from "@/lib/editor-languages"
 import { handleLatexBuild } from "@/latex"
@@ -92,15 +93,17 @@ export function handleKeydown(e: KeyboardEvent, ctx: KeyboardDeps) {
     ctx.onShowHelp?.();
     return;
   }
-  // Preview navigation history (browser-like) — ⌘[ / ⌘] (Ctrl on other platforms)
-  if (shortcuts.matches(e, "navBack")) {
+  // Historique de MONTAGE du pinned slot (Phase D/G) — ⌘[ / ⌘] (Ctrl ailleurs).
+  // Les raccourcis suivent le SLOT épinglé du tab éditeur actif : hors slot
+  // épinglé il n'y a pas d'historique (un tab libre ouvre/active des onglets).
+  if (shortcuts.matches(e, "navBack") || shortcuts.matches(e, "navForward")) {
     e.preventDefault();
-    getNavActions().goBack();
-    return;
-  }
-  if (shortcuts.matches(e, "navForward")) {
-    e.preventDefault();
-    getNavActions().goForward();
+    const active = ctx.pm.main.tabs.find((t) => t.id === ctx.pm.main.activeTabId);
+    const format = active && tabSpace(active) === "pinned" ? tabPinFormat(active.path) : null;
+    if (format) {
+      if (shortcuts.matches(e, "navBack")) getPinnedNavActions().goBack(format);
+      else getPinnedNavActions().goForward(format);
+    }
     return;
   }
 }

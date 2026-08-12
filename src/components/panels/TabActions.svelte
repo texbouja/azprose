@@ -10,9 +10,7 @@ import { parseFrontMatter } from "@/lib/front-matter";
 import { docTypeSwitches, normalizeDocType } from "@/lib/doc-meta";
 import SlideModeRadio from "./SlideModeRadio.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
-import { navHistory, getNavActions } from "@/stores/nav-history.svelte";
 import { pinnedHistory, getPinnedNavActions } from "@/stores/pinned-history.svelte";
-import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
 
 // Register SlideModeRadio as a custom toolbar item
 registerToolbarItem("slide-mode-radio", SlideModeRadio);
@@ -74,25 +72,6 @@ $effect(() => {
 let t = $derived(getT($language));
 
 function fire(cmd: string) { onCommand?.(cmd); }
-
-// Alt+clic sur Home = ouvrir dans un NOUVEL onglet (même logique que les liens
-// du preview). Le handler SVAR ne reçoit pas l'événement — interception en
-// phase CAPTURE sur le conteneur : `stopPropagation` empêche le handler du
-// bouton (bubble) de déclencher la navigation in-place.
-$effect(() => {
-  if (!toolbarEl) return;
-  const el = toolbarEl;
-  const onAltClick = (e: MouseEvent) => {
-    if (!e.altKey) return;
-    const home = (e.target as HTMLElement).closest('[data-id=":home"]');
-    if (!home) return;
-    e.preventDefault();
-    e.stopPropagation();
-    window.dispatchEvent(new CustomEvent("azprose:preview-home", { detail: { newTab: true } }));
-  };
-  el.addEventListener("click", onAltClick, true);
-  return () => el.removeEventListener("click", onAltClick, true);
-});
 
 // ── Navigation colles (chevrons) — état rapporté par CollePreview ────────
 // `colleStudentsOpen` = état pressé du bouton « Élèves » : la sidebar est
@@ -166,22 +145,13 @@ let altMode = $derived.by<"colle" | "presentation" | null>(() => {
   return switches.isColle ? "colle" : "presentation";
 });
 
-// Mode navigation du tab side actif (store par tab, jamais persisté) — lu
-// réactivement via la version du store (rune $state du module).
-const previewNav = getPreviewNavStore();
-let navMode = $derived.by(() => {
-  void previewNav.version;
-  return activeTab ? previewNav.isNavMode(activeTab.id) : false;
-});
-
 /* ── Toolbar items — reactive on mode + renderMode + slideMode ── */
 
 // Historique de MONTAGE du pinned slot (Phase D — D6/D7) : « remonter » /
 // « redescendre » dans les contenus successivement montés dans le slot. Les
 // MÊMES boutons apparaissent dans la tabaction de l'éditeur épinglé et dans
 // celle de son viewer compagnon (`pinnedFormat` posé des deux côtés). À ne pas
-// confondre avec le back/forward WIKILINK du viewer (mode nav, par tab side) :
-// celui-ci suit le SLOT, pas un onglet de preview.
+// confondre avec un historique de viewer : celui-ci suit le SLOT.
 let pinnedHistItems = $derived.by(() => {
   if (!pinnedFormat) return [] as any[];
   const hist = pinnedHistory(pinnedFormat);
@@ -239,38 +209,8 @@ let mainItems = $derived.by(() => {
 
 let sideItems = $derived.by(() => {
   // Viewer COMPAGNON de la sphère pinned : mêmes boutons d'historique de
-  // montage que l'éditeur épinglé (D7) — tout à gauche, avant le mode nav.
+  // montage que l'éditeur épinglé (D7) — tout à gauche.
   const items: any[] = [...pinnedHistItems];
-
-  // Left: preview navigation — mode nav + back/forward (wikilink history) +
-  // home (rootPath/index.md), shown ONLY for the .md PREVIEW tab in MODE
-  // NAVIGATION (décision utilisateur : les boutons home/next/prev ne sont
-  // VISIBLES qu'en mode nav ; le toggle de mode vit à gauche). Le mode est
-  // par TAB (store, jamais persisté).
-  if (!isMain && isMd && renderMode !== "colle" && renderMode !== "presentation") {
-    items.push(
-      { comp: "icon", icon: "wxi-globe", text: t("preview.navMode"), pinned: true,
-        type: navMode ? "pressed" : "",
-        // Le toggle passe par le reducer (`preview-nav-mode`) : ENTRER en mode
-        // nav libère le couplage de ce viewer (règle utilisateur).
-        handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-nav-mode", {
-          detail: { tabId: activeTab?.id, on: !navMode },
-        })) },
-    );
-    if (navMode) {
-      // Historique PAR TAB (matrice cas 2) : la pile de l'onglet ACTIF —
-      // c'est lui qui a reçu le clic et qui va naviguer.
-      const hist = navHistory(activeTab?.id);
-      items.push(
-        { comp: "icon", icon: "wxi-home", id: "home", text: t("preview.home"), pinned: true,
-          handler: () => window.dispatchEvent(new CustomEvent("azprose:preview-home")) },
-        { comp: "icon", icon: "wxi-arrow-left", text: t("preview.back"), pinned: true,
-          disabled: !hist.canGoBack, handler: () => getNavActions().goBack() },
-        { comp: "icon", icon: "wxi-arrow-right", text: t("preview.forward"), pinned: true,
-          disabled: !hist.canGoForward, handler: () => getNavActions().goForward() },
-      );
-    }
-  }
 
   // Fenêtre de NAVIGATION (Phase F — D2/R5) : la lecture en chaîne (wikilink
   // après wikilink, back/forward) sort des panneaux dans une fenêtre fille.
@@ -421,9 +361,7 @@ let sideItems = $derived.by(() => {
         activeTab &&
         window.dispatchEvent(
           new CustomEvent("azprose:preview-open-editor", {
-            // sessionId = id du tab side émetteur : le reducer couple ce tab au
-            // tab éditeur (hors mode nav) — règle utilisateur.
-            detail: { path: activeTab.path, sessionId: activeTab.id },
+            detail: { path: activeTab.path },
           }),
         ),
     });

@@ -1,4 +1,4 @@
-import { PanelState, isPinnedCompanionOf, normPath, tabContentKind, tabContentKey, tabSpace, type Tab, type TabSource, type TabSpace } from "./panel-store";
+import { PanelState, isPinnedCompanionOf, normPath, tabContentKey, tabSpace, type Tab, type TabSource, type TabSpace } from "./panel-store";
 import type { ContentStore } from "./content-store";
 
 export type LayoutMode = "main" | "main+side";
@@ -22,73 +22,14 @@ export class PanelManager {
   splitRatio = 0.45;
   private savedSplitRatio = 0.55;
 
-  /** Link registry (Phase 2 B) : for each SIDE viewer tab, the id of the MAIN
-   *  editor tab it is COUPLED to. Coupling is EXPLICIT, per tab, cumulative —
-   *  created ONLY by the editor Preview/Presentation/Colles buttons and by a
-   *  double-click / « Ouvrir dans l'éditeur » from the viewer (OUTSIDE nav
-   *  mode). Entering nav mode RELEASES the coupling; exiting does NOT
-   *  re-couple. While coupled, a sidebar click makes the viewer follow the
-   *  editor. Persisted as `linkedTo` (path of the coupled main tab) on the
-   *  side tab session entries by `toJSON` — the registry itself is ids-only
-   *  runtime state (ids are REGENERATED at restore), `fromJSON` rebuilds it
-   *  by resolving the saved paths.
-   *
-   *  Invariant « un seul viewer couplé par éditeur » : coupling a viewer to an
-   *  editor tab automatically de-couples any OTHER viewer already coupled to
-   *  that editor (enforced in `linkPreview`). The registry replaces the single
-   *  `previewLinkedTabId` field: one side panel shows ONE preview tab at a
-   *  time, but its identity is a session concern (tab ids change on relaunch)
-   *  — callers must pass the side tab id they just opened/activated
-   *  explicitly, never read it back speculatively. */
-  private previewLinks = new Map<string, string>();
-  private onSessionChange?: (data: PanelManagerSession) => void;
-
-  /** Main editor tab linked to the ACTIVE side tab, if any (legacy getter
-   *  used by followPreviewNavigation and the reducer guard). */
-  get previewLinkedTabId(): string | null {
-    const sideId = this.side.activeTabId;
-    if (!sideId) return null;
-    return this.previewLinks.get(sideId) ?? null;
-  }
-
-  /** Link `sideTabId` (a side viewer tab) to `mainTabId` (an editor main
-   *  tab). Passing `null` breaks the link. Invariant « un seul viewer couplé
-   *  par éditeur » : coupling a viewer to `mainTabId` de-couples any OTHER
-   *  viewer already coupled to that same editor tab. */
-  linkPreview(sideTabId: string, mainTabId: string | null): void {
-    if (mainTabId === null) {
-      this.previewLinks.delete(sideTabId);
-    } else {
-      for (const [sId, mId] of this.previewLinks) {
-        if (sId !== sideTabId && mId === mainTabId) this.previewLinks.delete(sId);
-      }
-      this.previewLinks.set(sideTabId, mainTabId);
-    }
-    // Le couplage est un ÉTAT DE SESSION : notifier déclenche onSessionChange →
-    // toJSON (qui persiste `linkedTo` sur les tabs side) → saveSession. Sans
-    // quoi un couplage créé par linkPreview seul (ex. bouton Preview) n'était
-    // JAMAIS persisté — localStorage gardait `linkedTo: null` (bug constaté :
-    // couplage perdu au redémarrage). Idempotent : toJSON est un getter pur.
-    this.onSessionChange?.(this.toJSON());
-  }
-
-  /** Side viewer tab coupled to `mainTabId`, or null (reverse lookup). */
-  sideTabLinkedTo(mainTabId: string): string | null {
-    for (const [sId, mId] of this.previewLinks) {
-      if (mId === mainTabId) return sId;
-    }
-    return null;
-  }
-
-  /** Editor main tab linked to `sideTabId`, or null. */
-  linkedEditorTabId(sideTabId: string): string | null {
-    return this.previewLinks.get(sideTabId) ?? null;
-  }
-
-  /** Break every editor↔preview link (no preview tab left in the side panel). */
-  clearPreviewLinks(): void {
-    this.previewLinks.clear();
-  }
+  /**
+   * Le REGISTRE DE COUPLAGE éditeur↔viewer est SUPPRIMÉ (Phase G — D1) : plus
+   * de `previewLinks`, `linkPreview`, `sideTabLinkedTo`, `linkedEditorTabId`,
+   * `clearPreviewLinks`, ni `linkedTo` persisté. Les tabs se reconnaissent par
+   * leur CONTENU ; la seule relation qui subsiste est celle de la SPHÈRE
+   * PINNED : un viewer compagnon porte l'id de son éditeur épinglé
+   * (`pinnedOwner`, runtime) et suit ses montages (`pinnedCompanion`).
+   */
 
   constructor(opts?: {
     onSessionChange?: (data: PanelManagerSession) => void;
@@ -102,7 +43,6 @@ export class PanelManager {
     content?: ContentStore;
   }) {
     const pm = this;
-    this.onSessionChange = opts?.onSessionChange;
     this.main = new PanelState("main", {
       onFileOpen: opts?.onFileOpen,
       onSessionChange: opts?.onSessionChange
@@ -187,11 +127,9 @@ export class PanelManager {
       const editor = pinnedEditors.find(e => tabContentKey(e) === key);
       if (!editor) continue;
       if (this.side.tabs.some(v => isPinnedCompanionOf(v, editor.id))) continue;
+      // `pinnedOwner` = id de l'éditeur épinglé : c'est LA relation qui reste
+      // (le compagnon suit ses montages, D4) — plus aucun registre de couplage.
       this.side.setSpace(t.id, "pinned", editor.id);
-      // Couplage du compagnon : le viewer affiche le MÊME contenu que
-      // l'éditeur épinglé (invariant « couplé ⇒ même fichier » respecté), donc
-      // il le suit dès la prochaine navigation du pinned slot.
-      this.linkPreview(t.id, editor.id);
     }
   }
 
@@ -485,19 +423,9 @@ export class PanelManager {
       this.layout = "main+side";
     }
 
-    // Couplage éditeur↔viewer reconstruit PAR CONTENU (Phase E — D1 : aucun
-    // état de couplage persisté ; les ids de tabs sont régénérés au restore,
-    // le contenu est le seul identifiant stable). Un couple divergent est
-    // structurellement impossible : la seule porte d'entrée est l'égalité des
-    // chemins.
-    this.previewLinks.clear();
-    for (const sideTab of this.side.tabs) {
-      if (tabContentKind(sideTab.kind) !== "file" || !sideTab.path) continue;
-      const mainTab = this.main.tabs.find(
-        (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(sideTab.path),
-      );
-      if (mainTab) this.previewLinks.set(sideTab.id, mainTab.id);
-    }
+    // Aucun couplage à reconstruire (Phase G — D1) : les tabs se reconnaissent
+    // par leur contenu, et la sphère pinned est RUNTIME (rien d'épinglé au
+    // boot, R9).
   }
 
   async restoreContent(preferDraft?: boolean): Promise<void> {

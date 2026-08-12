@@ -31,12 +31,10 @@
   let {
     value = "",
     filePath = null as string | null,
-    tabId = null as string | null,
     viewerFullscreenOn = false,
   }: {
     value?: string;
     filePath?: string | null;
-    tabId?: string | null;
     viewerFullscreenOn?: boolean;
   } = $props();
 
@@ -303,7 +301,6 @@
           <ColleCard
             planche={planches[current]}
             {filePath}
-            {tabId}
             {zoom}
             onEval={handleEval}
           />

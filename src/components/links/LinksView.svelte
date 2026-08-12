@@ -13,12 +13,6 @@
     /** Mode aide : article de la doc intégrée affiché dans le lecteur —
      *  transmis à la TOC pour la surbrillance + le dépli par défaut. */
     helpActivePath = null as string | null,
-    /** Mode navigation du viewer : la TOC n'étend son plan aux branches
-     *  transcluses que dans ce mode (mode édition → TOC stricte). */
-    navMode = false as boolean,
-    /** Id du tab viewer side fournissant la référence TOC — figé au clic
-     *  dans la navigation TOC (le reducer navigue dans le tab source). */
-    navTabId = null as string | null,
   } = $props();
 
   let t = $derived(getT($language));
@@ -114,8 +108,6 @@
       {source}
       {rootPath}
       {helpActivePath}
-      {navMode}
-      {navTabId}
       onStateChange={handleTocState}
       onOutlineChange={handleTocOutlineChange}
       bind:this={tocPanel}

@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { loadSession, saveSession, saveLastFile, loadLastFile } from "@/lib/session";
 import { loadProjectSession } from "@/lib/project-session";
-import { tabContentKind } from "@/lib/panel-store";
 import type { PanelManager } from "@/lib/panel-manager";
 
 export interface SessionRestoreDeps {
@@ -76,10 +75,9 @@ export function setupSessionRestore(
                   kind: tab.kind,
                 });
               }
-              // Couplage éditeur↔viewer reconstruit PAR CONTENU (Phase E — D1 :
-              // plus aucun état de couplage persisté, les tabs se reconnaissent
-              // par leur contenu).
-              restorePreviewLinks(ctx.pm);
+              // Aucun couplage à restaurer (Phase G — D1) : les tabs se
+              // reconnaissent par leur contenu, la sphère pinned est runtime
+              // (rien d'épinglé au boot, R9).
               if (!cancelled) {
                 // Sélectionne le tab SIDE actif de la session dans le panel
                 // SIDE (par chemin normalisé) — jamais via findTabByPath qui
@@ -133,30 +131,6 @@ export function setupSessionRestore(
   };
 }
 
-/**
- * Reconstruit le couplage éditeur↔viewer au boot — PAR CONTENU (Phase E, D1 :
- * « plus aucun état de couplage persisté, les tabs se reconnaissent par leurs
- * contenus »). Un tab viewer et un tab éditeur affichant le MÊME fichier sont
- * couplés ; tout le reste est indépendant.
- *
- * Le registre `previewLinks` est un état runtime ids-only et les ids de tabs
- * sont RÉGÉNÉRÉS au restore : le contenu est le seul identifiant stable d'une
- * session à l'autre. Le champ `linkedTo` (schema v1) n'est plus ni écrit ni
- * lu — un couplage divergent est structurellement impossible ici, puisque la
- * seule porte d'entrée est l'égalité des chemins.
- *
- * L'invariant « un seul viewer couplé par éditeur » est maintenu par
- * `linkPreview` (coupler un viewer découple automatiquement l'autre).
- */
-export function restorePreviewLinks(pm: PanelManager): void {
-  for (const s of pm.side.tabs) {
-    if (tabContentKind(s.kind) !== "file" || !s.path) continue;
-    const target = pm.main.tabs.find(
-      (t) => tabContentKind(t.kind) === "file" && normPath(t.path) === normPath(s.path),
-    );
-    if (target) pm.linkPreview(s.id, target.id);
-  }
-}
 
 const normPath = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
 

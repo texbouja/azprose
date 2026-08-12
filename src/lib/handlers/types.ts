@@ -14,7 +14,6 @@ export interface HandlerContext {
   setSideVisible:  (v: boolean) => void
   setScrollTarget: (target: string) => void
   setSyncLine:     (line: number) => void
-  navPush:         (path: string) => void
 
   ls: LatexState
 

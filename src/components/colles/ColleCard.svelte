@@ -30,7 +30,6 @@
   import { collesSettings } from "@/stores/colles-settings.svelte";
   import { previewSettings } from "@/stores/markdown-settings.svelte";
   import { buildPreviewProseCss } from "@/lib/prose-style-css";
-  import { getPreviewNavStore } from "@/stores/preview-nav.svelte";
   import { rubriquesFor, sumMaxScore, sumNotes } from "@/colles";
   import type { CollePlanche } from "@/colles";
   import ColleNoteForm, { type ColleDraft } from "./ColleNoteForm.svelte";
@@ -38,15 +37,11 @@
   let {
     planche,
     filePath = null as string | null,
-    tabId = null as string | null,
     zoom = 100,
     onEval,
   }: {
     planche: CollePlanche;
     filePath?: string | null;
-    /** Id de session du tab side (phase 3 C) — porté par les intents wikilink
-     *  (décision figée au clic, matrice cas 1). */
-    tabId?: string | null;
     /** Zoom du TEXTE markdown (énoncé + observations) — état du viewer
      *  (CollePreview), appliqué uniquement aux `.colle-sec__zoom`, jamais aux
      *  cartes/métadonnées YAML. Largeur de la zone de texte inchangée. */
@@ -322,7 +317,6 @@
   $effect(() => {
     const el = bodyEl;
     if (!el) return;
-    const tid = tabId; // capture réactive — le closure lit `tid` au clic
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest("a");
       if (!a) return;
@@ -352,13 +346,10 @@
       if (a.classList.contains("wikilink")) {
         const fullpath = a.getAttribute("data-wikilink-fullpath");
         const heading = a.getAttribute("data-wikilink-heading");
-        // Décision figée au clic (matrice cas 1) : le mode nav du tab SOURCE
-        // est lu ICI, jamais par le reducer (course asynchrone).
-        const navMode = tid ? getPreviewNavStore().isNavMode(tid) : false;
         if (fullpath) {
           e.preventDefault();
           window.dispatchEvent(
-            new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading, tabId: tid, navMode } }),
+            new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading } }),
           );
           return;
         }
@@ -366,7 +357,7 @@
         if (target) {
           e.preventDefault();
           window.dispatchEvent(
-            new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading, tabId: tid, navMode } }),
+            new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading } }),
           );
         }
         return;
@@ -401,7 +392,6 @@
   $effect(() => {
     const el = bodyEl;
     if (!el) return;
-    const tid = tabId; // capture réactive — le closure lit `tid` au dbl-clic
     const bodyOffset = planche.bodyStart;
     const onDblClick = (e: MouseEvent) => {
       const transcluded = (e.target as HTMLElement).closest<HTMLElement>("[data-transcluded-from]");
@@ -411,7 +401,7 @@
         if (path) {
           window.dispatchEvent(
             new CustomEvent("azprose:jump-to-line", {
-              detail: { path, line: Number.isFinite(line) ? line : undefined, sessionId: tid ?? undefined },
+              detail: { path, line: Number.isFinite(line) ? line : undefined },
             }),
           );
         }
@@ -423,7 +413,7 @@
       if (Number.isFinite(sline)) {
         window.dispatchEvent(
           new CustomEvent("azprose:jump-to-line", {
-            detail: { path: filePath ?? undefined, line: sline + bodyOffset, sessionId: tid ?? undefined },
+            detail: { path: filePath ?? undefined, line: sline + bodyOffset },
           }),
         );
       }

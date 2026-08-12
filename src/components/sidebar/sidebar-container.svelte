@@ -16,10 +16,6 @@ let {
 
   tocRefSource,
 
-  tocNavMode,
-
-  tocNavTabId,
-
   helpActivePath,
   width,
   onWidthChange,
@@ -63,15 +59,6 @@ let {
    *  `null` = à lire sur disque (racine de la doc intégrée, index.md). */
   tocRefPath: string | null;
   tocRefSource: string | null;
-  /** Mode navigation du tab viewer qui fournit `tocRefPath` : la TOC n'étend
-   *  son plan aux branches transcluses que dans ce mode (mode édition → TOC
-   *  stricte du .md affiché, aucun autre md lançable). */
-  tocNavMode: boolean;
-  /** Id du tab viewer side qui fournit `tocRefPath` (celui dont `tocNavMode`
-   *  est lu) — figé au clic dans la navigation TOC (le reducer navigue dans
-   *  le tab source, jamais le tab actif courant). `null` = référence TOC
-   *  issue de l'éditeur main (aucun viewer side). */
-  tocNavTabId: string | null;
   /** Mode aide : article de la doc intégrée affiché dans le lecteur —
    *  transmis à la TOC (surbrillance + dépli par défaut). */
   helpActivePath: string | null;
@@ -201,8 +188,6 @@ function stopResize(e: PointerEvent) {
           source={tocRefSource}
           rootPath={rootPath}
           helpActivePath={helpActivePath}
-          navMode={tocNavMode}
-          navTabId={tocNavTabId}
         />
       {/if}
     </div>

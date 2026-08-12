@@ -58,12 +58,11 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       tick()
     }
 
-    // wikilink navigation from preview: le handler ne décide PAS du routage —
+    // wikilink navigation from preview : le handler ne décide PAS du routage —
     // il résout la cible (monde réel : LSP oxide, walk du vault) puis poste
-    // l'intention avec la DÉCISION FIGÉE au clic (`tabId` + `navMode`, lus par
-    // l'émetteur — matrice cas 1). Le reducer exécute cette décision sans
-    // relire l'état de mode navigation (course asynchrone : la résolution
-    // peut durer pendant que l'utilisateur bascule le mode).
+    // l'intention. Le routage est UNIQUE depuis la Phase G (tab viewer side
+    // avec dédup par contenu) : plus de mode navigation dans les panneaux, la
+    // lecture en chaîne vit dans la fenêtre fille browser.
     void (async () => {
 
       const resolveTarget = async (detail: { path?: string; target?: string }): Promise<string | null> => {
@@ -89,17 +88,13 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
 
       const onWikilinkNavigate = (e: Event) => {
         const detail = (e as CustomEvent).detail as {
-          path?: string; target?: string; heading?: string | null; tabId?: string | null; navMode?: boolean
+          path?: string; target?: string; heading?: string | null
         }
         const heading = detail.heading ?? null
-        const tabId = detail.tabId ?? null
-        // Décision figée au clic (matrice cas 1) : `navMode` voyage avec
-        // l'intention — le reducer ne relit jamais isPreviewNavMode().
-        const navMode = detail.navMode === true
         void (async () => {
           const path = await resolveTarget(detail)
           if (!path) return
-          postNavIntent({ type: "wikilink-navigate", path, heading, tabId, navMode })
+          postNavIntent({ type: "wikilink-navigate", path, heading })
         })()
       }
       window.addEventListener("azprose:wikilink-navigate", onWikilinkNavigate)
@@ -111,14 +106,13 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
       // PanelState.open — un tab déjà ouvert est activé, pas dupliqué).
       const onWikilinkOpenNew = (e: Event) => {
         const detail = (e as CustomEvent).detail as {
-          path?: string; target?: string; heading?: string | null; tabId?: string | null
+          path?: string; target?: string; heading?: string | null
         }
         const heading = detail.heading ?? null
-        const tabId = detail.tabId ?? null
         void (async () => {
           const path = await resolveTarget(detail)
           if (!path) return
-          postNavIntent({ type: "wikilink-open-new", path, heading, tabId })
+          postNavIntent({ type: "wikilink-open-new", path, heading })
         })()
       }
       window.addEventListener("azprose:wikilink-open-new", onWikilinkOpenNew)

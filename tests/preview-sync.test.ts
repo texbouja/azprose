@@ -82,124 +82,16 @@ function makeDeps(pm: PanelManager): NavDeps {
 
 const files: Record<string, string> = { "/a.md": "a", "/b.md": "b", "/c.md": "c" };
 
-/** Ouvre l'éditeur sur `path` et un viewer lié (comme setEditorMode("preview")). */
+/** Ouvre l'éditeur sur `path` et son viewer (comme setEditorMode("preview")).
+ *  Phase G : aucun couplage à créer — les tabs se reconnaissent par contenu. */
 async function openLinked(pm: PanelManager, path: string, mode = "preview") {
   await pm.openInMain(path);
   const mainId = pm.main.activeTabId!;
   await pm.side.open(path, { preview: true, forceNew: true });
   const sideId = pm.side.activeTabId!;
   pm.side.setRenderMode(sideId, mode as never);
-  pm.linkPreview(sideId, mainId);
   return { mainId, sideId };
 }
-
-test("synchro : clic sidebar (open-active) → le viewer COUPLÉ suit le tab éditeur recyclé", async () => {
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  await openLinked(pm, "/a.md");
-  expect(pm.side.activePath).toBe("/a.md");
-
-  await navigate(makeDeps(pm), { type: "open-active", path: "/b.md" });
-
-  expect(pm.main.activePath).toBe("/b.md");
-  expect(pm.side.activePath).toBe("/b.md");
-});
-
-test("synchro : le recyclage avec BROUILLON parké (politique A) ne casse pas le suivi", async () => {
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  await openLinked(pm, "/a.md");
-  // Flux réel de l'éditeur (app.svelte onSourceChange) : buffer du store +
-  // reflet du tab main — rend `source !== savedContent` → park à la nav.
-  store.setBuffer("/a.md", "a modifié");
-  pm.main.setSource("a modifié");
-
-  await navigate(makeDeps(pm), { type: "open-active", path: "/b.md" });
-
-  expect(pm.side.activePath).toBe("/b.md");
-  expect(store.getDraft("/a.md")).toBe("a modifié");
-});
-
-test("synchro : un viewer en mode COLLE suit le recyclage et retombe en preview sur la cible", async () => {
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  await openLinked(pm, "/a.md", "colle");
-  expect(pm.side.activeTab?.renderMode).toBe("colle");
-
-  await navigate(makeDeps(pm), { type: "open-active", path: "/b.md" });
-
-  expect(pm.side.activePath).toBe("/b.md");
-  expect(pm.side.activeTab?.renderMode).toBe("preview");
-});
-
-test("restore : restorePreviewLinks re-couple les viewers au tab éditeur du même chemin", async () => {
-  // Simule le boot (session-restore) : tabs main PUIS tabs side restaurés par
-  // chemin, SANS couplage (le registre previewLinks est un état runtime).
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  await pm.openInMain("/a.md");
-  const mainA = pm.main.activeTabId!;
-  await pm.openInMain("/b.md");
-  const mainB = pm.main.activeTabId!;
-  // Un tab d'outil en main (jamais couplable) + le tab actif repointe sur A.
-  pm.main.openCustom("datafilter", "Filtre");
-  pm.main.select(mainA);
-
-  await pm.openInSide("/a.md", { silent: true });
-  const sideA = pm.side.activeTabId!;
-  await pm.openInSide("/b.md", { silent: true });
-  const sideB = pm.side.activeTabId!;
-  await pm.side.openCustom("datafilter", "Filtre"); // outil side : jamais couplé
-  // Stamp du flag preview (miroir du restore réel).
-  pm.side.tabs = pm.side.tabs.map((t) => ({ ...t, preview: true }));
-
-  expect(pm.sideTabLinkedTo(mainA)).toBeNull(); // avant restauration : aucun lien
-
-  restorePreviewLinks(pm);
-
-  // Couplages par chemin : sideA↔mainA, sideB↔mainB ; l'outil n'est PAS couplé.
-  expect(pm.linkedEditorTabId(sideA)).toBe(mainA);
-  expect(pm.linkedEditorTabId(sideB)).toBe(mainB);
-  expect(pm.sideTabLinkedTo(mainA)).toBe(sideA);
-  expect(pm.sideTabLinkedTo(mainB)).toBe(sideB);
-
-  // La synchro redevient fonctionnelle après restauration : clic sidebar sur
-  // /c.md (pas encore ouvert en main) → le tab éditeur actif (mainA, /a.md) est
-  // recyclé → le viewer couplé sideA suit et devient /c.md (l'outil side actif,
-  // lui, n'est jamais repointé).
-  await navigate(makeDeps(pm), { type: "open-active", path: "/c.md" });
-  expect(pm.main.activePath).toBe("/c.md");
-  expect(pm.side.tabs.find((t) => t.id === sideA)?.path).toBe("/c.md");
-  expect(pm.side.activeTab?.kind).toBe("custom");
-});
-
-test("restore : pas de re-couplage quand le chemin n'existe pas en main (viewer indépendant)", async () => {
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  await pm.openInMain("/a.md");
-  await pm.openInSide("/b.md", { silent: true }); // /b.md n'a pas d'équivalent main
-
-  restorePreviewLinks(pm);
-
-  expect(pm.linkedEditorTabId(pm.side.activeTabId!)).toBeNull();
-});
-
-test("runtime : repoint éditeur échoué → ROMPT le couplage (viewer navigue seul, jamais d'état divergent)", async () => {
-  // Preview-follow : le viewer navigue vers /missing.md (illisible, absent du
-  // fs). Le tab éditeur lié ne peut pas suivre → la règle forte exige la
-  // RUPTURE du lien (le viewer continue seul, l'éditeur reste sur /a.md).
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  const { sideId } = await openLinked(pm, "/a.md");
-  expect(pm.linkedEditorTabId(sideId)).not.toBeNull();
-
-  const res = await followPreviewNavigation(pm, "/missing.md");
-
-  expect(res.followed).toBe(false);
-  expect(res.parked).toBe(false);
-  expect(pm.linkedEditorTabId(sideId)).toBeNull();
-  expect(pm.main.activePath).toBe("/a.md");
-});
 
 
 test("boot : le tab side ACTIF de la session est sélectionné dans le panel SIDE (bug : id cherché dans main)", async () => {
@@ -254,91 +146,6 @@ test("session v2 : toJSON ne persiste AUCUN état runtime (couplage, espace, pro
   expect(entry).not.toHaveProperty("pinnedOwner");
   expect(entry).not.toHaveProperty("dormant");
   expect(json.main.tabs.find((t) => t.path === "/a.md")).not.toHaveProperty("space");
-});
-
-test("session v2 : fromJSON re-couple PAR CONTENU (viewer et éditeur du même fichier)", async () => {
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  const { mainId } = await openLinked(pm, "/a.md");
-  // Un second viewer, sur un autre fichier, sans éditeur correspondant.
-  await pm.openInSide("/b.md", { silent: true, forceNew: true });
-
-  const pm2 = new PanelManager({ content: store });
-  pm2.fromJSON(pm.toJSON());
-
-  const sideA = pm2.side.tabs.find((t) => t.path === "/a.md")!;
-  const sideB = pm2.side.tabs.find((t) => t.path === "/b.md")!;
-  const mainA = pm2.main.tabs.find((t) => t.path === "/a.md")!;
-  expect(pm2.linkedEditorTabId(sideA.id)).toBe(mainA.id);
-  // Aucun éditeur /b.md : le viewer reste indépendant (jamais de couplage vers
-  // un fichier différent — la divergence est impossible par construction).
-  expect(pm2.linkedEditorTabId(sideB.id)).toBeNull();
-  expect(mainId).not.toBe(mainA.id); // ids RÉGÉNÉRÉS : c'est bien le contenu qui identifie
-});
-
-test("session v2 : éditeur fermé puis rouvert → le couplage revit au boot (identité par contenu)", async () => {
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  const { mainId } = await openLinked(pm, "/a.md");
-  await pm.main.close(mainId);
-  await pm.openInMain("/a.md"); // nouvel id
-
-  const pm2 = new PanelManager({ content: store });
-  pm2.fromJSON(pm.toJSON());
-
-  const sideA = pm2.side.tabs.find((t) => t.path === "/a.md")!;
-  const mainA = pm2.main.tabs.find((t) => t.path === "/a.md")!;
-  expect(pm2.linkedEditorTabId(sideA.id)).toBe(mainA.id);
-});
-
-test("session v2 : E2E — saveSession → localStorage → boot → couplage reconstruit par contenu", async () => {
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  await pm.openInMain("/a.md");
-  await pm.side.open("/a.md", { preview: true, forceNew: true });
-
-  const data = pm.toJSON();
-  saveSession({ main: data.main, side: { ...data.side, visible: true } });
-  const loaded = loadSession();
-  // La session écrite ne contient plus rien du couplage.
-  expect(loaded.side.tabs.find((t) => t.path === "/a.md")).not.toHaveProperty("linkedTo");
-
-  const pm2 = new PanelManager({ content: store });
-  await pm2.openInMain("/a.md");
-  await pm2.openInSide("/a.md", { silent: true });
-  restorePreviewLinks(pm2);
-
-  const sideA = pm2.side.tabs.find((t) => t.path === "/a.md")!;
-  const mainA = pm2.main.tabs.find((t) => t.path === "/a.md")!;
-  expect(pm2.linkedEditorTabId(sideA.id)).toBe(mainA.id);
-});
-
-test("session v2 : une session v1 (avec linkedTo) reste lisible — la clé est simplement ignorée", async () => {
-  const store = new ContentStore(makeFakeFs(files));
-  const pm = new PanelManager({ content: store });
-  // Session v1 : le viewer /a.md porte linkedTo, le viewer /b.md linkedTo null.
-  pm.fromJSON({
-    main: { tabs: [{ path: "/a.md", title: "a.md" }], activePath: "/a.md" },
-    side: {
-      tabs: [
-        { path: "/a.md", title: "a.md", linkedTo: "/a.md" },
-        { path: "/b.md", title: "b.md", linkedTo: null },
-      ],
-      activePath: "/a.md",
-    },
-    layout: "main+side",
-    splitRatio: 0.5,
-  } as unknown as PanelManagerSession);
-
-  const sideA = pm.side.tabs.find((t) => t.path === "/a.md")!;
-  const sideB = pm.side.tabs.find((t) => t.path === "/b.md")!;
-  const mainA = pm.main.tabs.find((t) => t.path === "/a.md")!;
-  // Reconstruction par contenu : /a.md couplé (éditeur du même fichier),
-  // /b.md indépendant (aucun éditeur) — le linkedTo persisté n'est plus lu.
-  expect(pm.linkedEditorTabId(sideA.id)).toBe(mainA.id);
-  expect(pm.linkedEditorTabId(sideB.id)).toBeNull();
-  // Migration one-shot : la prochaine sauvegarde écrit le schema v2.
-  expect(pm.toJSON().side.tabs[0]).not.toHaveProperty("linkedTo");
 });
 
 // ── Phase E — BOOT « rien que du texte pur » : les viewers restaurés sont des

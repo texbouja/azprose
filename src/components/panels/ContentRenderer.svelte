@@ -99,7 +99,6 @@ let {
   <LazyDocPreview
     value={contentFor(tab.path)}
     filePath={tab.path}
-    tabId={tab.id}
   />
 {:else if isPdfPath(tab.path)}
   <!-- CONTAINER du viewer PDF (Phase C — D5) : le message d'échec s'affiche
@@ -127,7 +126,6 @@ let {
   <LazyCollePreview
     value={contentFor(tab.path)}
     filePath={tab.path}
-    tabId={tab.id}
     viewerFullscreenOn={viewerFullscreenOn}
   />
 {:else if panelId !== "main" && extFromPath(tab.path) === "md" && tab.renderMode === "presentation"}
@@ -142,7 +140,6 @@ let {
     value={contentFor(tab.path)}
     rev={contentVersionOf(tab.path)}
     filePath={tab.path}
-    tabId={tab.id}
   />
 {:else if panelId === "main" && extFromPath(tab.path) === "md" && prosemarkOn}
   <LazyProseMark

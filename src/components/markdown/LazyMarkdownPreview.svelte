@@ -5,12 +5,10 @@ import { language } from "@/lib/i18n";
 let {
   value = "",
   filePath = null as string | null,
-  tabId = null as string | null,
   rev = 0,
 }: {
   value?: string;
   filePath?: string | null;
-  tabId?: string | null;
   rev?: number;
 } = $props();
 
@@ -38,5 +36,5 @@ $effect(() => {
 {#if loading}
   <div class="mdv-editor mdv-editor--loading">{t("lazy.loadingPreview")}</div>
 {:else if Cmp}
-  <Cmp {value} {filePath} {tabId} {rev} />
+  <Cmp {value} {filePath} {rev} />
 {/if}
