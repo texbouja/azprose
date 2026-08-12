@@ -8,6 +8,73 @@ export type TabSource = "latex";
 export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter" | "doc";
 
 /**
+ * Espace d'un tab (Phase A « pinned tabs ») : `"pinned"` (sphère épinglée —
+ * au plus un éditeur par format, décidé par l'UTILISATEUR) ou `"free"`
+ * (par défaut). RUNTIME uniquement : jamais persisté en session (toJSON ne
+ * l'écrit pas, fromJSON restaure tout libre — R9). Les deux espaces sont
+ * ISOLÉS : la dédup par contenu s'applique DANS chaque espace, jamais entre
+ * eux (R3 — le même fichier peut exister épinglé ET libre).
+ */
+export type TabSpace = "pinned" | "free";
+
+/** Normalisation de chemin partagée (drop des segments `.`). */
+export function normPath(p: string): string {
+  return p.split("/").filter(s => s !== ".").join("/");
+}
+
+/**
+ * Clé d'IDENTITÉ PAR CONTENU d'un tab (Phase A) — remplace la recherche par
+ * chemin seul : l'identité dérive de la nature du contenu, pas de l'id de tab
+ * (les ids sont régénérés à chaque restore). Un même contenu ne peut exister
+ * qu'UNE fois par espace (dédup), jamais de doublon dans le même espace.
+ * - fichier / doc / custom / spreadsheet : chemin normalisé (les paths
+ *   `custom://…`, `spreadsheet://…` sont déjà uniques par identité) ;
+ * - datafilter : identité = ENSEMBLE TRIÉ des ids (le path `datafilter://stack`
+ *   est partagé par toutes les piles — la clé seule les distingue).
+ */
+export function tabContentKey(tab: Pick<Tab, "path" | "kind" | "datafilterIds">): string {
+  if (tab.kind === "datafilter") {
+    return `datafilter:${[...(tab.datafilterIds ?? [])].sort().join("\u0000")}`;
+  }
+  return normPath(tab.path);
+}
+
+/** Clé d'une CIBLE à ouvrir (même convention que `tabContentKey`). */
+export function targetContentKey(path: string, kind?: TabKind, datafilterIds?: string[]): string {
+  if (kind === "datafilter") {
+    return `datafilter:${[...(datafilterIds ?? [])].sort().join("\u0000")}`;
+  }
+  return normPath(path);
+}
+
+/** Espace effectif d'un tab (le champ absent vaut `"free"`). */
+export function tabSpace(tab: { space?: TabSpace }): TabSpace {
+  return tab.space ?? "free";
+}
+
+/**
+ * Format d'épinglage d'un fichier = son extension (un seul éditeur épinglé par
+ * format : md, tex, typ, …). `null` pour un path sans extension.
+ */
+export function tabPinFormat(path: string): string | null {
+  const i = path.lastIndexOf(".");
+  if (i === -1) return null;
+  return path.slice(i + 1).toLowerCase();
+}
+
+/**
+ * Un tab est ÉPINGLABLE s'il est un tab de FICHIER TEXTE éditable (jamais un
+ * outil, jamais l'aide, jamais un PDF/image — le pin est l'état d'un ÉDITEUR).
+ * Le pinnage se décide dans le MAIN panel (R1, round 5) : `canPinTab` ne
+ * dépend pas du panel — c'est le composant qui ne l'affiche que là.
+ */
+export function canPinTab(tab: Tab): boolean {
+  if (tabContentKind(tab.kind) !== "file") return false;
+  if (isPdfPath(tab.path) || isImagePath(tab.path)) return false;
+  return tabPinFormat(tab.path) !== null;
+}
+
+/**
  * Classification exhaustive du kind d'un tab (phase 4, idée G du rapport
  * architecture-review). Tout nouveau `TabKind` ajouté à l'union DOIT être
  * traité ici — le `default` du switch est un check `never` : ajouter un kind
@@ -84,6 +151,8 @@ export type Tab = {
   panelId?: string;
   spreadsheetId?: string;
   datafilterIds?: string[];
+  /** Espace pinned/libre (Phase A) — RUNTIME, NON persisté (absent = libre). */
+  space?: TabSpace;
 };
 
 export type PanelSessionData = {
@@ -109,12 +178,14 @@ export type PanelCallbacks = {
  * 1. `fallbackToActive` (navigation « tab actif » : wikilink du viewer, sidebar
  *    maximisée, back & forward) → re-pointe le tab ACTIF du panneau (le clic a
  *    lieu dans le tab visible), pourvu que ce soit un tab de FICHIER (kind non
- *    défini — un tab custom/spreadsheet/datafilter ne peut pas être ré-affecté).
+ *    défini — un tab custom/spreadsheet/datafilter ne peut pas être ré-affecté)
+ *    ET du MÊME ESPACE que la cible (un tab épinglé n'est JAMAIS ré-affecté
+ *    par une ouverture libre — R3, isolation des espaces).
  *    C'est le comportement « clic simple = tab actif », indépendant du flag
  *    `preview` (perdu par un restore de session ou une ré-affectation
  *    openInActiveTab) — sans lui, chaque clic créait un NOUVEL onglet.
  * 2. sinon, un tab existant marqué `preview: true` (mécanique historique de
- *    ré-affectation en place).
+ *    ré-affectation en place) — du même espace que la cible.
  * 3. sinon → nouveau tab (`id: null`).
  */
 export function pickOpenTarget(
@@ -122,17 +193,20 @@ export function pickOpenTarget(
   activeTabId: string | null,
   wantPreview: boolean,
   fallbackToActive: boolean | undefined,
+  space: TabSpace = "free",
 ): { id: string | null; isFallback: boolean } {
   if (wantPreview && fallbackToActive) {
     const active = tabs.find(t => t.id === activeTabId);
-    // Uniquement les tabs de FICHIER (kind undefined legacy ou "file") —
-    // jamais un tab doc/data (ré-affecter l'aide ou un outil = vampirisation).
-    if (active && tabContentKind(active.kind) === "file") return { id: active.id, isFallback: true };
+    // Uniquement les tabs de FICHIER (kind undefined legacy ou "file") du même
+    // espace que la cible — jamais un tab doc/data (ré-affecter l'aide ou un
+    // outil = vampirisation), jamais un tab épinglé (isolation des espaces).
+    if (active && tabContentKind(active.kind) === "file" && tabSpace(active) === space) return { id: active.id, isFallback: true };
   }
   if (wantPreview) {
     // Le tab doc (aide intégrée) et les tabs d'OUTILS ne sont JAMAIS
-    // ré-affectés par un preview normal — seuls les tabs de fichier le sont.
-    const reuse = tabs.find(t => t.preview && tabContentKind(t.kind) === "file");
+    // ré-affectés par un preview normal — seuls les tabs de fichier le sont,
+    // et dans le même espace que la cible.
+    const reuse = tabs.find(t => t.preview && tabContentKind(t.kind) === "file" && tabSpace(t) === space);
     if (reuse) return { id: reuse.id, isFallback: false };
   }
   return { id: null, isFallback: false };
@@ -218,7 +292,7 @@ export class PanelState {
     this.cbs.onSessionChange?.(this.toJSON());
   }
 
-  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; fallbackToActive?: boolean; forceNew?: boolean }): Promise<void> {
+  async open(path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: TabSource; fallbackToActive?: boolean; forceNew?: boolean; space?: TabSpace }): Promise<void> {
     if (!isOpenablePath(path)) {
       if (!opts?.silent) {
         this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
@@ -226,13 +300,15 @@ export class PanelState {
       return;
     }
     // Normalize path to prevent duplicate tabs for /a/./b.md vs /a/b.md
-    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
-    const normalized = norm(path);
+    const normalized = normPath(path);
     const wantPreview = opts?.preview === true;
-    // `forceNew` (bouton Preview de l'éditeur, routage maximisé) : JAMAIS de
-    // dédup ni de ré-affectation — un NOUVEL onglet est toujours créé. Sans
-    // forceNew, dédup par chemin (un tab affichant déjà le fichier est activé).
-    const existing = opts?.forceNew ? undefined : this.tabs.find(t => norm(t.path) === normalized);
+    // Espace cible (Phase A) : par défaut libre. Dédup PAR ESPACE — le même
+    // fichier peut exister épinglé ET libre (R3), jamais deux fois dans le
+    // même espace. `forceNew` (bouton Preview de l'éditeur, routage maximisé) :
+    // JAMAIS de dédup ni de ré-affectation — un NOUVEL onglet est toujours
+    // créé (dans l'espace cible).
+    const space = opts?.space ?? "free";
+    const existing = opts?.forceNew ? undefined : this.tabs.find(t => normPath(t.path) === normalized && tabSpace(t) === space);
     if (existing) {
       this.tabs = this.tabs.map(t => t.id === existing.id ? { ...t, sourceType: opts?.sourceType ?? t.sourceType } : t);
       this.activeTabId = existing.id;
@@ -256,7 +332,7 @@ export class PanelState {
     // réutiliser un tab preview NON associé casserait le couplage éditeur↔preview).
     const targetInfo = opts?.forceNew
       ? { id: null as string | null, isFallback: false as boolean }
-      : pickOpenTarget(this.tabs, this.activeTabId, wantPreview, opts?.fallbackToActive);
+      : pickOpenTarget(this.tabs, this.activeTabId, wantPreview, opts?.fallbackToActive, space);
     const target = targetInfo.id != null ? this.tabs.find(t => t.id === targetInfo.id) : undefined;
     const title = basename(normalized);
     const id = target?.id ?? crypto.randomUUID();
@@ -272,7 +348,9 @@ export class PanelState {
       }
       this.tabs = this.tabs.map(t => t.id === id ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, sourceType: opts?.sourceType, renderMode: recycleRenderMode(t.renderMode) } : t);
     } else {
-      this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType }];
+      // Nouveau tab dans l'espace cible (le champ `space` n'est posé que pour
+      // un tab épinglé — absent = libre, comportement legacy préservé).
+      this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: wantPreview, sourceType: opts?.sourceType, ...(space === "pinned" ? { space } : {}) }];
     }
     this.activeTabId = id;
     this.cbs.onFileOpen?.(normalized);
@@ -356,17 +434,20 @@ export class PanelState {
    * PDF/images : pas de lecture texte — source vide, viewer dédié.
    * Sans tab actif, se comporte comme `open` (nouveau tab).
    */
-  async openInActiveTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; sourceType?: TabSource }): Promise<void> {
+  async openInActiveTab(path: string, opts?: { preferDraft?: boolean; silent?: boolean; sourceType?: TabSource; space?: TabSpace }): Promise<void> {
     if (!isOpenablePath(path)) {
       if (!opts?.silent) {
         this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
       }
       return;
     }
-    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
-    const normalized = norm(path);
-    // Dédup : un tab affiche déjà le fichier → activation simple (comme `open`).
-    const existing = this.tabs.find(t => norm(t.path) === normalized);
+    const normalized = normPath(path);
+    // Espace cible (Phase A) : par défaut libre. Dédup PAR ESPACE — un tab
+    // épinglé affichant le fichier n'absorbe pas une ouverture libre (et
+    // inversement, R3) : seule la dédup intra-espace est activée.
+    const space = opts?.space ?? "free";
+    // Dédup : un tab du même ESPACE affiche déjà le fichier → activation simple.
+    const existing = this.tabs.find(t => normPath(t.path) === normalized && tabSpace(t) === space);
     if (existing) {
       this.activeTabId = existing.id;
       this.notify();
@@ -378,7 +459,10 @@ export class PanelState {
     // par une navigation « tab actif » : un clic sidebar pendant la lecture de
     // l'aide ne doit pas détruire le lecteur, et un outil (spreadsheet/calendar)
     // ne peut pas être re-pointé vers un fichier — on crée un onglet dédié.
-    const previous = active && tabContentKind(active.kind) === "file" ? { ...active } : null;
+    // Phase A : le tab actif n'est re-pointé que s'il est du MÊME ESPACE que la
+    // cible — un clic sidebar avec un éditeur épinglé crée un tab libre au lieu
+    // d'écraser le pinned (isolation des espaces, fondation du routage B).
+    const previous = active && tabContentKind(active.kind) === "file" && tabSpace(active) === space ? { ...active } : null;
     const id = previous?.id ?? crypto.randomUUID();
 
     // Park du brouillon du tab actif AVANT de le ré-affecter (mécanique repoint).
@@ -393,7 +477,7 @@ export class PanelState {
           : t,
       );
     } else {
-      this.tabs = [...this.tabs, { id, title: basename(normalized), path: normalized, source: "", savedContent: "", preview: false, sourceType: opts?.sourceType }];
+      this.tabs = [...this.tabs, { id, title: basename(normalized), path: normalized, source: "", savedContent: "", preview: false, sourceType: opts?.sourceType, ...(space === "pinned" ? { space } : {}) }];
     }
     this.activeTabId = id;
     this.cbs.onFileOpen?.(normalized);
@@ -530,6 +614,41 @@ export class PanelState {
   select(tabId: string): void {
     this.activeTabId = tabId;
     this.notify();
+  }
+
+  /**
+   * Épingle / dé-épingle un tab (Phase A — R1, rounds 3-5) :
+   * - ÉTAT UTILISATEUR RUNTIME : au plus un tab épinglé par FORMAT dans ce
+   *   panel ; épingler un tab dé-épingle automatiquement l'autre tab épinglé
+   *   du même format (COMMUTATION) ;
+   * - NON PERSISTÉ : `toJSON` n'écrit jamais `space`, `fromJSON` restaure
+   *   tout libre (R9 — boot sans rien d'épinglé, l'utilisateur ré-épingle) ;
+   * - un tab épinglé n'est JAMAIS ré-affecté par une ouverture d'un autre
+   *   espace (dédup par espace dans open/openInActiveTab/pickOpenTarget).
+   * No-op si le tab n'est pas épinglable (canPinTab : outil, aide, PDF/image).
+   */
+  setPinned(tabId: string, pinned: boolean): void {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !canPinTab(tab)) return;
+    const format = tabPinFormat(tab.path)!;
+    const isPinned = tabSpace(tab) === "pinned";
+    if (pinned === isPinned) return;
+    this.tabs = this.tabs.map(t => {
+      if (t.id === tabId) {
+        return { ...t, space: pinned ? "pinned" : "free" };
+      }
+      // Commutation : dé-épingler l'autre tab épinglé du même format.
+      if (pinned && tabSpace(t) === "pinned" && tabPinFormat(t.path) === format) {
+        return { ...t, space: "free" };
+      }
+      return t;
+    });
+    this.notify();
+  }
+
+  /** Le tab épinglé du `format` (md, tex, …) dans ce panel, ou undefined. */
+  pinnedTab(format: string): Tab | undefined {
+    return this.tabs.find(t => tabSpace(t) === "pinned" && tabPinFormat(t.path) === format);
   }
 
   reorder(from: number, to: number): void {

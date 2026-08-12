@@ -59,6 +59,35 @@
   flex-shrink: 0;
 }
 
+/* Icône d'épingle (Phase A — R1) : GRISÉE jusqu'à activation, pleine quand le
+   tab est épinglé. Le pinnage se décide dans le MAIN panel (TabsBar main). */
+.mdv-tab__pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  opacity: 0.45;
+  transition: opacity var(--dur-base) var(--easing), color var(--dur-base) var(--easing);
+  flex-shrink: 0;
+}
+
+.mdv-tab:hover .mdv-tab__pin {
+  opacity: 0.8;
+}
+
+.mdv-tab__pin:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+
+.mdv-tab__pin.is-pinned {
+  opacity: 1;
+  color: var(--accent);
+}
+
 .mdv-tab.is-dirty .mdv-tab__dot {
   background: var(--accent);
 }

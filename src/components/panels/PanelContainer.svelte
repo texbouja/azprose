@@ -95,6 +95,10 @@ function handleViewerFullscreen() {
         onClose={(id) => panel.close(id)}
         onReorder={(from, to) => panel.reorder(from, to)}
         {onTabDoubleClick}
+        onTogglePin={(id) => {
+          const tab = tabs.find(t => t.id === id);
+          if (tab) panel.setPinned(id, tab.space !== "pinned");
+        }}
       />
     </div>
   {/if}

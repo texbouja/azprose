@@ -152,6 +152,24 @@ export class PanelManager {
     return this.main.openInActiveTab(path, opts);
   }
 
+  /**
+   * Épingle / dé-épingle un tab du MAIN panel (Phase A — R1 : le pinnage se
+   * décide dans le MAIN panel, les viewers n'ont qu'un badge). Commutation :
+   * au plus un tab épinglé par format (épingler dé-épingle l'autre du même
+   * format). État RUNTIME NON PERSISTÉ — jamais dans la session.
+   */
+  setMainPinned(tabId: string, pinned: boolean): void {
+    this.main.setPinned(tabId, pinned);
+  }
+
+  /** Le tab éditeur épinglé du `format` (md, tex, …) dans le MAIN, ou null.
+   *  Le « pinned slot » d'un format (Phase A) : son contenu courant est dérivé
+   *  du tab (path + source + savedContent) ; la pile d'historique et le buffer
+   *  mémorisé du retour sans rebuild arrivent en phase D. */
+  pinnedMainTab(format: string): Tab | null {
+    return this.main.pinnedTab(format) ?? null;
+  }
+
   openInSide(
     path: string,
     opts?: {

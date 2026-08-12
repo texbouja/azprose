@@ -1,16 +1,8 @@
 <script lang="ts">
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-
-export type Tab = {
-  id: string;
-  title: string;
-  path: string;
-  source: string;
-  savedContent: string;
-  /** VS Code-style preview tab: ephemeral, reused on single-click, italic title. */
-  preview?: boolean;
-};
+import type { Tab } from "@/lib/panel-store";
+import { canPinTab } from "@/lib/panel-store";
 
 let {
   tabs = [] as Tab[],
@@ -20,6 +12,7 @@ let {
   onClose,
   onReorder,
   onTabDoubleClick,
+  onTogglePin,
 }: {
   tabs?: Tab[];
   activeTabId?: string | null;
@@ -28,6 +21,9 @@ let {
   onClose?: (id: string) => void;
   onReorder?: (from: number, to: number) => void;
   onTabDoubleClick?: (id: string) => void;
+  /** Commutation d'épingle (Phase A — R1) : le pinnage se décide dans le MAIN
+   *  panel (l'icône n'apparaît que là) ; les viewers n'ont qu'un badge. */
+  onTogglePin?: (id: string) => void;
 } = $props();
 
 let t = $derived(getT($language));
@@ -119,6 +115,8 @@ function endDrag(e: PointerEvent) {
     {@const dirty = panelId === "main" && tab.source !== tab.savedContent}
     {@const dragging = dragFromIndex === tabIndex}
     {@const isDragOver = dragOverIndex === tabIndex && dragFromIndex !== null && dragFromIndex !== tabIndex}
+    {@const pinable = panelId === "main" && canPinTab(tab)}
+    {@const pinned = tab.space === "pinned"}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       role="tab"
@@ -128,6 +126,19 @@ function endDrag(e: PointerEvent) {
       onpointerdown={(e) => onTabPointerDown(e, tabIndex)}
       ondblclick={() => onTabDoubleClick?.(tab.id)}
     >
+      <span class="mdv-tab__dot" aria-hidden="true" />
+      {#if pinable}
+        <button
+          type="button"
+          class="mdv-tab__pin{pinned ? " is-pinned" : ""}"
+          aria-label={pinned ? t("tabs.unpin", { name: tab.title }) : t("tabs.pin", { name: tab.title })}
+          title={pinned ? t("tabs.unpinTitle") : t("tabs.pinTitle")}
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={(e) => { e.stopPropagation(); onTogglePin?.(tab.id); }}
+        >
+          <i class="wxi-pin-outline" style="font-size:13px"></i>
+        </button>
+      {/if}
       <button
         type="button"
         class="mdv-tab__select"
@@ -136,7 +147,6 @@ function endDrag(e: PointerEvent) {
           onSelect?.(tab.id);
         }}
       >
-        <span class="mdv-tab__dot" aria-hidden="true" />
         <span class="mdv-tab__label" class:is-preview={tab.preview}>{tab.title}</span>
       </button>
       <button
