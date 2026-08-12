@@ -39,8 +39,14 @@ export type NavIntent =
   | { type: "open-file"; path: string; opts?: OpenInTabOptions }
   /** Clic sidebar : tab ACTIF du bon panel (main pour texte, side pour
    *  pdf/image), avec dédup. C'est le remplaçant typé de
-   *  `handleSidebarFileSelect(path, newTab=false)`. */
-  | { type: "open-active"; path: string; newTab?: boolean }
+   *  `handleSidebarFileSelect(path, newTab=false)`.
+   *
+   *  Routage par espace (Phase B) : clic SIMPLE sur un texte → le PINNED slot
+   *  du format s'il existe (re-point du tab épinglé, jamais de doublon
+   *  pinned), sinon le tab libre. `newTab` (alt+clic) → espace LIBRE
+   *  explicite. `viewer` (alt+maj+clic) → viewer libre side (dédup, jamais
+   *  l'éditeur ni le pinned). */
+  | { type: "open-active"; path: string; newTab?: boolean; viewer?: boolean }
   /** Navigation wikilink : HORS mode nav, ouvre un NOUVEAU tab viewer side
    *  (jamais l'éditeur main — décision utilisateur ; éditeur uniquement par
    *  double-clic) ; EN mode nav, navigation IN-PLACE du tab preview actif.

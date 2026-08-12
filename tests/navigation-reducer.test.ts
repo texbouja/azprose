@@ -820,6 +820,7 @@ test("open-active : clic sidebar → le viewer COUPLÉ suit (repoint vers la cib
       },
     },
     sideTabLinkedTo: (mainId: string) => (mainId === "t1" ? "s1" : null),
+    pinnedMainTab: () => null,
     openInMainActiveTab: async () => {},
     trackMtime: async () => {},
   } as unknown as PanelManager;
@@ -828,6 +829,154 @@ test("open-active : clic sidebar → le viewer COUPLÉ suit (repoint vers la cib
   await navigate(deps, { type: "open-active", path: "/b.md" });
 
   expect(repointed).toEqual(["s1→/b.md"]);
+});
+
+// ── Phase B : routage par espace (pinned slot du format sinon libre) ─────────
+// R3 : le clic sidebar SIMPLE (et les sauts navigateur : TOC/backlinks/tags,
+// journal, oxide) cible le tab du BON espace — le PINNED slot du format s'il
+// existe (re-point du tab épinglé, jamais de doublon pinned), sinon l'espace
+// libre (comportement historique). Alt+clic → espace libre explicite ;
+// Alt+Maj+clic → viewer libre side (dédup, jamais l'éditeur ni le pinned).
+
+/** Fake PanelManager « routage par espace » : `pinnedMainTab` retourne le slot
+ *  du `format` demandé (ou null) ; `main.repoint`/`main.select` espionnés ;
+ *  les replis d'ouverture libre THROW si appelés (le routage pinned doit
+ *  absorber la navigation). */
+function pinnedRoutingFakePm(opts: { format?: string | null; repointOk?: boolean } = {}) {
+  const { format = "md", repointOk = true } = opts;
+  const repointed: string[] = [];
+  const selected: string[] = [];
+  const pm = {
+    main: {
+      activeTabId: "t1",
+      activePath: "/a.md",
+      tabs: [],
+      repoint: async (id: string, path: string) => {
+        repointed.push(`${id}→${path}`);
+        return { ok: repointOk, parked: false };
+      },
+      select: (id: string) => void selected.push(id),
+    },
+    side: { visible: false, activeTabId: null, activeTab: undefined, tabs: [] },
+    pinnedMainTab: (f: string) => (f === format ? { id: "p1", path: "/p.md" } : null),
+    sideTabLinkedTo: () => null,
+    openInMainActiveTab: async () => { throw new Error("repli libre (openInMainActiveTab) non attendu"); },
+    openInMain: async () => { throw new Error("repli libre (openInMain) non attendu"); },
+    openInSide: async () => { throw new Error("openInSide non attendu"); },
+    trackMtime: async () => {},
+  } as unknown as PanelManager;
+  return { pm, repointed, selected };
+}
+
+test("Phase B : clic sidebar SIMPLE + pinned slot du format → re-point du pinned (jamais l'espace libre)", async () => {
+  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md" });
+
+  // R3 : le pinned slot absorbe — repoint du tab épinglé + sélection, jamais
+  // openInMainActiveTab (l'espace libre ne reçoit pas de doublon du contenu).
+  expect(repointed).toEqual(["p1→/b.md"]);
+  expect(selected).toEqual(["p1"]);
+});
+
+test("Phase B : clic SIMPLE sur un AUTRE format → repli espace libre (slot inexistant)", async () => {
+  // Le slot « tex » n'existe pas : le routage pinned n'absorbe pas → repli
+  // libre (openInMainActiveTab). Le fake le THROW : le test atteste qu'avec
+  // un slot existant le comportement est identique au clic simple libre.
+  const { pm, repointed } = pinnedRoutingFakePm({ format: "tex" });
+  pm.openInMainActiveTab = async () => {}; // repli libre réel (fake no-op)
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md" });
+
+  expect(repointed).toEqual([]);
+});
+
+test("Phase B : clic SIMPLE + échec de re-point du pinned → repli espace libre (jamais d'erreur muette)", async () => {
+  // Fichier illisible : repoint ok:false (tab épinglé laissé intact) → repli
+  // libre. Le routage pinned ne doit jamais avaler un échec silencieusement.
+  const { pm, repointed } = pinnedRoutingFakePm({ format: "md", repointOk: false });
+  pm.openInMainActiveTab = async () => {};
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md" });
+
+  expect(repointed).toEqual(["p1→/b.md"]);
+});
+
+test("Phase B : alt+maj+clic (viewer) → viewer libre side, jamais l'éditeur ni le pinned", async () => {
+  const opened: Array<{ path: string; opts: unknown }> = [];
+  const pm = {
+    main: { activeTabId: "t1", activePath: "/a.md", tabs: [] },
+    side: { visible: false, activeTabId: null, activeTab: undefined, tabs: [] },
+    pinnedMainTab: () => null,
+    openInSide: async (p: string, o?: unknown) => void opened.push({ path: p, opts: o }),
+    openInMainActiveTab: async () => { throw new Error("éditeur libre non attendu"); },
+    trackMtime: async () => {},
+  } as unknown as PanelManager;
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md", viewer: true });
+
+  // Politique wikilink hors mode nav : NOUVEAU viewer side (forceNew preview),
+  // jamais l'éditeur main, jamais le pinned slot.
+  expect(opened).toEqual([{ path: "/b.md", opts: { preview: true, forceNew: true } }]);
+  expect(pm.sideVisible).toBe(true);
+});
+
+test("Phase B : alt+maj+clic avec viewer side du même contenu → dédup (select du viewer existant)", async () => {
+  const selected: string[] = [];
+  const pm = {
+    main: { activeTabId: "t1", activePath: "/a.md", tabs: [] },
+    side: {
+      visible: false,
+      activeTabId: null,
+      activeTab: undefined,
+      tabs: [{ id: "s1", path: "/b.md", preview: true, renderMode: "preview" }],
+      select: (id: string) => void selected.push(id),
+    },
+    pinnedMainTab: () => null,
+    openInSide: async () => { throw new Error("openInSide non attendu (dédup)"); },
+    trackMtime: async () => {},
+  } as unknown as PanelManager;
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md", viewer: true });
+
+  expect(selected).toEqual(["s1"]);
+});
+
+test("Phase B : jump-to-file (TOC/backlinks/tags) + pinned slot → re-point du pinned", async () => {
+  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
+  (pm as { findTabByPath: unknown }).findTabByPath = () => null;
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "jump-to-file", path: "/docs/suites.md", heading: "Propriétés" });
+
+  expect(repointed).toEqual(["p1→/docs/suites.md"]);
+  expect(selected).toEqual(["p1"]);
+  expect(deps.calls.setScrollTarget).toEqual(["Propriétés"]);
+});
+
+test("Phase B : journalDateClick + pinned md → la daily note re-point le pinned (jamais openFile)", async () => {
+  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
+  const deps = makeDeps(pm, { ensureDailyNote: async () => "/daily/2026-08-12.md" });
+
+  await navigate(deps, { type: "journal-date-click", date: "2026-08-12" });
+
+  expect(repointed).toEqual(["p1→/daily/2026-08-12.md"]);
+  expect(selected).toEqual(["p1"]);
+});
+
+test("Phase B : oxideShowDocument + pinned md → re-point du pinned (jamais openFile)", async () => {
+  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "oxide-show-document", path: "/daily/2026-08-12.md" });
+
+  expect(repointed).toEqual(["p1→/daily/2026-08-12.md"]);
+  expect(selected).toEqual(["p1"]);
 });
 
 test("cas 7 : jump-to-file (TOC/backlinks/tags) → le viewer COUPLÉ suit aussi", async () => {
@@ -850,6 +999,7 @@ test("cas 7 : jump-to-file (TOC/backlinks/tags) → le viewer COUPLÉ suit aussi
       },
     },
     findTabByPath: () => null, // pas de tab main existant → openInMain (fake no-op)
+    pinnedMainTab: () => null,
     openInMain: async () => {},
     sideTabLinkedTo: (mainId: string) => (mainId === "t1" ? "s1" : null),
     trackMtime: async () => {},

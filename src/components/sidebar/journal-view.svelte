@@ -17,9 +17,10 @@ let {
 }: {
   rootPath: string | null;
   activePath: string | null;
-  /** Clic simple : `onSelectFile(path)` — tab actif. Alt+clic (journal,
-   *  arbre) : `onSelectFile(path, true)` — nouvel onglet. */
-  onSelectFile: (path: string, newTab?: boolean) => void;
+  /** Clic simple : `onSelectFile(path)` — tab du bon espace (Phase B).
+   *  Alt+clic (journal, arbre) : `onSelectFile(path, true)` — nouvel onglet
+   *  libre. Alt+Maj+clic : `onSelectFile(path, false, true)` — viewer libre. */
+  onSelectFile: (path: string, newTab?: boolean, viewer?: boolean) => void;
   treeVersion?: number;
   onOpenCalendar?: () => void;
   onDeleteEntry?: (entry: FileEntry) => void;
@@ -72,7 +73,7 @@ async function handleSelectDate(date: string) {
         noteDates={journal.state.noteDates}
         rootPath={dailyPath}
         {activePath}
-        onSelect={(p, newTab) => onSelectFile(p, newTab)}
+        onSelect={(p, newTab, viewer) => onSelectFile(p, newTab, viewer)}
         onDelete={onDeleteEntry}
         scrollToPath={scrollToNote}
       />

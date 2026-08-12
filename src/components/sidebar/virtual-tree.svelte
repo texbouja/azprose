@@ -35,7 +35,7 @@
     activePath: string | null;
     /** Clic simple (ou Entrée) : `onSelect(path)` — tab actif. Alt+clic :
      *  `onSelect(path, true)` — nouvel onglet. */
-    onSelect: (path: string, newTab?: boolean) => void;
+    onSelect: (path: string, newTab?: boolean, viewer?: boolean) => void;
     onDelete?: (entry: FileEntry) => void;
     scrollToPath: string | null;
   } = $props();
@@ -120,6 +120,7 @@
         // tracking (all months stay expanded until manually collapsed).
         mdvRowClickFeature<VNode>({
           onAltAction: (item) => onSelect(item.getId(), true),
+          onAltShiftAction: (item) => onSelect(item.getId(), false, true),
         }),
         sveltePropsFeature,
       ],

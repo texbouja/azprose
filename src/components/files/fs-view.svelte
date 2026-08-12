@@ -53,7 +53,7 @@ let {
   onCloseFolder: (path: string) => void;
   onOpenProject: (path: string) => void;
   onProjectFromFolder: () => void;
-  onSelectFile: (path: string, newTab?: boolean) => void;
+  onSelectFile: (path: string, newTab?: boolean, viewer?: boolean) => void;
   onMove?: (src: string, dstParent: string) => void;
   onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
   stagedPaths?: readonly string[];

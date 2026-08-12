@@ -948,11 +948,13 @@ function closeTab(id: string) {
  * via previewLinkedTabId) au lieu d'empiler un onglet éditeur en main.
  * PDF/images passent toujours par le side (même maximisé).
  */
-async function handleSidebarFileSelect(path: string, newTab = false) {
-  // Canal « navigate » : le reducer implémente le routage maximisé (image/pdf
-  // → side, .md plein écran → preview IN-PLACE via previewLinkedTabId, sinon
+async function handleSidebarFileSelect(path: string, newTab = false, viewer = false) {
+  // Canal « navigate » : le reducer implémente le routage par espace (Phase B —
+  // clic simple → pinned slot du format sinon libre ; alt+clic → libre ;
+  // alt+maj+clic → viewer libre side), le routage maximisé (image/pdf → side,
+  // .md plein écran → preview IN-PLACE via previewLinkedTabId, sinon
   // openInMainActiveTab) + la garde de format + l'historique back.
-  await navigate(navDeps, { type: "open-active", path, newTab });
+  await navigate(navDeps, { type: "open-active", path, newTab, viewer });
 }
 
 const fo = new FileOpsManager({

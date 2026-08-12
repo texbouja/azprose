@@ -53,9 +53,11 @@
 }: {
     rootPath: string;
     activePath: string | null;
-    /** Clic simple sur un fichier (ou Entrée) : `onSelect(path)` — tab actif.
-     *  Alt+clic : `onSelect(path, true)` — nouvel onglet. */
-    onSelect: (path: string, newTab?: boolean) => void;
+    /** Clic simple sur un fichier (ou Entrée) : `onSelect(path)` — tab du bon
+     *  espace (pinned slot du format sinon libre, Phase B).
+     *  Alt+clic : `onSelect(path, true)` — nouvel onglet libre.
+     *  Alt+Maj+clic : `onSelect(path, false, true)` — viewer libre side. */
+    onSelect: (path: string, newTab?: boolean, viewer?: boolean) => void;
     onMove?: (src: string, dstParent: string) => void;
     onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
     stagedPaths?: readonly string[];
@@ -129,6 +131,7 @@
         fsInvalidationFeature,
         mdvRowClickFeature<FileEntry>({
           onAltAction: (item) => onSelect(item.getId(), true),
+          onAltShiftAction: (item) => onSelect(item.getId(), false, true),
         }),
         mdvExpansionTrackerFeature<FileEntry>((item, nowExpanded) => {
           const id = item.getId();

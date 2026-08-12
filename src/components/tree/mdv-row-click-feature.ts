@@ -5,6 +5,11 @@ export interface MdvRowClickOptions<T> {
    *  un nouvel onglet). La ligne est sélectionnée/focusée d'abord ; aucune
    *  `primaryAction` n'est déclenchée. */
   onAltAction?: (item: ItemInstance<T>) => void;
+  /** Alt+Maj+clic sur une ligne NON-dossier : action tertiaire (ex. ouvrir
+   *  dans un viewer libre, Phase B — routage). La ligne est
+   *  sélectionnée/focusée d'abord ; aucune `primaryAction` n'est
+   *  déclenchée. */
+  onAltShiftAction?: (item: ItemInstance<T>) => void;
 }
 
 /**
@@ -34,6 +39,17 @@ export const mdvRowClickFeature = <T>(opts?: MdvRowClickOptions<T>): FeatureImpl
       return {
         ...props,
         onClick: (e: MouseEvent) => {
+          if (e.shiftKey && e.altKey) {
+            // Alt+Shift+click (Phase B) : action tertiaire (viewer libre) —
+            // sélection & focus d'abord, jamais de primaryAction. Le branch
+            // shift SEUL reste la sélection étendue.
+            if (!item.isFolder()) opts?.onAltShiftAction?.(item);
+            tree.setSelectedItems([item.getId()]);
+            tree.getDataRef<SelectionDataRef>().current.selectUpToAnchorId = item.getId();
+            item.setFocused();
+            tree.updateDomFocus();
+            return;
+          }
           if (e.shiftKey) {
             item.selectUpTo(e.ctrlKey || e.metaKey);
             item.setFocused();

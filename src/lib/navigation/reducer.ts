@@ -24,7 +24,7 @@ import { findLinkedIndexMd } from "@/lib/index-home";
 import { followPreviewNavigation } from "@/lib/preview-follow";
 import { isOpenablePath, isImagePath, isPdfPath, isMarkdownPath } from "@/lib/files";
 import { isHelpPath, helpIndexPath } from "@/lib/help-install";
-import { tabContentKind } from "@/lib/panel-store";
+import { tabContentKind, tabPinFormat } from "@/lib/panel-store";
 import { basename } from "@/lib/paths-utils";
 import type { NavIntent, OpenInTabOptions } from "./intents";
 
@@ -141,6 +141,25 @@ async function openFile(deps: NavDeps, path: string, opts?: OpenInTabOptions): P
   void deps.trackMtime(path);
 }
 
+/** Routage par espace (Phase B — R3) : une ouverture « navigateur » (clic
+ *  sidebar simple, saut TOC/backlinks, journal, oxide) cible le tab du BON
+ *  espace — le PINNED slot du format s'il existe (re-point du tab épinglé,
+ *  jamais de doublon pinned), sinon l'espace libre (repli laissé à
+ *  l'appelant). Échec de re-point (fichier illisible, tab épinglé fermé
+ *  entre-temps) → repli espace libre aussi : jamais d'erreur muette sur un
+ *  clic destiné au pinned. */
+async function openInProperSpace(deps: NavDeps, path: string): Promise<boolean> {
+  const format = tabPinFormat(path);
+  if (!format) return false;
+  const pinned = deps.pm.pinnedMainTab(format);
+  if (!pinned) return false;
+  const res = await deps.pm.main.repoint(pinned.id, path, { preferDraft: true, silent: true });
+  if (!res.ok) return false;
+  deps.pm.main.select(pinned.id);
+  void deps.trackMtime(path);
+  return true;
+}
+
 /** Clic sidebar — tab ACTIF du bon panel. Règle « click = alt-click » pour
  *  les non-textes (image/pdf → side, dédup — un tab affichant déjà le fichier
  *  est activé, jamais de ré-affectation du tab actif). Les textes vont en
@@ -148,14 +167,36 @@ async function openFile(deps: NavDeps, path: string, opts?: OpenInTabOptions): P
  *  CONSERVE la maximisation et on ouvre un NOUVEL onglet viewer (sans tab
  *  éditeur associé — le couplage éditeur↔preview ne s'applique qu'aux tabs
  *  preview LIÉS). Règle « le viewer couplé suit » : après ouverture en main,
- *  le viewer couplé au tab éditeur actif est re-pointé vers `path`. */
-async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise<void> {
+ *  le viewer couplé au tab éditeur actif est re-pointé vers `path`.
+ *
+ *  Routage par espace (Phase B — R3) : le clic SIMPLE sur un texte cible le
+ *  tab du BON espace — le PINNED slot du format s'il existe (re-point du tab
+ *  épinglé, jamais de doublon pinned), sinon le tab libre (dédup existante).
+ *  Alt+clic (`newTab`) → espace LIBRE explicite ; Alt+Maj+clic (`viewer`) →
+ *  viewer libre side (dédup, jamais l'éditeur ni le pinned). */
+async function openActive(deps: NavDeps, path: string, newTab: boolean, viewer: boolean): Promise<void> {
   if (!isOpenablePath(path)) {
     deps.notifyError("Format", deps.t("app.unsupportedFormat", { name: basename(path) }));
     return;
   }
   if (isImagePath(path) || isPdfPath(path)) {
     await deps.pm.openInSide(path);
+    deps.setSideVisible(true);
+    void deps.trackMtime(path);
+    return;
+  }
+  if (viewer) {
+    // Alt+Maj+clic : viewer libre side (politique wikilink hors mode nav —
+    // dédup par contenu, jamais l'éditeur main ni le pinned slot).
+    const normFile = normNavPath(path);
+    const existing = deps.pm.side.tabs.find(
+      (t) => tabContentKind(t.kind) === "file" && t.path && normNavPath(t.path) === normFile,
+    );
+    if (existing) {
+      deps.pm.side.select(existing.id);
+    } else {
+      await deps.pm.openInSide(path, { preview: true, forceNew: true });
+    }
     deps.setSideVisible(true);
     void deps.trackMtime(path);
     return;
@@ -172,6 +213,9 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean): Promise
     void deps.trackMtime(path);
     return;
   }
+  // Clic simple texte : tab du BON espace — pinned slot du format sinon libre.
+  const routed = await openInProperSpace(deps, path);
+  if (routed) return;
   await deps.pm.openInMainActiveTab(path);
   void deps.trackMtime(path);
   await syncCoupledViewer(deps, path);
@@ -250,7 +294,10 @@ async function jumpToFile(deps: NavDeps, path: string, line: number | null | und
   if (found && found.panel === "main") {
     deps.pm.main.select(found.tab.id);
   } else {
-    await deps.pm.openInMain(normFile, { silent: true, preview: true });
+    // Routage par espace (Phase B) : le pinned slot du format prime, sinon
+    // repli sur le tab libre (comportement historique).
+    const routed = await openInProperSpace(deps, normFile);
+    if (!routed) await deps.pm.openInMain(normFile, { silent: true, preview: true });
   }
   if (line != null || heading != null) {
     const line0 = line != null ? line - 1 : undefined;
@@ -404,13 +451,19 @@ async function journalDateClick(deps: NavDeps, date: string): Promise<void> {
   if (!rp) return;
   pushCurrentIfAny(deps);
   const p = await deps.ensureDailyNote(date);
-  if (p) await openFile(deps, p, {});
+  if (p) {
+    // Routage par espace (Phase B) : pinned md prime, sinon ouverture libre.
+    const routed = await openInProperSpace(deps, p);
+    if (!routed) await openFile(deps, p, {});
+  }
   await deps.journalScan();
 }
 
-/** Saut daily-note venant du LSP oxide — ouvre le fichier (silencieux). */
+/** Saut daily-note venant du LSP oxide — ouvre le fichier (silencieux).
+ *  Routage par espace (Phase B) : pinned md prime, sinon ouverture libre. */
 async function oxideShowDocument(deps: NavDeps, path: string): Promise<void> {
-  await openFile(deps, path, { silent: true });
+  const routed = await openInProperSpace(deps, path);
+  if (!routed) await openFile(deps, path, { silent: true });
 }
 
 /** Ouvre un tableur en side — dédup par spreadsheetId (PanelManager). Jamais
@@ -451,7 +504,7 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
     case "open-file":
       return openFile(deps, intent.path, intent.opts);
     case "open-active":
-      return openActive(deps, intent.path, intent.newTab ?? false);
+      return openActive(deps, intent.path, intent.newTab ?? false, intent.viewer ?? false);
     case "wikilink-navigate":
       return wikilinkNavigate(deps, intent.path, intent.heading ?? null, false, intent.tabId ?? null, intent.navMode);
     case "wikilink-open-new":

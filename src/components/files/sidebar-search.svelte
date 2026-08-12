@@ -14,7 +14,7 @@ let {
   query: string;
   activePath: string | null;
   treeVersion?: number;
-  onSelect: (path: string, newTab?: boolean) => void;
+  onSelect: (path: string, newTab?: boolean, viewer?: boolean) => void;
 } = $props();
 
 let index = $state<FlatFileEntry[] | null>(null);
@@ -59,7 +59,7 @@ let results = $derived.by(() => {
           type="button"
           class="mdv-search-result{r.path === activePath ? ' is-active' : ''}"
           title={r.path}
-          onclick={(e) => onSelect(r.path, e.altKey)}
+          onclick={(e) => onSelect(r.path, e.altKey, e.shiftKey)}
         >
           <span class="mdv-search-result__name">{r.name}</span>
           {#if dirname(r.rel) && dirname(r.rel) !== "/"}
