@@ -88,6 +88,14 @@
   color: var(--accent);
 }
 
+/* Cible de RECYCLAGE du slot épinglé (rectification 2) : l'onglet glissé est
+   au centre d'un onglet épinglé — le déposer y monte son contenu (la pile de
+   montage du slot survit) et ferme l'onglet d'origine. */
+.mdv-tab.is-drop-pinned {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: var(--radius-sm, 6px);
+}
+
 /* Onglet DORMANT (Phase E — R9) : restauré au boot mais jamais monté (aucun
    rendu, aucune lecture disque). Grisé jusqu'au premier clic, qui le réveille. */
 .mdv-tab.is-dormant .mdv-tab__label {

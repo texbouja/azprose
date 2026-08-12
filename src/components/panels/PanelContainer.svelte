@@ -41,6 +41,7 @@ let {
    *  reflètent les éditeurs épinglés) ; le side n'a pas de pin. Fallback :
    *  `panel.setPinned` simple. */
   onTogglePin,
+  onDropOnPinned,
   /** Format du PINNED slot dont le tab actif de CE panel fait partie (Phase D)
    *  — calculé par PanelLayout (seul à voir les deux panels). */
   pinnedFormat = null as string | null,
@@ -74,6 +75,9 @@ let {
   onCloseTab?: (id: string) => void;
   latexBuildFailed?: boolean;
   onTogglePin?: (id: string, pinned: boolean) => void;
+  /** Dépôt d'un onglet SUR le slot épinglé (rectification 2) — géré par le
+   *  reducer : recyclage du slot + fermeture de l'onglet glissé. */
+  onDropOnPinned?: (draggedId: string, pinnedId: string) => void;
 } = $props();
 
 import { extFromPath } from "@/lib/editor-languages";
@@ -112,6 +116,7 @@ function handleViewerFullscreen() {
         onClose={(id) => (onCloseTab ? onCloseTab(id) : panel.close(id))}
         onReorder={(from, to) => panel.reorder(from, to)}
         {onTabDoubleClick}
+        {onDropOnPinned}
         onTogglePin={(id) => {
           const tab = tabs.find(t => t.id === id);
           if (tab) (onTogglePin ? onTogglePin(id, tab.space !== "pinned") : panel.setPinned(id, tab.space !== "pinned"));

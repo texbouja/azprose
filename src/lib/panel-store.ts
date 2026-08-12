@@ -265,8 +265,22 @@ function recycleRenderMode(mode: RenderMode | undefined): RenderMode | undefined
 export class PanelState {
   readonly id: string;
   visible: boolean = true;
-  tabs: Tab[] = [];
   activeTabId: string | null = null;
+
+  /** Liste des onglets. Accesseur : chaque RÉ-AFFECTATION incrémente `_rev`,
+   *  ce qui invalide les index dérivés (slots épinglés) — l'unique source de
+   *  vérité reste ce tableau, jamais une structure maintenue en parallèle. */
+  private _tabs: Tab[] = [];
+  private _rev = 0;
+
+  get tabs(): Tab[] {
+    return this._tabs;
+  }
+
+  set tabs(next: Tab[]) {
+    this._tabs = next;
+    this._rev++;
+  }
   private cbs: PanelCallbacks;
   /** Source unique du contenu par chemin (phase 7, idée E). Optionnel : sans
    *  store (tests, contexte non-app), les méthodes lisent/écrivent le disque
@@ -744,9 +758,39 @@ export class PanelState {
     this.notify();
   }
 
+  /**
+   * INDEX DES SLOTS ÉPINGLÉS — `format` → tab épinglé (rectification 3 : l'état
+   * « il y a un pinned tab » est TRANSCENDANT dans l'application, son test doit
+   * être immédiat).
+   *
+   * L'index est un CACHE dérivé de `tabs`, invalidé par la version du panel
+   * (`_rev`, incrémentée à chaque mutation de la liste). Pas de map maintenue
+   * à la main : une map mutée en parallèle des `this.tabs = …` éparpillés dans
+   * ce fichier finirait désynchronisée — ici l'unique source de vérité reste
+   * `tabs`, et le recalcul n'a lieu qu'après un vrai changement.
+   */
+  private _pinnedIndex: { rev: number; map: Map<string, Tab> } | null = null;
+
+  pinnedSlots(): Map<string, Tab> {
+    if (this._pinnedIndex && this._pinnedIndex.rev === this._rev) return this._pinnedIndex.map;
+    const map = new Map<string, Tab>();
+    for (const t of this.tabs) {
+      if (tabSpace(t) !== "pinned") continue;
+      const format = tabPinFormat(t.path);
+      if (format && !map.has(format)) map.set(format, t);
+    }
+    this._pinnedIndex = { rev: this._rev, map };
+    return map;
+  }
+
+  /** Y a-t-il AU MOINS un tab épinglé dans ce panel ? (test immédiat) */
+  hasPinned(): boolean {
+    return this.pinnedSlots().size > 0;
+  }
+
   /** Le tab épinglé du `format` (md, tex, …) dans ce panel, ou undefined. */
   pinnedTab(format: string): Tab | undefined {
-    return this.tabs.find(t => tabSpace(t) === "pinned" && tabPinFormat(t.path) === format);
+    return this.pinnedSlots().get(format);
   }
 
   /**

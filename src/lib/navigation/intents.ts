@@ -83,6 +83,13 @@ export type NavIntent =
   | { type: "pinned-back"; format: string }
   /** Historique de montage du pinned slot : redescend d'un cran. */
   | { type: "pinned-forward"; format: string }
+  /** Glisser-déposer d'un onglet SUR le slot épinglé (rectification 2) : le
+   *  slot est RECYCLÉ avec le contenu de l'onglet glissé (montage empilé dans
+   *  son historique) et l'onglet d'origine est fermé. C'est ainsi que la pile
+   *  du slot SURVIT à un changement de contenu, là où commuter l'épingle la
+   *  détruit. Un dépôt sur un onglet NON épinglé est ignoré (le glisser entre
+   *  deux onglets reste un simple déplacement). */
+  | { type: "drop-on-pinned"; draggedTabId: string; pinnedTabId: string }
   /** Navigation doc intégrée (DocPreview) — jamais l'éditeur main.
    *  Remplaçant typé de `azprose:doc-navigate`. */
   | { type: "doc-navigate"; path: string; heading?: string }

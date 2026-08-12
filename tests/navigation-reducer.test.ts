@@ -84,8 +84,6 @@ function seed(
 /** Faux NavDeps : espions + réponses déterministes. */
 function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps & {
   calls: {
-    navPush: string[];
-    navPushForward: string[];
     /** Historique de MONTAGE du pinned slot (Phase D) — pile RÉELLE par format
      *  (le module `@/lib/pinned-history` est pur : on l'utilise tel quel plutôt
      *  qu'un espion, pour tester le comportement de bout en bout). */
@@ -100,8 +98,6 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
 } {
   const slots = createPinnedHistory();
   const calls = {
-    navPush: [] as string[],
-    navPushForward: [] as string[],
     pinnedPush: [] as { format: string; path: string }[],
     setScrollTarget: [] as (string | null)[],
     setSyncLine: [] as (string | null)[],
@@ -116,13 +112,7 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
     activePath: () => pm.main.activePath,
     sideActivePath: () => pm.side.activePath,
     expandedPanel: () => null,
-    isPreviewNavMode: () => false,
-    setPreviewNavMode: () => {},
     unexpandSide: () => {},
-    navPush: (p) => void calls.navPush.push(p),
-    navBack: () => null,
-    navForwardStep: () => null,
-    navPushForward: (p) => void calls.navPushForward.push(p),
     // Pile de montage RÉELLE (module pur) + trace des push pour les assertions.
     pinnedPush: (f, p) => {
       calls.pinnedPush.push({ format: f ?? "", path: p });
@@ -189,7 +179,7 @@ test("(a) wikilink HORS mode nav : ouvre un NOUVEAU tab viewer side (jamais l'é
     async (p, o) => void opened.push({ path: p, opts: o });
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "wikilink-navigate", path: "/b.md", navMode: false });
+  await navigate(deps, { type: "wikilink-navigate", path: "/b.md" });
 
   // Décision utilisateur : un clic wikilink ouvre un NOUVEAU tab viewer side
   // (forceNew — jamais l'éditeur main, jamais le tab doc), aucun couplage
@@ -529,6 +519,9 @@ function pinnedRoutingFakePm(opts: { format?: string | null; repointOk?: boolean
     },
     side: { visible: false, activeTabId: null, activeTab: undefined, tabs: [] },
     pinnedMainTab: (f: string) => (f === format ? { id: "p1", path: "/p.md" } : null),
+    // Rectification 3 : l'état « il y a un pinned tab » est testé AVANT tout
+    // routage (index dérivé, immédiat) — `format: null` = aucun slot.
+    hasPinnedTab: () => format != null,
     pinnedCompanion: () => null,
     openInMainActiveTab: async () => { throw new Error("repli libre (openInMainActiveTab) non attendu"); },
     openInMain: async () => { throw new Error("repli libre (openInMain) non attendu"); },
@@ -538,41 +531,71 @@ function pinnedRoutingFakePm(opts: { format?: string | null; repointOk?: boolean
   return { pm, repointed, selected };
 }
 
-test("Phase B : clic sidebar SIMPLE + pinned slot du format → re-point du pinned (jamais l'espace libre)", async () => {
-  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
-  const deps = makeDeps(pm);
-
-  await navigate(deps, { type: "open-active", path: "/b.md" });
-
-  // R3 : le pinned slot absorbe — repoint du tab épinglé + sélection, jamais
-  // openInMainActiveTab (l'espace libre ne reçoit pas de doublon du contenu).
-  expect(repointed).toEqual(["p1→/b.md"]);
-  expect(selected).toEqual(["p1"]);
-});
-
-test("Phase B : clic SIMPLE sur un AUTRE format → repli espace libre (slot inexistant)", async () => {
-  // Le slot « tex » n'existe pas : le routage pinned n'absorbe pas → repli
-  // libre (openInMainActiveTab). Le fake le THROW : le test atteste qu'avec
-  // un slot existant le comportement est identique au clic simple libre.
-  const { pm, repointed } = pinnedRoutingFakePm({ format: "tex" });
-  pm.openInMainActiveTab = async () => {}; // repli libre réel (fake no-op)
+test("Rect.1 : clic NORMAL → NOUVEAU tab, même quand un slot épinglé existe", async () => {
+  // Le clic sans modificateur est l'action SANS intention : elle ouvre (ou
+  // active, dédup par contenu) un tab libre — le slot épinglé n'est JAMAIS
+  // ré-affecté par lui, y compris pour son propre format.
+  const { pm, repointed } = pinnedRoutingFakePm({ format: "md" });
+  const openedInMain: string[] = [];
+  pm.openInMain = (async (p: string) => void openedInMain.push(p)) as never;
   const deps = makeDeps(pm);
 
   await navigate(deps, { type: "open-active", path: "/b.md" });
 
   expect(repointed).toEqual([]);
+  expect(openedInMain).toEqual(["/b.md"]);
 });
 
-test("Phase B : clic SIMPLE + échec de re-point du pinned → repli espace libre (jamais d'erreur muette)", async () => {
-  // Fichier illisible : repoint ok:false (tab épinglé laissé intact) → repli
-  // libre. Le routage pinned ne doit jamais avaler un échec silencieusement.
-  const { pm, repointed } = pinnedRoutingFakePm({ format: "md", repointOk: false });
-  pm.openInMainActiveTab = async () => {};
+test("Rect.1 : alt+clic AVEC slot épinglé du format → montage DANS le slot", async () => {
+  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "open-active", path: "/b.md" });
+  await navigate(deps, { type: "open-active", path: "/b.md", newTab: true });
+
+  // L'alt+clic est l'action AVEC intention : elle vise le slot (re-point +
+  // sélection), jamais un doublon dans l'espace libre.
+  expect(repointed).toEqual(["p1→/b.md"]);
+  expect(selected).toEqual(["p1"]);
+});
+
+test("Rect.1 : alt+clic SANS aucun slot épinglé = clic normal (nouveau tab)", async () => {
+  // `hasPinnedTab()` est consulté AVANT toute tentative de routage : sans
+  // slot, le chemin pinned n'est même pas emprunté.
+  const { pm, repointed } = pinnedRoutingFakePm({ format: null });
+  const openedInMain: string[] = [];
+  pm.openInMain = (async (p: string) => void openedInMain.push(p)) as never;
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md", newTab: true });
+
+  expect(repointed).toEqual([]);
+  expect(openedInMain).toEqual(["/b.md"]);
+});
+
+test("Rect.1 : alt+clic sur un format SANS slot (le slot est d'un autre format) → nouveau tab", async () => {
+  const { pm, repointed } = pinnedRoutingFakePm({ format: "tex" });
+  const openedInMain: string[] = [];
+  pm.openInMain = (async (p: string) => void openedInMain.push(p)) as never;
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md", newTab: true });
+
+  expect(repointed).toEqual([]);
+  expect(openedInMain).toEqual(["/b.md"]);
+});
+
+test("Rect.1 : alt+clic + échec de montage dans le slot → repli nouveau tab (jamais d'erreur muette)", async () => {
+  // Fichier illisible : repoint ok:false (le slot est laissé intact) → repli
+  // sur l'ouverture normale. Le routage pinned n'avale jamais un échec.
+  const { pm, repointed } = pinnedRoutingFakePm({ format: "md", repointOk: false });
+  const openedInMain: string[] = [];
+  pm.openInMain = (async (p: string) => void openedInMain.push(p)) as never;
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "open-active", path: "/b.md", newTab: true });
 
   expect(repointed).toEqual(["p1→/b.md"]);
+  expect(openedInMain).toEqual(["/b.md"]);
 });
 
 test("Phase B : alt+maj+clic (viewer) → viewer libre side, jamais l'éditeur ni le pinned", async () => {
@@ -617,36 +640,44 @@ test("Phase B : alt+maj+clic avec viewer side du même contenu → dédup (selec
   expect(selected).toEqual(["s1"]);
 });
 
-test("Phase B : jump-to-file (TOC/backlinks/tags) + pinned slot → re-point du pinned", async () => {
-  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
+test("Rect.1 : jump-to-file (TOC/backlinks/tags) → NOUVEAU tab, jamais le slot", async () => {
+  // Ces émetteurs n'ont pas de variante « avec intention » : ce sont des
+  // actions normales, donc un nouveau tab (dédup par contenu).
+  const { pm, repointed } = pinnedRoutingFakePm({ format: "md" });
   (pm as { findTabByPath: unknown }).findTabByPath = () => null;
+  const openedInMain: string[] = [];
+  pm.openInMain = (async (p: string) => void openedInMain.push(p)) as never;
   const deps = makeDeps(pm);
 
   await navigate(deps, { type: "jump-to-file", path: "/docs/suites.md", heading: "Propriétés" });
 
-  expect(repointed).toEqual(["p1→/docs/suites.md"]);
-  expect(selected).toEqual(["p1"]);
+  expect(repointed).toEqual([]);
+  expect(openedInMain).toEqual(["/docs/suites.md"]);
   expect(deps.calls.setScrollTarget).toEqual(["Propriétés"]);
 });
 
-test("Phase B : journalDateClick + pinned md → la daily note re-point le pinned (jamais openFile)", async () => {
-  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
+test("Rect.1 : journalDateClick → NOUVEAU tab, jamais le slot", async () => {
+  const { pm, repointed } = pinnedRoutingFakePm({ format: "md" });
+  const openedInMain: string[] = [];
+  pm.openInMain = (async (p: string) => void openedInMain.push(p)) as never;
   const deps = makeDeps(pm, { ensureDailyNote: async () => "/daily/2026-08-12.md" });
 
   await navigate(deps, { type: "journal-date-click", date: "2026-08-12" });
 
-  expect(repointed).toEqual(["p1→/daily/2026-08-12.md"]);
-  expect(selected).toEqual(["p1"]);
+  expect(repointed).toEqual([]);
+  expect(openedInMain).toEqual(["/daily/2026-08-12.md"]);
 });
 
-test("Phase B : oxideShowDocument + pinned md → re-point du pinned (jamais openFile)", async () => {
-  const { pm, repointed, selected } = pinnedRoutingFakePm({ format: "md" });
+test("Rect.1 : oxideShowDocument → NOUVEAU tab, jamais le slot", async () => {
+  const { pm, repointed } = pinnedRoutingFakePm({ format: "md" });
+  const openedInMain: string[] = [];
+  pm.openInMain = (async (p: string) => void openedInMain.push(p)) as never;
   const deps = makeDeps(pm);
 
   await navigate(deps, { type: "oxide-show-document", path: "/daily/2026-08-12.md" });
 
-  expect(repointed).toEqual(["p1→/daily/2026-08-12.md"]);
-  expect(selected).toEqual(["p1"]);
+  expect(repointed).toEqual([]);
+  expect(openedInMain).toEqual(["/daily/2026-08-12.md"]);
 });
 
 // ── TOC : routage viewer (toc-navigate) ─────────────────────────────────────
@@ -690,11 +721,10 @@ test("toc-navigate HORS mode nav : NOUVEAU tab viewer side, JAMAIS l'éditeur ma
   const { pm, calls } = recordingFakePm();
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", heading: "Définition", tabId: null, navMode: false });
+  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", heading: "Définition" });
 
   expect(calls.openInSide).toEqual([["/docs/fiche.md", { preview: true, forceNew: true, silent: true }]]);
   expect(calls.openInMain).toHaveLength(0);
-  expect(deps.calls.navPush).toHaveLength(0); // pas de navigation in-place → pas d'historique
   expect(deps.calls.setScrollTarget).toEqual(["Définition"]);
   expect(pm.sideVisible).toBe(true);
 });
@@ -705,7 +735,7 @@ test("toc-navigate HORS mode nav, cible déjà ouverte en side : dédup → sele
   pm.side.activePath = "/docs/fiche.md";
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", heading: "Définition", navMode: false });
+  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", heading: "Définition" });
 
   expect(calls.select).toEqual(["side:s1"]); // dédup par chemin → sélection, pas de nouvel onglet
   expect(calls.openInSide).toHaveLength(0);
@@ -717,7 +747,7 @@ test("toc-navigate racine de branche (line seule) : syncLine 1-based → 0-based
   const { pm, calls } = recordingFakePm();
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", line: 3, tabId: null, navMode: false });
+  await navigate(deps, { type: "toc-navigate", path: "/docs/fiche.md", line: 3 });
 
   expect(deps.calls.setScrollTarget).toHaveLength(0);
   expect(deps.calls.setSyncLine).toEqual(["/docs/fiche.md"]);
@@ -736,7 +766,7 @@ test("toc-navigate : chemin doc → openDocArticle (jamais viewer ni éditeur)",
   });
 
   await navigate(deps, {
-    type: "toc-navigate", path: "/vault/.azprose/help/guide.md", heading: "Liens", tabId: "s1", navMode: true,
+    type: "toc-navigate", path: "/vault/.azprose/help/guide.md", heading: "Liens",
   });
 
   expect(docCalled).toEqual({ path: "/vault/.azprose/help/guide.md", heading: "Liens" });
@@ -769,6 +799,7 @@ function pinnedSlotFakePm(opts: { start?: string; fail?: string } = {}) {
     },
     side: { visible: false, activeTabId: null, activeTab: undefined, tabs: [] },
     pinnedMainTab: (f: string) => (f === "md" ? slot : null),
+    hasPinnedTab: () => true,
     pinnedCompanion: () => null,
     openInMainActiveTab: async () => { throw new Error("repli libre non attendu"); },
     openInMain: async () => { throw new Error("repli libre non attendu"); },
@@ -782,8 +813,8 @@ test("Phase D : chaque montage dans le slot empile le contenu QUITTÉ", async ()
   const { pm, slot } = pinnedSlotFakePm({ start: "/a.md" });
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "open-active", path: "/b.md" });
-  await navigate(deps, { type: "open-active", path: "/c.md" });
+  await navigate(deps, { type: "open-active", path: "/b.md", newTab: true });
+  await navigate(deps, { type: "open-active", path: "/c.md", newTab: true });
 
   expect(slot.path).toBe("/c.md");
   expect(deps.calls.pinnedPush).toEqual([
@@ -796,7 +827,7 @@ test("Phase D : re-monter le MÊME contenu n'empile rien", async () => {
   const { pm } = pinnedSlotFakePm({ start: "/a.md" });
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "open-active", path: "/a.md" });
+  await navigate(deps, { type: "open-active", path: "/a.md", newTab: true });
 
   expect(deps.calls.pinnedPush).toEqual([]);
 });
@@ -804,7 +835,7 @@ test("Phase D : re-monter le MÊME contenu n'empile rien", async () => {
 test("Phase D : pinned-back remonte le contenu quitté, pinned-forward redescend", async () => {
   const { pm, slot } = pinnedSlotFakePm({ start: "/a.md" });
   const deps = makeDeps(pm);
-  await navigate(deps, { type: "open-active", path: "/b.md" });
+  await navigate(deps, { type: "open-active", path: "/b.md", newTab: true });
 
   await navigate(deps, { type: "pinned-back", format: "md" });
   expect(slot.path).toBe("/a.md");
@@ -832,7 +863,7 @@ test("Phase D : pinned-back sans pile, ou sans slot épinglé → no-op", async 
 test("Phase D : échec de re-montage → pile INTACTE (retour re-jouable) + info", async () => {
   const { pm, slot } = pinnedSlotFakePm({ start: "/a.md", fail: "/a.md" });
   const deps = makeDeps(pm);
-  await navigate(deps, { type: "open-active", path: "/b.md" }); // pile : [/a.md]
+  await navigate(deps, { type: "open-active", path: "/b.md", newTab: true }); // pile : [/a.md]
 
   await navigate(deps, { type: "pinned-back", format: "md" });
 
@@ -864,9 +895,81 @@ test("Phase D/G : le viewer COMPAGNON suit le slot (D4), un viewer LIBRE ne boug
   };
   const deps = makeDeps(pm);
 
-  await navigate(deps, { type: "open-active", path: "/b.md" });
+  await navigate(deps, { type: "open-active", path: "/b.md", newTab: true });
 
   expect(slot.path).toBe("/b.md");
   // Seul le compagnon suit : le viewer libre /libre.md n'est jamais re-pointé.
   expect(sideRepointed).toEqual(["s1→/b.md"]);
+});
+
+// ── Rectification 2 : glisser un onglet SUR le slot épinglé ─────────────────
+// Le slot est RECYCLÉ avec le contenu glissé (sa pile de montage survit) et
+// l'onglet d'origine est fermé — c'est la compensation de « commuter l'épingle
+// détruit l'historique ».
+
+/** Fake avec un slot épinglé RÉEL (PanelState) pour exercer close/repoint. */
+function dragDropFakePm(opts: { draggedPath?: string } = {}) {
+  const { draggedPath = "/b.md" } = opts;
+  const slot = { id: "p1", path: "/a.md", title: "a.md", source: "", savedContent: "", space: "pinned" };
+  const dragged = { id: "d1", path: draggedPath, title: "b.md", source: "", savedContent: "" };
+  const closed: string[] = [];
+  const repointed: string[] = [];
+  const mainTabs = [slot, dragged];
+  const pm = {
+    main: {
+      activeTabId: "d1",
+      get activePath() { return slot.path; },
+      tabs: mainTabs,
+      repoint: async (id: string, path: string) => {
+        repointed.push(`${id}→${path}`);
+        slot.path = path;
+        return { ok: true, parked: false };
+      },
+      select: () => {},
+      close: (id: string) => void closed.push(id),
+    },
+    side: { visible: false, activeTabId: null, activeTab: undefined, tabs: [] },
+    pinnedMainTab: (f: string) => (f === "md" ? slot : null),
+    hasPinnedTab: () => true,
+    pinnedCompanion: () => null,
+    openInMain: async () => { throw new Error("ouverture libre non attendue"); },
+    trackMtime: async () => {},
+  } as unknown as PanelManager;
+  return { pm, slot, closed, repointed };
+}
+
+test("Rect.2 : glisser un onglet SUR le slot → le slot monte son contenu, l'onglet est fermé", async () => {
+  const { pm, slot, closed, repointed } = dragDropFakePm();
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "drop-on-pinned", draggedTabId: "d1", pinnedTabId: "p1" });
+
+  expect(repointed).toEqual(["p1→/b.md"]);
+  expect(slot.path).toBe("/b.md");
+  expect(closed).toEqual(["d1"]);
+  // L'historique du slot SURVIT : le contenu quitté y est empilé (c'est tout
+  // l'intérêt du geste face à une commutation d'épingle, qui détruit la pile).
+  expect(deps.calls.pinnedPush).toEqual([{ format: "md", path: "/a.md" }]);
+});
+
+test("Rect.2 : glisser un onglet d'un AUTRE format sur le slot → ignoré", async () => {
+  const { pm, closed, repointed } = dragDropFakePm({ draggedPath: "/main.tex" });
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "drop-on-pinned", draggedTabId: "d1", pinnedTabId: "p1" });
+
+  // Un slot est le slot D'UN format : un .tex ne se monte pas dans le slot .md.
+  expect(repointed).toEqual([]);
+  expect(closed).toEqual([]);
+});
+
+test("Rect.2 : déposer le slot sur lui-même, ou viser un onglet NON épinglé → no-op", async () => {
+  const { pm, closed, repointed } = dragDropFakePm();
+  const deps = makeDeps(pm);
+
+  await navigate(deps, { type: "drop-on-pinned", draggedTabId: "p1", pinnedTabId: "p1" });
+  await navigate(deps, { type: "drop-on-pinned", draggedTabId: "p1", pinnedTabId: "d1" });
+
+  expect(repointed).toEqual([]);
+  expect(closed).toEqual([]);
 });

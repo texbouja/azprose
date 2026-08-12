@@ -1800,6 +1800,8 @@ let cmds = $derived(
           onInverseSync={handleInverseSync}
           buildRev={ls.buildRev}
           latexBuildFailed={ls.buildFailed}
+          onDropOnPinned={(draggedTabId, pinnedTabId) =>
+            navigateVoid(navDeps, { type: "drop-on-pinned", draggedTabId, pinnedTabId })}
           onTogglePin={(id, pinned) => {
             const tab = pm.main.tabs.find((x) => x.id === id);
             // Phase D : (dé)signer le slot d'un format REPART de zéro — la pile

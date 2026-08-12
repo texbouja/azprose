@@ -13,6 +13,7 @@ let {
   onReorder,
   onTabDoubleClick,
   onTogglePin,
+  onDropOnPinned,
 }: {
   tabs?: Tab[];
   activeTabId?: string | null;
@@ -24,6 +25,10 @@ let {
   /** Commutation d'épingle (Phase A — R1) : le pinnage se décide dans le MAIN
    *  panel (l'icône n'apparaît que là) ; les viewers n'ont qu'un badge. */
   onTogglePin?: (id: string) => void;
+  /** Dépôt d'un onglet SUR le slot épinglé (rectification 2) : le slot est
+   *  recyclé avec le contenu glissé — sa pile de montage survit — et l'onglet
+   *  glissé est fermé. */
+  onDropOnPinned?: (draggedId: string, pinnedId: string) => void;
 } = $props();
 
 let t = $derived(getT($language));
@@ -33,6 +38,8 @@ const DRAG_THRESHOLD = 4;
 let listEl: HTMLDivElement;
 let dragFromIndex: number | null = $state(null);
 let dragOverIndex: number | null = $state(null);
+/** Slot épinglé survolé au CENTRE pendant un glisser (cible de recyclage). */
+let dropPinnedIndex: number | null = $state(null);
 let dragPtr: { fromIndex: number; startX: number; pointerId: number; moved: boolean } | null = null;
 let suppressClick = false;
 
@@ -42,15 +49,27 @@ $effect(() => {
   active?.scrollIntoView({ block: "nearest", inline: "nearest" });
 });
 
-function indexAtX(clientX: number): number | null {
+/**
+ * Cible d'un dépôt (rectification 2) — la position dans l'onglet décide :
+ *  - dans les MARGES (tiers gauche / tiers droit) = « ENTRE deux onglets » →
+ *    DÉPLACEMENT (comportement historique) ;
+ *  - au CENTRE = « SUR l'onglet » → ignoré, SAUF si cet onglet est le slot
+ *    ÉPINGLÉ : le slot est alors recyclé avec le contenu glissé (sa pile de
+ *    montage survit), et l'onglet glissé est fermé.
+ */
+function dropTargetAtX(clientX: number): { kind: "move"; index: number } | { kind: "pinned"; index: number } | null {
   if (!listEl) return null;
   const tabEls = Array.from(listEl.querySelectorAll<HTMLElement>(".mdv-tab"));
   if (tabEls.length === 0) return null;
   for (let i = 0; i < tabEls.length; i++) {
     const rect = tabEls[i].getBoundingClientRect();
-    if (clientX < rect.left + rect.width / 2) return i;
+    if (clientX > rect.right) continue;
+    const inCenter = clientX > rect.left + rect.width / 3 && clientX < rect.right - rect.width / 3;
+    if (inCenter && tabs[i] && tabs[i].space === "pinned") return { kind: "pinned", index: i };
+    if (inCenter) return null; // dépôt sur un onglet ordinaire : sans effet
+    return { kind: "move", index: i };
   }
-  return tabEls.length - 1;
+  return { kind: "move", index: tabEls.length - 1 };
 }
 
 function handleWheel(e: WheelEvent) {
@@ -78,7 +97,9 @@ function onListPointerMove(e: PointerEvent) {
       listEl?.setPointerCapture(drag.pointerId);
     } catch {}
   }
-  dragOverIndex = indexAtX(e.clientX);
+  const target = dropTargetAtX(e.clientX);
+  dragOverIndex = target?.kind === "move" ? target.index : null;
+  dropPinnedIndex = target?.kind === "pinned" && target.index !== drag.fromIndex ? target.index : null;
 }
 
 function endDrag(e: PointerEvent) {
@@ -86,9 +107,14 @@ function endDrag(e: PointerEvent) {
   if (!drag) return;
   if (drag.moved) {
     suppressClick = true;
-    const target = indexAtX(e.clientX);
-    if (onReorder && target !== null && target !== drag.fromIndex) {
-      onReorder(drag.fromIndex, target);
+    const target = dropTargetAtX(e.clientX);
+    if (target?.kind === "pinned" && target.index !== drag.fromIndex) {
+      // Dépôt SUR le slot épinglé : recyclage du slot (rectification 2).
+      const dragged = tabs[drag.fromIndex];
+      const pinned = tabs[target.index];
+      if (dragged && pinned) onDropOnPinned?.(dragged.id, pinned.id);
+    } else if (onReorder && target?.kind === "move" && target.index !== drag.fromIndex) {
+      onReorder(drag.fromIndex, target.index);
     }
   }
   try {
@@ -97,6 +123,7 @@ function endDrag(e: PointerEvent) {
   dragPtr = null;
   dragFromIndex = null;
   dragOverIndex = null;
+  dropPinnedIndex = null;
 }
 </script>
 
@@ -115,13 +142,14 @@ function endDrag(e: PointerEvent) {
     {@const dirty = panelId === "main" && tab.source !== tab.savedContent}
     {@const dragging = dragFromIndex === tabIndex}
     {@const isDragOver = dragOverIndex === tabIndex && dragFromIndex !== null && dragFromIndex !== tabIndex}
+    {@const isDropPinned = dropPinnedIndex === tabIndex}
     {@const pinable = panelId === "main" && canPinTab(tab)}
     {@const pinned = tab.space === "pinned"}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       role="tab"
       aria-selected={active}
-      class="mdv-tab{active ? " is-active" : ""}{dirty ? " is-dirty" : ""}{dragging ? " is-dragging" : ""}{isDragOver ? " is-drag-over" : ""}{tab.dormant ? " is-dormant" : ""}"
+      class="mdv-tab{active ? " is-active" : ""}{dirty ? " is-dirty" : ""}{dragging ? " is-dragging" : ""}{isDragOver ? " is-drag-over" : ""}{isDropPinned ? " is-drop-pinned" : ""}{tab.dormant ? " is-dormant" : ""}"
       title={tab.path}
       onpointerdown={(e) => onTabPointerDown(e, tabIndex)}
       ondblclick={() => onTabDoubleClick?.(tab.id)}

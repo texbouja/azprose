@@ -414,3 +414,51 @@ test("fermeture couplée (R4) : fermer le tex épinglé ferme son viewer PDF (co
 
   expect(pm.side.tabs.map(t => t.id)).toEqual(["other"]);
 });
+
+// ── Rectification 3 : l'état « il y a un pinned tab » est TRANSCENDANT ───────
+
+test("index des slots : hasPinned/pinnedSlots reflètent immédiatement toute mutation", () => {
+  const p = new PanelState("main");
+  expect(p.hasPinned()).toBe(false);
+
+  p.tabs = [mkTab({ id: "a", path: "/a.md" }), mkTab({ id: "t", path: "/main.tex" })];
+  expect(p.hasPinned()).toBe(false);
+
+  p.setPinned("a", true);
+  expect(p.hasPinned()).toBe(true);
+  expect(p.pinnedSlots().get("md")?.id).toBe("a");
+  expect(p.pinnedSlots().has("tex")).toBe(false);
+
+  p.setPinned("t", true);
+  expect(p.pinnedSlots().size).toBe(2);
+  expect(p.pinnedSlots().get("tex")?.id).toBe("t");
+
+  // Commutation : le slot md change d'occupant, l'index suit.
+  p.tabs = [...p.tabs, mkTab({ id: "b", path: "/b.md" })];
+  p.setPinned("b", true);
+  expect(p.pinnedSlots().get("md")?.id).toBe("b");
+
+  // Fermeture du dernier slot md : l'index se vide de ce format.
+  p.close("b");
+  expect(p.pinnedSlots().has("md")).toBe(false);
+  expect(p.hasPinned()).toBe(true); // le slot tex vit toujours
+
+  p.setPinned("t", false);
+  expect(p.hasPinned()).toBe(false);
+});
+
+test("index des slots : le cache est invalidé par un re-point du slot (changement de format)", async () => {
+  const { fs } = makeFakeFs({ "/a.md": "a", "/main.tex": "t" });
+  const store = new ContentStore(fs);
+  const p = new PanelState("main", {}, store);
+  await p.open("/a.md", { space: "pinned" });
+  const id = p.activeTabId!;
+  expect(p.pinnedSlots().get("md")?.id).toBe(id);
+
+  await p.repoint(id, "/main.tex", { silent: true });
+
+  // Le slot a changé de contenu — donc de format : l'index reflète le NOUVEAU
+  // format sans qu'aucune structure parallèle n'ait eu à être maintenue.
+  expect(p.pinnedSlots().has("md")).toBe(false);
+  expect(p.pinnedSlots().get("tex")?.id).toBe(id);
+});

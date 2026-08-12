@@ -138,6 +138,16 @@ export class PanelManager {
     return this.side.tabs.find(t => isPinnedCompanionOf(t, editorTabId)) ?? null;
   }
 
+  /**
+   * Y a-t-il AU MOINS un slot épinglé dans le MAIN ? (rectification 3 : l'état
+   * « il y a un pinned tab » est transcendant — test immédiat, index dérivé.)
+   * C'est LUI qui décide du sens de l'alt+clic : sans slot épinglé, alt+clic
+   * vaut clic ; avec slot épinglé, alt+clic monte dans le slot du format.
+   */
+  hasPinnedTab(): boolean {
+    return this.main.hasPinned();
+  }
+
   /** Le tab éditeur épinglé du `format` (md, tex, …) dans le MAIN, ou null.
    *  Le « pinned slot » d'un format (Phase A) : son contenu courant est dérivé
    *  du tab (path + source + savedContent) ; la pile d'historique et le buffer

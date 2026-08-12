@@ -38,6 +38,7 @@ let {
   onTabDoubleClick,
   latexBuildFailed = false,
   onTogglePin,
+  onDropOnPinned,
 }: {
   panelManager: PanelManager;
   tabs?: Tab[];
@@ -72,6 +73,7 @@ let {
   onTabDoubleClick?: (id: string) => void;
   latexBuildFailed?: boolean;
   onTogglePin?: (id: string, pinned: boolean) => void;
+  onDropOnPinned?: (draggedId: string, pinnedId: string) => void;
 } = $props();
 
 let splitResizeState: { startX: number; startRatio: number } | null = null;
@@ -145,6 +147,7 @@ function startResize(e: PointerEvent) {
     onCloseTab={(id) => panelManager.closeMainTab(id)}
     {latexBuildFailed}
     {onTogglePin}
+    {onDropOnPinned}
     pinnedFormat={mainPinnedFormat}
   />
   {#if sideVisible}

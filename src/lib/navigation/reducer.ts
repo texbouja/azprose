@@ -20,7 +20,7 @@
 import type { PanelManager } from "@/lib/panel-manager";
 import { isOpenablePath, isImagePath, isPdfPath, isMarkdownPath } from "@/lib/files";
 import { isHelpPath, helpIndexPath } from "@/lib/help-install";
-import { tabContentKind, tabPinFormat } from "@/lib/panel-store";
+import { tabContentKind, tabPinFormat, tabSpace } from "@/lib/panel-store";
 import { basename } from "@/lib/paths-utils";
 import type { NavIntent, OpenInTabOptions } from "./intents";
 
@@ -158,6 +158,37 @@ async function openInProperSpace(deps: NavDeps, path: string, opts?: { history?:
   return true;
 }
 
+/**
+ * GLISSER-DÉPOSER d'un onglet SUR le slot épinglé (rectification 2) : le slot
+ * est RECYCLÉ avec le contenu de l'onglet glissé, et l'onglet d'origine est
+ * FERMÉ. C'est la compensation de « commuter l'épingle détruit l'historique » :
+ * ici le slot ne change pas d'identité, donc sa pile de montage SURVIT — le
+ * chemin glissé s'y empile simplement comme un montage de plus.
+ *
+ * Refusé (no-op) si la cible n'est pas un slot épinglé, si l'onglet glissé est
+ * le slot lui-même, ou si le montage échoue (fichier illisible) — dans ce
+ * dernier cas l'onglet source n'est PAS fermé : rien ne doit disparaître au
+ * profit d'un slot qui n'a pas bougé.
+ */
+async function dropOnPinned(deps: NavDeps, draggedTabId: string, pinnedTabId: string): Promise<void> {
+  const main = deps.pm.main;
+  const dragged = main.tabs.find((t) => t.id === draggedTabId);
+  const target = main.tabs.find((t) => t.id === pinnedTabId);
+  if (!dragged || !target || dragged.id === target.id) return;
+  if (tabSpace(target) !== "pinned") return;
+  if (tabContentKind(dragged.kind) !== "file" || !dragged.path) return;
+  // Le contenu glissé doit appartenir au format du slot (un .md ne se monte
+  // pas dans le slot .tex — un slot est le slot D'UN format).
+  if (tabPinFormat(dragged.path) !== tabPinFormat(target.path)) return;
+  const path = dragged.path;
+  const mounted = await openInProperSpace(deps, path);
+  if (!mounted) {
+    deps.notifyInfo(deps.t("nav.remountFailed", { name: basename(path) }));
+    return;
+  }
+  main.close(draggedTabId);
+}
+
 /** Monte `path` dans le PINNED slot de son format (re-point + historique de
  *  montage + compagnon qui suit) — `false` si aucun slot n'est épinglé pour ce
  *  format ou si le montage échoue. Exposé pour l'inverse search (règle 1.3 :
@@ -240,22 +271,25 @@ async function openActive(deps: NavDeps, path: string, newTab: boolean, viewer: 
     void deps.trackMtime(path);
     return;
   }
-  if (newTab) {
-    await deps.pm.openInMain(path);
-    void deps.trackMtime(path);
-    return;
-  }
   if (deps.expandedPanel() === "side" && isMarkdownPath(path)) {
     await deps.pm.openInSide(path, { preview: true, fallbackToActive: true });
     void deps.trackMtime(path);
     return;
   }
-  // Clic simple texte : tab du BON espace — pinned slot du format sinon libre.
-  // Espace LIBRE : aucune synchronisation de viewer (Phase G — le couplage
-  // éditeur↔viewer est supprimé ; seule la sphère pinned a un compagnon).
-  const routed = await openInProperSpace(deps, path);
-  if (routed) return;
-  await deps.pm.openInMainActiveTab(path);
+  // RECTIFICATION 1 — rôles des clics INVERSÉS (le cas « aucun slot épinglé »
+  // ne laissait aucune règle claire au clic simple) :
+  //  - clic NORMAL (action sans intention) = ouvrir dans un NOUVEAU tab, en
+  //    TOUTE circonstance (dédup par contenu : un tab affichant déjà le
+  //    fichier est activé, jamais dupliqué) ;
+  //  - alt+clic (action AVEC intention) = monter dans le SLOT ÉPINGLÉ du
+  //    format ; s'il n'y en a pas, alt+clic vaut clic.
+  // L'état « il y a un pinned tab » est testé en premier (index dérivé,
+  // immédiat) : sans slot épinglé, le routage pinned n'est même pas tenté.
+  if (newTab && deps.pm.hasPinnedTab()) {
+    const routed = await openInProperSpace(deps, path);
+    if (routed) return;
+  }
+  await deps.pm.openInMain(path);
   void deps.trackMtime(path);
 }
 
@@ -317,10 +351,11 @@ async function jumpToFile(deps: NavDeps, path: string, line: number | null | und
   if (found && found.panel === "main") {
     deps.pm.main.select(found.tab.id);
   } else {
-    // Routage par espace (Phase B) : le pinned slot du format prime, sinon
-    // repli sur le tab libre (comportement historique).
-    const routed = await openInProperSpace(deps, normFile);
-    if (!routed) await deps.pm.openInMain(normFile, { silent: true, preview: true });
+    // Rectification 1 : action NORMALE (aucun modificateur possible depuis la
+    // TOC / les backlinks / les tags) → NOUVEAU tab, dédup par contenu. Le
+    // slot épinglé ne s'atteint qu'avec intention (alt+clic, glisser sur le
+    // slot, inverse search).
+    await deps.pm.openInMain(normFile, { silent: true, preview: true });
   }
   if (line != null || heading != null) {
     const line0 = line != null ? line - 1 : undefined;
@@ -415,24 +450,21 @@ async function pdfRectNavigate(deps: NavDeps, path: string): Promise<void> {
   void deps.trackMtime(path);
 }
 
-/** Clic date du journal — crée/ouvre la daily note puis re-scanne. */
+/** Clic date du journal — crée/ouvre la daily note puis re-scanne.
+ *  Rectification 1 : action NORMALE → nouveau tab (dédup par contenu), jamais
+ *  le slot épinglé (il ne s'atteint qu'avec intention). */
 async function journalDateClick(deps: NavDeps, date: string): Promise<void> {
   const rp = deps.rootPath();
   if (!rp) return;
   const p = await deps.ensureDailyNote(date);
-  if (p) {
-    // Routage par espace (Phase B) : pinned md prime, sinon ouverture libre.
-    const routed = await openInProperSpace(deps, p);
-    if (!routed) await openFile(deps, p, {});
-  }
+  if (p) await openFile(deps, p, {});
   await deps.journalScan();
 }
 
 /** Saut daily-note venant du LSP oxide — ouvre le fichier (silencieux).
- *  Routage par espace (Phase B) : pinned md prime, sinon ouverture libre. */
+ *  Rectification 1 : action NORMALE → nouveau tab (dédup par contenu). */
 async function oxideShowDocument(deps: NavDeps, path: string): Promise<void> {
-  const routed = await openInProperSpace(deps, path);
-  if (!routed) await openFile(deps, path, { silent: true });
+  await openFile(deps, path, { silent: true });
 }
 
 /** Ouvre un tableur en side — dédup par spreadsheetId (PanelManager). Jamais
@@ -490,6 +522,8 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
       return pinnedHistoryNav(deps, intent.format, "back");
     case "pinned-forward":
       return pinnedHistoryNav(deps, intent.format, "forward");
+    case "drop-on-pinned":
+      return dropOnPinned(deps, intent.draggedTabId, intent.pinnedTabId);
     case "doc-navigate":
       return docNavigate(deps, intent.path, intent.heading);
     case "open-help":
