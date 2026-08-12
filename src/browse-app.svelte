@@ -27,6 +27,14 @@ import {
   navStackPushForward,
 } from "@/lib/nav-stack";
 import { getT, language } from "@/lib/i18n";
+// Feuilles du RENDU markdown — la fenêtre de navigation monte les MÊMES
+// composants de rendu que les viewers, elle doit donc charger les mêmes
+// styles. Sans elles, le HTML est bien produit (markdown-it, MathJax) mais
+// wikilinks, callouts et marques de transclusion restent NUS : ces règles
+// vivent dans `preview.css`, importé par `app.css` — c'est-à-dire par la
+// seule fenêtre de projet.
+import "@/styles/markdown/prose.css";
+import "@/styles/markdown/preview.css";
 
 let t = $derived(getT($language));
 
