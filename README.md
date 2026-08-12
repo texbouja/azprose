@@ -27,6 +27,8 @@ Typst est le LaTeX des temps modernes. Très léger et extrêmement rapide, il o
 L'application a besoin d'une installation fonctionnelle du programme tinymist. 
 
 ## Gestion de classe 
+
+
 L'application peut servir comme assistant de gestion d'une classe de CPGE. Il contient un calendrier, un module tableur et un module pour filtrer des données stockées dans une base de données. La gestion est transparente et aucune connaissance spécifique sur les bases de données n'est exigible. 
 
 L'application offre par exemple une chaîne de travail complète pour la gestion des colles : 
@@ -47,4 +49,6 @@ L'application est orientée projet : on ne l'utilise pas pour éditer un fichier
 ## licence
 
 MIT
+
+
 

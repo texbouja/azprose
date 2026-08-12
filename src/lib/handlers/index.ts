@@ -42,8 +42,22 @@ export function createHandlers(ctx: HandlerContext) {
     }
   }
 
+  // Le handler MARKDOWN porte des listeners de NAVIGATION (clic wikilink d'un
+  // viewer, embed PDF rect, show-document d'oxide) — pas seulement de l'édition
+  // markdown. Il doit donc être chargé D'EMBLÉE, sans attendre qu'un `.md`
+  // devienne le fichier ACTIF du panneau main :
+  //  - un wikilink cliqué dans un viewer side alors que l'éditeur main affiche
+  //    un `.tex` (ou un PDF, ou rien) restait SANS EFFET — le listener n'était
+  //    pas installé, et l'échec était silencieux ;
+  //  - le watcher ne déclenchait que sur un CHANGEMENT d'extension : si le
+  //    fichier actif était déjà un `.md` au moment du montage (session
+  //    restaurée), `lastExt` valait déjà "md" et le handler n'était JAMAIS
+  //    chargé.
+  void ensureHandler("md")
+
   // Reactive watcher: load handler on first file open, cleanup on last file close
   let lastExt = ctx.currentExt()
+  if (lastExt && FACTORIES[lastExt]) void ensureHandler(lastExt)
   let watcherTimer: ReturnType<typeof setTimeout> | null = null
   const tick = () => {
     const ext = ctx.currentExt()

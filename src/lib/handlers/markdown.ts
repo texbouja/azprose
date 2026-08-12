@@ -93,7 +93,13 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
         const heading = detail.heading ?? null
         void (async () => {
           const path = await resolveTarget(detail)
-          if (!path) return
+          if (!path) {
+            // Cible introuvable : le DIRE. Un clic de navigation qui ne produit
+            // rien est indiscernable d'un bug (c'est exactement ce qui a fait
+            // conclure à « les wikilinks ne marchent plus »).
+            ctx.notify.setInfo(ctx.t("nav.wikilinkUnresolved", { name: detail.target ?? "?" }))
+            return
+          }
           postNavIntent({ type: "wikilink-navigate", path, heading })
         })()
       }
