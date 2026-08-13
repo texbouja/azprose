@@ -14,6 +14,7 @@ dist-ssr
 
 # personal scratchpad — never committed
 notes/
+screenshots/
 
 # local MSVC build environment override (machine-specific paths, breaks Linux CI)
 src-tauri/.cargo/config.toml
@@ -54,4 +55,5 @@ ai/
 test-latex/
 .nvmrc
 AGENTS.md
+CLAUDE.md
 MANIFEST.md
