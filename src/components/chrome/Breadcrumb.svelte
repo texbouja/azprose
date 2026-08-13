@@ -11,8 +11,8 @@
     rootPath,
     activePath,
     saveStatus,
-    titlebarVisible,
-    onToggleTitlebar,
+    nativeDecorations,
+    onToggleDecorations,
     vimOn,
     onToggleVim,
     typography,
@@ -34,8 +34,14 @@
     rootPath: string | null;
     activePath: string | null;
     saveStatus: "idle" | "dirty" | "saving" | "saved";
-    titlebarVisible: boolean;
-    onToggleTitlebar: () => void;
+    /** true = décorations WM natives (barre de titre custom masquée) ; false =
+     *  décorations custom de l'app (TitleBar.svelte visible avec ses propres
+     *  boutons). Source unique de vérité : generalSettings.nativeDecorations
+     *  (correction 2026-08-14 — ce bouton pilotait avant un état CSS
+     *  indépendant, `titlebarVisible`, sans rapport avec les décorations
+     *  réellement appliquées à la fenêtre). */
+    nativeDecorations: boolean;
+    onToggleDecorations: () => void;
     vimOn?: boolean;
     onToggleVim?: () => void;
     typography: TypographySettings;
@@ -189,13 +195,13 @@
   <div class="mdv-breadcrumb__actions" data-tauri-drag-region>
     <div class="mdv-breadcrumb__display">
       <Button
-        data-tooltip={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
-        aria-label={titlebarVisible ? t("title.hideBreadcrumb") : t("title.showBreadcrumb")}
-        aria-pressed={!titlebarVisible}
-        onclick={onToggleTitlebar}
+        data-tooltip={nativeDecorations ? t("title.useAppTitlebar") : t("title.useSystemTitlebar")}
+        aria-label={nativeDecorations ? t("title.useAppTitlebar") : t("title.useSystemTitlebar")}
+        aria-pressed={!nativeDecorations}
+        onclick={onToggleDecorations}
       >
         {#snippet icon()}
-          <i class={titlebarVisible ? 'wxi-panel-top-close' : 'wxi-panel-top-open'} style="font-size:14px"></i>
+          <i class={!nativeDecorations ? 'wxi-panel-top-close' : 'wxi-panel-top-open'} style="font-size:14px"></i>
         {/snippet}
       </Button>
       {#if onToggleConsole}

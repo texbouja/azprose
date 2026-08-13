@@ -43,6 +43,9 @@ export type CommandActions = {
   recentFiles: readonly string[];
   hasActivePath: boolean;
   sidebarOpen: boolean;
+  /** true = décorations WM natives actives (barre de titre custom masquée).
+   *  Lu par la commande toggle-titlebar pour son libellé dynamique. */
+  nativeDecorations: boolean;
 
   toggleFavorite: () => void;
   currentFilePath: string | null;
@@ -90,7 +93,7 @@ export type CommandActions = {
   // View actions
   toggleConsole: () => void;
   toggleViewPanel: () => void;
-  toggleTitlebar: () => void;
+  toggleDecorations: () => void;
   openSettings: () => void;
 
   // Calendar
@@ -368,12 +371,15 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
     },
     {
       id: "toggle-titlebar",
-      label: actions.sidebarOpen ? t("command.hideTitlebar") : t("command.showTitlebar"),
+      // Corrigé le 2026-08-14 : réutilisait par erreur actions.sidebarOpen
+      // (copié-collé de la commande toggle-sidebar ci-dessus) — le libellé ne
+      // reflétait jamais l'état réel de la barre de titre.
+      label: actions.nativeDecorations ? t("command.useAppTitlebar") : t("command.useSystemTitlebar"),
       hint: t("command.toggleTitlebarHint"),
-      icon: "wxi-panel-left-close",
+      icon: actions.nativeDecorations ? "wxi-panel-top-open" : "wxi-panel-top-close",
       category: "view",
-      keywords: ["titlebar", "toolbar", "breadcrumb", "toggle"],
-      action: actions.toggleTitlebar,
+      keywords: ["titlebar", "decorations", "window", "wm", "toggle"],
+      action: actions.toggleDecorations,
     },
     {
       id: "fullscreen",

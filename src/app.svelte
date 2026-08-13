@@ -8,6 +8,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { confirm } from "@tauri-apps/plugin-dialog";
 
 import { checkForUpdate } from "@/lib/updater";
+import { windowTitle } from "@/lib/window-title";
 import { language, getT } from "@/lib/i18n";
 import { overlays } from "@/stores/overlays.svelte";
 import { notifications } from "@/stores/notifications.svelte";
@@ -173,7 +174,6 @@ const urlRoot = (() => {
 
 let sidebarOpen = persistedState<boolean>(STORAGE_KEYS.sidebarOpen, false);
 let sidebarWidth = persistedState<number>(STORAGE_KEYS.sidebarWidth, 240);
-let titlebarVisible = persistedState<boolean>(STORAGE_KEYS.titlebarVisible, true);
 let folders = persistedState<string[]>(STORAGE_KEYS.folders, []);
 // Project root = ?root= (project windows) or the last project (main window). Scope the
 // session storage to it, then rebuild folders as [projectRoot, ...scoped guests] so the
@@ -197,6 +197,15 @@ $effect(() => { setSessionScope(rootPath); });
 
 // Keep the rootPath store in sync for preview components (wikilink resolution).
 $effect(() => { setRootPath(rootPath); });
+
+// Titre de fenêtre — "AZprose" seul ou "AZprose — <projet>" (correction
+// 2026-08-14) : le titre OS restait figé sur "AZprose" (tauri.conf.json,
+// jamais mis à jour) tandis que la barre de titre custom (TitleBar.svelte)
+// n'affichait que le nom du projet — divergence irréconciliable. Les deux
+// affichent désormais EXACTEMENT la même chaîne (window-title.ts).
+$effect(() => {
+  void getCurrentWindow().setTitle(windowTitle(rootPath ? basename(rootPath) : null));
+});
 
 // Keep the activePath store in sync (file context for the workspace view
 // and file-operations move detection).
@@ -1192,7 +1201,10 @@ $effect(() => {
   return () => window.removeEventListener("keydown", onKey);
 });
 
-// Apply native decorations setting at startup and when toggled
+// Apply native decorations setting at startup and when toggled — nécessite
+// core:window:allow-set-decorations (manquant jusqu'au 2026-08-14 : l'appel
+// échouait TOUJOURS, silencieusement avalé par le .catch, d'où la titlebar
+// OS qui ne disparaissait jamais quel que soit le réglage).
 $effect(() => {
   const native = generalSettings.nativeDecorations;
   getCurrentWindow().setDecorations(native).catch(() => {});
@@ -1217,8 +1229,17 @@ const handleToggleVim = () => {
   vimOn = !vimOn;
 };
 
-const handleToggleTitlebar = () => {
-  titlebarVisible.update((v: boolean) => !v);
+// Bascule décorations natives (WM) ↔ décorations custom de l'app — un SEUL
+// commutateur (correction 2026-08-14) : avant, ce bouton masquait/affichait la
+// barre de titre custom en CSS SEULE (titlebarVisible), indépendamment du
+// réglage nativeDecorations qui, lui, tentait (en vain — permission
+// manquante) de retirer les décorations WM. Résultat : les deux chrome
+// pouvaient coexister ou, à l'inverse, aucun des deux n'être visible.
+// nativeDecorations est désormais la SEULE source de vérité : true → chrome
+// WM, barre custom masquée ; false → chrome WM retiré, barre custom visible
+// avec ses propres boutons (TitleBar.svelte, {#if !nativeDecorations}).
+const handleToggleDecorations = () => {
+  generalSettings.nativeDecorations = !generalSettings.nativeDecorations;
 };
 
 const editorMode = $derived<EditorMode>(
@@ -1560,6 +1581,7 @@ let cmds = $derived(
     recentFiles: [],
     hasActivePath: activePath != null,
     sidebarOpen: sidebarOpen.current,
+    nativeDecorations: generalSettings.nativeDecorations,
     toggleFavorite: () => { if (activePath) fo.toggleFavorite(activePath); },
     currentFilePath: activePath,
     // oxide: daily note commands
@@ -1609,7 +1631,7 @@ let cmds = $derived(
     },
     toggleConsole: handleToggleConsole,
     toggleViewPanel: handleToggleSidebar,
-    toggleTitlebar: handleToggleTitlebar,
+    toggleDecorations: handleToggleDecorations,
     openSettings: () => overlays.openSettings("general"),
     openCalendarEditor: () => {
       pm.openCustomInSide("calendar-editor", "Calendrier");
@@ -1638,7 +1660,7 @@ let cmds = $derived(
 </script>
 
 <div
-  class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}{!titlebarVisible.current ? " has-hidden-titlebar" : ""}"
+  class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}{generalSettings.nativeDecorations ? " has-hidden-titlebar" : ""}"
   style={Object.entries(typographyStyle).map(([k, v]) => `${k}:${v}`).join(";")}
 >
   {#if !rootPath && !overlays.welcomeOpen}
@@ -1660,8 +1682,8 @@ let cmds = $derived(
     {rootPath}
     {activePath}
     {saveStatus}
-    titlebarVisible={titlebarVisible.current}
-    onToggleTitlebar={handleToggleTitlebar}
+    nativeDecorations={generalSettings.nativeDecorations}
+    onToggleDecorations={handleToggleDecorations}
     {vimOn}
     onToggleVim={handleToggleVim}
     typography={typo}

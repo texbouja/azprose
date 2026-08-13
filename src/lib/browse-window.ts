@@ -27,6 +27,22 @@ import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
 import { WebviewWindow, getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
 import { emitTo } from "@tauri-apps/api/event";
 import { basename } from "@/lib";
+import { windowTitle } from "@/lib/window-title";
+import { STORAGE_KEYS } from "@/lib/storage";
+
+/** Lecture PURE du réglage de décorations, sans passer par
+ *  `generalSettings` : ce module est pur (aucune rune) et testé unitairement
+ *  — importer un store `.svelte.ts` y ferait entrer `$state`, absent du
+ *  runtime bun, et casserait `browse-window.test.ts` à l'import même.
+ *  Même lecture que `persistedState` (valeur JSON, défaut `true`). */
+function readNativeDecorations(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.nativeDecorations);
+    return raw == null ? true : (JSON.parse(raw) as boolean);
+  } catch {
+    return true;
+  }
+}
 
 /** Préfixe de label d'une fenêtre fille ; le label du PARENT y est encodé
  *  (séparateur `__`) pour retrouver la descendance d'une fenêtre de projet. */
@@ -97,10 +113,18 @@ export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<Webvi
   if (opts.root) params.set("root", opts.root);
   return new WebviewWindow(browseWindowLabel(launcher.label, ++browseSeq), {
     url: `index.html?${params.toString()}`,
-    title: basename(opts.path),
+    title: windowTitle(basename(opts.path)),
     width,
     height,
     center: true,
+    // Décorations posées à la CRÉATION, pas dans un $effect au montage
+    // (correction 2026-08-14) : une fenêtre créée décorée puis re-décorée à
+    // chaud montre un flash « chrome WM → chrome app » au démarrage. NAV est
+    // créée depuis le JS de PROJET, qui connaît déjà le réglage — il n'y a
+    // aucune raison d'attendre son propre bundle. (La fenêtre PROJET, elle,
+    // est créée par Rust avant tout JS : son flash relève de la séquence de
+    // boot, traité en vague 4 du plan.)
+    decorations: readNativeDecorations(),
     // PAS de `parent` (2026-08-14) : NAV est une fenêtre AUTONOME — clic =
     // focus + premier plan comme n'importe quelle fenêtre, minimisation et
     // taskbar indépendantes. Sa fermeture avec la fenêtre de projet reste

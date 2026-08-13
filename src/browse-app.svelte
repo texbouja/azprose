@@ -19,6 +19,8 @@ import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import TabsBar from "@/components/editor/TabsBar.svelte";
 import BrowseToolbar from "@/components/nav/BrowseToolbar.svelte";
 import BrowseSidebar from "@/components/nav/BrowseSidebar.svelte";
+import TitleBar from "@/components/chrome/TitleBar.svelte";
+import { generalSettings } from "@/stores/general-settings.svelte";
 import { basename, isPdfPath } from "@/lib";
 import { readText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
@@ -48,6 +50,7 @@ import { getT, language } from "@/lib/i18n";
 import { initTheme } from "@/lib/theme";
 import { persistedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS } from "@/lib/storage";
+import { windowTitle } from "@/lib/window-title";
 // Feuilles du RENDU markdown ET du modèle d'onglets — la fenêtre de
 // navigation emprunte MarkdownPreview/DocPreview/TabsBar à la fenêtre de
 // projet, elle doit donc charger les mêmes styles qu'eux. Sans elles, le HTML
@@ -58,6 +61,15 @@ import "@/styles/markdown/prose.css";
 import "@/styles/markdown/preview.css";
 import "@/styles/editor/tabs.css";
 import "@/styles/files/sidebar.css";
+// TitleBar (décorations de l'app) — même piège #1 : le composant est emprunté
+// à PROJET, ses règles vivent dans chrome/titlebar.css importé par app.css,
+// donc par la seule fenêtre de projet. Sans cette ligne le balisage est correct
+// mais NU (boutons non stylés, empilés à gauche sous le titre). Feuille
+// AUTONOME (flex pur, aucune dépendance au grid de .mdv-app ; --titlebar-h
+// vient de tokens.css, chargé par globals.css). Cet import rejoint la liste
+// que la phase 3.1 supprimera d'un bloc en donnant à chaque composant son
+// propre contrat CSS — il en suit la convention, il ne la contredit pas.
+import "@/styles/chrome/titlebar.css";
 // PDF (phase 6) : pdf_viewer.css (chrome pdf.js, ~160 Ko) + pdf.css (habillage
 // AZprose) — mêmes deux feuilles que la fenêtre de projet (piège #1, R7), mais
 // chargées en LAZY (voir plus bas, effet sur activeTab) : contrairement à
@@ -79,6 +91,19 @@ const params = new URLSearchParams(location.search);
 const root = params.get("root");
 setRootPath(root);
 
+// NAV hérite du réglage de décorations natives de PROJET (correction
+// 2026-08-14). Le réglage est GLOBAL (pas par projet) : NAV le LIT, ne
+// l'écrit jamais.
+// Cet effet ne sert PAS à l'application initiale — elle a lieu à la CRÉATION
+// de la fenêtre (`decorations` dans browse-window.ts), seule façon d'éviter
+// le flash « chrome WM → chrome app ». Il sert à la propagation À CHAUD :
+// l'utilisateur bascule le réglage dans PROJET, l'événement `storage`
+// (phase 1.3) met à jour le store ici, et cet effet re-décore la fenêtre
+// sans rechargement. Nécessite core:window:allow-set-decorations.
+$effect(() => {
+  void getCurrentWindow().setDecorations(generalSettings.nativeDecorations).catch(() => {});
+});
+
 // Panel, piles back/forward et pages PDF cibles : état de FENÊTRE, à la portée
 // module de nav-state.svelte.ts (phase 1.4) — survit au remontage HMR de CE
 // composant, contrairement à un scope d'instance ($state ici). Voir le
@@ -87,6 +112,11 @@ setRootPath(root);
 let tabs = $derived.by(() => { navState.panelRev; return navState.panel.tabs; });
 let activeTabId = $derived.by(() => { navState.panelRev; return navState.panel.activeTabId; });
 let activeTab = $derived.by(() => tabs.find(tb => tb.id === activeTabId) ?? null);
+
+// Nom affiché par la barre de titre CUSTOM (TitleBar) — même dérivation que
+// setWindowTitle() (titre OS) pour que les deux affichent EXACTEMENT la même
+// chaîne (correction 2026-08-14, même principe que PROJET/window-title.ts).
+let navTitleName = $derived(activeTab && activeTab.path ? basename(activeTab.path) : t("browse.emptyTab"));
 
 let canGoBack = $derived.by(() => {
   navState.stackRev;
@@ -315,7 +345,7 @@ $effect(() => {
 
 function setWindowTitle(): void {
   const tab = navState.panel.activeTab;
-  void getCurrentWindow().setTitle(tab && tab.path ? basename(tab.path) : t("browse.emptyTab"));
+  void getCurrentWindow().setTitle(windowTitle(tab && tab.path ? basename(tab.path) : t("browse.emptyTab")));
 }
 
 /** Onglet VIDE (R6, D4) — état de première classe, pas de page d'accueil.
@@ -542,6 +572,15 @@ onMount(() => {
 </script>
 
 <div class="browse">
+  {#if !generalSettings.nativeDecorations}
+    <!-- Décorations natives = la barre custom serait redondante avec le
+         chrome WM (même logique que app.svelte .has-hidden-titlebar). -->
+    <TitleBar
+      rootName={navTitleName}
+      nativeDecorations={generalSettings.nativeDecorations}
+    />
+  {/if}
+
   <div class="browse__tabbar">
     <div class="browse__tabs">
       <TabsBar

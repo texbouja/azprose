@@ -30,7 +30,6 @@ export const STORAGE_KEYS = {
   welcomed: "mdview.welcomed",
   lastSeenVersion: "mdview.lastSeenVersion",
   language: "mdview.language",
-  titlebarVisible: "mdview.titlebar.visible",
   folders: "mdview.folders",
   favorites: "mdview.favorites",
   typography: "mdview.typography",

@@ -1,13 +1,20 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { windowTitle } from "@/lib/window-title";
 
   let {
     rootName,
     nativeDecorations = true,
   }: {
+    /** Nom du projet/document — le titre affiché est TOUJOURS "AZprose" seul
+     *  ou "AZprose — <rootName>" (même chaîne que le titre OS, posé par
+     *  l'appelant via setTitle() — cf. window-title.ts, correction 2026-08-14 :
+     *  les deux titrent divergeaient avant, l'OS gardant "AZprose" figé). */
     rootName?: string;
     nativeDecorations?: boolean;
   } = $props();
+
+  let displayTitle = $derived(windowTitle(rootName));
 
   let isMaximized = $state(false);
 
@@ -38,13 +45,11 @@
 <header class="mdv-titlebar" data-tauri-drag-region>
   <div class="mdv-titlebar__lead" data-tauri-drag-region />
 
-  {#if rootName}
-    <div class="mdv-titlebar__center" data-tauri-drag-region>
-      <span class="mdv-titlebar__filename" data-tauri-drag-region>
-        {rootName}
-      </span>
-    </div>
-  {/if}
+  <div class="mdv-titlebar__center" data-tauri-drag-region>
+    <span class="mdv-titlebar__filename" data-tauri-drag-region>
+      {displayTitle}
+    </span>
+  </div>
 
   <div class="mdv-titlebar__actions" data-tauri-drag-region>
     {#if !nativeDecorations}
