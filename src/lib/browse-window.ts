@@ -31,6 +31,20 @@ export function isBrowseChildOf(label: string, parentLabel: string): boolean {
   return label.startsWith(`${BROWSE_PREFIX}__${parentLabel}__`);
 }
 
+/** Extrait le label de la fenêtre PARENTE depuis le label d'une fenêtre
+ *  fille (chantier fenêtre NAV, phase 4 — R10 : « ouvrir dans l'éditeur »
+ *  cible la fenêtre de projet qui a lancé CETTE fenêtre NAV, via
+ *  `emitTo(parentLabelOf(label), …)`). `null` si `label` n'est pas une
+ *  fenêtre fille. Le SEED (dernier segment) est retiré via le DERNIER `__` —
+ *  robuste même si `parentLabel` contenait lui-même `__`. */
+export function parentLabelOf(label: string): string | null {
+  const prefix = `${BROWSE_PREFIX}__`;
+  if (!label.startsWith(prefix)) return null;
+  const rest = label.slice(prefix.length);
+  const idx = rest.lastIndexOf("__");
+  return idx === -1 ? null : rest.slice(0, idx);
+}
+
 /** Compteur de fenêtres filles de CETTE fenêtre — un label Tauri doit être
  *  unique et deux ouvertures peuvent tomber dans la même milliseconde. */
 let browseSeq = 0;

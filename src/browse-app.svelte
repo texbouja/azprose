@@ -11,15 +11,20 @@
  */
 import { onMount } from "svelte";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { emitTo } from "@tauri-apps/api/event";
 import MarkdownPreview from "@/components/markdown/MarkdownPreview.svelte";
 import DocPreview from "@/components/markdown/DocPreview.svelte";
 import TabsBar from "@/components/editor/TabsBar.svelte";
+import BrowseToolbar from "@/components/nav/BrowseToolbar.svelte";
 import { basename } from "@/lib";
+import { readText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { setRootPath } from "@/stores/root-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { getFileIndex } from "@/lib/vault-index";
 import { PanelState, normPath } from "@/lib/panel-store";
+import { buildDeclaredToc, type DeclaredToc } from "@/lib/toc-declared";
+import { parentLabelOf } from "@/lib/browse-window";
 import {
   createNavStack,
   navStackBack,
@@ -216,6 +221,80 @@ function onAddressKeydown(e: KeyboardEvent): void {
   }
 }
 
+// ── Toolbar au survol (phase 4) ─────────────────────────────────────────
+
+/** Sidebar repliable (R7, préparation phase 5 — le conteneur lui-même
+ *  n'existe pas encore, seul l'état de visibilité est posé ici). */
+let sidebarVisible = $state(true);
+
+/** TOC déclarative (§3) de l'onglet ACTIF — recalculée à chaque navigation
+ *  aboutie. Sert ICI au bouton « home » (racine de l'arbre déclaré) ; sert
+ *  aussi de base à la sidebar (phase 5), évitant un second calcul. */
+let currentToc = $state<DeclaredToc | null>(null);
+
+$effect(() => {
+  const tab = activeTab;
+  // Dépendances explicitement LUES avant l'await (règle Svelte 5 : un effect
+  // async ne peut suivre que ce qu'il a lu de façon SYNCHRONE avant le premier await).
+  const path = tab?.path ?? "";
+  const source = tab?.source ?? "";
+  const tabId = tab?.id ?? null;
+  const r = root;
+  if (!path || !r) {
+    currentToc = null;
+    return;
+  }
+  void (async () => {
+    const result = await buildDeclaredToc({
+      documentPath: path,
+      documentSource: source,
+      rootPath: r,
+      readText,
+      getIndex: getFileIndex,
+    });
+    // Garde anti-course : n'applique le résultat que si l'onglet actif est
+    // toujours celui qui a déclenché ce calcul (navigation rapide entre onglets).
+    if (activeTab?.id === tabId) currentToc = result;
+  })();
+});
+
+let canGoHome = $derived(currentToc?.origin === "declared");
+
+function goHome(): void {
+  if (currentToc?.origin === "declared") void navigateTo(currentToc.rootPath, null, false);
+}
+
+/** R10 : « ouvrir dans l'éditeur » cible la fenêtre de PROJET qui a lancé
+ *  cette fenêtre NAV (jamais une autre) — le label parent est encodé dans le
+ *  label de la fenêtre courante. `session-restore.ts` écoute déjà cet
+ *  événement côté projet et ouvre un nouvel onglet éditeur avec dédup. */
+async function openInEditor(): Promise<void> {
+  const tab = activeTab;
+  if (!tab || !tab.path) return;
+  const parent = parentLabelOf(getCurrentWindow().label);
+  if (!parent) return;
+  await emitTo(parent, "azprose:open-file", tab.path);
+}
+
+let presentationAvailable = $derived(!!activeTab?.path && extFromPath(activeTab.path) === "md");
+let presentationActive = $derived(activeTab?.renderMode === "presentation");
+
+/** `setRenderMode` ne notifie pas (panel-store.ts) — bump manuel de `panelRev`. */
+function togglePresentation(): void {
+  const tab = activeTab;
+  if (!tab) return;
+  panel.setRenderMode(tab.id, tab.renderMode === "presentation" ? "preview" : "presentation");
+  panelRev++;
+}
+
+let isFullscreen = $state(false);
+
+async function toggleFullscreen(): Promise<void> {
+  const next = !isFullscreen;
+  await getCurrentWindow().setFullscreen(next);
+  isFullscreen = next;
+}
+
 function setWindowTitle(): void {
   const tab = panel.activeTab;
   void getCurrentWindow().setTitle(tab && tab.path ? basename(tab.path) : t("browse.emptyTab"));
@@ -347,6 +426,10 @@ onMount(() => {
   // projet ; cette fenêtre-ci a son propre montage.
   document.getElementById("boot")?.remove();
 
+  // État initial du bouton plein écran (R5 : la fenêtre PEUT démarrer en
+  // plein écran si la fenêtre de lancement l'était — browse-window.ts).
+  void getCurrentWindow().isFullscreen().then((v) => { isFullscreen = v; });
+
   const initial = params.get("browse") ?? "";
   if (initial) {
     // Échec au boot (fichier introuvable) : jamais zéro onglet (R6) — un
@@ -446,29 +529,6 @@ onMount(() => {
     </button>
   </div>
 
-  <header class="browse__bar" data-tauri-drag-region>
-    <button
-      type="button"
-      class="browse__nav"
-      title={t("preview.back")}
-      aria-label={t("preview.back")}
-      disabled={!canGoBack}
-      onclick={() => void goBack()}
-    >
-      <i class="wxi-arrow-left" aria-hidden="true"></i>
-    </button>
-    <button
-      type="button"
-      class="browse__nav"
-      title={t("preview.forward")}
-      aria-label={t("preview.forward")}
-      disabled={!canGoForward}
-      onclick={() => void goForward()}
-    >
-      <i class="wxi-arrow-right" aria-hidden="true"></i>
-    </button>
-  </header>
-
   {#if notice}
     <!-- Message TRANSIENT : il informe SANS masquer la page en cours de
          lecture (une cible introuvable ne doit pas coûter la page affichée). -->
@@ -476,6 +536,25 @@ onMount(() => {
   {/if}
 
   <main class="browse__body">
+    <!-- Toolbar au SURVOL (phase 4) : remplace la barre back/forward fixe de
+         la phase 1 — même châssis que TabActions (zone de survol + reveal). -->
+    <BrowseToolbar
+      {sidebarVisible}
+      onToggleSidebar={() => { sidebarVisible = !sidebarVisible; }}
+      {canGoHome}
+      onHome={goHome}
+      {canGoBack}
+      onBack={() => void goBack()}
+      {canGoForward}
+      onForward={() => void goForward()}
+      canOpenInEditor={!!activeTab?.path}
+      onOpenInEditor={() => void openInEditor()}
+      {presentationAvailable}
+      {presentationActive}
+      onTogglePresentation={togglePresentation}
+      fullscreenActive={isFullscreen}
+      onToggleFullscreen={() => void toggleFullscreen()}
+    />
     {#if !activeTab || !activeTab.path}
       <p class="browse__empty" role="status">{t("browse.emptyHint")}</p>
     {:else if isHelp}
@@ -574,37 +653,8 @@ onMount(() => {
 .browse__newtab:hover {
   background: var(--surface-hover);
 }
-.browse__bar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 32px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-.browse__nav {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--fg);
-  font-size: 14px;
-  cursor: pointer;
-}
-.browse__nav:hover:not([disabled]) {
-  background: var(--surface-hover);
-}
-.browse__nav[disabled] {
-  opacity: 0.35;
-  cursor: default;
-}
 .browse__body {
+  position: relative; /* ancre l'overlay de BrowseToolbar (survol, phase 4) */
   flex: 1;
   min-height: 0;
   display: grid;

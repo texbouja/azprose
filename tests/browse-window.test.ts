@@ -5,7 +5,7 @@
  * Tauri (WebviewWindow).
  */
 import { expect, test } from "bun:test";
-import { browseWindowLabel, browseWindowSize, isBrowseChildOf } from "../src/lib/browse-window";
+import { browseWindowLabel, browseWindowSize, isBrowseChildOf, parentLabelOf } from "../src/lib/browse-window";
 
 test("label : une fenêtre fille porte le label de SA fenêtre de projet", () => {
   const label = browseWindowLabel("azprose-project-42", 1);
@@ -21,6 +21,16 @@ test("label : une fenêtre fille porte le label de SA fenêtre de projet", () =>
 
 test("label : deux ouvertures successives ne collisionnent pas", () => {
   expect(browseWindowLabel("main", 1)).not.toBe(browseWindowLabel("main", 2));
+});
+
+test("parentLabelOf : extrait le label parent d'une fenêtre fille (phase 4 — R10)", () => {
+  expect(parentLabelOf(browseWindowLabel("azprose-project-42", 3))).toBe("azprose-project-42");
+  expect(parentLabelOf(browseWindowLabel("main", 1))).toBe("main");
+});
+
+test("parentLabelOf : une fenêtre qui n'est pas une fille retourne null", () => {
+  expect(parentLabelOf("azprose-project-42")).toBeNull();
+  expect(parentLabelOf("main")).toBeNull();
 });
 
 test("taille : bornée par la taille de lancement de l'app, jamais maximisée", () => {
