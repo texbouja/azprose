@@ -10,7 +10,7 @@
   } from "pdfjs-dist/web/pdf_viewer.mjs";
   import { readFile, exists } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
-  // icons migrated to wxi-lucide.css
+  // icônes : pack de masques CSS (voir src/styles/)
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
