@@ -1,4 +1,8 @@
 <script lang="ts">
+// Typographie du widget WYSIWYM (.cm-html-widget) — contrat CSS du composant
+// (vague 3, phase 3.1) : seul consommateur de prose.css, plus d'import
+// fenêtre pour lui (app.css).
+import "@/styles/markdown/prose.css";
 import "mathjax/tex-svg.js";
 // Fira Sans + Fira Code — imported here so they only ship with the ProseMark
 // chunk (lazy-loaded), not the main app bundle.

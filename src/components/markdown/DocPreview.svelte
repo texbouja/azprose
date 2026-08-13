@@ -1,6 +1,10 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
+// Pipeline de rendu — contrat CSS du composant (vague 3, phase 3.1), partagé
+// avec MarkdownPreview.svelte/SlideDeck.svelte (mêmes classes .mdv-prose) ;
+// .mdv-docnav (footer précédent/suivant) y vit aussi, propre à ce composant.
+import "@/styles/markdown/preview.css";
 import {
   renderMarkdown,
   decorateCodeBlocks,

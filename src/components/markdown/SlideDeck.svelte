@@ -5,6 +5,10 @@ import { language } from "@/lib/i18n";
 // PAS chargé au boot (vague 2, phase 2.4) : ce composant est déjà lazy dans
 // les deux fenêtres (LazySlideDeck), donc sa CSS l'est aussi.
 import "@/styles/markdown/slides.css";
+// preview.css définit .azp-slide__content en sélecteur combiné avec
+// .mdv-prose (mêmes règles h1–h4/callouts/footnotes/transclusion…) — contrat
+// CSS du composant (vague 3, phase 3.1), plus d'import fenêtre pour lui.
+import "@/styles/markdown/preview.css";
 import { renderMarkdown, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons, stripAutoCalloutTitles, postRenderDom } from "@/markdown";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { subscribeMode, type Theme } from "@/lib/theme";

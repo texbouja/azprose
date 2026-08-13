@@ -8,7 +8,6 @@
 @import "./styles/shared/transparency.css";
 @import "./styles/chrome/breadcrumb.css";
 @import "./styles/chrome/statusbar.css";
-@import "./styles/markdown/prose.css";
 
 @import "./styles/editor/search.css";
 @import "./styles/sidebar/activity-bar.css";
@@ -21,7 +20,6 @@
 @import "./styles/overlays/settings.css";
 @import "pdfjs-dist/web/pdf_viewer.css";
 @import "./styles/pdf/pdf.css";
-@import "./styles/markdown/preview.css";
 @import "./styles/grid-theme.css";
 @import "./styles/colles/colles.css";
 

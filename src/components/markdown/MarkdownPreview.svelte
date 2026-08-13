@@ -6,6 +6,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 // (aucun pipeline parallèle, cf. tête de browse-app.svelte) — c'est ici
 // qu'elles sont réellement nécessaires, pas avant.
 import "@/styles/fonts-doc.css";
+// Pipeline de rendu (.mdv-prose/.azp-slide__content, callouts, transclusion,
+// colles…) — contrat CSS du composant (vague 3, phase 3.1), partagé avec
+// DocPreview.svelte et SlideDeck.svelte (mêmes classes) : chacun l'importe
+// directement plutôt que de compter sur la fenêtre (app.css).
+import "@/styles/markdown/preview.css";
 import {
   renderMarkdown,
   decorateCodeBlocks,

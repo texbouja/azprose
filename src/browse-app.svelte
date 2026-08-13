@@ -51,18 +51,12 @@ import { persistedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS } from "@/lib/storage";
 import { windowTitle } from "@/lib/window-title";
 import { removeBootSplash } from "@/shell/boot";
-// Feuilles du RENDU markdown — la fenêtre de navigation emprunte
-// MarkdownPreview/DocPreview à la fenêtre de projet, elle doit donc charger
-// les mêmes styles qu'eux. Sans elles, le HTML est bien produit mais
-// wikilinks, callouts et transclusion restent NUS : ces règles vivent dans
-// preview.css/prose.css, importés par app.css — c'est-à-dire par la seule
-// fenêtre de projet (piège #1 du plan). TabsBar porte désormais son propre
-// contrat CSS (vague 3, phase 3.1) — plus d'import ici pour elle.
-import "@/styles/markdown/prose.css";
-import "@/styles/markdown/preview.css";
-// TitleBar/ThemeButton (chrome de fenêtre) et BrowseSidebar (shell + en-tête
-// de sidebar) portent désormais leur propre contrat CSS (vague 3, phase
-// 3.1) — plus d'import ici pour eux.
+// Fin du piège #1 du plan (vague 3, phase 3.1) : TabsBar, TitleBar/
+// ThemeButton, BrowseSidebar (shell + en-tête) et MarkdownPreview/DocPreview
+// (preview.css) portent désormais chacun son propre contrat CSS — plus un
+// seul import de feuille de composant dans cette fenêtre (prose.css, lui,
+// ne servait même à rien ici : `.cm-html-widget` est l'éditeur ProseMark,
+// jamais monté par NAV — R1, lecture seule).
 // PDF (phase 6) : pdf_viewer.css (chrome pdf.js, ~160 Ko) + pdf.css (habillage
 // AZprose) — mêmes deux feuilles que la fenêtre de projet (piège #1, R7), mais
 // chargées en LAZY (voir plus bas, effet sur activeTab) : contrairement à
