@@ -321,12 +321,14 @@ $effect(() => {
 
     // Wikilink : dans la doc → navigation doc en place (Alt ignoré : tab
     // unique) ; hors doc → le comportement habituel (navigation preview).
+    // `ctrlKey` transporté dans le détail (fenêtre NAV, R4) — voir MarkdownPreview.
     if (a.classList.contains("wikilink")) {
       const fullpath = a.getAttribute("data-wikilink-fullpath");
       const heading = a.getAttribute("data-wikilink-heading");
+      const ctrlKey = e.ctrlKey || e.metaKey;
       if (fullpath && isHelpPath(fullpath, root)) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("azprose:doc-navigate", { detail: { path: fullpath, heading } }));
+        window.dispatchEvent(new CustomEvent("azprose:doc-navigate", { detail: { path: fullpath, heading, ctrlKey } }));
         return;
       }
       e.preventDefault();
@@ -335,7 +337,7 @@ $effect(() => {
       // doc naviguent toujours en place dans le tab doc) — jamais la lecture
       // de `isPreviewNavMode()` par le reducer (cas 1 de la matrice).
       window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", {
-        detail: { path: fullpath ?? undefined, target: target ?? undefined, heading },
+        detail: { path: fullpath ?? undefined, target: target ?? undefined, heading, ctrlKey },
       }));
       return;
     }

@@ -323,20 +323,24 @@ $effect(() => {
     // Wikilink : NOUVEAU tab viewer side avec dédup par contenu (jamais
     // l'éditeur main — il ne s'atteint que par double-clic / « Ouvrir dans
     // l'éditeur »). La lecture EN CHAÎNE se fait dans la fenêtre fille browser
-    // (Phase F/G : plus de mode navigation dans les panneaux).
+    // (Phase F/G : plus de mode navigation dans les panneaux). `ctrlKey`
+    // (ou cmd sur macOS) est transporté dans le détail : la fenêtre NAV
+    // l'utilise pour ses conventions navigateur (R4 — clic = sur place,
+    // ctrl+clic = nouvel onglet) ; le panneau projet l'ignore (règle atomique).
     if (a.classList.contains("wikilink")) {
       const fullpath = a.getAttribute("data-wikilink-fullpath");
       const heading = a.getAttribute("data-wikilink-heading");
+      const ctrlKey = e.ctrlKey || e.metaKey;
       if (fullpath) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading } }));
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading, ctrlKey } }));
         return;
       }
       // Fallback: dispatch with target name for app.svelte resolution
       const target = a.getAttribute("data-wikilink-target");
       if (target) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading } }));
+        window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading, ctrlKey } }));
       }
       return;
     }
