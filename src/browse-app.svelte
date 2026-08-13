@@ -14,10 +14,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emitTo } from "@tauri-apps/api/event";
 import MarkdownPreview from "@/components/markdown/MarkdownPreview.svelte";
 import DocPreview from "@/components/markdown/DocPreview.svelte";
+import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
+import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import TabsBar from "@/components/editor/TabsBar.svelte";
 import BrowseToolbar from "@/components/nav/BrowseToolbar.svelte";
 import BrowseSidebar from "@/components/nav/BrowseSidebar.svelte";
-import { basename } from "@/lib";
+import { basename, isPdfPath } from "@/lib";
 import { readText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
 import { setRootPath } from "@/stores/root-path.svelte";
@@ -53,6 +55,15 @@ import "@/styles/markdown/prose.css";
 import "@/styles/markdown/preview.css";
 import "@/styles/editor/tabs.css";
 import "@/styles/files/sidebar.css";
+// PDF (phase 6) : pdf_viewer.css (chrome pdf.js, ~160 Ko) + pdf.css (habillage
+// AZprose) — mêmes deux feuilles que la fenêtre de projet (piège #1, R7), mais
+// chargées en LAZY (voir plus bas, effet sur activeTab) : contrairement à
+// prose/preview/tabs (systématiques, quelques Ko), pdf_viewer.css est lourd et
+// PDF n'est qu'UN format parmi d'autres — l'importer en eager alourdirait le
+// chunk NAV pour des sessions qui ne montrent jamais de PDF (poids du chunk
+// NAV : ASSUMÉ pour les compétences de navigation elles-mêmes, pas pour une
+// dépendance non sollicitée). Le composant reste le même (LazyPdfViewer) :
+// seule la feuille de style change de moment de chargement.
 
 let t = $derived(getT($language));
 
@@ -73,8 +84,8 @@ let panelRev = $state(0);
 const panel = new PanelState("nav", {
   onSessionChange: () => { panelRev++; },
   // Case 3 (matrice, cf. panel-store.ts) : la pile back/forward de l'onglet
-  // meurt avec lui.
-  onTabClosed: (tabId) => { navStacks.delete(tabId); },
+  // (et sa page PDF cible, phase 6) meurent avec lui.
+  onTabClosed: (tabId) => { navStacks.delete(tabId); pdfPages.delete(tabId); },
 });
 
 let tabs = $derived.by(() => { panelRev; return panel.tabs; });
@@ -89,6 +100,14 @@ let activeTab = $derived.by(() => tabs.find(tb => tb.id === activeTabId) ?? null
  */
 const navStacks = new Map<string, NavStack>();
 let stackRev = $state(0);
+
+/** Page PDF cible par onglet (phase 6) — closure PURE, comme `navStacks` :
+ *  posée par le listener `azprose:pdf-rect-navigate`, lue au rendu
+ *  (`LazyPdfViewer` prop `page`). Pas de `azprose:pdf-scroll-to-rect` pour la
+ *  page elle-même : `PdfViewer` n'enregistre son listener qu'APRÈS le montage
+ *  (piège de timing déjà rencontré pour l'ancre markdown) — la PROP `page`
+ *  n'a pas ce problème, elle est lue dès le premier rendu du composant. */
+const pdfPages = new Map<string, number>();
 
 function stackFor(tabId: string): NavStack {
   let s = navStacks.get(tabId);
@@ -196,6 +215,16 @@ async function resolveAddress(raw: string): Promise<string | null> {
   return best ? (index.get(best) ?? null) : null;
 }
 
+/** Ouvre une cible résolue par la barre d'adresse : PDF → TOUJOURS un
+ *  nouvel onglet (R4, comme un lien), sinon navigation « sur place ». */
+async function openAddressTarget(path: string): Promise<void> {
+  if (extFromPath(path) === "pdf") {
+    await loadNewTab(path, null);
+    return;
+  }
+  await navigateTo(path, null, false);
+}
+
 async function submitAddress(): Promise<void> {
   const raw = addressValue.trim();
   if (!raw) return;
@@ -205,12 +234,12 @@ async function submitAddress(): Promise<void> {
     return;
   }
   clearAddress();
-  await navigateTo(target, null, false);
+  await openAddressTarget(target);
 }
 
 async function chooseSuggestion(path: string): Promise<void> {
   clearAddress();
-  await navigateTo(path, null, false);
+  await openAddressTarget(path);
 }
 
 function onAddressKeydown(e: KeyboardEvent): void {
@@ -299,6 +328,20 @@ async function toggleFullscreen(): Promise<void> {
   await getCurrentWindow().setFullscreen(next);
   isFullscreen = next;
 }
+
+// ── Formats (phase 6) : PDF ─────────────────────────────────────────────
+
+/** Chargement PARESSEUX des feuilles de `PdfViewer` (~160 Ko à elles deux) —
+ *  au premier onglet PDF activé, jamais avant (cf. commentaire des imports en
+ *  tête de fichier). Idempotent : un `import()` déjà résolu revient du cache
+ *  du module, un second déclenchement (autre onglet PDF, ou retour sur le
+ *  même) ne re-télécharge rien. */
+$effect(() => {
+  if (activeTab && isPdfPath(activeTab.path)) {
+    void import("pdfjs-dist/web/pdf_viewer.css");
+    void import("@/styles/pdf/pdf.css");
+  }
+});
 
 function setWindowTitle(): void {
   const tab = panel.activeTab;
@@ -454,8 +497,11 @@ onMount(() => {
         say(t("nav.wikilinkUnresolved", { name: detail.target ?? "?" }));
         return;
       }
-      // Formats lisibles ICI (le PDF aura son propre onglet viewer — chantier
-      // fenêtre NAV, phase 6).
+      // PDF (phase 6) : TOUJOURS un nouvel onglet, quel que soit le clic (R4).
+      if (extFromPath(next) === "pdf") {
+        void loadNewTab(next, null);
+        return;
+      }
       if (["md", "markdown", "txt", "tex", "typ"].includes(extFromPath(next))) {
         void navigateTo(next, detail.heading ?? null, !!detail.ctrlKey);
         return;
@@ -467,6 +513,23 @@ onMount(() => {
     const detail = (e as CustomEvent).detail as { path?: string; heading?: string; ctrlKey?: boolean };
     if (detail.path) void navigateTo(detail.path, detail.heading ?? null, !!detail.ctrlKey);
   };
+  /** Lien PDF avec page/rect (citation précise, cf. MarkdownPreview) — TOUJOURS
+   *  un nouvel onglet (R4). La page cible est portée par la PROP `page` de
+   *  `LazyPdfViewer` (pas par l'événement `azprose:pdf-scroll-to-rect` : son
+   *  listener n'existe qu'APRÈS le montage de `PdfViewer`, piège de timing —
+   *  la prop, elle, est lue dès le premier rendu). */
+  const onPdfRect = (e: Event) => {
+    const detail = (e as CustomEvent).detail as { path?: string; page?: number; rect?: string };
+    if (!detail.path) return;
+    void loadNewTab(detail.path, null).then((ok) => {
+      if (!ok) return;
+      const tab = panel.activeTab;
+      if (tab && detail.page) {
+        pdfPages.set(tab.id, detail.page);
+        panelRev++; // relit pdfPages au rendu (cf. commentaire de la déclaration)
+      }
+    });
+  };
   const onKey = (e: KeyboardEvent) => {
     if (e.altKey && e.key === "ArrowLeft") { e.preventDefault(); void goBack(); }
     if (e.altKey && e.key === "ArrowRight") { e.preventDefault(); void goForward(); }
@@ -475,11 +538,13 @@ onMount(() => {
   window.addEventListener("azprose:wikilink-navigate", onWikilink);
   window.addEventListener("azprose:wikilink-open-new", onWikilink);
   window.addEventListener("azprose:doc-navigate", onDocNav);
+  window.addEventListener("azprose:pdf-rect-navigate", onPdfRect);
   window.addEventListener("keydown", onKey);
   return () => {
     window.removeEventListener("azprose:wikilink-navigate", onWikilink);
     window.removeEventListener("azprose:wikilink-open-new", onWikilink);
     window.removeEventListener("azprose:doc-navigate", onDocNav);
+    window.removeEventListener("azprose:pdf-rect-navigate", onPdfRect);
     window.removeEventListener("keydown", onKey);
   };
 });
@@ -571,6 +636,15 @@ onMount(() => {
       />
       {#if !activeTab || !activeTab.path}
         <p class="browse__empty" role="status">{t("browse.emptyHint")}</p>
+      {:else if isPdfPath(activeTab.path)}
+        <LazyPdfViewer path={activeTab.path} rev={contentRev} page={pdfPages.get(activeTab.id) ?? null} />
+      {:else if presentationActive}
+        <LazySlideDeck
+          value={activeTab.source}
+          filePath={activeTab.path}
+          fullscreen={isFullscreen}
+          onExitFullscreen={() => void toggleFullscreen()}
+        />
       {:else if isHelp}
         <DocPreview value={activeTab.source} filePath={activeTab.path} />
       {:else}
