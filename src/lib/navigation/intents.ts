@@ -60,9 +60,9 @@ export type NavIntent =
   | { type: "jump-to-file"; path: string; line?: number | null; heading?: string | null }
   /** Saut TOC (table des matières sidebar) : la cible remonte dans le VIEWER
    *  side — jamais l'éditeur main (décision utilisateur). Même politique que
-   *  le wikilink : tab viewer side avec dédup par contenu. L'aide intégrée
-   *  reste routée en doc. Scroll : `heading` prioritaire (id immune aux
-   *  décalages de transclusion), sinon `line` 1-based (racines de branches). */
+   *  le wikilink : tab viewer side avec dédup par contenu. Scroll : `heading`
+   *  prioritaire (id immune aux décalages de transclusion), sinon `line`
+   *  1-based (racines de branches). */
   | { type: "toc-navigate"; path: string; line?: number | null; heading?: string | null }
   /** Saut dbl-clic preview : cible le fichier RENDU (tab side), 0-based.
    *  Remplaçant typé de `azprose:jump-to-line` : le saut vise le fichier RENDU

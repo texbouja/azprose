@@ -729,14 +729,16 @@ $effect(() => {
     const { path, line, heading } = (e as CustomEvent<{ path: string; line?: number; heading?: string }>).detail;
     if (!path) return;
     // User navigation (TOC / backlinks / tags click) → le reducer gère :
-    // routage doc (jamais l'éditeur main), historique back, findTabByPath,
-    // openInMain, jumpToLine 1-based → 0-based, scroll heading (immune aux
-    // décalages de transclusion) ou syncLine LIÉE au chemin normalisé.
+    // historique back, findTabByPath, openInMain, jumpToLine 1-based →
+    // 0-based, scroll heading (immune aux décalages de transclusion) ou
+    // syncLine LIÉE au chemin normalisé. `isHelp` (ci-dessous) est une garde
+    // défensive héritée : un chemin `.azprose/help/**` ne devrait plus jamais
+    // atteindre ce point (chantier fenêtre NAV, phase 7).
     const isHelp = isHelpPath(path, getRootPath());
     await navigate(navDeps, { type: "jump-to-file", path, line, heading });
     // Notification de rendu (le reducer ne touche pas au DOM) : un preview déjà
     // rendu scrolle immédiatement ; le pending store couvre un preview encore
-    // en cours de rendu. Les articles doc se scrollent eux-mêmes (openDocArticle).
+    // en cours de rendu.
     if (!isHelp && (line != null || heading != null)) {
       const normFile = path.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
       const line0 = line != null ? line - 1 : undefined;
@@ -773,12 +775,14 @@ $effect(() => {
     }
     // Clic TOC → la cible remonte dans le VIEWER side (jamais l'éditeur main —
     // décision utilisateur) : le reducer `toc-navigate` réutilise la politique
-    // wikilink (tab viewer side, dédup par contenu) ; l'aide intégrée reste
-    // routée en doc.
+    // wikilink (tab viewer side, dédup par contenu). `isHelp` (ci-dessus) est
+    // une garde défensive héritée : un chemin `.azprose/help/**` ne devrait
+    // plus jamais atteindre ce point (chantier fenêtre NAV, phase 7 — l'aide
+    // n'a plus de route dans la fenêtre de projet).
     await navigate(navDeps, { type: "toc-navigate", path, line, heading });
     // Notification de rendu (le reducer ne touche pas au DOM) : un preview déjà
     // rendu scrolle immédiatement ; le pending store couvre un preview encore
-    // en cours de rendu. Les articles doc se scrollent eux-mêmes (openDocArticle).
+    // en cours de rendu.
     if (!isHelp && (line != null || heading != null)) {
       const normFile = path.replace(/\\/g, "/").split("/").filter(s => s !== ".").join("/");
       const line0 = line != null ? line - 1 : undefined;
