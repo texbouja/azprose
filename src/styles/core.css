@@ -1,33 +1,17 @@
-@import "@fontsource/inter/400.css";
-@import "@fontsource/inter/500.css";
-@import "@fontsource/inter/600.css";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
-
-/* Document fonts — loaded on demand via preview/export */
-@import "@fontsource/fira-sans/400.css";
-@import "@fontsource/fira-sans/500.css";
-@import "@fontsource/fira-sans/600.css";
-@import "@fontsource/fira-sans/700.css";
-@import "@fontsource/fira-code/400.css";
-@import "@fontsource/fira-code/500.css";
-@import "@fontsource/ubuntu/300.css";
-@import "@fontsource/ubuntu/400.css";
-@import "@fontsource/ubuntu/500.css";
-@import "@fontsource/ubuntu/700.css";
-@import "@fontsource/ubuntu-condensed/400.css";
-@import "@fontsource/ubuntu-mono/400.css";
-@import "@fontsource/ubuntu-mono/700.css";
-
-/* SVAR icon system — Lucide SVGs via CSS masks (replaces wx-icons CDN) */
-@import "./wxi-lucide.css";
-
-/* SVAR UI theme — --wx-* variables on :root (replaces WillowDark wrappers) */
-@import "./svar-theme.css";
-
+/* Cœur MINIMAL chargé par les DEUX fenêtres au boot (vague 2, phase 2.4) —
+ * reset, tokens, pack d'icônes, et le petit chrome global (typographie de
+ * base, boutons, scrollbars, tooltip, sélection, impression) qui n'a pas de
+ * consommateur unique à qui être délégué (R3 : « tout le reste voyage avec
+ * son consommateur » — polices de document, thème SVAR et diapositives sont
+ * dans des feuilles séparées, importées par les composants qui en ont
+ * besoin, pas par le boot).
+ *
+ * Ex-globals.css (supprimé) : les polices UI (fonts-ui.css), les polices de
+ * document (fonts-doc.css), le thème SVAR (svar-theme.css) et les
+ * diapositives (markdown/slides.css) en ont été extraites. */
 
 @import "./tokens.css";
-@import "./markdown/slides.css";
+@import "./wxi-lucide.css";
 
 *,
 *::before,

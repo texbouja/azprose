@@ -1,4 +1,6 @@
-@import "./styles/globals.css";
+/* core.css + fonts-ui.css (reset, tokens, icônes, polices UI) sont chargés
+ * par main.ts AVANT le montage de app.svelte — donc avant ce fichier
+ * (vague 2, phase 2.4). Rien à réimporter ici. */
 
 @import "./styles/shared/menu.css";
 @import "./styles/shared/kbd.css";

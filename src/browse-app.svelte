@@ -66,9 +66,10 @@ import "@/styles/files/sidebar.css";
 // donc par la seule fenêtre de projet. Sans cette ligne le balisage est correct
 // mais NU (boutons non stylés, empilés à gauche sous le titre). Feuille
 // AUTONOME (flex pur, aucune dépendance au grid de .mdv-app ; --titlebar-h
-// vient de tokens.css, chargé par globals.css). Cet import rejoint la liste
-// que la phase 3.1 supprimera d'un bloc en donnant à chaque composant son
-// propre contrat CSS — il en suit la convention, il ne la contredit pas.
+// vient de tokens.css, chargé par core.css — phase 2.4). Cet import rejoint
+// la liste que la phase 3.1 supprimera d'un bloc en donnant à chaque
+// composant son propre contrat CSS — il en suit la convention, il ne la
+// contredit pas.
 import "@/styles/chrome/titlebar.css";
 // PDF (phase 6) : pdf_viewer.css (chrome pdf.js, ~160 Ko) + pdf.css (habillage
 // AZprose) — mêmes deux feuilles que la fenêtre de projet (piège #1, R7), mais

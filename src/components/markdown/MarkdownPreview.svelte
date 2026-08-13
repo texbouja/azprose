@@ -1,6 +1,11 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
 import { openUrl } from "@tauri-apps/plugin-opener";
+// Polices de DOCUMENT — PAS chargées au boot (vague 2, phase 2.4) : ce
+// composant est LE pipeline de rendu markdown, monté par les deux fenêtres
+// (aucun pipeline parallèle, cf. tête de browse-app.svelte) — c'est ici
+// qu'elles sont réellement nécessaires, pas avant.
+import "@/styles/fonts-doc.css";
 import {
   renderMarkdown,
   decorateCodeBlocks,

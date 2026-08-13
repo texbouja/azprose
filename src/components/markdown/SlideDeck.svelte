@@ -2,6 +2,9 @@
 import { onDestroy } from "svelte";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
+// PAS chargé au boot (vague 2, phase 2.4) : ce composant est déjà lazy dans
+// les deux fenêtres (LazySlideDeck), donc sa CSS l'est aussi.
+import "@/styles/markdown/slides.css";
 import { renderMarkdown, ensurePreviewReady, makeCalloutsCollapsible, updateCalloutIcons, stripAutoCalloutTitles, postRenderDom } from "@/markdown";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { subscribeMode, type Theme } from "@/lib/theme";
@@ -337,4 +340,4 @@ $effect(() => {
   </div>
 </div>
 
-<!-- styles in src/styles/markdown/slides.css (global) -->
+<!-- styles: import "@/styles/markdown/slides.css" en tête de ce fichier -->

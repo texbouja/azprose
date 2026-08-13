@@ -1,0 +1,17 @@
+/* Polices de DOCUMENT (rendu markdown : preview, export, présentation) —
+ * PAS chargées au boot (vague 2, phase 2.4) : importées par
+ * MarkdownPreview.svelte, le composant qui en a réellement besoin, monté par
+ * les deux fenêtres mais jamais avant que du contenu markdown soit affiché. */
+@import "@fontsource/fira-sans/400.css";
+@import "@fontsource/fira-sans/500.css";
+@import "@fontsource/fira-sans/600.css";
+@import "@fontsource/fira-sans/700.css";
+@import "@fontsource/fira-code/400.css";
+@import "@fontsource/fira-code/500.css";
+@import "@fontsource/ubuntu/300.css";
+@import "@fontsource/ubuntu/400.css";
+@import "@fontsource/ubuntu/500.css";
+@import "@fontsource/ubuntu/700.css";
+@import "@fontsource/ubuntu-condensed/400.css";
+@import "@fontsource/ubuntu-mono/400.css";
+@import "@fontsource/ubuntu-mono/700.css";

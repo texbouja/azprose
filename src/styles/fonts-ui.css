@@ -1,0 +1,18 @@
+/* Polices du CHROME applicatif (UI : boutons, sidebar, titlebar…) — chargées
+ * par les DEUX fenêtres au boot (vague 2, phase 2.4). Distinctes des polices
+ * de DOCUMENT (fonts-doc.css), qui ne sont nécessaires qu'au rendu markdown
+ * et voyagent avec leur consommateur plutôt qu'avec le boot.
+ *
+ * Sous-ensemble `latin-*` (pas `400.css`/`500.css` — les fichiers COMPLETS,
+ * qui empilent aussi cyrillique/grec/vietnamien) : l'UI n'affiche que du
+ * FR/EN (locales du dépôt), et « latin » (convention Google Fonts/fontsource)
+ * couvre déjà les caractères accentués français (é, è, à, ç…) — « latin-ext »
+ * ne sert qu'aux langues d'Europe centrale, hors périmètre. Gain mesuré :
+ * M2 (@font-face dans le cœur) passe de 33 à 5, sous la cible du plan (≤20),
+ * ET les fichiers .woff2 eux-mêmes sont plus légers (sous-ensemble réel,
+ * pas qu'une restriction unicode-range). */
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-500.css";

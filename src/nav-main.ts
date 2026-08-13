@@ -1,5 +1,8 @@
 import { mount } from "svelte";
-import "./styles/globals.css";
+// Cœur MINIMAL du boot (vague 2, phase 2.4) — mêmes DEUX feuilles que
+// main.ts, aucune de plus : c'est tout le sens de R3 appliqué au boot.
+import "./styles/core.css";
+import "./styles/fonts-ui.css";
 import { initBoot } from "@/shell/boot";
 import { initPresentation } from "@/shell/presentation";
 // Import STATIQUE (l'ancien main.ts l'importait dynamiquement, pour éviter
