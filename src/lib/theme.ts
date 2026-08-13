@@ -200,9 +200,9 @@ declare global {
  *  À appeler UNE fois par fenêtre, au montage (PROJET et NAV).
  *  Sans cet appel, `data-theme` n'est jamais posé et le document reste sur
  *  le repli `:root:not([data-theme])` de tokens.css — c'était le cas de NAV.
- *  Le garde-fou `__azproseThemeInit` évite un double listener `matchMedia`
- *  si `initTheme()` est appelée plus d'une fois par erreur (HMR du composant
- *  qui la déclenche, par ex.) — un seul listener doit exister par fenêtre. */
+ *  Le garde-fou `__azproseThemeInit` évite un double listener (matchMedia +
+ *  storage) si `initTheme()` est appelée plus d'une fois par erreur (HMR du
+ *  composant qui la déclenche, par ex.) — un seul de chaque par fenêtre. */
 export function initTheme(): void {
   if (typeof window === "undefined") return;
   apply(readMode());
@@ -214,6 +214,14 @@ export function initTheme(): void {
       apply("system");
       modeListeners.forEach((fn) => fn());
     }
+  });
+  // Propagation inter-fenêtres (phase 1.3, ★C) : localStorage émet `storage`
+  // dans les AUTRES contextes de même origine (jamais chez l'écrivain) — c'est
+  // ce canal qui rend vraie « un réglage changé dans PROJET s'applique dans NAV ».
+  window.addEventListener("storage", (e) => {
+    if (e.key !== STORAGE_KEY) return;
+    apply(readMode());
+    modeListeners.forEach((fn) => fn());
   });
 }
 

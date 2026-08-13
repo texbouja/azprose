@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { BUILTIN_THEMES, THEME_GROUPS, readMode, getSystemTheme } from "../src/lib/theme";
 import { STORAGE_KEYS } from "../src/lib/storage";
 
@@ -70,4 +70,12 @@ test("localStorage vide → readMode() === system (polyfill installé ici)", () 
 test("localStorage contient mocha → readMode() === mocha", () => {
   (window as unknown as { localStorage: Storage }).localStorage.setItem(STORAGE_KEYS.themeMode, "mocha");
   expect(readMode()).toBe("mocha");
+});
+
+// Bun ne garantit PAS l'isolation de `globalThis` entre fichiers de test (deux
+// fichiers peuvent partager le même thread/realm selon l'ordonnancement interne
+// du runner) — on restaure l'état natif de bun (pas de `window`) pour ne pas
+// fuiter vers un fichier exécuté après celui-ci.
+afterAll(() => {
+  delete (globalThis as Record<string, unknown>).window;
 });

@@ -134,15 +134,22 @@ export const UI_SIDEBAR_FONT_PRESETS: UiFontPreset[] = [
 
 function createGeneralSettings() {
   const mode = persistedState<DefaultEditorMode>(STORAGE_KEYS.defaultEditorMode, "prose");
+  // nativeDecorations : pas d'onExternal — aucun effet de bord dans le setter
+  // (appliqué par un $effect d'app.svelte, PROJET seul, cf. phase 1.3 §1.3.c).
   const nativeDeco = persistedState<boolean>(STORAGE_KEYS.nativeDecorations, true);
-  const uiZoom = persistedState<number>(STORAGE_KEYS.uiScale, 1.0);
-  const uiFont = persistedState<string>(STORAGE_KEYS.uiFontFamily, "");
-  const uiMono = persistedState<string>(STORAGE_KEYS.uiMonoFamily, "");
-  const uiSidebar = persistedState<string>(STORAGE_KEYS.sidebarFontFamily, "");
-  const previewFont = persistedState<string>(STORAGE_KEYS.previewFontFamily, "");
-  const previewCustomFont = persistedState<string>(STORAGE_KEYS.previewCustomFontName, "");
-  const previewMono = persistedState<string>(STORAGE_KEYS.previewMonoFamily, "");
-  const hinting = persistedState<FontHinting>(STORAGE_KEYS.fontHinting, "standard");
+  const uiZoom = persistedState<number>(STORAGE_KEYS.uiScale, 1.0, undefined, applyZoom);
+  const uiFont = persistedState<string>(STORAGE_KEYS.uiFontFamily, "", undefined, applyUiFont);
+  const uiMono = persistedState<string>(STORAGE_KEYS.uiMonoFamily, "", undefined, applyUiMonoFont);
+  const uiSidebar = persistedState<string>(STORAGE_KEYS.sidebarFontFamily, "", undefined, applyUiSidebarFont);
+  // preview{Font,CustomFont} s'appliquent ensemble (applyPreviewFont prend les deux) :
+  // chaque onExternal relit l'AUTRE store courant plutôt que la valeur qu'il vient
+  // de recevoir, pour ne jamais appliquer une combinaison figée/périmée.
+  const previewFont = persistedState<string>(STORAGE_KEYS.previewFontFamily, "", undefined,
+    (v) => applyPreviewFont(v, previewCustomFont.current));
+  const previewCustomFont = persistedState<string>(STORAGE_KEYS.previewCustomFontName, "", undefined,
+    (v) => applyPreviewFont(previewFont.current, v));
+  const previewMono = persistedState<string>(STORAGE_KEYS.previewMonoFamily, "", undefined, applyPreviewMonoFont);
+  const hinting = persistedState<FontHinting>(STORAGE_KEYS.fontHinting, "standard", undefined, applyFontHinting);
 
   /* Apply persisted HMR properties once — the store is authoritative.
      The sidebar font has no boot-time application (FOUC-free: the sidebar
