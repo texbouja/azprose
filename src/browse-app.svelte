@@ -25,7 +25,8 @@ import { extFromPath } from "@/lib/editor-languages";
 import { setRootPath } from "@/stores/root-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { getFileIndex } from "@/lib/vault-index";
-import { PanelState, normPath } from "@/lib/panel-store";
+import { normPath } from "@/lib/panel-store";
+import { navState } from "@/nav/nav-state.svelte";
 import { buildDeclaredToc, type DeclaredToc } from "@/lib/toc-declared";
 import { parentLabelOf } from "@/lib/browse-window";
 import {
@@ -36,7 +37,6 @@ import {
   navStackForwardStep,
   navStackPush,
   navStackPushForward,
-  type NavStack,
 } from "@/lib/nav-stack";
 import { parseAddress, filterIndexEntries, filterHelpArticles } from "@/nav/address";
 // `@/help/catalog` (PAS le baril `@/help`) : le baril réexporte aussi
@@ -77,61 +77,24 @@ const params = new URLSearchParams(location.search);
 const root = params.get("root");
 setRootPath(root);
 
-/**
- * Version RUNTIME du panel — bump à chaque mutation (`PanelState.notify`, via
- * le callback `onSessionChange`). Convention du reste de l'app (cf.
- * `_panelVersion` de app.svelte) : `PanelState.tabs` n'est pas un `$state`,
- * cette révision est le pont vers la réactivité Svelte. Aucun callback
- * `onFileOpen`/`onError` : NAV ne touche jamais à la session ni aux
- * notifications de la fenêtre de projet (R1/R3).
- */
-let panelRev = $state(0);
-const panel = new PanelState("nav", {
-  onSessionChange: () => { panelRev++; },
-  // Case 3 (matrice, cf. panel-store.ts) : la pile back/forward de l'onglet
-  // (et sa page PDF cible, phase 6) meurent avec lui.
-  onTabClosed: (tabId) => { navStacks.delete(tabId); pdfPages.delete(tabId); },
-});
+// Panel, piles back/forward et pages PDF cibles : état de FENÊTRE, à la portée
+// module de nav-state.svelte.ts (phase 1.4) — survit au remontage HMR de CE
+// composant, contrairement à un scope d'instance ($state ici). Voir le
+// commentaire de tête de nav-state.svelte.ts pour le piège que ça corrige.
 
-let tabs = $derived.by(() => { panelRev; return panel.tabs; });
-let activeTabId = $derived.by(() => { panelRev; return panel.activeTabId; });
+let tabs = $derived.by(() => { navState.panelRev; return navState.panel.tabs; });
+let activeTabId = $derived.by(() => { navState.panelRev; return navState.panel.activeTabId; });
 let activeTab = $derived.by(() => tabs.find(tb => tb.id === activeTabId) ?? null);
 
-/**
- * Pile back/forward PAR ONGLET — closure PURE hors runes (une `Map` mutée en
- * place n'a pas à être `$state` : `stackRev` est le pont de réactivité, comme
- * `panelRev` pour le panel). Un onglet fermé purge sa pile (`onTabClosed`
- * ci-dessus).
- */
-const navStacks = new Map<string, NavStack>();
-let stackRev = $state(0);
-
-/** Page PDF cible par onglet (phase 6) — closure PURE, comme `navStacks` :
- *  posée par le listener `azprose:pdf-rect-navigate`, lue au rendu
- *  (`LazyPdfViewer` prop `page`). Pas de `azprose:pdf-scroll-to-rect` pour la
- *  page elle-même : `PdfViewer` n'enregistre son listener qu'APRÈS le montage
- *  (piège de timing déjà rencontré pour l'ancre markdown) — la PROP `page`
- *  n'a pas ce problème, elle est lue dès le premier rendu du composant. */
-const pdfPages = new Map<string, number>();
-
-function stackFor(tabId: string): NavStack {
-  let s = navStacks.get(tabId);
-  if (!s) {
-    s = createNavStack();
-    navStacks.set(tabId, s);
-  }
-  return s;
-}
-
 let canGoBack = $derived.by(() => {
-  stackRev;
+  navState.stackRev;
   const id = activeTabId;
-  return id ? navStackCanGoBack(navStacks.get(id) ?? createNavStack()) : false;
+  return id ? navStackCanGoBack(navState.navStacks.get(id) ?? createNavStack()) : false;
 });
 let canGoForward = $derived.by(() => {
-  stackRev;
+  navState.stackRev;
   const id = activeTabId;
-  return id ? navStackCanGoForward(navStacks.get(id) ?? createNavStack()) : false;
+  return id ? navStackCanGoForward(navState.navStacks.get(id) ?? createNavStack()) : false;
 });
 
 /** Message TRANSIENT affiché au-dessus du contenu (cible introuvable, format
@@ -148,7 +111,7 @@ function say(message: string): void {
   noticeTimer = setTimeout(() => { notice = null; }, 4000);
 }
 
-/** Compteur de RENDU (indépendant de `panelRev`, qui bouge aussi pour des
+/** Compteur de RENDU (indépendant de `navState.panelRev`, qui bouge aussi pour des
  *  raisons sans rapport avec le contenu affiché — fermeture d'un AUTRE onglet,
  *  réordonnancement…) : force `MarkdownPreview`/`DocPreview` à rejouer leur
  *  effet de rendu à chaque navigation aboutie. */
@@ -318,12 +281,12 @@ async function openInEditor(): Promise<void> {
 let presentationAvailable = $derived(!!activeTab?.path && extFromPath(activeTab.path) === "md");
 let presentationActive = $derived(activeTab?.renderMode === "presentation");
 
-/** `setRenderMode` ne notifie pas (panel-store.ts) — bump manuel de `panelRev`. */
+/** `setRenderMode` ne notifie pas (panel-store.ts) — bump manuel via `navState.bumpPanel()`. */
 function togglePresentation(): void {
   const tab = activeTab;
   if (!tab) return;
-  panel.setRenderMode(tab.id, tab.renderMode === "presentation" ? "preview" : "presentation");
-  panelRev++;
+  navState.panel.setRenderMode(tab.id, tab.renderMode === "presentation" ? "preview" : "presentation");
+  navState.bumpPanel();
 }
 
 let isFullscreen = $state(false);
@@ -349,7 +312,7 @@ $effect(() => {
 });
 
 function setWindowTitle(): void {
-  const tab = panel.activeTab;
+  const tab = navState.panel.activeTab;
   void getCurrentWindow().setTitle(tab && tab.path ? basename(tab.path) : t("browse.emptyTab"));
 }
 
@@ -359,9 +322,9 @@ function setWindowTitle(): void {
  *  publique de `tabs`/`activeTabId`, hors des méthodes de `PanelState`). */
 function openEmptyTab(): void {
   const id = crypto.randomUUID();
-  panel.tabs = [...panel.tabs, { id, title: t("browse.emptyTab"), path: "", source: "", savedContent: "" }];
-  panel.activeTabId = id;
-  panelRev++;
+  navState.panel.tabs = [...navState.panel.tabs, { id, title: t("browse.emptyTab"), path: "", source: "", savedContent: "" }];
+  navState.panel.activeTabId = id;
+  navState.bumpPanel();
   setWindowTitle();
 }
 
@@ -369,7 +332,7 @@ function openEmptyTab(): void {
  *  échec l'onglet reste INCHANGÉ (contrat de `PanelState.repoint`) — rien
  *  n'est perdu, on se contente de le dire. */
 async function loadInPlace(tabId: string, path: string, heading?: string | null): Promise<boolean> {
-  const { ok } = await panel.repoint(tabId, path, { silent: true });
+  const { ok } = await navState.panel.repoint(tabId, path, { silent: true });
   if (!ok) {
     say(t("browse.loadFailed", { name: basename(path) }));
     return false;
@@ -384,16 +347,16 @@ async function loadInPlace(tabId: string, path: string, heading?: string | null)
  *  d'onglet actif). Dédup NATURELLE de `PanelState.open` : un onglet déjà
  *  ouvert sur ce contenu est activé plutôt que dupliqué. */
 async function loadNewTab(path: string, heading?: string | null): Promise<boolean> {
-  const before = panel.tabs.length;
+  const before = navState.panel.tabs.length;
   try {
-    await panel.open(path, { silent: true });
+    await navState.panel.open(path, { silent: true });
   } catch {
     say(t("browse.loadFailed", { name: basename(path) }));
     return false;
   }
   // `silent: true` avale les échecs (format non ouvrable, lecture impossible)
   // sans lever — un onglet manquant après l'appel EST l'échec.
-  if (panel.tabs.length === before && !panel.tabs.some(tb => normPath(tb.path) === normPath(path))) {
+  if (navState.panel.tabs.length === before && !navState.panel.tabs.some(tb => normPath(tb.path) === normPath(path))) {
     say(t("browse.loadFailed", { name: basename(path) }));
     return false;
   }
@@ -421,46 +384,46 @@ async function navigateTo(path: string, heading: string | null, newTab: boolean)
   const tabId = current.id;
   const ok = await loadInPlace(tabId, path, heading);
   if (ok && previousPath) {
-    navStackPush(stackFor(tabId), previousPath);
-    stackRev++;
+    navStackPush(navState.stackFor(tabId), previousPath);
+    navState.bumpStack();
   }
 }
 
 async function goBack(): Promise<void> {
   const tab = activeTab;
   if (!tab) return;
-  const stack = stackFor(tab.id);
+  const stack = navState.stackFor(tab.id);
   const target = navStackBack(stack);
   if (!target) return;
   const current = tab.path;
   const ok = await loadInPlace(tab.id, target);
   if (ok) navStackPushForward(stack, current);
   else navStackPush(stack, target);
-  stackRev++;
+  navState.bumpStack();
 }
 
 async function goForward(): Promise<void> {
   const tab = activeTab;
   if (!tab) return;
-  const stack = stackFor(tab.id);
+  const stack = navState.stackFor(tab.id);
   const target = navStackForwardStep(stack, tab.path);
   if (!target) return;
   if (!(await loadInPlace(tab.id, target))) navStackPushForward(stack, target);
-  stackRev++;
+  navState.bumpStack();
 }
 
 function selectTab(id: string): void {
   // `wake: false` : les onglets NAV ne sont jamais dormants (aucun restore de
   // session) — `select` par défaut appellerait `wake()` pour rien à chaque clic.
-  panel.select(id, { wake: false });
+  navState.panel.select(id, { wake: false });
   setWindowTitle();
 }
 
 function closeTab(id: string): void {
-  panel.close(id);
+  navState.panel.close(id);
   // Jamais zéro onglet (R6) : fermer le dernier onglet rouvre un onglet vide,
   // l'équivalent NAV d'une page « nouvel onglet ».
-  if (panel.tabs.length === 0) openEmptyTab();
+  if (navState.panel.tabs.length === 0) openEmptyTab();
   else setWindowTitle();
 }
 
@@ -528,10 +491,10 @@ onMount(() => {
     if (!detail.path) return;
     void loadNewTab(detail.path, null).then((ok) => {
       if (!ok) return;
-      const tab = panel.activeTab;
+      const tab = navState.panel.activeTab;
       if (tab && detail.page) {
-        pdfPages.set(tab.id, detail.page);
-        panelRev++; // relit pdfPages au rendu (cf. commentaire de la déclaration)
+        navState.pdfPages.set(tab.id, detail.page);
+        navState.bumpPanel(); // relit pdfPages au rendu (cf. commentaire de la déclaration)
       }
     });
   };
@@ -585,7 +548,7 @@ onMount(() => {
         panelId="nav"
         onSelect={selectTab}
         onClose={closeTab}
-        onReorder={(from, to) => panel.reorder(from, to)}
+        onReorder={(from, to) => navState.panel.reorder(from, to)}
       />
     </div>
     <div class="browse__address-wrap">
@@ -663,7 +626,7 @@ onMount(() => {
       {#if !activeTab || !activeTab.path}
         <p class="browse__empty" role="status">{t("browse.emptyHint")}</p>
       {:else if isPdfPath(activeTab.path)}
-        <LazyPdfViewer path={activeTab.path} rev={contentRev} page={pdfPages.get(activeTab.id) ?? null} />
+        <LazyPdfViewer path={activeTab.path} rev={contentRev} page={navState.pdfPages.get(activeTab.id) ?? null} />
       {:else if presentationActive}
         <LazySlideDeck
           value={activeTab.source}
