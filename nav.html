@@ -14,8 +14,10 @@
 
     <style>
       /* Boot screen — painted before any JS bundle loads. IDENTIQUE à
-         index.html (duplication temporaire, résorbée en phase 2.5 :
-         scripts/build-themes.mjs générera ce fragment pour les deux). */
+         index.html — duplication ASSUMÉE (hors périmètre de la phase 2.5,
+         qui ne régénère que les tables BG/LIGHT ci-dessous, seule partie
+         dérivée de themes.json ; ces règles CSS statiques n'ont pas de
+         source séparée à générer). */
       #boot {
         position: fixed;
         inset: 0;
@@ -60,23 +62,26 @@
 
     <script>
       /* Runs synchronously right after #boot is parsed: colors it from the
-         persisted theme before a single byte of the app bundle executes.
-         IDENTIQUE à index.html (duplication temporaire, cf. phase 2.5). */
+         persisted theme before a single byte of the app bundle executes. */
       (function () {
+        /* GÉNÉRÉ par scripts/build-themes.mjs depuis themes.json — NE PAS
+           éditer les tables BG/LIGHT ci-dessous à la main (vague 2, phase
+           2.5). Éditer src/styles/themes.json, puis `bun run themes`. */
         var BG = {
-          latte:       '#eff1f5',
-          frappe:      '#303446',
-          macchiato:   '#24273a',
-          mocha:       '#1e1e2e',
+          latte:                   '#eff1f5',
+          frappe:                  '#303446',
+          macchiato:               '#24273a',
+          mocha:                   '#1e1e2e',
           'skarline-fleet-dark':   '#18191B',
+          'skarline-fleet-light':  '#FFFFFF',
           'skarline-fleet-purple': '#1C1827',
-          'skarline-fleet-light':  '#ffffff',
           'skarline-xcode-dark':   '#292a30',
           'skarline-xcode-light':  '#ffffff',
         };
         var LIGHT = {
           latte: 1, 'skarline-fleet-light': 1, 'skarline-xcode-light': 1,
         };
+        /* /GÉNÉRÉ */
         var t = '';
         try { t = localStorage.getItem('mdview.theme') || ''; } catch (e) {}
         if (t === 'system' || !BG[t]) {
@@ -91,7 +96,8 @@
     <script>
       /* UI font override from localStorage — always sets --*-temp so
          tokens.css only needs var(--font-ui-temp) without fallback.
-         IDENTIQUE à index.html (duplication temporaire, cf. phase 2.5). */
+         IDENTIQUE à index.html — duplication ASSUMÉE (pas de source dérivée
+         de themes.json ici, hors périmètre de la phase 2.5). */
       (function () {
         try {
           function readJson(key) {

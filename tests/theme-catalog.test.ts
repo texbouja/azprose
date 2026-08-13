@@ -1,4 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { BUILTIN_THEMES, THEME_GROUPS, readMode, getSystemTheme } from "../src/lib/theme";
 import { STORAGE_KEYS } from "../src/lib/storage";
 
@@ -79,3 +81,33 @@ test("localStorage contient mocha → readMode() === mocha", () => {
 afterAll(() => {
   delete (globalThis as Record<string, unknown>).window;
 });
+
+// Fragment de boot (phase 2.5) — index.html ET nav.html peignent #boot avant
+// tout JS, depuis une table BG générée par scripts/build-themes.mjs à partir
+// de themes.json. C'est le test qui empêche la dérive : ajouter un thème sans
+// régénérer le boot (`bun run themes`) devient une erreur rouge ici, pas un
+// flash silencieux au démarrage d'une des deux fenêtres.
+const ROOT = join(import.meta.dir, "..");
+
+function extractBootBgKeys(htmlPath: string): Set<string> {
+  const html = readFileSync(htmlPath, "utf8");
+  const m = html.match(/var BG = \{([\s\S]*?)\};/);
+  if (!m) throw new Error(`table BG introuvable dans ${htmlPath}`);
+  const keys = new Set<string>();
+  for (const line of m[1].split("\n")) {
+    const bare = line.match(/^\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/);
+    const quoted = line.match(/^\s*'([^']+)'\s*:/);
+    const key = bare?.[1] ?? quoted?.[1];
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+for (const html of ["index.html", "nav.html"]) {
+  test(`chaque identifiant de BUILTIN_THEMES a une entrée dans la table BG générée de ${html}`, () => {
+    const keys = extractBootBgKeys(join(ROOT, html));
+    for (const id of BUILTIN_THEMES) {
+      expect(keys.has(id)).toBe(true);
+    }
+  });
+}

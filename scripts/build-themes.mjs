@@ -98,6 +98,59 @@ function build() {
     base.replace("/* @THEMES@ */", renderThemes(themes));
   writeFileSync(TOKENS, out, "utf8");
   console.log(`build: tokens.css ← tokens.base.css + themes.json (${themes.length} themes)`);
+  return themes;
 }
 
-build();
+// ── Fragment de boot (vague 2, phase 2.5) ────────────────────────────────
+// index.html ET nav.html peignent #boot AVANT tout JS de l'app (script
+// inline, lu directement dans localStorage) — ils ont chacun leur PROPRE
+// copie des tables BG (fond par thème) / LIGHT (thèmes clairs), désormais
+// régénérées ici plutôt que recopiées à la main : deux points d'entrée à
+// tenir cohérents (phase 2.2) est exactement ce qui rend cette duplication
+// dangereuse à laisser manuelle (un thème ajouté sans mettre à jour les DEUX
+// fichiers → flash silencieux dans l'un des deux au démarrage).
+const HTML_TARGETS = [resolve(root, "index.html"), resolve(root, "nav.html")];
+const FRAGMENT_START = /\/\* GÉNÉRÉ par scripts\/build-themes\.mjs[\s\S]*?\*\/\n(\s*)var BG = \{[\s\S]*?\};\n\s*var LIGHT = \{[\s\S]*?\};\n\s*\/\* \/GÉNÉRÉ \*\//;
+
+function isBareIdentifier(name) {
+  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
+}
+
+function quoteKey(name) {
+  return isBareIdentifier(name) ? name : `'${name}'`;
+}
+
+function renderBootFragment(themes, indent) {
+  // Nom canonique = le PREMIER de `names` (les alias comme "light"/"dark" ne
+  // sont jamais entrés dans ces tables — convention déjà en place à la main).
+  const entries = themes.map((t) => ({ key: t.names[0], bg: t.vars["--bg"], light: t.colorScheme === "light" }));
+  const width = Math.max(...entries.map((e) => quoteKey(e.key).length + 1)); // +1 pour le ":"
+  const bgLines = entries
+    .map((e) => `${indent}  ${(quoteKey(e.key) + ":").padEnd(width)} '${e.bg}',`)
+    .join("\n");
+  const lightKeys = entries.filter((e) => e.light).map((e) => `${quoteKey(e.key)}: 1`).join(", ");
+  return (
+    `/* GÉNÉRÉ par scripts/build-themes.mjs depuis themes.json — NE PAS\n` +
+    `${indent}   éditer les tables BG/LIGHT ci-dessous à la main (vague 2, phase\n` +
+    `${indent}   2.5). Éditer src/styles/themes.json, puis \`bun run themes\`. */\n` +
+    `${indent}var BG = {\n${bgLines}\n${indent}};\n` +
+    `${indent}var LIGHT = {\n${indent}  ${lightKeys},\n${indent}};\n` +
+    `${indent}/* /GÉNÉRÉ */`
+  );
+}
+
+function buildBootFragments(themes) {
+  for (const path of HTML_TARGETS) {
+    const html = readFileSync(path, "utf8");
+    const m = html.match(FRAGMENT_START);
+    if (!m) throw new Error(`boot: marqueur GÉNÉRÉ introuvable dans ${path} (bloc BG/LIGHT renommé ou supprimé ?)`);
+    const indent = m[1];
+    const fragment = renderBootFragment(themes, indent);
+    const out = html.slice(0, m.index) + fragment + html.slice(m.index + m[0].length);
+    writeFileSync(path, out, "utf8");
+  }
+  console.log(`build: fragment de boot (BG/LIGHT) ← themes.json → ${HTML_TARGETS.map((p) => p.split("/").pop()).join(", ")}`);
+}
+
+const builtThemes = build();
+buildBootFragments(builtThemes);
