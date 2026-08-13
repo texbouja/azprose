@@ -9,6 +9,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 
 import { checkForUpdate } from "@/lib/updater";
 import { windowTitle } from "@/lib/window-title";
+import { removeBootSplash } from "@/shell/boot";
 import { language, getT } from "@/lib/i18n";
 import { overlays } from "@/stores/overlays.svelte";
 import { notifications } from "@/stores/notifications.svelte";
@@ -120,7 +121,6 @@ import ConsolePanel from "@/components/console/ConsolePanel.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { latexSettings } from "@/stores/latex-settings.svelte";
 import { theme } from "@/stores/theme.svelte";
-import { initTheme } from "@/lib/theme";
 import { editorSettings } from "@/stores/editor-settings.svelte";
 import { collesSettings } from "@/stores/colles-settings.svelte";
 import { createHandlers, type HandlerContext } from "@/lib/handlers";
@@ -153,9 +153,8 @@ import {
 } from "@/lib/editor-mode";
 import "./app.css";
 
-// Applique le thème persisté et branche matchMedia AVANT tout rendu (phase 1.2,
-// R5) — sans cet appel data-theme n'est jamais posé (c'était le bug de NAV).
-initTheme();
+// Thème + polices sont appliqués par initPresentation() dans main.ts, AVANT
+// le montage de ce composant (vague 2, phase 2.1 — src/shell/presentation.ts).
 
 let t = $derived(getT($language));
 
@@ -404,18 +403,14 @@ $effect(() => {
   else themeBootDone = true;
 });
 
-// Efface l'écran de boot une fois le thème appliqué (themeMode) → pas de flash.
+// Efface l'écran de boot une fois la config du projet chargée (themeBootDone)
+// → pas de flash. Le MOMENT (attendre la config) est propre à PROJET ; la
+// mécanique du retrait (fondu) vient de src/shell/boot.ts (phase 2.1).
 let splashRemoved = false;
 $effect(() => {
   if (!themeBootDone || splashRemoved) return;
   splashRemoved = true;
-  requestAnimationFrame(() => {
-    const boot = document.getElementById("boot");
-    if (boot) {
-      boot.style.opacity = "0";
-      boot.addEventListener("transitionend", () => boot.remove(), { once: true });
-    }
-  });
+  removeBootSplash();
 });
 
 $effect(() => {

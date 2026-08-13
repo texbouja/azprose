@@ -151,16 +151,12 @@ function createGeneralSettings() {
   const previewMono = persistedState<string>(STORAGE_KEYS.previewMonoFamily, "", undefined, applyPreviewMonoFont);
   const hinting = persistedState<FontHinting>(STORAGE_KEYS.fontHinting, "standard", undefined, applyFontHinting);
 
-  /* Apply persisted HMR properties once — the store is authoritative.
-     The sidebar font has no boot-time application (FOUC-free: the sidebar
-     renders only after JS), so this init call is what applies it on
-     startup. UI/mono/preview are re-applied too, from the parsed store
-     state, in case the boot read was stale. */
-  applyUiFont(uiFont.current);
-  applyUiMonoFont(uiMono.current);
-  applyUiSidebarFont(uiSidebar.current);
-  applyPreviewFont(previewFont.current, previewCustomFont.current);
-  applyPreviewMonoFont(previewMono.current);
+  // L'application initiale (boot) est faite par initPresentation()
+  // (src/shell/presentation.ts, phase 2.1) — explicite, une fois par
+  // fenêtre, plutôt qu'un effet de bord implicite au premier import de ce
+  // module (même correctif que initTheme() en phase 1.2 : un effet de bord
+  // déclenché par n'importe quel import transitif est invisible et donc
+  // facile à casser sans le remarquer).
 
   return {
     get defaultEditorMode() { return mode.current; },

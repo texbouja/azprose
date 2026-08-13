@@ -47,10 +47,10 @@ import { parseAddress, filterIndexEntries, filterHelpArticles } from "@/nav/addr
 import { catalog as helpCatalog } from "@/help/catalog";
 import { helpFilePath, helpIndexPath, isHelpPath } from "@/lib/help-install";
 import { getT, language } from "@/lib/i18n";
-import { initTheme } from "@/lib/theme";
 import { persistedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS } from "@/lib/storage";
 import { windowTitle } from "@/lib/window-title";
+import { removeBootSplash } from "@/shell/boot";
 // Feuilles du RENDU markdown ET du modèle d'onglets — la fenêtre de
 // navigation emprunte MarkdownPreview/DocPreview/TabsBar à la fenêtre de
 // projet, elle doit donc charger les mêmes styles qu'eux. Sans elles, le HTML
@@ -80,10 +80,10 @@ import "@/styles/chrome/titlebar.css";
 // dépendance non sollicitée). Le composant reste le même (LazyPdfViewer) :
 // seule la feuille de style change de moment de chargement.
 
-// Applique le thème persisté et branche matchMedia AVANT tout rendu (phase 1.2,
-// R5) — c'est le correctif direct du bug diagnostiqué : NAV ne posait jamais
-// data-theme et restait figée en latte clair quel que soit le thème choisi.
-initTheme();
+// Thème + polices sont appliqués par initPresentation() dans main.ts, AVANT
+// le montage de ce composant (vague 2, phase 2.1 — src/shell/presentation.ts).
+// C'est le correctif direct du bug diagnostiqué en phase 1.2 : NAV ne posait
+// jamais data-theme et restait figée en latte clair quel que soit le thème.
 
 let t = $derived(getT($language));
 
@@ -470,9 +470,11 @@ async function resolveTarget(detail: { path?: string; target?: string }): Promis
 }
 
 onMount(() => {
-  // Le boot screen (index.html) est retiré par app.svelte dans la fenêtre de
-  // projet ; cette fenêtre-ci a son propre montage.
-  document.getElementById("boot")?.remove();
+  // NAV n'attend rien (pas de config de projet à charger) : le splash peut
+  // s'effacer dès le montage — même mécanique de fondu que PROJET
+  // (src/shell/boot.ts, phase 2.1), qui l'appelle après sa propre condition
+  // de prêt (themeBootDone).
+  removeBootSplash();
 
   // État initial du bouton plein écran (R5 : la fenêtre PEUT démarrer en
   // plein écran si la fenêtre de lancement l'était — browse-window.ts).
