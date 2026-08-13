@@ -83,7 +83,6 @@ test("canPinTab : seuls les tabs de fichier TEXTE sont épinglables", () => {
   expect(canPinTab(mkTab({ path: "/a.tex" }))).toBe(true);
   expect(canPinTab(mkTab({ path: "/a.pdf" }))).toBe(false); // viewer dédié
   expect(canPinTab(mkTab({ path: "/a.png" }))).toBe(false); // image
-  expect(canPinTab(mkTab({ path: "/help/index.md", kind: "doc" }))).toBe(false); // aide
   expect(canPinTab(mkTab({ path: "spreadsheet://1", kind: "spreadsheet" }))).toBe(false); // outil
   expect(canPinTab(mkTab({ path: "/noext" }))).toBe(false);
 });
@@ -112,9 +111,9 @@ test("setPinned : épingler un tab, un seul épinglé par format (commutation)",
   expect(tabSpace(p.tabs[1])).toBe("free");
 });
 
-test("setPinned : no-op sur un tab non épinglable (doc/outil/pdf)", () => {
+test("setPinned : no-op sur un tab non épinglable (outil/pdf)", () => {
   const p = new PanelState("main");
-  p.tabs = [mkTab({ id: "d", path: "/help/x.md", kind: "doc" })];
+  p.tabs = [mkTab({ id: "d", path: "spreadsheet://1", kind: "spreadsheet" })];
   p.setPinned("d", true);
   expect(tabSpace(p.tabs[0])).toBe("free");
 });

@@ -348,3 +348,40 @@ export async function buildDeclaredToc(opts: DeclaredTocOptions): Promise<Declar
     structuralHash: hashTree(root),
   };
 }
+
+// ── Voisins de lecture (pied de page « précédent / suivant ») ────────────
+
+export interface DeclaredNeighbor {
+  path: string;
+  label: string;
+}
+
+/** Aplatit les nœuds FICHIER de l'arbre en ordre de document (préordre,
+ *  profondeur d'abord) — les headings n'y figurent pas : la navigation
+ *  précédent/suivant se fait de FICHIER à FICHIER, comme les pages d'un livre. */
+function flattenFileNodes(node: TocFileNode, out: TocFileNode[]): void {
+  out.push(node);
+  for (const c of node.children) {
+    if (c.kind === "file") flattenFileNodes(c, out);
+  }
+}
+
+/**
+ * Voisins de lecture d'un document dans l'arbre déclaré (§3.4/R9) : ordre de
+ * document du `sommaire:` — remplace l'ancien catalogue statique ordonné.
+ * `{ prev: null, next: null }` si l'arbre est vide ou si `path` n'y figure
+ * pas (repli "single", ou document hors de l'arbre affiché).
+ */
+export function declaredNeighbors(
+  root: TocFileNode | null,
+  path: string,
+): { prev: DeclaredNeighbor | null; next: DeclaredNeighbor | null } {
+  if (!root) return { prev: null, next: null };
+  const flat: TocFileNode[] = [];
+  flattenFileNodes(root, flat);
+  const idx = flat.findIndex((n) => n.path === path);
+  if (idx === -1) return { prev: null, next: null };
+  const toNeighbor = (n: TocFileNode | undefined): DeclaredNeighbor | null =>
+    n ? { path: n.path, label: n.label } : null;
+  return { prev: toNeighbor(flat[idx - 1]), next: toNeighbor(flat[idx + 1]) };
+}

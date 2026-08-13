@@ -50,7 +50,7 @@ import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
 import { tabPinFormat, tabSpace } from "@/lib/panel-store";
-import { openBrowseWindow } from "@/lib/browse-window";
+import { openOrFocusBrowseWindow } from "@/lib/browse-window";
 import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
@@ -285,33 +285,20 @@ let sideActiveTabId = $derived.by(() => { _panelVersion; return pm.side.activeTa
 let sideActivePath = $derived.by(() => { _panelVersion; return pm.side.activePath; });
 
 // Référence de la TOC sidebar : tab viewer md actif (side), sinon .md actif
-// de l'éditeur (main). Source = buffer live du fichier retenu.
-// Tab doc (aide intégrée) → la TOC est TOUJOURS celle de la racine index.md,
-// quel que soit l'article consulté (décision utilisateur) — source lue sur
-// disque (le buffer ne contient que l'article courant).
+// de l'éditeur (main). Source = buffer live du fichier retenu. (chantier
+// fenêtre NAV, phase 7) L'aide intégrée n'a plus de tab ici — l'ancienne
+// branche `kind === "doc"` a disparu avec elle.
 let tocRefPath = $derived.by(() => {
   _panelVersion;
-  if (pm.side.activeTab?.kind === "doc" && rootPath) return helpIndexPath(rootPath);
   if (pm.side.activePath && extFromPath(pm.side.activePath) === "md") return pm.side.activePath;
   if (pm.main.activePath && extFromPath(pm.main.activePath) === "md") return pm.main.activePath;
   return null;
 });
 let tocRefSource = $derived.by(() => {
   _panelVersion;
-  // Tab doc (aide) → TOC lue sur disque (index.md), jamais le buffer.
-  if (pm.side.activeTab?.kind === "doc") return null;
-  // Sinon : contenu LIVE du fichier retenu, via le store (autorité unique) —
-  // la frappe dans l'éditeur met la TOC à jour au fil de l'eau.
+  // Contenu LIVE du fichier retenu, via le store (autorité unique) — la
+  // frappe dans l'éditeur met la TOC à jour au fil de l'eau.
   return tocRefPath ? contentFor(tocRefPath) : null;
-});
-
-// Mode aide : l'article de la doc intégrée actuellement affiché dans le
-// lecteur (tab side kind === "doc", chemin = l'article courant après openDoc).
-// Transmis à la TOC sidebar pour la surbrillance de la branche + le dépli par
-// défaut de l'article courant (l'arbre de l'aide reflète TOUT le catalogue).
-let helpActivePath = $derived.by(() => {
-  _panelVersion;
-  return pm.side.activeTab?.kind === "doc" ? pm.side.activePath : null;
 });
 
 $effect(() => {
@@ -645,14 +632,14 @@ $effect(() => {
 });
 
 // Fenêtre de NAVIGATION (Phase F — D2/R5) : bouton de la toolbar side. Ouvre
-// une fenêtre fille browser sur le fichier affiché — la session n'est PAS
-// touchée (le tab de lancement reste actif tel quel), la fenêtre se ferme avec
-// celle du projet (close-handler).
+// (ou cible, SINGLETON — R2) la fenêtre fille NAV sur le fichier affiché — la
+// session n'est PAS touchée (le tab de lancement reste actif tel quel), la
+// fenêtre se ferme avec celle du projet (close-handler).
 $effect(() => {
   const onBrowseOpen = (e: Event) => {
     const detail = (e as CustomEvent<{ path?: string }>).detail;
     if (!detail?.path) return;
-    void openBrowseWindow({ path: detail.path, root: getRootPath() }).catch((err) => {
+    void openOrFocusBrowseWindow({ path: detail.path, root: getRootPath() }).catch((err) => {
       notifications.setLoadError({ title: t("browse.open"), message: `${err}` });
     });
   };
@@ -723,52 +710,19 @@ $effect(() => {
   return () => window.removeEventListener("azprose:preview-reload", onReload);
 });
 
-// ── Documentation intégrée (DocPreview) ─────────────────────────────────────
-// Ouvre (ou ré-affecte) le tab doc unique en side panel avec le contenu d'un
-// article .azprose/help. Lecture seule : `source` = contenu disque, jamais de
-// draft. Après l'ouverture, un saut d'en-tête est délégué au preview via le
-// mécanisme scroll-target existant (doc.navigate).
-let docArticleOpen = false; // garde : l'effet d'écoute est monté une fois
-$effect(() => {
-  if (docArticleOpen) return;
-  docArticleOpen = true;
-  const onDocNavigate = (e: Event) => {
-    const { path, heading } = (e as CustomEvent<{ path: string; heading?: string }>).detail;
-    if (!path || !isHelpPath(path, getRootPath())) return;
-    navigateVoid(navDeps, { type: "doc-navigate", path, heading });
-  };
-  window.addEventListener("azprose:doc-navigate", onDocNavigate);
-  return () => window.removeEventListener("azprose:doc-navigate", onDocNavigate);
-});
-
-async function openDocArticle(path: string, heading?: string): Promise<void> {
-  const rp = getRootPath();
-  if (!rp || !isHelpPath(path, rp)) return;
-  // Le store lit le contenu depuis le disque (.azprose/help, matérialisé par
-  // ensureHelpInstalled) — source = savedContent, lecture seule, jamais de draft.
-  await pm.openDoc(path, { silent: true });
-  if (heading) {
-    setScrollTarget(heading);
-    window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", {
-      detail: { path, line: null, heading },
-    }));
-  }
-}
-
-/** Ouvre l'aide intégrée dans une FENÊTRE de navigation (Phase F — D2 :
- *  « l'Aide utilise le même mécanisme » que la lecture en chaîne ; la doc sort
- *  des panneaux). Repli sur le tab doc side si la fenêtre ne peut pas s'ouvrir. */
+/** Ouvre l'aide intégrée dans la fenêtre NAV (chantier fenêtre NAV, phase 7 —
+ *  R9 : l'aide utilise EXCLUSIVEMENT le mécanisme de navigation, plus de tab
+ *  doc dans la fenêtre de projet). SINGLETON par fenêtre de projet (R2) :
+ *  si NAV est déjà ouverte, l'index est monté dans un NOUVEL onglet de cette
+ *  fenêtre plutôt que d'en ouvrir une seconde. */
 async function openHelp(): Promise<void> {
   const rp = getRootPath();
-  if (rp) {
-    try {
-      await openBrowseWindow({ path: helpIndexPath(rp), root: rp, help: true });
-      return;
-    } catch {
-      // Fenêtre indisponible : l'aide reste accessible dans le side panel.
-    }
+  if (!rp) return;
+  try {
+    await openOrFocusBrowseWindow({ path: helpIndexPath(rp), root: rp });
+  } catch (err) {
+    notifications.setLoadError({ title: t("browse.open"), message: `${err}` });
   }
-  await navigate(navDeps, { type: "open-help" });
 }
 
 $effect(() => {
@@ -1525,7 +1479,6 @@ let navDeps: NavDeps = {
   readText,
   trackMtime,
   jumpToLine: handleJumpToLine,
-  openDocArticle,
   ensureDailyNote: (date: string) => {
     const rp = getRootPath();
     if (!rp) return Promise.resolve(null);
@@ -1729,7 +1682,6 @@ let cmds = $derived(
       {activePath}
       tocRefPath={tocRefPath}
       tocRefSource={tocRefSource}
-      helpActivePath={helpActivePath}
       width={sidebarWidth.current}
       onWidthChange={(next) => sidebarWidth.current = next}
       onAddFolder={handleAddFolder}

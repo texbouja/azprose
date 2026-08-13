@@ -16,6 +16,7 @@
  */
 import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
 import { WebviewWindow, getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
+import { emitTo } from "@tauri-apps/api/event";
 import { basename } from "@/lib";
 
 /** Préfixe de label d'une fenêtre fille ; le label du PARENT y est encodé
@@ -73,8 +74,6 @@ export interface BrowseWindowOptions {
   path: string;
   /** Racine du projet (résolution des wikilinks, index du vault). */
   root: string | null;
-  /** Article de l'aide intégrée (même mécanisme — la doc sort des panneaux). */
-  help?: boolean;
 }
 
 /** Ouvre une fenêtre fille de navigation sur `path`. */
@@ -87,7 +86,6 @@ export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<Webvi
   const { width, height } = browseWindowSize(monitor);
   const params = new URLSearchParams({ browse: opts.path });
   if (opts.root) params.set("root", opts.root);
-  if (opts.help) params.set("help", "1");
   return new WebviewWindow(browseWindowLabel(parent.label, ++browseSeq), {
     url: `index.html?${params.toString()}`,
     title: basename(opts.path),
@@ -102,13 +100,36 @@ export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<Webvi
   });
 }
 
+/** Fenêtre(s) NAV existante(s) pour CETTE fenêtre de projet. */
+async function findBrowseChildren(parentLabel: string): Promise<WebviewWindow[]> {
+  const windows = await getAllWebviewWindows().catch(() => []);
+  return windows.filter((w) => isBrowseChildOf(w.label, parentLabel));
+}
+
+/**
+ * Ouvre `path` dans la fenêtre NAV — SINGLETON par fenêtre de projet (R2,
+ * chantier fenêtre NAV, phase 7) : si une fenêtre NAV existe déjà pour CETTE
+ * fenêtre de projet, `path` est monté dans un NOUVEL onglet de cette fenêtre
+ * (`azprose:nav-open`, symétrique de R10 — `azprose:open-file`) et la
+ * fenêtre reprend le focus ; sinon une nouvelle fenêtre NAV est ouverte
+ * (`openBrowseWindow`). Utilisé par TOUS les lanceurs de NAV (aide, bouton
+ * de la toolbar side, icône compass du breadcrumb — phase 8) : une seule
+ * fenêtre NAV par projet, jamais un doublon silencieux.
+ */
+export async function openOrFocusBrowseWindow(opts: BrowseWindowOptions): Promise<void> {
+  const parent = getCurrentWindow();
+  const [existing] = await findBrowseChildren(parent.label);
+  if (existing) {
+    await emitTo(existing.label, "azprose:nav-open", opts.path);
+    await existing.setFocus().catch(() => {});
+    return;
+  }
+  await openBrowseWindow(opts);
+}
+
 /** Ferme toutes les fenêtres filles de la fenêtre courante (cascade — les
  *  fenêtres de navigation ne survivent JAMAIS à leur fenêtre de projet). */
 export async function closeBrowseChildren(parentLabel: string): Promise<void> {
-  const windows = await getAllWebviewWindows().catch(() => []);
-  await Promise.all(
-    windows
-      .filter((w) => isBrowseChildOf(w.label, parentLabel))
-      .map((w) => w.destroy().catch(() => {})),
-  );
+  const windows = await findBrowseChildren(parentLabel);
+  await Promise.all(windows.map((w) => w.destroy().catch(() => {})));
 }

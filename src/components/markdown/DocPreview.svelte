@@ -19,26 +19,35 @@ import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { consumeScrollTarget } from "@/stores/scroll-target.svelte";
-import { getHelpBundle, neighbors, helpRelativePath } from "@/help";
+import { getHelpBundle, helpRelativePath } from "@/help";
 import { helpDir, helpFilePath, isHelpPath } from "@/lib/help-install";
+import { declaredNeighbors } from "@/lib/toc-declared";
+import type { TocFileNode } from "@/lib/toc-forest";
 import { getT, language } from "@/lib/i18n";
 
 /**
- * Lecteur de la documentation intégrée (`.azprose/help/`).
+ * Lecteur de la documentation intégrée (`.azprose/help/`) — vit EXCLUSIVEMENT
+ * dans la fenêtre NAV (chantier fenêtre NAV, phase 7 : la fenêtre de projet
+ * n'a plus de tab doc).
  *
  * Dérivé du viewer Markdown, mais STRICTEMENT lecture seule :
  * - pas de `onJumpToLine` ni de double-clic (aucune édition dans l'app) ;
  * - Alt+clic ignoré : les wikilinks naviguent TOUJOURS en place, tab unique ;
  * - les liens internes à la doc (wikilinks, footer précédent/suivant)
  *   naviguent via `azprose:doc-navigate` — jamais l'éditeur ;
- * - la TOC de la sidebar reste ancrée sur `index.md` (géré par app.svelte).
+ * - le pied de page précédent/suivant se déduit de l'arbre TOC déclaré (`toc`,
+ *   R9) — plus de catalogue statique ordonné.
  */
 let {
   value = "",
   filePath = null as string | null,
+  /** Arbre TOC déclaré courant (`@/lib/toc-declared`, calculé par la fenêtre
+   *  NAV) — sa racine fournit l'ordre du pied de page précédent/suivant. */
+  toc = null as { root: TocFileNode | null } | null,
 }: {
   value?: string;
   filePath?: string | null;
+  toc?: { root: TocFileNode | null } | null;
 } = $props();
 
 let t = $derived(getT($language));
@@ -166,31 +175,28 @@ function resolveDocWikilinks(el: HTMLElement, rootPath: string, filePath: string
   }
 }
 
-// ── Pied de page : article précédent / suivant (d'après le catalogue) ─────
+// ── Pied de page : document précédent / suivant (ordre du sommaire: — R9) ──
 function appendDocNav(el: HTMLElement): void {
   el.querySelector(".mdv-docnav")?.remove();
-  const root = getRootPath();
-  if (!root || !filePath) return;
-  const rel = helpRelativePath(filePath, helpDir(root));
-  if (!rel) return;
-  const { prev, next } = neighbors(rel);
+  if (!filePath) return;
+  const { prev, next } = declaredNeighbors(toc?.root ?? null, filePath);
   if (!prev && !next) return;
   const nav = document.createElement("nav");
   nav.className = "mdv-docnav";
   if (prev) {
     const a = document.createElement("a");
     a.href = "#";
-    a.dataset.docNav = helpFilePath(root, prev.path);
+    a.dataset.docNav = prev.path;
     a.className = "mdv-docnav__link mdv-docnav__link--prev";
-    a.innerHTML = `<span class="mdv-docnav__dir">${t("doc.prev")}</span><span class="mdv-docnav__title">${escapeHtml(prev.title)}</span>`;
+    a.innerHTML = `<span class="mdv-docnav__dir">${t("doc.prev")}</span><span class="mdv-docnav__title">${escapeHtml(prev.label)}</span>`;
     nav.appendChild(a);
   }
   if (next) {
     const a = document.createElement("a");
     a.href = "#";
-    a.dataset.docNav = helpFilePath(root, next.path);
+    a.dataset.docNav = next.path;
     a.className = "mdv-docnav__link mdv-docnav__link--next";
-    a.innerHTML = `<span class="mdv-docnav__title">${escapeHtml(next.title)}</span><span class="mdv-docnav__dir">${t("doc.next")}</span>`;
+    a.innerHTML = `<span class="mdv-docnav__title">${escapeHtml(next.label)}</span><span class="mdv-docnav__dir">${t("doc.next")}</span>`;
     nav.appendChild(a);
   }
   el.appendChild(nav);

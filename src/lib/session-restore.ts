@@ -67,6 +67,11 @@ export function setupSessionRestore(
               // d'emblée (chaque entrée crée son onglet, pas de ré-affectation).
               for (const tab of session.side.tabs) {
                 if (cancelled) break;
+                // "doc" (chantier fenêtre NAV, phase 7) : plus de tab doc dans
+                // la fenêtre de projet — une session ANCIENNE en contenant un
+                // le laisse simplement de côté au restore (comme un panneau
+                // custom, jamais restauré non plus).
+                if (tab.kind === "doc") continue;
                 ctx.pm.side.restoreDormantTab({
                   path: tab.path,
                   title: tab.title,

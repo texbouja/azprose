@@ -11,15 +11,15 @@
  * rendu scroll/syncLine).
  *
  * Les modules réutilisables déjà PURS sont importés directement :
- *   - `@/lib/files` (prédicats de chemin) — testé sous bun ;
- *   - `@/lib/help-install` (isHelpPath, helpIndexPath — fonctions pures) ;
- *   - `@/lib/panel-store` (PanelState.open exerce la garde `kind !== "doc"`
- *     de pickOpenTarget en bout de chaîne).
+ *   - `@/lib/files` (prédicats de chemin) — testé sous bun.
+ *
+ * (chantier fenêtre NAV, phase 7) L'aide intégrée n'a plus de saga ici : elle
+ * vit exclusivement dans la fenêtre NAV (`browse-app.svelte`), qui ne passe
+ * jamais par ce reducer (fenêtre séparée, sans session).
  */
 
 import type { PanelManager } from "@/lib/panel-manager";
 import { isOpenablePath, isImagePath, isPdfPath } from "@/lib/files";
-import { isHelpPath, helpIndexPath } from "@/lib/help-install";
 import { tabContentKind, tabPinFormat, tabSpace } from "@/lib/panel-store";
 import { basename } from "@/lib/paths-utils";
 import type { NavIntent, OpenInTabOptions } from "./intents";
@@ -68,8 +68,6 @@ export interface NavDeps {
   /** `jumpToLineUtil(editorModeCtx, line, path)` — saut curseur éditeur sur le
    *  fichier RENDU (identité par contenu — plus de table de liens, Phase G). */
   jumpToLine: (line: number, path?: string | null) => void;
-  /** Ouvre/active un tab doc (DocPreview) — le store lit le disque. */
-  openDocArticle: (path: string, heading?: string) => Promise<void>;
   /** Crée (si absent) puis retourne la daily note pour `date`. */
   ensureDailyNote: (date: string) => Promise<string | null>;
   /** Re-scan du journal (pour refléter une daily note créée). */
@@ -343,11 +341,6 @@ async function wikilinkNavigate(deps: NavDeps, path: string, heading: string | n
  *  Routage par espace : le PINNED slot du format prime (son compagnon suit,
  *  D4), sinon espace libre — où rien ne se synchronise (Phase G). */
 async function jumpToFile(deps: NavDeps, path: string, line: number | null | undefined, heading: string | null | undefined): Promise<void> {
-  const rp = deps.rootPath();
-  if (isHelpPath(path, rp)) {
-    await deps.openDocArticle(path, heading ?? undefined);
-    return;
-  }
   const normFile = normNavPath(path);
   const found = deps.pm.findTabByPath(normFile);
   if (found && found.panel === "main") {
@@ -378,19 +371,13 @@ async function jumpToFile(deps: NavDeps, path: string, line: number | null | und
  *  politique de navigation wikilink (`wikilinkNavigate`) : EN mode nav
  *  (décision FIGÉE au clic — `navMode`/`tabId` du tab viewer source lu par
  *  l'émetteur) → navigation in-place du tab SOURCE + historique ; HORS mode
- *  nav → NOUVEAU tab viewer side (dédup), jamais l'éditeur. L'aide intégrée
- *  reste routée en doc (jamais l'éditeur main). Cible de rendu : `heading`
- *  prioritaire (id immune aux décalages de transclusion), sinon `line`
- *  1-based → 0-based liée au chemin normalisé (racines de branches — début de
- *  fichier). Le scroll IMMÉDIAT d'un preview déjà rendu est porté par
- *  `azprose:preview-jump-line` (app.svelte, après l'intention) — les cibles
- *  posées ici couvrent le rendu suivant. */
+ *  nav → NOUVEAU tab viewer side (dédup), jamais l'éditeur. Cible de rendu :
+ *  `heading` prioritaire (id immune aux décalages de transclusion), sinon
+ *  `line` 1-based → 0-based liée au chemin normalisé (racines de branches —
+ *  début de fichier). Le scroll IMMÉDIAT d'un preview déjà rendu est porté
+ *  par `azprose:preview-jump-line` (app.svelte, après l'intention) — les
+ *  cibles posées ici couvrent le rendu suivant. */
 async function tocNavigate(deps: NavDeps, path: string, line: number | null | undefined, heading: string | null | undefined): Promise<void> {
-  const rp = deps.rootPath();
-  if (isHelpPath(path, rp)) {
-    await deps.openDocArticle(path, heading ?? undefined);
-    return;
-  }
   await wikilinkNavigate(deps, path, heading, false);
   if (!heading && line != null) {
     deps.setSyncLine(line - 1, normNavPath(path));
@@ -422,24 +409,6 @@ async function previewOpenEditor(deps: NavDeps, path: string): Promise<void> {
 async function jumpToLine(deps: NavDeps, line: number, path: string | null | undefined): Promise<void> {
   if (deps.expandedPanel() === "side") deps.unexpandSide();
   await deps.jumpToLine(line, path ?? undefined);
-}
-
-/** Navigation doc intégrée (jamais l'éditeur main). */
-async function docNavigate(deps: NavDeps, path: string, heading?: string): Promise<void> {
-  await deps.openDocArticle(path, heading);
-}
-
-/** Ouvre la racine de la doc intégrée dans un tab doc (side). */
-async function openHelp(deps: NavDeps): Promise<void> {
-  const rp = deps.rootPath();
-  if (!rp) return;
-  const index = helpIndexPath(rp);
-  const existing = deps.pm.side.tabs.find((t) => t.kind === "doc" && t.path === index);
-  if (existing) {
-    deps.pm.side.select(existing.id);
-  } else {
-    await deps.openDocArticle(index);
-  }
 }
 
 /** Navigation PDF rect — ouvre le PDF en side. La cible de scroll
@@ -526,10 +495,6 @@ export async function reduceNavIntent(deps: NavDeps, intent: NavIntent): Promise
       return pinnedHistoryNav(deps, intent.format, "forward");
     case "drop-on-pinned":
       return dropOnPinned(deps, intent.draggedTabId, intent.pinnedTabId);
-    case "doc-navigate":
-      return docNavigate(deps, intent.path, intent.heading);
-    case "open-help":
-      return openHelp(deps);
     case "pdf-rect-navigate":
       return pdfRectNavigate(deps, intent.path);
     case "journal-date-click":

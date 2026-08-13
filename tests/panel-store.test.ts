@@ -233,9 +233,9 @@ test("pickOpenTarget : sans onglet éphémère → NOUVEL onglet (jamais le tab 
   expect(pickOpenTarget([], true).id).toBeNull();
 });
 
-test("pickOpenTarget : un tab d'OUTIL ou l'aide ne sont jamais ré-affectés", () => {
+test("pickOpenTarget : un tab d'OUTIL n'est jamais ré-affecté", () => {
   expect(pickOpenTarget([mkTab("c", "datafilter://stack", { kind: "datafilter", preview: true })], true).id).toBeNull();
-  expect(pickOpenTarget([mkTab("d", "/help/index.md", { kind: "doc", preview: true })], true).id).toBeNull();
+  expect(pickOpenTarget([mkTab("d", "custom://svar-calendar", { kind: "custom", preview: true })], true).id).toBeNull();
 });
 
 test("pickOpenTarget : ouverture simple (sans preview) → nouvel onglet", () => {
@@ -250,7 +250,6 @@ test("pickOpenTarget : ouverture simple (sans preview) → nouvel onglet", () =>
 test("tabContentKind classifie TOUS les kinds (exhaustivité)", () => {
   expect(tabContentKind(undefined)).toBe("file"); // legacy : tab fichier sans kind
   expect(tabContentKind("file")).toBe("file");
-  expect(tabContentKind("doc")).toBe("doc");
   expect(tabContentKind("custom")).toBe("data");
   expect(tabContentKind("spreadsheet")).toBe("data");
   expect(tabContentKind("datafilter")).toBe("data");
@@ -260,26 +259,27 @@ test("normalizeLegacyKind migre datagrid → datafilter et préserve les kinds c
   expect(normalizeLegacyKind("datagrid")).toBe("datafilter");
   expect(normalizeLegacyKind(undefined)).toBeUndefined();
   expect(normalizeLegacyKind("file")).toBe("file");
-  expect(normalizeLegacyKind("doc")).toBe("doc");
   expect(normalizeLegacyKind("custom")).toBe("custom");
   expect(normalizeLegacyKind("spreadsheet")).toBe("spreadsheet");
   expect(normalizeLegacyKind("datafilter")).toBe("datafilter");
 });
 
-test("fromJSON FILTRE les tabs custom (comportement documenté — l'outil s'ouvre depuis le journal)", () => {
+test("fromJSON FILTRE les tabs custom ET doc (outil : s'ouvre depuis le journal ; doc : chantier fenêtre NAV phase 7, plus de tab doc côté projet)", () => {
   const p = new PanelState("side");
   p.fromJSON({
     tabs: [
       { path: "/a.md", title: "a.md" },
-      { path: "/help.md", title: "help.md", kind: "doc" },
+      // "doc" (session ANCIENNE, avant la migration NAV) : n'existe plus dans
+      // TabKind — cast nécessaire pour simuler une donnée disque legacy.
+      { path: "/help.md", title: "help.md", kind: "doc" as any },
       { path: "spreadsheet://abc", title: "Feuille", kind: "spreadsheet", spreadsheetId: "abc" },
       { path: "datafilter://stack", title: "Filtre", kind: "datafilter", datafilterIds: ["g1", "g2"] },
       { path: "custom://svar-calendar", title: "Calendrier", kind: "custom", panelId: "svar-calendar" },
     ],
     activePath: null,
   });
-  // custom filtré, tous les autres kinds restaurés
-  expect(p.tabs.map(t => t.kind)).toEqual([undefined, "doc", "spreadsheet", "datafilter"]);
+  // custom et doc filtrés, les autres kinds restaurés
+  expect(p.tabs.map(t => t.kind)).toEqual([undefined, "spreadsheet", "datafilter"]);
   expect(p.tabs.find(t => t.kind === "spreadsheet")?.spreadsheetId).toBe("abc");
   expect(p.tabs.find(t => t.kind === "datafilter")?.datafilterIds).toEqual(["g1", "g2"]);
 });

@@ -5,7 +5,7 @@ import { ContentStore } from "@/lib/content-store";
 
 export type RenderMode = "raw" | "prose" | "preview" | "presentation" | "colle";
 export type TabSource = "latex";
-export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter" | "doc";
+export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter";
 
 /**
  * Espace d'un tab (Phase A « pinned tabs ») : `"pinned"` (sphère épinglée —
@@ -94,22 +94,24 @@ export function canPinTab(tab: Tab): boolean {
  * - `"file"` — tab de fichier texte (kind `undefined` = legacy) OU `kind:
  *   "file"` explicite (préservé par un restore de session) : contenu éditable
  *   (md/tex/…), brouillons, politique A.
- * - `"doc"` — article de la documentation intégrée : contenu fichier en
- *   lecture seule (jamais dirty, jamais ré-affecté, jamais de brouillon).
  * - `"data"` — tab d'OUTIL (custom/spreadsheet/datafilter) : PAS de contenu
  *   fichier (`source` reste `""`, `savedContent` `""`), l'état vit dans
  *   SQLite/les stores. Jamais de brouillon, jamais de lecture disque, jamais
  *   ré-affecté par une navigation fichier.
+ *
+ * (chantier fenêtre NAV, phase 7) `"doc"` a existé ici (article de la
+ * documentation intégrée, lecture seule) — l'aide vit désormais EXCLUSIVEMENT
+ * dans la fenêtre NAV, jamais dans un tab de la fenêtre de projet. Une session
+ * ANCIENNE contenant un tab `kind: "doc"` est abandonnée au restore
+ * (`fromJSON`), comme un panneau `"custom"`.
  */
-export type TabContentKind = "file" | "doc" | "data";
+export type TabContentKind = "file" | "data";
 
 export function tabContentKind(kind: TabKind | undefined): TabContentKind {
   switch (kind) {
     case undefined:
     case "file":
       return "file";
-    case "doc":
-      return "doc";
     case "custom":
     case "spreadsheet":
     case "datafilter":
@@ -135,7 +137,6 @@ export function normalizeLegacyKind(raw: LegacyTabKind): TabKind | undefined {
   switch (raw) {
     case undefined:
     case "file":
-    case "doc":
     case "custom":
     case "spreadsheet":
     case "datafilter":
@@ -403,56 +404,6 @@ export class PanelState {
       }
     }
 
-    this.notify();
-  }
-
-  /**
-   * Ouvre un article de la documentation intégrée dans un tab UNIQUE
-   * (`kind: "doc"`) : si un tab doc existe déjà, il est ré-affecté à l'article
-   * demandé ; sinon un nouveau tab doc est créé. Lecture seule — jamais de
-   * brouillon, jamais ré-affecté par `open`/`openInActiveTab`.
-   */
-  async openDoc(path: string, opts?: { silent?: boolean }): Promise<void> {
-    if (!isOpenablePath(path)) {
-      if (!opts?.silent) {
-        this.cbs.onError?.("Format", `unsupported format: ${basename(path)}`);
-      }
-      return;
-    }
-    const norm = (p: string) => p.split("/").filter(s => s !== ".").join("/");
-    const normalized = norm(path);
-    const existingSame = this.tabs.find(t => t.kind === "doc" && norm(t.path) === normalized);
-    if (existingSame) {
-      this.activeTabId = existingSame.id;
-      this.notify();
-      return;
-    }
-    const existingDoc = this.tabs.find(t => t.kind === "doc");
-    const title = basename(normalized);
-    const id = existingDoc?.id ?? crypto.randomUUID();
-    if (existingDoc) {
-      this.tabs = this.tabs.map(t => t.id === id
-        ? { ...t, path: normalized, title, source: "", savedContent: "", preview: true, kind: "doc", renderMode: recycleRenderMode(t.renderMode) }
-        : t);
-    } else {
-      this.tabs = [...this.tabs, { id, title, path: normalized, source: "", savedContent: "", preview: true, kind: "doc" }];
-    }
-    this.activeTabId = id;
-    this.cbs.onFileOpen?.(normalized);
-    this.notify();
-
-    try {
-      const { source: src, saved } = await this.readContent(normalized);
-      this.tabs = this.tabs.map(t => t.id === id ? { ...t, source: src, savedContent: saved } : t);
-    } catch (err) {
-      this.tabs = this.tabs.filter(t => t.id !== id);
-      if (this.activeTabId === id) {
-        this.activeTabId = this.tabs[this.tabs.length - 1]?.id ?? null;
-      }
-      this.notify();
-      if (!opts?.silent) throw err;
-      return;
-    }
     this.notify();
   }
 
@@ -872,8 +823,13 @@ export class PanelState {
     // idée G) : les panneaux custom (calendrier, éditeur calendar, journal)
     // ne sont PAS restaurés en session — l'outil s'ouvre depuis le journal à
     // la demande. Ne pas « corriger » par accident : c'est volontaire.
+    // `kind !== "doc"` (chantier fenêtre NAV, phase 7) : l'aide intégrée n'a
+    // plus de tab dans la fenêtre de projet — un tab doc d'une session
+    // ANCIENNE est abandonné au restore, comme un panneau custom. `TabKind` ne
+    // porte plus "doc" : cast défensif sur la valeur BRUTE (potentiellement
+    // legacy) lue depuis le disque.
     this.tabs = data.tabs
-      .filter(t => t.kind !== "custom")
+      .filter(t => t.kind !== "custom" && (t.kind as string | undefined) !== "doc")
       .map(t => {
         // Reconstruct spreadsheetId from path if not stored directly
         let spreadsheetId = t.spreadsheetId;

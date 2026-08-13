@@ -19,9 +19,10 @@ import { createPinnedHistory } from "../src/lib/pinned-history";
 
 // Tests du REDUCER de navigation (phase 1, idée A) — couvrent les 3
 // incohérences historiques du rapport architecture-review :
-//   (a) le tab doc (aide intégrée) n'est JAMAIS ré-affecté par une navigation
-//       (la garde `kind !== "doc"` de pickOpenTarget est exercée en bout de
-//       chaîne, pas seulement par son test unitaire) ;
+//   (a) un tab d'OUTIL (kind data — custom/spreadsheet/datafilter) n'est
+//       JAMAIS ré-affecté par une navigation fichier (la garde
+//       `tabContentKind(kind) === "file"` de pickOpenTarget est exercée en
+//       bout de chaîne, pas seulement par son test unitaire) ;
 //   (b) le lien preview↔éditeur s'établit sur l'ÉDITEUR ACTIF (repli
 //       `fallbackToActive`) — jamais sur un tab d'outil ni un autre tab main ;
 //   (c) jump-to-line garde la boussole : heading prioritaire (scroll immune aux
@@ -132,7 +133,6 @@ function makeDeps(pm: PanelManager, overrides: Partial<NavDeps> = {}): NavDeps &
     readText: async () => "",
     trackMtime: async () => {},
     jumpToLine: () => {},
-    openDocArticle: async () => {},
     ensureDailyNote: async () => null,
     journalScan: async () => {},
   };
@@ -157,14 +157,14 @@ function minimalFakePm(): PanelManager {
   } as unknown as PanelManager;
 }
 
-// ── (a) le tab doc n'est JAMAIS ré-affecté ──
+// ── (a) un tab d'OUTIL n'est JAMAIS ré-affecté ──
 
-test("pickOpenTarget (garde pure) : le tab doc (aide) n'est jamais ré-affecté", () => {
+test("pickOpenTarget (garde pure) : un tab d'outil (kind data) n'est jamais ré-affecté", () => {
   const tabs = [
-    { id: "s1", path: "/help/index.md", kind: "doc", preview: true },
+    { id: "s1", path: "custom://svar-calendar", kind: "custom", preview: true },
     { id: "s2", path: "/a.md", preview: true },
   ];
-  // La réutilisation ne retient que les tabs de FICHIER : le lecteur d'aide
+  // La réutilisation ne retient que les tabs de FICHIER : un panneau d'outil
   // n'est jamais vampirisé, même marqué éphémère.
   expect(pickOpenTarget(tabs, true)).toEqual({ id: "s2", isFallback: false });
   expect(pickOpenTarget([tabs[0]], true)).toEqual({ id: null, isFallback: false });
@@ -344,29 +344,6 @@ test("preview-open-editor : côté split, aucun unexpand (no-op)", async () => {
   expect(pm.main.activeTabId).toBe("t1");
 });
 
-test("open-help : racine doc déjà ouverte → sélection, pas de ré-ouverture", async () => {
-  const pm = new PanelManager();
-  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/vault/.azprose/help/index.md", kind: "doc" }], { sideActive: "s1" });
-  const deps = makeDeps(pm, { openDocArticle: async () => { throw new Error("ne doit pas être appelé"); } });
-
-  await navigate(deps, { type: "open-help" });
-
-  expect(pm.side.activeTabId).toBe("s1");
-});
-
-test("doc-navigate : délègue à openDocArticle (jamais l'éditeur main)", async () => {
-  const pm = new PanelManager();
-  seed(pm, [{ id: "t1", path: "/a.md" }]);
-  let called: { path: string; heading?: string } | null = null;
-  const deps = makeDeps(pm, {
-    openDocArticle: async (p, h) => { called = { path: p, heading: h }; },
-  });
-
-  await navigate(deps, { type: "doc-navigate", path: "/help/guide.md", heading: "Liens" });
-
-  expect(called).toEqual({ path: "/help/guide.md", heading: "Liens" });
-});
-
 // ── phase 1 (suite) : ouvertures d'outils — canal 3 termine par navigate() ──
 // Le rapport architecture-review exige les tests : dédup openSpreadsheet,
 // pile openDataFilter, openCustom calendar, transition create→upgrade,
@@ -438,17 +415,17 @@ test("set-spreadsheet-id : transition create→upgrade — le tab create reçoit
   expect(tab.title).toBe("Créé");
 });
 
-test("set-spreadsheet-id : no-op sans tab create (le tab doc reste un doc)", async () => {
+test("set-spreadsheet-id : no-op sans tab create (un tab custom reste un custom)", async () => {
   const pm = new PanelManager();
-  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "/help/index.md", kind: "doc" }]);
+  seed(pm, [{ id: "t1", path: "/a.md" }], [{ id: "s1", path: "custom://svar-calendar", kind: "custom" }]);
   const deps = makeDeps(pm);
 
   await navigate(deps, { type: "set-spreadsheet-id", spreadsheetId: "s42", title: "X" });
 
   const tab = pm.side.tabs.find(t => t.id === "s1")!;
-  expect(tab.kind).toBe("doc");
+  expect(tab.kind).toBe("custom");
   expect(tab.spreadsheetId).toBeUndefined();
-  expect(tab.path).toBe("/help/index.md");
+  expect(tab.path).toBe("custom://svar-calendar");
 });
 
 test("set-spreadsheet-title : met à jour le titre du tab (no-op si inchangé)", async () => {
@@ -462,12 +439,12 @@ test("set-spreadsheet-title : met à jour le titre du tab (no-op si inchangé)",
   expect(pm.side.tabs.find(t => t.id === "s1")!.title).toBe("Après");
 });
 
-test("gardes doc : ouvrir un outil ne ré-affecte JAMAIS le tab doc (aide intégrée)", async () => {
+test("gardes outil : ouvrir un outil ne ré-affecte JAMAIS un tab custom existant", async () => {
   const pm = new PanelManager();
   seed(
     pm,
     [{ id: "t1", path: "/a.md" }],
-    [{ id: "s1", path: "/vault/.azprose/help/index.md", kind: "doc" }],
+    [{ id: "s1", path: "custom://journal-calendar", kind: "custom", panelId: "journal-calendar" }],
     { sideActive: "s1" },
   );
   const deps = makeDeps(pm);
@@ -475,11 +452,10 @@ test("gardes doc : ouvrir un outil ne ré-affecte JAMAIS le tab doc (aide intég
   await navigate(deps, { type: "open-spreadsheet", spreadsheetId: "s1", title: "Tableur" });
   await navigate(deps, { type: "open-custom", panelId: "calendar", title: "Calendrier" });
 
-  const doc = pm.side.tabs.find(t => t.kind === "doc")!;
-  expect(doc).toBeDefined();
-  expect(doc.path).toBe("/vault/.azprose/help/index.md");
-  expect(pm.side.tabs.filter(t => t.kind === "doc")).toHaveLength(1);
-  // Le tab doc n'est ni sélectionné ni transformé : un outil est actif.
+  const journal = pm.side.tabs.find(t => t.path === "custom://journal-calendar")!;
+  expect(journal).toBeDefined();
+  expect(journal.kind).toBe("custom");
+  // Le tab custom d'origine n'est ni sélectionné ni transformé : un outil DIFFÉRENT est actif.
   expect(pm.side.activeTabId).not.toBe("s1");
 });
 
@@ -754,24 +730,6 @@ test("toc-navigate racine de branche (line seule) : syncLine 1-based → 0-based
   expect(deps.calls.setJumpToLine).toHaveLength(0);
   expect(deps.calls.setEditorModeRaw).toBe(0);
   expect(calls.openInMain).toHaveLength(0);
-});
-
-test("toc-navigate : chemin doc → openDocArticle (jamais viewer ni éditeur)", async () => {
-  const { pm, calls } = recordingFakePm();
-  let docCalled: { path: string; heading?: string } | null = null;
-  const deps = makeDeps(pm, {
-    openDocArticle: async (p, h) => { docCalled = { path: p, heading: h }; },
-  });
-
-  await navigate(deps, {
-    type: "toc-navigate", path: "/vault/.azprose/help/guide.md", heading: "Liens",
-  });
-
-  expect(docCalled).toEqual({ path: "/vault/.azprose/help/guide.md", heading: "Liens" });
-  expect(calls.openInSide).toHaveLength(0);
-  expect(calls.openInMain).toHaveLength(0);
-  expect(deps.calls.setScrollTarget).toHaveLength(0);
-  expect(deps.calls.setSyncLine).toHaveLength(0);
 });
 
 // ── Phase D : historique de MONTAGE du pinned slot ──────────────────────────

@@ -1,8 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
   catalog,
-  articleIndex,
-  neighbors,
   helpRelativePath,
   HELP_ROOT,
   HELP_VERSION,
@@ -52,29 +50,6 @@ describe("catalog (doc intégrée, générée par scripts/sync-help.mjs)", () =>
       expect(a.title.length).toBeGreaterThan(0);
       expect(a.path.endsWith(".md")).toBe(true);
     }
-  });
-
-  it("articleIndex retrouve un article du catalogue", () => {
-    expect(articleIndex("index.md")).toBe(0);
-    expect(articleIndex(catalog[1].path)).toBe(1);
-    expect(articleIndex("absent.md")).toBe(-1);
-  });
-
-  it("neighbors : racine sans précédent, suivant = 2e article", () => {
-    const { prev, next } = neighbors("index.md");
-    expect(prev).toBeUndefined();
-    expect(next).toEqual(catalog[1]);
-  });
-
-  it("neighbors : dernier article sans suivant, précédent = avant-dernier", () => {
-    const last = catalog[catalog.length - 1];
-    const { prev, next } = neighbors(last.path);
-    expect(next).toBeUndefined();
-    expect(prev).toEqual(catalog[catalog.length - 2]);
-  });
-
-  it("neighbors : article inconnu → aucun voisin", () => {
-    expect(neighbors("introuvable.md")).toEqual({});
   });
 
   it("helpRelativePath : chemin relatif normalisé", () => {

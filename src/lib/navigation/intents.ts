@@ -89,11 +89,6 @@ export type NavIntent =
    *  détruit. Un dépôt sur un onglet NON épinglé est ignoré (le glisser entre
    *  deux onglets reste un simple déplacement). */
   | { type: "drop-on-pinned"; draggedTabId: string; pinnedTabId: string }
-  /** Navigation doc intégrée (DocPreview) — jamais l'éditeur main.
-   *  Remplaçant typé de `azprose:doc-navigate`. */
-  | { type: "doc-navigate"; path: string; heading?: string }
-  /** Ouvre la racine de la doc intégrée. Remplaçant typé de `openHelp()`. */
-  | { type: "open-help" }
   /** Navigation PDF rect (clic sur un lien/embed rect) : ouvre le PDF puis
    *  scroll vers la page/rect. Remplaçant typé de `azprose:pdf-rect-navigate`. */
   | { type: "pdf-rect-navigate"; path: string; page?: number; rect?: string }

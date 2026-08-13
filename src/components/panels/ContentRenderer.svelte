@@ -3,16 +3,17 @@
 // nouveau `TabKind` de données DOIT avoir sa branche explicite ici avant le
 // `{:else}` final (l'éditeur de fichiers) :
 //   1. custom (calendar-editor / journal-calendar / svar-calendar),
-//   2. doc (DocPreview — lecture seule, jamais l'éditeur),
-//   3. pdf / image (viewers dédiés, pas de contenu texte),
-//   4. md side → colle / presentation / preview (rendus dérivés),
-//   5. html side → preview html,
-//   6. spreadsheet / datafilter (outils — état SQLite, jamais l'éditeur),
-//   7. else → Éditeur CodeMirror (tout fichier texte kind file/undefined).
+//   2. pdf / image (viewers dédiés, pas de contenu texte),
+//   3. md side → colle / presentation / preview (rendus dérivés),
+//   4. html side → preview html,
+//   5. spreadsheet / datafilter (outils — état SQLite, jamais l'éditeur),
+//   6. else → Éditeur CodeMirror (tout fichier texte kind file/undefined).
 // Un kind de données inconnu sans branche tomberait dans l'éditeur pour un
 // chemin `x://…` — signe d'erreur à la relecture, pas d'un comportement voulu.
+// (chantier fenêtre NAV, phase 7) L'aide intégrée (DocPreview) n'a plus de
+// branche ICI : elle vit exclusivement dans la fenêtre NAV désormais.
 import { extFromPath } from "@/lib/editor-languages";
-import { isPdfPath, isImagePath, isMarkdownPath } from "@/lib";
+import { isPdfPath, isImagePath } from "@/lib";
 import type { Tab } from "@/lib/panel-store";
 import Editor from "@/components/editor/Editor.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
@@ -21,7 +22,6 @@ import LazyProseMark from "@/components/markdown/LazyProseMark.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import LazyCollePreview from "@/components/colles/LazyCollePreview.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
-import LazyDocPreview from "@/components/markdown/LazyDocPreview.svelte";
 import LazyHtmlPreview from "@/components/preview/LazyHtmlPreview.svelte";
 import LazyCalendarPanel from "@/components/calendar/LazyCalendarPanel.svelte";
 import LazyJournalCalendarPanel from "@/components/sidebar/LazyJournalCalendarPanel.svelte";
@@ -95,11 +95,6 @@ let {
   <LazyJournalCalendarPanel />
 {:else if tab.kind === "custom" && tab.panelId === "svar-calendar"}
   <LazySvarCalendarPanel />
-{:else if tab.kind === "doc" && isMarkdownPath(tab.path)}
-  <LazyDocPreview
-    value={contentFor(tab.path)}
-    filePath={tab.path}
-  />
 {:else if isPdfPath(tab.path)}
   <!-- CONTAINER du viewer PDF (Phase C — D5) : le message d'échec s'affiche
        ICI, jamais dans le PDFViewer, qui garde le DERNIER BUFFER VALIDE. -->

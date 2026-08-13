@@ -1,23 +1,29 @@
 /**
- * Manifeste ordonné des articles de la documentation intégrée.
+ * Manifeste des articles de la documentation intégrée.
  *
  * MODULE PUR — aucun import svelte/tauri, testable sous bun.
  *
  * Les chemins sont RELATIFS au dossier d'installation de l'aide
- * (`<racine du projet>/.azprose/help/`). L'ordre du tableau définit la
- * séquence « article précédent / article suivant » du lecteur DocPreview.
+ * (`<racine du projet>/.azprose/help/`).
+ *
+ * (chantier fenêtre NAV, phase 7 — R9) Le catalogue ne pilote plus AUCUNE
+ * navigation (`articleIndex`/`neighbors` supprimées) : le précédent/suivant
+ * du lecteur se dérive désormais de l'ordre du `sommaire:` déclaré dans
+ * `index.md` (noyau TOC déclaratif, `@/lib/toc-declared`), comme n'importe
+ * quel document du vault. `catalog` reste la liste PLATE {path,titre} qui
+ * alimente la complétion `aide:`/`help:` de la barre d'adresse NAV
+ * (`@/nav/address` → `filterHelpArticles`) — un index de RECHERCHE, pas un
+ * ordre de lecture.
  *
  * Le CONTENU (catalogue + version) est GÉNÉRÉ automatiquement par
  * `scripts/sync-help.mjs` depuis `docs/user/` — voir `catalog-data.ts`.
- * Seules les fonctions pures vivent ici à la main.
  */
 
 import { catalog as HELP_CATALOG } from "./catalog-data";
 
 export type HelpArticle = { path: string; title: string };
 
-/** Racine de la doc : sa TOC est toujours affichée dans la sidebar, quel que
- *  soit l'article consulté (décision utilisateur). */
+/** Racine de la doc : point d'entrée du `sommaire:` déclaré. */
 export const HELP_ROOT = "index.md";
 
 /**
@@ -34,22 +40,6 @@ export const catalog: HelpArticle[] = HELP_CATALOG;
 
 function normalize(p: string): string {
   return p.replace(/\\/g, "/").split("/").filter((s) => s && s !== ".").join("/");
-}
-
-export function articleIndex(relPath: string): number {
-  const n = normalize(relPath);
-  return catalog.findIndex((a) => normalize(a.path) === n);
-}
-
-/** Articles voisins d'un article (précédent / suivant dans l'ordre du
- *  catalogue). Aucun voisin pour la racine ni les bords. */
-export function neighbors(relPath: string): { prev?: HelpArticle; next?: HelpArticle } {
-  const i = articleIndex(relPath);
-  if (i < 0) return {};
-  return {
-    prev: i > 0 ? catalog[i - 1] : undefined,
-    next: i >= 0 && i < catalog.length - 1 ? catalog[i + 1] : undefined,
-  };
 }
 
 /** Chemin relatif (normalisé, anti-slash) d'un fichier par rapport au dossier

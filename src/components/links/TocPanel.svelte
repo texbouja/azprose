@@ -13,28 +13,21 @@
     type TocNode,
   } from "@/lib/toc-forest";
   import { makeTocMemo } from "@/lib/toc-cache";
-  import { buildHelpForest } from "@/help/help-toc";
-  import { isHelpPath, helpDir } from "@/lib/help-install";
 
   let {
     /** Racine du vault (borne la remontée index.md du fichier affiché). */
     rootPath = null as string | null,
-    /** Fichier de référence : tab viewer md actif, sinon .md actif éditeur.
-     *  En mode aide (chemin sous `.azprose/help/`), c'est la RACINE index.md —
-     *  la TOC affiche alors le CATALOGUE complet, quel que soit l'article. */
+    /** Fichier de référence : tab viewer md actif, sinon .md actif éditeur. */
     filePath = null as string | null,
-    /** Contenu LIVE du fichier de référence (frappes non sauvegardées).
-     *  `null` = à lire sur disque (racine de la doc intégrée). */
+    /** Contenu LIVE du fichier de référence (frappes non sauvegardées). */
     source = null as string | null,
     // La TOC est POST-TRANSCLUSION (décision utilisateur : les titres
     // transclus font partie de la note affichée, toujours dépliés via maxDepth
     // par défaut) mais SANS remontée index.md : la « branche Home » dépendait
     // du mode navigation, retiré des panneaux en Phase F/G (la lecture en
-    // chaîne vit dans la fenêtre fille browser). Mode aide : helpMode prime
-    // (catalogue complet quoi qu'il arrive).
-    /** Mode aide OU arbre externe (`declaredForest`) : chemin à mettre en
-     *  surbrillance et déplier par défaut — l'article de la doc ACTUELLEMENT
-     *  affiché, ou le document MONTÉ dans l'onglet NAV actif. */
+    // chaîne vit dans la fenêtre fille browser).
+    /** Arbre externe (`declaredForest`) : chemin à mettre en surbrillance et
+     *  déplier par défaut — le document MONTÉ dans l'onglet NAV actif. */
     helpActivePath = null as string | null,
     /** Remontée de l'état pour le header de section (badge). */
     onStateChange = null as ((s: { total: number; loading: boolean }) => void) | null,
@@ -44,32 +37,28 @@
     onOutlineChange = null as ((active: boolean) => void) | null,
     /** Arbre PRÉ-CONSTRUIT (fenêtre NAV, phase 5 — noyau TOC déclaratif,
      *  `@/lib/toc-declared`) : quand fourni, REMPLACE le fetch interne
-     *  (`buildTocForest`/`buildHelpForest`) — l'appelant construit l'arbre
-     *  (souvent déjà calculé pour son propre usage, ex. le bouton « home » de
-     *  la toolbar NAV) et ce panneau se contente de le RENDRE. Le cycle de vie
-     *  (repli, snippets, clics) reste inchangé — seule la SOURCE de l'arbre
-     *  change. `rootPath`/`filePath`/`source` sont alors ignorés. */
+     *  (`buildTocForest`) — l'appelant construit l'arbre (souvent déjà calculé
+     *  pour son propre usage, ex. le bouton « home » de la toolbar NAV) et ce
+     *  panneau se contente de le RENDRE. Le cycle de vie (repli, snippets,
+     *  clics) reste inchangé — seule la SOURCE de l'arbre change.
+     *  `rootPath`/`filePath`/`source` sont alors ignorés. (chantier fenêtre
+     *  NAV, phase 7) C'est aussi la seule source d'un arbre « fichier à plat » —
+     *  l'aide intégrée n'a plus de catalogue statique séparé (R9), elle passe
+     *  par ce même mécanisme depuis la fenêtre NAV. */
     declaredForest = null as { root: TocFileNode | null; displayPath: string } | null,
   } = $props();
 
   let t = $derived(getT($language));
 
-  /** Forêt affichée (racine du fichier « home » + branches transcluses, ou
-   *  catalogue complet de la doc intégrée en mode aide). */
+  /** Forêt affichée (racine du fichier de référence + branches transcluses). */
   let forest = $state<{ root: TocFileNode | null; displayPath: string } | null>(null);
   let error = $state(false);
 
-  /** Mode AIDE : le fichier de référence vit sous `.azprose/help/` — la TOC
-   *  reflète alors le CATALOGUE complet (arbre de site statique), quel que
-   *  soit l'article affiché. Dérivé : ne dépend que de filePath/rootPath. */
-  let helpMode = $derived(!!filePath && !!rootPath && isHelpPath(filePath, rootPath));
-
   /** Mode « fichier à plat » (racine rendue comme une rangée, pas de
-   *  redirection titre-transclu → note, pas de numéro de ligne) : partagé par
-   *  le mode aide (catalogue) et l'arbre déclaré (NAV, `declaredForest`) — les
-   *  deux affichent une hiérarchie de FICHIERS explicite, jamais une
-   *  transclusion de liens. */
-  let flatFileMode = $derived(helpMode || declaredForest !== null);
+   *  redirection titre-transclu → note, pas de numéro de ligne) : l'arbre
+   *  déclaré (NAV, `declaredForest`) affiche une hiérarchie de FICHIERS
+   *  explicite, jamais une transclusion de liens. */
+  let flatFileMode = $derived(declaredForest !== null);
 
   /** Nœuds repliés, par identité (`path#ligne` headings, `file:path` branches). */
   let collapsed = $state<Set<string>>(new Set());
@@ -122,10 +111,14 @@
       const key = df.displayPath;
       if (key !== prevKey) {
         prevKey = key;
-        collapsed = new Set();
         outlineSnapshot = null;
         outlineActive = false;
         onOutlineChange?.(false);
+        // Sommaire de plusieurs fichiers (§3, R9) : replié SAUF la branche du
+        // document courant — un arbre déclaré peut couvrir tout un manuel,
+        // l'afficher entièrement déplié noierait le document affiché.
+        if (df.root) seedFlatFileDefaults(df.root);
+        else collapsed = new Set();
       }
       forest = df;
       error = false;
@@ -169,28 +162,22 @@
     // milieu de phrase, et on évite une reconstruction par caractère.
     const timer = setTimeout(async () => {
       try {
-        const f = helpMode
-          ? await buildHelpForest({ helpDir: helpDir(rp), readText })
-          : await buildTocForest({
-              rootPath: rp,
-              referencePath: fp,
-              referenceSource: src ?? undefined,
-              readText,
-              getIndex: getFileIndex,
-              // TOC TOUJOURS post-transclusion (décision utilisateur) : les
-              // titres des fichiers transclus font partie de la note affichée
-              // (maxDepth par défaut — les branches sont des ancres de la
-              // note, pas des fichiers lançables). La remontée index.md
-              // (branche Home) n'existe plus (chantier fenêtre NAV, phase 3) :
-              // `buildTocForest` affiche toujours strictement la référence.
-              maxDepth: DEFAULT_MAX_DEPTH,
-            }, tocMemo);
+        const f = await buildTocForest({
+          rootPath: rp,
+          referencePath: fp,
+          referenceSource: src ?? undefined,
+          readText,
+          getIndex: getFileIndex,
+          // TOC TOUJOURS post-transclusion (décision utilisateur) : les
+          // titres des fichiers transclus font partie de la note affichée
+          // (maxDepth par défaut — les branches sont des ancres de la
+          // note, pas des fichiers lançables). La remontée index.md
+          // (branche Home) n'existe plus (chantier fenêtre NAV, phase 3) :
+          // `buildTocForest` affiche toujours strictement la référence.
+          maxDepth: DEFAULT_MAX_DEPTH,
+        }, tocMemo);
         if (version !== buildVersion) return; // requête obsolète
         forest = f;
-        // Mode aide : la TOC se présente repliée comme le sommaire d'un
-        // manuel — seules la racine index.md (jamais repliée) et la branche de
-        // l'article courant sont dépliées par défaut.
-        if (helpMode && f.root) seedHelpDefaults(f.root);
         // Pas de ré-application du repli ici : `outlineFoldKeys` s'applique à
         // l'activation, et les clés de repli (`path#line`, `file:path`)
         // survivent à la reconstruction (le set `collapsed` n'est pas remis à
@@ -198,10 +185,7 @@
         // c'est le comportement voulu (on replie à nouveau avec le bouton si
         // besoin) ; un repli manuel fait pendant le mode reste en place.
         error = false;
-        onStateChange?.({
-          total: helpMode ? countArticles(f.root) : countHeadings(f.root),
-          loading: false,
-        });
+        onStateChange?.({ total: countHeadings(f.root), loading: false });
       } catch {
         if (version !== buildVersion) return;
         forest = null;
@@ -246,14 +230,14 @@
     return n;
   }
 
-  /** Clé de repli d'une branche fichier par chemin (mode aide : `filePath`
-   *  est la racine index.md, pas la branche de l'article courant). */
+  /** Clé de repli d'une branche fichier par chemin (mode « fichier à plat » :
+   *  `filePath` est la racine de l'arbre, pas la branche du document courant). */
   function fileKeyOfPath(path: string): string {
     return tocFileKey(path);
   }
 
   /** Clés des branches fichier sur le chemin menant à `current` (lui inclus) —
-   *  utilisé pour déplier l'article courant (le chemin passe par la racine,
+   *  utilisé pour déplier le document courant (le chemin passe par la racine,
    *  jamais repliée). */
   function collectExpandKeys(node: TocFileNode | null, current: string | null): Set<string> {
     const out = new Set<string>();
@@ -292,11 +276,12 @@
     return out;
   }
 
-  /** Seed du repli en mode aide : tout est replié SAUF la branche de l'article
-   *  courant (et ses ancêtres). La racine index.md, elle, n'est jamais dans la
-   *  liste des clés repliables (`collectAllFileKeys` ne la parcourt pas) — la
-   *  page de garde du manuel reste toujours ouverte. */
-  function seedHelpDefaults(root: TocFileNode): void {
+  /** Seed du repli en mode « fichier à plat » (arbre déclaré NAV — R9, l'aide
+   *  intégrée y compris) : tout est replié SAUF la branche du document courant
+   *  (et ses ancêtres). La racine, elle, n'est jamais dans la liste des clés
+   *  repliables (`collectAllFileKeys` ne la parcourt pas) — la page de garde
+   *  du sommaire reste toujours ouverte. */
+  function seedFlatFileDefaults(root: TocFileNode): void {
     const expand = collectExpandKeys(root, helpActivePath);
     if (filePath) expand.add(fileKeyOfPath(filePath));
     const all = collectAllFileKeys(root);

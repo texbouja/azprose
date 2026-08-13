@@ -10,9 +10,6 @@
     filePath = null as string | null,
     source = null as string | null,
     rootPath = null as string | null,
-    /** Mode aide : article de la doc intégrée affiché dans le lecteur —
-     *  transmis à la TOC pour la surbrillance + le dépli par défaut. */
-    helpActivePath = null as string | null,
   } = $props();
 
   let t = $derived(getT($language));
@@ -107,7 +104,6 @@
       {filePath}
       {source}
       {rootPath}
-      {helpActivePath}
       onStateChange={handleTocState}
       onOutlineChange={handleTocOutlineChange}
       bind:this={tocPanel}

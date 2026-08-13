@@ -11,9 +11,9 @@
  */
 import { onMount } from "svelte";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { emitTo } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import MarkdownPreview from "@/components/markdown/MarkdownPreview.svelte";
-import DocPreview from "@/components/markdown/DocPreview.svelte";
+import LazyDocPreview from "@/components/markdown/LazyDocPreview.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import TabsBar from "@/components/editor/TabsBar.svelte";
@@ -43,7 +43,7 @@ import { parseAddress, filterIndexEntries, filterHelpArticles } from "@/nav/addr
 // `help-bundle.ts`, dont le glob `eager: true` inlinerait TOUT le contenu
 // markdown de la doc dans le chunk NAV pour la seule liste {path,title}.
 import { catalog as helpCatalog } from "@/help/catalog";
-import { helpFilePath, helpIndexPath } from "@/lib/help-install";
+import { helpFilePath, helpIndexPath, isHelpPath } from "@/lib/help-install";
 import { getT, language } from "@/lib/i18n";
 // Feuilles du RENDU markdown ET du modèle d'onglets — la fenêtre de
 // navigation emprunte MarkdownPreview/DocPreview/TabsBar à la fenêtre de
@@ -69,7 +69,6 @@ let t = $derived(getT($language));
 
 const params = new URLSearchParams(location.search);
 const root = params.get("root");
-const isHelp = params.get("help") === "1";
 setRootPath(root);
 
 /**
@@ -540,12 +539,30 @@ onMount(() => {
   window.addEventListener("azprose:doc-navigate", onDocNav);
   window.addEventListener("azprose:pdf-rect-navigate", onPdfRect);
   window.addEventListener("keydown", onKey);
+
+  // R2/phase 7 : cette fenêtre NAV est un SINGLETON par fenêtre de projet —
+  // `openOrFocusBrowseWindow` (browse-window.ts) émet CET événement Tauri
+  // (pas un CustomEvent DOM : cette fenêtre est un processus séparé) quand
+  // l'aide (ou un autre lanceur NAV) cible une fenêtre déjà ouverte : le
+  // chemin est monté dans un NOUVEL onglet plutôt que de dupliquer la fenêtre.
+  let navOpenCancelled = false;
+  let navOpenUnlisten: (() => void) | null = null;
+  void listen<string>("azprose:nav-open", (event) => {
+    const path = event.payload;
+    if (typeof path === "string" && path.length > 0) void loadNewTab(path);
+  }).then((un) => {
+    if (navOpenCancelled) { un(); return; }
+    navOpenUnlisten = un;
+  });
+
   return () => {
     window.removeEventListener("azprose:wikilink-navigate", onWikilink);
     window.removeEventListener("azprose:wikilink-open-new", onWikilink);
     window.removeEventListener("azprose:doc-navigate", onDocNav);
     window.removeEventListener("azprose:pdf-rect-navigate", onPdfRect);
     window.removeEventListener("keydown", onKey);
+    navOpenCancelled = true;
+    navOpenUnlisten?.();
   };
 });
 </script>
@@ -645,8 +662,8 @@ onMount(() => {
           fullscreen={isFullscreen}
           onExitFullscreen={() => void toggleFullscreen()}
         />
-      {:else if isHelp}
-        <DocPreview value={activeTab.source} filePath={activeTab.path} />
+      {:else if isHelpPath(activeTab.path, root)}
+        <LazyDocPreview value={activeTab.source} filePath={activeTab.path} toc={currentToc} />
       {:else}
         <MarkdownPreview value={activeTab.source} filePath={activeTab.path} rev={contentRev} />
       {/if}

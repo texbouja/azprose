@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildDeclaredToc, type DeclaredToc } from "@/lib/toc-declared";
+import { buildDeclaredToc, declaredNeighbors, type DeclaredToc } from "@/lib/toc-declared";
 import type { TocFileNode, TocNode } from "@/lib/toc-forest";
 
 /**
@@ -272,5 +272,58 @@ describe("buildDeclaredToc — robustesse", () => {
     const idxChanged = { ...idx, deux: "/vault/deux.md" };
     const third = await build("/vault/index.md", filesChanged, idxChanged);
     expect(third.structuralHash).not.toBe(first.structuralHash);
+  });
+});
+
+describe("declaredNeighbors — voisins de lecture (pied de page)", () => {
+  test("ordre de document : préordre, profondeur d'abord (chapitres imbriqués)", async () => {
+    const files = {
+      "/vault/index.md": "---\nsommaire:\n  - chap1\n  - chap2\n---\n# Racine\n",
+      "/vault/chap1.md": "---\nsommaire:\n  - chap1-a\n---\n# Chapitre 1\n",
+      "/vault/chap1-a.md": "# 1.A\n",
+      "/vault/chap2.md": "# Chapitre 2\n",
+    };
+    const idx = { chap1: "/vault/chap1.md", "chap1-a": "/vault/chap1-a.md", chap2: "/vault/chap2.md" };
+    const toc = await build("/vault/index.md", files, idx);
+    // Ordre attendu : index, chap1, chap1-a, chap2 (préordre).
+    expect(declaredNeighbors(toc.root, "/vault/chap1.md")).toEqual({
+      prev: { path: "/vault/index.md", label: "Racine" },
+      next: { path: "/vault/chap1-a.md", label: "1.A" },
+    });
+    expect(declaredNeighbors(toc.root, "/vault/chap1-a.md")).toEqual({
+      prev: { path: "/vault/chap1.md", label: "Chapitre 1" },
+      next: { path: "/vault/chap2.md", label: "Chapitre 2" },
+    });
+  });
+
+  test("racine : pas de précédent", async () => {
+    const files = {
+      "/vault/index.md": "---\nsommaire:\n  - chap1\n---\n# Racine\n",
+      "/vault/chap1.md": "# Chapitre 1\n",
+    };
+    const toc = await build("/vault/index.md", files, { chap1: "/vault/chap1.md" });
+    expect(declaredNeighbors(toc.root, "/vault/index.md").prev).toBeNull();
+  });
+
+  test("dernier document : pas de suivant", async () => {
+    const files = {
+      "/vault/index.md": "---\nsommaire:\n  - chap1\n---\n# Racine\n",
+      "/vault/chap1.md": "# Chapitre 1\n",
+    };
+    const toc = await build("/vault/index.md", files, { chap1: "/vault/chap1.md" });
+    expect(declaredNeighbors(toc.root, "/vault/chap1.md").next).toBeNull();
+  });
+
+  test("document absent de l'arbre → aucun voisin", async () => {
+    const files = {
+      "/vault/index.md": "---\nsommaire:\n  - chap1\n---\n# Racine\n",
+      "/vault/chap1.md": "# Chapitre 1\n",
+    };
+    const toc = await build("/vault/index.md", files, { chap1: "/vault/chap1.md" });
+    expect(declaredNeighbors(toc.root, "/vault/ailleurs.md")).toEqual({ prev: null, next: null });
+  });
+
+  test("arbre null (repli single) → aucun voisin", () => {
+    expect(declaredNeighbors(null, "/vault/x.md")).toEqual({ prev: null, next: null });
   });
 });

@@ -1,13 +1,16 @@
 <script lang="ts">
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
+import type { TocFileNode } from "@/lib/toc-forest";
 
 let {
   value = "",
   filePath = null as string | null,
+  toc = null as { root: TocFileNode | null } | null,
 }: {
   value?: string;
   filePath?: string | null;
+  toc?: { root: TocFileNode | null } | null;
 } = $props();
 
 let t = $derived(getT($language));
@@ -34,5 +37,5 @@ $effect(() => {
 {#if loading}
   <div class="mdv-editor mdv-editor--loading">{t("lazy.loadingPreview")}</div>
 {:else if Cmp}
-  <Cmp {value} {filePath} />
+  <Cmp {value} {filePath} {toc} />
 {/if}

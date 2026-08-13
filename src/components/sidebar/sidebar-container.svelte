@@ -15,8 +15,6 @@ let {
   tocRefPath,
 
   tocRefSource,
-
-  helpActivePath,
   width,
   onWidthChange,
   onAddFolder,
@@ -59,9 +57,6 @@ let {
    *  `null` = à lire sur disque (racine de la doc intégrée, index.md). */
   tocRefPath: string | null;
   tocRefSource: string | null;
-  /** Mode aide : article de la doc intégrée affiché dans le lecteur —
-   *  transmis à la TOC (surbrillance + dépli par défaut). */
-  helpActivePath: string | null;
   width: number;
   onWidthChange: (next: number) => void;
   onAddFolder: () => void;
@@ -187,7 +182,6 @@ function stopResize(e: PointerEvent) {
           filePath={tocRefPath}
           source={tocRefSource}
           rootPath={rootPath}
-          helpActivePath={helpActivePath}
         />
       {/if}
     </div>

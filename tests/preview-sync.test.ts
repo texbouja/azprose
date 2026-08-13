@@ -74,7 +74,6 @@ function makeDeps(pm: PanelManager): NavDeps {
     readText: async (p: string) => files[p],
     trackMtime: async () => {},
     jumpToLine: () => {},
-    openDocArticle: async () => {},
     ensureDailyNote: async () => null,
     journalScan: async () => {},
   };
