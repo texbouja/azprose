@@ -26,7 +26,6 @@ import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.s
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { typesetMath } from "@/lib/typeset-math";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
-import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { previewSettings } from "@/stores/markdown-settings.svelte";
 import { buildPreviewProseCss } from "@/lib/prose-style-css";
 import { getRootPath } from "@/stores/root-path.svelte";
@@ -39,6 +38,8 @@ let {
   filePath = null as string | null,
   rev = 0,
   onTransclusion,
+  onDiagnostics,
+  onDiagnosticsClear,
 }: {
   value?: string;
   filePath?: string | null;
@@ -54,6 +55,13 @@ let {
    *  markTranscludedBlocks() (et son import de @/markdown) ne rejoint donc
    *  le bundle QUE des fenêtres qui la fournissent (PROJET). */
   onTransclusion?: (article: HTMLElement, ranges: RenderResult["ranges"]) => void;
+  /** Capacité « diagnostics de rendu » (vague 3, phase 3.2) : publie les erreurs
+   *  MathJax/images cassées vers la console Diagnostics — propre à PROJET
+   *  (aucune console de ce genre dans NAV). Même schéma d'injection que
+   *  onTransclusion : @/lib/render-diagnostics ne rejoint que le bundle PROJET. */
+  onDiagnostics?: (article: HTMLElement, brokenImages: string[]) => void;
+  /** Nettoyage au démontage — pendant du précédent, jamais appelé si absent. */
+  onDiagnosticsClear?: () => void;
 } = $props();
 
 let articleEl: HTMLElement | undefined = $state();
@@ -212,7 +220,7 @@ $effect(() => {
     cleanupCode = decorateCodeBlocks(articleEl);
     const { brokenImages } = await postRenderDom(articleEl, { filePath, rootPath: getRootPath() ?? undefined });
     await typesetMath(articleEl);
-    if (!cancelled) collectRenderDiagnostics(articleEl, brokenImages);
+    if (!cancelled) onDiagnostics?.(articleEl, brokenImages);
 
     // Mark transcluded blocks so double-click opens the original source file
     onTransclusion?.(articleEl, result.ranges);
@@ -251,7 +259,7 @@ $effect(() => {
   };
 });
 
-onDestroy(() => clearRenderDiagnostics());
+onDestroy(() => onDiagnosticsClear?.());
 
 // ── TOC jump: scroll to a source line on demand (sidebar TOC click) ───────
 // The editor jump is handled by app.svelte (azprose:jump-to-file). This

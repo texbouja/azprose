@@ -7,6 +7,7 @@ import { language } from "@/lib/i18n";
 // sans capacité). markTranscludedBlocks() ne rejoint donc le bundle NAV que
 // si NAV en avait besoin — ce n'est pas le cas.
 import { markTranscludedBlocks } from "@/markdown";
+import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 
 let {
   value = "",
@@ -42,5 +43,12 @@ $effect(() => {
 {#if loading}
   <div class="mdv-editor mdv-editor--loading">{t("lazy.loadingPreview")}</div>
 {:else if Cmp}
-  <Cmp {value} {filePath} {rev} onTransclusion={markTranscludedBlocks} />
+  <Cmp
+    {value}
+    {filePath}
+    {rev}
+    onTransclusion={markTranscludedBlocks}
+    onDiagnostics={collectRenderDiagnostics}
+    onDiagnosticsClear={clearRenderDiagnostics}
+  />
 {/if}
