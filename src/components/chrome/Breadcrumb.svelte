@@ -27,6 +27,7 @@
     onOpenSvarCalendar,
     onOpenSpreadsheet,
     onOpenDataFilter,
+    onOpenNav,
     onOpenPalette,
     onSelectFile,
   }: {
@@ -49,6 +50,9 @@
     onOpenSvarCalendar?: () => void;
     onOpenSpreadsheet?: () => void;
     onOpenDataFilter?: () => void;
+    /** Lance (ou cible, SINGLETON — R2) la fenêtre NAV (chantier fenêtre NAV,
+     *  phase 8) : nouvel onglet vide si elle est déjà ouverte. */
+    onOpenNav?: () => void;
     onOpenPalette?: () => void;
     onSelectFile?: (path: string, newTab?: boolean) => void;
   } = $props();
@@ -231,8 +235,19 @@
       {/if}
     </div>
 
-    {#if onOpenSvarCalendar || onOpenSpreadsheet || onOpenDataFilter}
+    {#if onOpenSvarCalendar || onOpenSpreadsheet || onOpenDataFilter || onOpenNav}
       <div class="mdv-breadcrumb__tools">
+        {#if onOpenNav}
+          <Button
+            data-tooltip={t("breadcrumb.nav")}
+            aria-label={t("breadcrumb.nav")}
+            onclick={onOpenNav}
+          >
+            {#snippet icon()}
+              <i class="wxi-compass" style="font-size:14px"></i>
+            {/snippet}
+          </Button>
+        {/if}
         {#if onOpenSpreadsheet}
           <Button
             data-tooltip={t("breadcrumb.spreadsheet")}

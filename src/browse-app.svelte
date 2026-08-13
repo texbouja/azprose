@@ -540,16 +540,19 @@ onMount(() => {
   window.addEventListener("azprose:pdf-rect-navigate", onPdfRect);
   window.addEventListener("keydown", onKey);
 
-  // R2/phase 7 : cette fenêtre NAV est un SINGLETON par fenêtre de projet —
+  // R2/phase 7-8 : cette fenêtre NAV est un SINGLETON par fenêtre de projet —
   // `openOrFocusBrowseWindow` (browse-window.ts) émet CET événement Tauri
   // (pas un CustomEvent DOM : cette fenêtre est un processus séparé) quand
-  // l'aide (ou un autre lanceur NAV) cible une fenêtre déjà ouverte : le
-  // chemin est monté dans un NOUVEL onglet plutôt que de dupliquer la fenêtre.
+  // l'aide, le compass du breadcrumb ou un autre lanceur NAV cible une
+  // fenêtre déjà ouverte : le chemin est monté dans un NOUVEL onglet plutôt
+  // que de dupliquer la fenêtre — chemin VIDE (compass, D4/R6) → onglet vide.
   let navOpenCancelled = false;
   let navOpenUnlisten: (() => void) | null = null;
   void listen<string>("azprose:nav-open", (event) => {
     const path = event.payload;
-    if (typeof path === "string" && path.length > 0) void loadNewTab(path);
+    if (typeof path !== "string") return;
+    if (path) void loadNewTab(path);
+    else openEmptyTab();
   }).then((un) => {
     if (navOpenCancelled) { un(); return; }
     navOpenUnlisten = un;

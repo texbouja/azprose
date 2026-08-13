@@ -631,21 +631,6 @@ $effect(() => {
   return () => window.removeEventListener("azprose:preview-open-editor", onOpenInEditor);
 });
 
-// Fenêtre de NAVIGATION (Phase F — D2/R5) : bouton de la toolbar side. Ouvre
-// (ou cible, SINGLETON — R2) la fenêtre fille NAV sur le fichier affiché — la
-// session n'est PAS touchée (le tab de lancement reste actif tel quel), la
-// fenêtre se ferme avec celle du projet (close-handler).
-$effect(() => {
-  const onBrowseOpen = (e: Event) => {
-    const detail = (e as CustomEvent<{ path?: string }>).detail;
-    if (!detail?.path) return;
-    void openOrFocusBrowseWindow({ path: detail.path, root: getRootPath() }).catch((err) => {
-      notifications.setLoadError({ title: t("browse.open"), message: `${err}` });
-    });
-  };
-  window.addEventListener("azprose:browse-open", onBrowseOpen);
-  return () => window.removeEventListener("azprose:browse-open", onBrowseOpen);
-});
 
 // Bouton « Recharger » de la toolbar side (preview) — même procédure que le
 // save éditeur (méthode officielle VSCode) : changement EXTERNE + buffer non
@@ -720,6 +705,20 @@ async function openHelp(): Promise<void> {
   if (!rp) return;
   try {
     await openOrFocusBrowseWindow({ path: helpIndexPath(rp), root: rp });
+  } catch (err) {
+    notifications.setLoadError({ title: t("browse.open"), message: `${err}` });
+  }
+}
+
+/** Icône compass du breadcrumb (chantier fenêtre NAV, phase 8) : lance NAV
+ *  sur un onglet VIDE (D4/R6 — pas de fichier de départ, à la différence du
+ *  bouton maximize qui cible le fichier affiché, ou de l'aide qui cible
+ *  index.md). SINGLETON par fenêtre de projet (R2), comme `openHelp`. */
+async function openNav(): Promise<void> {
+  const rp = getRootPath();
+  if (!rp) return;
+  try {
+    await openOrFocusBrowseWindow({ path: "", root: rp });
   } catch (err) {
     notifications.setLoadError({ title: t("browse.open"), message: `${err}` });
   }
@@ -1669,6 +1668,7 @@ let cmds = $derived(
     onOpenSvarCalendar={() => pm.openCustomInSide("svar-calendar", "Calendar")}
     onOpenSpreadsheet={handleOpenSpreadsheet}
     onOpenDataFilter={handleOpenDataFilter}
+    onOpenNav={openNav}
     onOpenPalette={() => overlays.setPaletteOpen(true)}
     onSelectFile={handleSidebarFileSelect}
   />

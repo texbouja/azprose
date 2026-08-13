@@ -212,17 +212,9 @@ let sideItems = $derived.by(() => {
   // montage que l'éditeur épinglé (D7) — tout à gauche.
   const items: any[] = [...pinnedHistItems];
 
-  // Fenêtre de NAVIGATION (Phase F — D2/R5) : la lecture en chaîne (wikilink
-  // après wikilink, back/forward) sort des panneaux dans une fenêtre fille.
-  // Le tab de lancement reste actif tel quel — jamais de changement d'identité.
-  if (!isMain && isMd && renderMode !== "colle" && renderMode !== "presentation") {
-    items.push({
-      comp: "icon", icon: "wxi-maximize-2", text: t("browse.open"), pinned: true,
-      handler: () => activeTab && window.dispatchEvent(new CustomEvent("azprose:browse-open", {
-        detail: { path: activeTab.path },
-      })),
-    });
-  }
+  // (chantier fenêtre NAV, phase 8) Le lancement de NAV depuis un viewer
+  // spécifique a été retiré au profit du lancement UNIFIÉ (icône compass du
+  // breadcrumb, singleton R2) — plus de bouton wxi-maximize-2 ici.
 
   // Left: navigation colles (bouton « Élèves » + chevrons + compteur) — vue
   // planches active dans le side panel. Le bouton « Élèves » est TOUT À
