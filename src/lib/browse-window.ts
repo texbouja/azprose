@@ -6,13 +6,22 @@
  * Le tab de lancement reste actif tel quel — plus de changement d'identité de
  * tab, plus de doublon transitoire, plus de conflit de règles.
  *
- * Conventions (R5, round 5) :
+ * Conventions (R5, round 5 ; révisé 2026-08-14 — retrait de `parent`) :
  * - taille = celle du lancement de l'app : JAMAIS maximisée, dépendante de
  *   l'écran, même si la fenêtre de projet l'est ;
  * - si la fenêtre de LANCEMENT est en plein écran (viewer en fullscreen), la
  *   fenêtre fille l'est aussi ;
- * - la fenêtre fille se ferme avec sa fenêtre de projet (cascade explicite —
- *   `parent` gère l'empilement, pas la destruction sur toutes les plateformes).
+ * - la fenêtre NAV se ferme avec sa fenêtre de projet — cascade EXPLICITE
+ *   (`closeBrowseChildren`, appelée par `close-handler.ts` avant destruction
+ *   de la fenêtre de projet), indépendante de toute relation Tauri `parent` ;
+ * - fenêtre AUTONOME (2026-08-14) : PAS de relation `parent` Tauri. Un
+ *   `parent` fait de NAV une « owned window » (Windows) / `transient_for`
+ *   (Linux) — l'OS la maintient alors TOUJOURS au-dessus de son propriétaire
+ *   (empilement figé, indépendant du clic) et certains WM lui refusent une
+ *   minimisation ou un focus indépendants. NAV doit se comporter comme
+ *   n'importe quelle fenêtre : clic = focus + premier plan, minimisable,
+ *   entrée de taskbar propre — seule la fermeture reste liée au parent,
+ *   via la cascade explicite ci-dessus.
  */
 import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
 import { WebviewWindow, getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
@@ -78,22 +87,25 @@ export interface BrowseWindowOptions {
 
 /** Ouvre une fenêtre fille de navigation sur `path`. */
 export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<WebviewWindow> {
-  const parent = getCurrentWindow();
+  const launcher = getCurrentWindow();
   const [monitor, fullscreen] = await Promise.all([
     currentMonitor().catch(() => null),
-    parent.isFullscreen().catch(() => false),
+    launcher.isFullscreen().catch(() => false),
   ]);
   const { width, height } = browseWindowSize(monitor);
   const params = new URLSearchParams({ browse: opts.path });
   if (opts.root) params.set("root", opts.root);
-  return new WebviewWindow(browseWindowLabel(parent.label, ++browseSeq), {
+  return new WebviewWindow(browseWindowLabel(launcher.label, ++browseSeq), {
     url: `index.html?${params.toString()}`,
     title: basename(opts.path),
     width,
     height,
     center: true,
-    // Empilement au-dessus de la fenêtre de projet (transient-for sous Linux).
-    parent,
+    // PAS de `parent` (2026-08-14) : NAV est une fenêtre AUTONOME — clic =
+    // focus + premier plan comme n'importe quelle fenêtre, minimisation et
+    // taskbar indépendantes. Sa fermeture avec la fenêtre de projet reste
+    // garantie par la cascade explicite de close-handler.ts (voir le
+    // commentaire de tête de ce fichier).
     // R5 : le plein écran du viewer de lancement se propage ; sinon fenêtre
     // normale — jamais maximisée, même si la fenêtre de projet l'est.
     fullscreen,
@@ -117,8 +129,8 @@ async function findBrowseChildren(parentLabel: string): Promise<WebviewWindow[]>
  * fenêtre NAV par projet, jamais un doublon silencieux.
  */
 export async function openOrFocusBrowseWindow(opts: BrowseWindowOptions): Promise<void> {
-  const parent = getCurrentWindow();
-  const [existing] = await findBrowseChildren(parent.label);
+  const launcher = getCurrentWindow();
+  const [existing] = await findBrowseChildren(launcher.label);
   if (existing) {
     await emitTo(existing.label, "azprose:nav-open", opts.path);
     await existing.setFocus().catch(() => {});
