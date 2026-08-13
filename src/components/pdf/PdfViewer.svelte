@@ -15,7 +15,10 @@
   import { language } from "@/lib/i18n";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
   import { getPdfCache, setPdfCache, updatePdfPage, setPdfDoc, deletePdfDoc } from "@/lib/pdf-cache";
-  import { attachRectSelection, type RectInfo } from "@/pdf/rect-select";
+  // Import de TYPE seul (effacé à la compilation) — le module lui-même (402 l.)
+  // est chargé À LA DEMANDE dans onMount, seulement si la capacité est utilisée
+  // (phase 1.6, R7 : une capacité absente ne doit rien coûter au CHARGEMENT).
+  import type { RectInfo } from "@/pdf/rect-select";
 
   let t = $derived(getT($language));
 
@@ -272,20 +275,30 @@
     eventBus.on("pagechanging",  (e: { pageNumber: number }) => { currentPage = e.pageNumber; updatePdfPage(path, e.pageNumber); });
     eventBus.on("scalechanging", (e: { scale: number })      => { scale = e.scale; });
 
-    // Inverse synctex: Ctrl+click on PDF pages → jump to source line
-    viewportEl.addEventListener("mousedown", onPdfMouseDown);
+    // Inverse synctex: Ctrl+click on PDF pages → jump to source line — capacité
+    // suit la prop, au CHARGEMENT aussi (R7). Sans onInverseSync, AUCUNE I/O ne
+    // doit avoir lieu : NAV n'expose pas cette fonctionnalité et ne doit pas
+    // sonder le disque (basename.synctex.gz) pour rien.
+    if (onInverseSync) {
+      viewportEl.addEventListener("mousedown", onPdfMouseDown);
+      const synctexPath = path.replace(/\.pdf$/i, "") + ".synctex.gz";
+      exists(synctexPath).then((ok) => { hasSynctex = ok; }).catch(() => {});
+    }
 
-    // Detect synctex availability (basename.synctex.gz next to PDF)
-    const synctexPath = path.replace(/\.pdf$/i, "") + ".synctex.gz";
-    exists(synctexPath).then((ok) => { hasSynctex = ok; }).catch(() => {});
-
-    // Rect selection: Alt+drag to select region
-    cleanupRect = attachRectSelection(
-      viewportEl,
-      () => pdfViewer,
-      () => path,
-      (info) => onRectSelected?.(info),
-    );
+    // Rect selection: Alt+drag to select region — capacité suit la prop, au
+    // CHARGEMENT aussi (R7) : import dynamique, jamais payé si onRectSelected
+    // est absent (cas de NAV, qui n'expose pas cette fonctionnalité).
+    if (onRectSelected) {
+      void (async () => {
+        const { attachRectSelection } = await import("@/pdf/rect-select");
+        cleanupRect = attachRectSelection(
+          viewportEl,
+          () => pdfViewer,
+          () => path,
+          (info) => onRectSelected?.(info),
+        );
+      })();
+    }
 
     // Listen for scroll-to-rect requests (from markdown preview wikilink clicks)
     const onScrollToRect = (e: Event) => {
@@ -337,8 +350,11 @@
   // Load on mount & reload when path changes; rev changes trigger full re-create
   $effect(() => { if (path && pdfViewer) void loadPdf(path); });
 
-  // Re-detect synctex when path changes
-  $effect(() => { exists(path.replace(/\.pdf$/i, "") + ".synctex.gz").then((ok) => { hasSynctex = ok; }).catch(() => {}); });
+  // Re-detect synctex when path changes — même garde-fou qu'au montage (R7).
+  $effect(() => {
+    if (!onInverseSync) return;
+    exists(path.replace(/\.pdf$/i, "") + ".synctex.gz").then((ok) => { hasSynctex = ok; }).catch(() => {});
+  });
 
   onDestroy(() => {
     void loadingTask?.destroy();
