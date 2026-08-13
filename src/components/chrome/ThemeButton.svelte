@@ -316,3 +316,13 @@
   </Popover>
 </div>
 
+<style>
+  /* Contrat CSS propre au composant (vague 3, phase 3.1, R2/R3) — rapatrié
+     depuis src/styles/chrome/titlebar.css : ancre de positionnement pour le
+     Popover du menu thème, seul usage de cette classe (nom historique — le
+     composant est monté par Breadcrumb.svelte, pas par TitleBar.svelte). */
+  .mdv-titlebar__theme {
+    position: relative;
+  }
+</style>
+
