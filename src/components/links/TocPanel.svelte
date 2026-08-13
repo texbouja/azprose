@@ -141,9 +141,9 @@
               // titres des fichiers transclus font partie de la note affichée
               // (maxDepth par défaut — les branches sont des ancres de la
               // note, pas des fichiers lançables). La remontée index.md
-              // (branche Home) est retirée avec le mode navigation (Phase G).
+              // (branche Home) n'existe plus (chantier fenêtre NAV, phase 3) :
+              // `buildTocForest` affiche toujours strictement la référence.
               maxDepth: DEFAULT_MAX_DEPTH,
-              linkedIndex: false,
             }, tocMemo);
         if (version !== buildVersion) return; // requête obsolète
         forest = f;

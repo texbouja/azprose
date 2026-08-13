@@ -57,9 +57,9 @@ import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { executeOxideCommand, notifyMarkdownOxideFileChanged } from "@/lib/lsp/markdown-oxide";
 import { ensureHelpInstalled, helpIndexPath, isHelpPath } from "@/lib/help-install";
-// Import STATIQUE (jamais mélangé avec du dynamique) : index-home est déjà
-// dans le chunk principal via LinksView → TocPanel → toc-forest — un dynamic
-// import ici ne découperait AUCUN chunk (avertissement INEFFECTIVE_DYNAMIC_IMPORT).
+// Import STATIQUE (jamais mélangé avec du dynamique) : toc-forest est déjà
+// dans le chunk principal via LinksView → TocPanel — un dynamic import ici ne
+// découperait AUCUN chunk (avertissement INEFFECTIVE_DYNAMIC_IMPORT).
 import { navigate, navigateVoid, bridgeEvent, mountInPinnedSlot, type NavDeps, type NavIntent } from "@/lib/navigation";
 import { writeBackColleKeys } from "@/colles/write-back";
 import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";

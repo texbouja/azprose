@@ -1,34 +1,37 @@
 /**
  * Forêt de TOC (harnais de sécurité de la refonte du plan) — arbre des titres
- * du fichier « home » (index.md lié, sinon fichier de référence), étendu des
- * TOC des fichiers liés par wikilinks block-level CONFORMES traités comme des
- * TRANSCLUSIONS : leurs plans sont inclus comme branches de l'arbre (jamais
- * la transclusion elle-même dans le viewer — ce module est purement de
- * navigation).
+ * du fichier de RÉFÉRENCE (le tab viewer actif, sinon l'éditeur actif),
+ * étendu des TOC des fichiers liés par wikilinks block-level CONFORMES
+ * traités comme des TRANSCLUSIONS : leurs plans sont inclus comme branches de
+ * l'arbre (jamais la transclusion elle-même dans le viewer — ce module est
+ * purement de navigation).
  *
  * Règles :
  * 1. La référence est le tab VIEWER actif (side preview), sinon le .md actif
- *    de l'éditeur — décidé par l'appelant (`referencePath`).
- * 2. Le fichier affiché est `findLinkedIndexMd` (même mécanisme que le bouton
- *    Home du preview) : si la recherche réussit → TOC de l'index.md ; sinon
- *    TOC du fichier de référence. `referenceSource` (buffer live) évite la
- *    lecture disque quand on affiche le fichier de référence lui-même.
- * 3. Seuls les wikilinks block-level conformes à la convention d'impression
+ *    de l'éditeur — décidé par l'appelant (`referencePath`). `referenceSource`
+ *    (buffer live) évite la lecture disque du fichier affiché.
+ * 2. Seuls les wikilinks block-level conformes à la convention d'impression
  *    (`findBlockWikilinks`, source de vérité unique) déclenchent une branche
  *    transcluse — même logique que l'export PDF (`expandWikilinksForPrint`).
  *    Le fichier lié est résolu : relatif au fichier contenant, repli vault par
  *    basename (getFileIndex, DI). Sa TOC devient une branche de l'arbre,
  *    insérée à la position du lien dans le document hôte.
- * 4. Récursion bornée (maxDepth) + anti-cycle (ancestors). Toutes les
+ * 3. Récursion bornée (maxDepth) + anti-cycle (ancestors). Toutes les
  *    branches (propres et transcluses) sont foldables côté UI.
+ *
+ * (chantier fenêtre NAV, phase 3) La remontée « index.md lié » (Home) a été
+ * retirée — elle était déjà désactivée en pratique depuis la Phase G (seul
+ * appelant : `TocPanel`, toujours `linkedIndex: false`). La TOC déclarative de
+ * la fenêtre NAV (`@/lib/toc-declared`) couvre désormais ce besoin, par
+ * intention explicite de l'utilisateur (`sommaire:`/`parent:`) plutôt que par
+ * analyse de liens.
  *
  * DI : `readText`/`getIndex` injectés — module PUR, testable sous bun.
  */
 
 import { findBlockWikilinks } from "@/markdown/print-expand";
 import { parseMarkdownToc, type TocEntry } from "@/lib/markdown-toc";
-import { findLinkedIndexMd, normIndexPath, stem } from "@/lib/index-home";
-import { basename, dirname } from "@/lib/paths-utils";
+import { basename, dirname, normIndexPath, stem } from "@/lib/paths-utils";
 import { structuralTocHash, type TocMemo } from "@/lib/toc-cache";
 
 /** Nœud titre : un heading d'un fichier (propre ou transclu). */
@@ -85,10 +88,6 @@ export interface BuildTocForestOptions {
   getIndex?: (rootPath: string) => Promise<Map<string, string>>;
   /** Nombre maximal de niveaux de transclusion (0 = racine seule). */
   maxDepth?: number;
-  /** Cherche l'index.md lié au fichier de référence (mécanisme Home) et affiche
-   *  SA TOC. `false` = TOC STRICTE du fichier de référence (mode édition :
-   *  aucun autre md n'est lançable depuis la TOC). Défaut : true. */
-  linkedIndex?: boolean;
 }
 
 /** Nombre maximal de niveaux de transclusion par défaut (mode navigation). */
@@ -321,16 +320,14 @@ async function buildFileNode(
 }
 
 /**
- * Construit la forêt de TOC du fichier « home » :
- * 1. `findLinkedIndexMd` (même mécanisme que le bouton Home du preview) ;
- * 2. contenu = readText(index) ou `referenceSource`/readText(référence) ;
- * 3. arbre récursif (titres + branches transcluses conformes).
+ * Construit la forêt de TOC du fichier de RÉFÉRENCE :
+ * 1. contenu = `referenceSource` (buffer live) ou lecture disque ;
+ * 2. arbre récursif (titres + branches transcluses conformes).
  *
  * `memo` (optionnel, phases 6/6bis) : mémoïsation in-place — même clé
- * (`referencePath::rootPath`), même hash structural et même fichier affiché →
- * la forêt mémoïsée est retournée SANS rebuild (le debounce du panneau se
- * réduit à une lecture + un hash). Passer une instance par composant via
- * `makeTocMemo()`.
+ * (`referencePath::rootPath`), même hash structural → la forêt mémoïsée est
+ * retournée SANS rebuild (le debounce du panneau se réduit à une lecture + un
+ * hash). Passer une instance par composant via `makeTocMemo()`.
  */
 export async function buildTocForest(
   opts: BuildTocForestOptions,
@@ -339,43 +336,25 @@ export async function buildTocForest(
   const { rootPath, referencePath, referenceSource, readText } = opts;
   const getIndex = opts.getIndex;
   const maxDepth = opts.maxDepth ?? DEFAULT_MAX_DEPTH;
-  const linkedIndex = opts.linkedIndex ?? true;
   const rootNorm = normIndexPath(rootPath);
   const refNorm = normIndexPath(referencePath);
+  const displayPath = refNorm;
 
-  // 1. Home : index.md lié au fichier de référence (si la recherche réussit,
-  //    c'est la TOC de CE fichier qui est affichée). Désactivé en mode édition
-  //    (`linkedIndex: false`) : la TOC reste strictement celle de la référence.
-  const displayPath = linkedIndex
-    ? (await findLinkedIndexMd({
-        rootPath,
-        currentFilePath: refNorm,
-        readText,
-        maxLevels: 3,
-      })) ?? refNorm
-    : refNorm;
-
-  // 2. Contenu du fichier affiché : buffer live du fichier de référence quand
-  //    on l'affiche lui-même, sinon lecture disque.
-  const content = displayPath === refNorm
-    ? (referenceSource ?? await tryRead(displayPath, readText))
-    : await tryRead(displayPath, readText);
+  // Contenu du fichier affiché : buffer live si fourni, sinon lecture disque.
+  const content = referenceSource ?? await tryRead(displayPath, readText);
   if (content === null) return { root: null, displayPath, structuralHash: "" };
 
   // Phases 6/6bis : la structure du plan n'a pas changé → la forêt est
   // INCHANGÉE, on la retourne telle quelle (aucune re-lecture des fichiers
-  // liés, aucune re-transclusion). Le hit exige aussi le même fichier affiché
-  // (un index.md lié créé/supprimé change displayPath à clé identique) ET les
-  // mêmes réglages de construction (maxDepth/linkedIndex) : un changement de
-  // mode navigation/édition n'est jamais servi par une forêt obsolète.
-  const key = `${refNorm}::${rootNorm}::d${maxDepth}::h${linkedIndex ? 1 : 0}`;
+  // liés, aucune re-transclusion).
+  const key = `${refNorm}::${rootNorm}::d${maxDepth}`;
   const hash = structuralTocHash(content);
   if (memo && memo.key === key && memo.hash === hash && memo.forest?.displayPath === displayPath) {
     return memo.forest;
   }
 
   // 3. Arbre récursif. Le fichier racine est marqué `root: true`.
-  const ancestors = new Set<string>([rootNorm === refNorm ? refNorm : displayPath]);
+  const ancestors = new Set<string>([displayPath]);
   const ctx: BuildCtx = { rootPath, readText, getIndex: getIndex ?? (() => Promise.resolve(new Map())), maxDepth };
   const node = await buildFileNode(displayPath, content, 0, ancestors, ctx);
   const forest: TocForest = { root: { ...node, root: true }, displayPath, structuralHash: hash };
