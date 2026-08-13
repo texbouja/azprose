@@ -30,6 +30,12 @@ import {
   navStackPushForward,
   type NavStack,
 } from "@/lib/nav-stack";
+import { parseAddress, filterIndexEntries, filterHelpArticles } from "@/nav/address";
+// `@/help/catalog` (PAS le baril `@/help`) : le baril réexporte aussi
+// `help-bundle.ts`, dont le glob `eager: true` inlinerait TOUT le contenu
+// markdown de la doc dans le chunk NAV pour la seule liste {path,title}.
+import { catalog as helpCatalog } from "@/help/catalog";
+import { helpFilePath, helpIndexPath } from "@/lib/help-install";
 import { getT, language } from "@/lib/i18n";
 // Feuilles du RENDU markdown ET du modèle d'onglets — la fenêtre de
 // navigation emprunte MarkdownPreview/DocPreview/TabsBar à la fenêtre de
@@ -116,6 +122,99 @@ function say(message: string): void {
  *  réordonnancement…) : force `MarkdownPreview`/`DocPreview` à rejouer leur
  *  effet de rendu à chaque navigation aboutie. */
 let contentRev = $state(0);
+
+// ── Barre d'adresse (phase 2 — R5) ──────────────────────────────────────
+// Zone de RECHERCHE, pas un affichage de l'emplacement courant (D9/C : « au
+// plus one onglet vide, focus dans la barre d'adresse ») : elle se vide après
+// chaque navigation aboutie, comme une omnibox de « nouvel onglet ».
+let addressValue = $state("");
+let addressEl: HTMLInputElement | undefined = $state();
+let vaultSuggestions = $state<{ base: string; path: string }[]>([]);
+let helpSuggestions = $state<{ path: string; title: string }[]>([]);
+
+// D4 (round 1) : l'onglet vide donne le focus à la barre d'adresse — dès
+// qu'il devient actif (ouverture, sélection), pas seulement à sa création.
+$effect(() => {
+  if (activeTab && !activeTab.path) addressEl?.focus();
+});
+
+async function updateSuggestions(): Promise<void> {
+  const { kind, query } = parseAddress(addressValue);
+  if (!query) {
+    vaultSuggestions = [];
+    helpSuggestions = [];
+    return;
+  }
+  if (kind === "help") {
+    helpSuggestions = filterHelpArticles(helpCatalog, query);
+    vaultSuggestions = [];
+    return;
+  }
+  helpSuggestions = [];
+  if (!root) {
+    vaultSuggestions = [];
+    return;
+  }
+  const index = await getFileIndex(root);
+  vaultSuggestions = filterIndexEntries(index, query).map((base) => ({ base, path: index.get(base)! }));
+}
+
+function clearAddress(): void {
+  addressValue = "";
+  vaultSuggestions = [];
+  helpSuggestions = [];
+}
+
+/** Résolution PLEINE (Entrée sans suggestion choisie) : préfixe `aide:`/`help:`
+ *  → catalogue de l'aide (titre puis chemin) ; sinon → index du vault, en
+ *  résolution wikilink SANS crochets (basename exact, puis insensible à la
+ *  casse, puis meilleure correspondance de la complétion — R5). */
+async function resolveAddress(raw: string): Promise<string | null> {
+  const { kind, query } = parseAddress(raw);
+  if (kind === "help") {
+    if (!root) return null;
+    if (!query) return helpIndexPath(root);
+    const q = query.toLowerCase();
+    const match = helpCatalog.find((a) => a.title.toLowerCase().includes(q))
+      ?? helpCatalog.find((a) => a.path.toLowerCase().includes(q));
+    return match ? helpFilePath(root, match.path) : null;
+  }
+  if (!query || !root) return null;
+  const index = await getFileIndex(root);
+  const direct = index.get(query);
+  if (direct) return direct;
+  const lowerHit = [...index.entries()].find(([base]) => base.toLowerCase() === query.toLowerCase());
+  if (lowerHit) return lowerHit[1];
+  const [best] = filterIndexEntries(index, query, 1);
+  return best ? (index.get(best) ?? null) : null;
+}
+
+async function submitAddress(): Promise<void> {
+  const raw = addressValue.trim();
+  if (!raw) return;
+  const target = await resolveAddress(raw);
+  if (!target) {
+    say(t("browse.addressNotFound", { name: raw }));
+    return;
+  }
+  clearAddress();
+  await navigateTo(target, null, false);
+}
+
+async function chooseSuggestion(path: string): Promise<void> {
+  clearAddress();
+  await navigateTo(path, null, false);
+}
+
+function onAddressKeydown(e: KeyboardEvent): void {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    void submitAddress();
+  } else if (e.key === "Escape") {
+    vaultSuggestions = [];
+    helpSuggestions = [];
+  }
+}
 
 function setWindowTitle(): void {
   const tab = panel.activeTab;
@@ -310,6 +409,32 @@ onMount(() => {
         onReorder={(from, to) => panel.reorder(from, to)}
       />
     </div>
+    <div class="browse__address-wrap">
+      <input
+        bind:this={addressEl}
+        bind:value={addressValue}
+        type="text"
+        class="browse__address"
+        placeholder={t("browse.emptyHint")}
+        aria-label={t("browse.emptyHint")}
+        oninput={() => void updateSuggestions()}
+        onkeydown={onAddressKeydown}
+      />
+      {#if vaultSuggestions.length > 0 || helpSuggestions.length > 0}
+        <ul class="browse__suggestions" role="listbox">
+          {#each vaultSuggestions as s (s.path)}
+            <li role="option" aria-selected="false">
+              <button type="button" onclick={() => void chooseSuggestion(s.path)}>{s.base}</button>
+            </li>
+          {/each}
+          {#each helpSuggestions as a (a.path)}
+            <li role="option" aria-selected="false">
+              <button type="button" onclick={() => void chooseSuggestion(helpFilePath(root ?? "", a.path))}>{a.title}</button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
     <button
       type="button"
       class="browse__newtab"
@@ -379,6 +504,57 @@ onMount(() => {
 .browse__tabs {
   flex: 1;
   min-width: 0;
+}
+.browse__address-wrap {
+  position: relative;
+  flex: none;
+  width: 240px;
+  margin-left: 6px;
+}
+.browse__address {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+.browse__address:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.browse__suggestions {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.browse__suggestions button {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.browse__suggestions button:hover {
+  background: var(--surface-hover);
 }
 .browse__newtab {
   flex: none;

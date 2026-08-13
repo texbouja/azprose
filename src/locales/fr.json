@@ -432,6 +432,7 @@
   "browse.emptyTab": "Nouvel onglet",
   "browse.emptyHint": "Utiliser la zone de recherche",
   "browse.newTab": "Nouvel onglet",
+  "browse.addressNotFound": "Introuvable : {name}",
   "nav.wikilinkUnresolved": "Lien introuvable : {name}",
   "pinned.back": "Remonter au fichier précédemment monté (onglet épinglé)",
   "pinned.forward": "Redescendre dans l'historique de l'onglet épinglé",
