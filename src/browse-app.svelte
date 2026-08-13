@@ -46,6 +46,8 @@ import { catalog as helpCatalog } from "@/help/catalog";
 import { helpFilePath, helpIndexPath, isHelpPath } from "@/lib/help-install";
 import { getT, language } from "@/lib/i18n";
 import { initTheme } from "@/lib/theme";
+import { persistedState } from "@/stores/persisted.svelte";
+import { STORAGE_KEYS } from "@/lib/storage";
 // Feuilles du RENDU markdown ET du modèle d'onglets — la fenêtre de
 // navigation emprunte MarkdownPreview/DocPreview/TabsBar à la fenêtre de
 // projet, elle doit donc charger les mêmes styles qu'eux. Sans elles, le HTML
@@ -222,9 +224,9 @@ function onAddressKeydown(e: KeyboardEvent): void {
 
 // ── Toolbar au survol (phase 4) ─────────────────────────────────────────
 
-/** Sidebar repliable (R7, préparation phase 5 — le conteneur lui-même
- *  n'existe pas encore, seul l'état de visibilité est posé ici). */
-let sidebarVisible = $state(true);
+/** Sidebar repliable — repli persisté (phase 1.5, R6 : mobilier SYSTÈME de
+ *  fenêtre, clé DISTINCTE de celle de PROJET). */
+const sidebarVisible = persistedState<boolean>(STORAGE_KEYS.navSidebarOpen, true);
 
 /** TOC déclarative (§3) de l'onglet ACTIF — recalculée à chaque navigation
  *  aboutie. Sert ICI au bouton « home » (racine de l'arbre déclaré) ; sert
@@ -597,7 +599,7 @@ onMount(() => {
   <div class="browse__row">
     <!-- Sidebar TOC (phase 5) — même CSS que la sidebar du projet (R7). -->
     <BrowseSidebar
-      visible={sidebarVisible}
+      visible={sidebarVisible.current}
       rootPath={root}
       toc={currentToc}
       onNavigate={(path, heading, ctrlKey) => void navigateTo(path, heading, ctrlKey)}
@@ -607,8 +609,8 @@ onMount(() => {
       <!-- Toolbar au SURVOL (phase 4) : remplace la barre back/forward fixe de
            la phase 1 — même châssis que TabActions (zone de survol + reveal). -->
       <BrowseToolbar
-        {sidebarVisible}
-        onToggleSidebar={() => { sidebarVisible = !sidebarVisible; }}
+        sidebarVisible={sidebarVisible.current}
+        onToggleSidebar={() => { sidebarVisible.current = !sidebarVisible.current; }}
         {canGoHome}
         onHome={goHome}
         {canGoBack}

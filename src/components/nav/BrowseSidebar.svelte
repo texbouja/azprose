@@ -4,9 +4,9 @@
  * repliable + largeur ajustable — CSS de la sidebar du projet
  * (`@/styles/files/sidebar.css`, R7 : héritage de présentation), et le
  * mécanisme de redimensionnement au pointeur repris de
- * `@/components/sidebar/sidebar-container.svelte`. La largeur n'est PAS
- * persistée (R3 : aucune écriture dans localStorage propre à NAV) — chaque
- * fenêtre NAV redémarre à la largeur par défaut.
+ * `@/components/sidebar/sidebar-container.svelte`. La largeur est persistée
+ * (phase 1.5, R6 : mobilier SYSTÈME de fenêtre, distinct du travail utilisateur
+ * que R3 protège — une largeur de sidebar n'est pas un brouillon).
  *
  * Affiche l'ORIGINE de l'arbre (§3 du plan, exigence d'ergonomie) : un arbre
  * qui apparaît sans dire d'où il vient est ce qui a fait échouer le
@@ -16,6 +16,8 @@
 import TocPanel from "@/components/links/TocPanel.svelte";
 import { getT, language } from "@/lib/i18n";
 import type { DeclaredToc } from "@/lib/toc-declared";
+import { persistedState } from "@/stores/persisted.svelte";
+import { STORAGE_KEYS } from "@/lib/storage";
 
 const MIN_WIDTH = 200;
 const DEFAULT_WIDTH = 260;
@@ -36,7 +38,7 @@ let {
 
 let t = $derived(getT($language));
 
-let width = $state(DEFAULT_WIDTH);
+const sidebarWidth = persistedState<number>(STORAGE_KEYS.navSidebarWidth, DEFAULT_WIDTH);
 let dragging = $state(false);
 let startX = 0;
 let startWidth = 0;
@@ -44,7 +46,7 @@ let startWidth = 0;
 function onResizePointerDown(e: PointerEvent) {
   dragging = true;
   startX = e.clientX;
-  startWidth = width;
+  startWidth = sidebarWidth.current;
   (e.target as HTMLElement).setPointerCapture(e.pointerId);
   document.body.style.cursor = "col-resize";
   document.body.style.userSelect = "none";
@@ -53,7 +55,7 @@ function onResizePointerDown(e: PointerEvent) {
 function onResizePointerMove(e: PointerEvent) {
   if (!dragging) return;
   const delta = e.clientX - startX;
-  width = Math.max(MIN_WIDTH, startWidth + delta);
+  sidebarWidth.current = Math.max(MIN_WIDTH, startWidth + delta);
 }
 
 function stopResize(e: PointerEvent) {
@@ -78,8 +80,8 @@ $effect(() => {
 });
 </script>
 
-<aside class="mdv-sidebar{visible ? ' is-open' : ''}" style="width:{visible ? width + 'px' : '0px'}">
-  <div class="mdv-sidebar__inner" style="width:{width}px">
+<aside class="mdv-sidebar{visible ? ' is-open' : ''}" style="width:{visible ? sidebarWidth.current + 'px' : '0px'}">
+  <div class="mdv-sidebar__inner" style="width:{sidebarWidth.current}px">
     <div class="mdv-sidebar__view">
       <div class="mdv-sidebar__header">
         {#if toc?.origin === "declared"}

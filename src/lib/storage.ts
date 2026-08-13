@@ -19,6 +19,11 @@ export const STORAGE_KEYS = {
   transparency: "mdview.transparency",
   sidebarOpen: "mdview.sidebar.open",
   sidebarWidth: "mdview.sidebar.width",
+  // Mobilier système de la fenêtre NAV (phase 1.5, R6) — clés DISTINCTES de
+  // celles de PROJET ci-dessus : deux sidebars différentes, les confondre
+  // ferait bouger l'une quand on redimensionne l'autre.
+  navSidebarOpen: "mdview.nav.sidebar.open",
+  navSidebarWidth: "mdview.nav.sidebar.width",
   sidebarView: "mdview.sidebar.view",
   sidebarSections: "mdview.sidebar.sections",
   lastFile: "mdview.lastFile",
