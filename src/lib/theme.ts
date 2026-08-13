@@ -80,14 +80,14 @@ const modeListeners = new Set<() => void>();
 const transparencyListeners = new Set<() => void>();
 
 export function readMode(): ThemeMode {
-  if (typeof window === "undefined") return "latte";
+  if (typeof window === "undefined") return "system";
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
     if (v) return v as ThemeMode;
   } catch {
     // ignore
   }
-  return "latte";
+  return "system";
 }
 
 function systemTheme(): Theme {
@@ -192,12 +192,22 @@ export function setTransparency(opacity: number): void {
 declare global {
   // eslint-disable-next-line no-var
   var __azproseThemeInit: boolean | undefined;
+  // eslint-disable-next-line no-var
+  var __azproseTransparencyInit: boolean | undefined;
 }
 
-if (typeof window !== "undefined" && !globalThis.__azproseThemeInit) {
-  globalThis.__azproseThemeInit = true;
+/** Applique le thème persisté et branche les sources de changement.
+ *  À appeler UNE fois par fenêtre, au montage (PROJET et NAV).
+ *  Sans cet appel, `data-theme` n'est jamais posé et le document reste sur
+ *  le repli `:root:not([data-theme])` de tokens.css — c'était le cas de NAV.
+ *  Le garde-fou `__azproseThemeInit` évite un double listener `matchMedia`
+ *  si `initTheme()` est appelée plus d'une fois par erreur (HMR du composant
+ *  qui la déclenche, par ex.) — un seul listener doit exister par fenêtre. */
+export function initTheme(): void {
+  if (typeof window === "undefined") return;
   apply(readMode());
-  applyTransparencyOpacity(readTransparencyOpacity());
+  if (globalThis.__azproseThemeInit) return;
+  globalThis.__azproseThemeInit = true;
   const mq = window.matchMedia(MQ);
   mq.addEventListener("change", () => {
     if (readMode() === "system") {
@@ -205,6 +215,15 @@ if (typeof window !== "undefined" && !globalThis.__azproseThemeInit) {
       modeListeners.forEach((fn) => fn());
     }
   });
+}
+
+// La transparence n'a pas (encore) de canal de propagation dédié — appliquée une
+// fois au chargement du module, gardée par un flag pour éviter un double effet
+// si le module est réimporté (HMR). Hors périmètre de la phase 1.2 (R5 ne porte
+// que sur le cycle de vie du THÈME) : laissé tel quel.
+if (typeof window !== "undefined" && !globalThis.__azproseTransparencyInit) {
+  globalThis.__azproseTransparencyInit = true;
+  applyTransparencyOpacity(readTransparencyOpacity());
 }
 
 export function getSystemTheme(): Theme {

@@ -29,15 +29,6 @@ subscribeTransparency(() => {
   _opacity = readTransparencyOpacity();
 });
 
-const MQ = "(prefers-color-scheme: dark)";
-if (typeof window !== "undefined") {
-  window.matchMedia(MQ).addEventListener("change", () => {
-    if (readMode() === "system") {
-      _mode = "system";
-    }
-  });
-}
-
 export const theme = {
   get mode() { return _mode; },
   get resolved() { return resolve(_mode); },

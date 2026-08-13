@@ -45,6 +45,7 @@ import { parseAddress, filterIndexEntries, filterHelpArticles } from "@/nav/addr
 import { catalog as helpCatalog } from "@/help/catalog";
 import { helpFilePath, helpIndexPath, isHelpPath } from "@/lib/help-install";
 import { getT, language } from "@/lib/i18n";
+import { initTheme } from "@/lib/theme";
 // Feuilles du RENDU markdown ET du modèle d'onglets — la fenêtre de
 // navigation emprunte MarkdownPreview/DocPreview/TabsBar à la fenêtre de
 // projet, elle doit donc charger les mêmes styles qu'eux. Sans elles, le HTML
@@ -64,6 +65,11 @@ import "@/styles/files/sidebar.css";
 // NAV : ASSUMÉ pour les compétences de navigation elles-mêmes, pas pour une
 // dépendance non sollicitée). Le composant reste le même (LazyPdfViewer) :
 // seule la feuille de style change de moment de chargement.
+
+// Applique le thème persisté et branche matchMedia AVANT tout rendu (phase 1.2,
+// R5) — c'est le correctif direct du bug diagnostiqué : NAV ne posait jamais
+// data-theme et restait figée en latte clair quel que soit le thème choisi.
+initTheme();
 
 let t = $derived(getT($language));
 

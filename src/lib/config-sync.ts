@@ -29,7 +29,7 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   const app: import("@/lib/project-config").ApplicationConfig = {};
   if (generalSettings.defaultEditorMode !== "prose") app.defaultMode = generalSettings.defaultEditorMode;
   if (ctx.vimOn) app.vim = true;
-  if (theme.mode !== "latte") app.theme = theme.mode;
+  if (theme.mode !== "system") app.theme = theme.mode;
   if (JSON.stringify(ctx.typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) app.typography = ctx.typo;
   if (!generalSettings.nativeDecorations) app.nativeDecorations = false;
   if (generalSettings.uiScale !== 1.0) app.uiScale = generalSettings.uiScale;

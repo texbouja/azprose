@@ -119,6 +119,7 @@ import ConsolePanel from "@/components/console/ConsolePanel.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { latexSettings } from "@/stores/latex-settings.svelte";
 import { theme } from "@/stores/theme.svelte";
+import { initTheme } from "@/lib/theme";
 import { editorSettings } from "@/stores/editor-settings.svelte";
 import { collesSettings } from "@/stores/colles-settings.svelte";
 import { createHandlers, type HandlerContext } from "@/lib/handlers";
@@ -150,6 +151,10 @@ import {
   type EditorModeDeps,
 } from "@/lib/editor-mode";
 import "./app.css";
+
+// Applique le thème persisté et branche matchMedia AVANT tout rendu (phase 1.2,
+// R5) — sans cet appel data-theme n'est jamais posé (c'était le bug de NAV).
+initTheme();
 
 let t = $derived(getT($language));
 
