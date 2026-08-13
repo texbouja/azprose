@@ -51,15 +51,15 @@ import { persistedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS } from "@/lib/storage";
 import { windowTitle } from "@/lib/window-title";
 import { removeBootSplash } from "@/shell/boot";
-// Feuilles du RENDU markdown ET du modèle d'onglets — la fenêtre de
-// navigation emprunte MarkdownPreview/DocPreview/TabsBar à la fenêtre de
-// projet, elle doit donc charger les mêmes styles qu'eux. Sans elles, le HTML
-// est bien produit mais wikilinks, callouts, transclusion et onglets restent
-// NUS : ces règles vivent dans preview.css/prose.css/tabs.css, importés par
-// app.css — c'est-à-dire par la seule fenêtre de projet (piège #1 du plan).
+// Feuilles du RENDU markdown — la fenêtre de navigation emprunte
+// MarkdownPreview/DocPreview à la fenêtre de projet, elle doit donc charger
+// les mêmes styles qu'eux. Sans elles, le HTML est bien produit mais
+// wikilinks, callouts et transclusion restent NUS : ces règles vivent dans
+// preview.css/prose.css, importés par app.css — c'est-à-dire par la seule
+// fenêtre de projet (piège #1 du plan). TabsBar porte désormais son propre
+// contrat CSS (vague 3, phase 3.1) — plus d'import ici pour elle.
 import "@/styles/markdown/prose.css";
 import "@/styles/markdown/preview.css";
-import "@/styles/editor/tabs.css";
 import "@/styles/files/sidebar.css";
 // TitleBar (décorations de l'app) — même piège #1 : le composant est emprunté
 // à PROJET, ses règles vivent dans chrome/titlebar.css importé par app.css,

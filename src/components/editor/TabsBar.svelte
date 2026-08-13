@@ -198,4 +198,183 @@ function endDrag(e: PointerEvent) {
   {/each}
 </div>
 
-<style></style>
+<style>
+  /* Contrat CSS propre au composant (vague 3, phase 3.1, R2/R3) — rapatrié
+     depuis src/styles/editor/tabs.css, seul consommateur de ces classes. */
+  .mdv-tabs {
+    display: flex;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 32px;
+    flex-shrink: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    gap: 0;
+  }
+
+  .mdv-tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px 0 6px;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--muted);
+    border-right: 1px solid var(--border);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: color var(--dur-base) var(--easing);
+  }
+
+  .mdv-tab:hover {
+    color: var(--fg);
+  }
+
+  .mdv-tab.is-active {
+    color: var(--fg);
+    background: var(--surface);
+  }
+
+  .mdv-tab.is-active::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+
+  .mdv-tab__select {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 0;
+  }
+
+  .mdv-tab__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: transparent;
+    flex-shrink: 0;
+  }
+
+  /* Icône d'épingle (Phase A — R1) : GRISÉE jusqu'à activation, pleine quand le
+     tab est épinglé. Le pinnage se décide dans le MAIN panel (TabsBar main). */
+  .mdv-tab__pin {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    opacity: 0.45;
+    transition: opacity var(--dur-base) var(--easing), color var(--dur-base) var(--easing);
+    flex-shrink: 0;
+  }
+
+  .mdv-tab:hover .mdv-tab__pin {
+    opacity: 0.8;
+  }
+
+  .mdv-tab__pin:hover {
+    opacity: 1 !important;
+    background: color-mix(in srgb, var(--fg) 12%, transparent);
+  }
+
+  .mdv-tab__pin.is-pinned {
+    opacity: 1;
+    color: var(--accent);
+  }
+
+  /* Cible de RECYCLAGE du slot épinglé (rectification 2) : l'onglet glissé est
+     au centre d'un onglet épinglé — le déposer y monte son contenu (la pile de
+     montage du slot survit) et ferme l'onglet d'origine. */
+  .mdv-tab.is-drop-pinned {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    border-radius: var(--radius-sm, 6px);
+  }
+
+  /* Onglet DORMANT (Phase E — R9) : restauré au boot mais jamais monté (aucun
+     rendu, aucune lecture disque). Grisé jusqu'au premier clic, qui le réveille. */
+  .mdv-tab.is-dormant .mdv-tab__label {
+    opacity: 0.55;
+    font-style: italic;
+  }
+
+  /* Badge pin du viewer side (Phase C — R1 round 5) : marqueur d'appartenance à
+     la sphère pinned, jamais cliquable, jamais grisé — le pinnage se décide
+     dans le MAIN panel. */
+  .mdv-tab__pin-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--accent);
+    flex: none;
+  }
+
+  .mdv-tab.is-dirty .mdv-tab__dot {
+    background: var(--accent);
+  }
+
+  .mdv-tab__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+
+  /* VS Code-style preview (ephemeral) tab — italic title */
+  .mdv-tab__label.is-preview {
+    font-style: italic;
+  }
+
+  .mdv-tab__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--easing);
+    flex-shrink: 0;
+  }
+
+  .mdv-tab:hover .mdv-tab__close {
+    opacity: 0.6;
+  }
+
+  .mdv-tab__close:hover {
+    opacity: 1 !important;
+    background: color-mix(in srgb, var(--fg) 12%, transparent);
+  }
+
+  .mdv-tab.is-dragging {
+    opacity: 0.4;
+  }
+
+  .mdv-tab.is-drag-over::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+  }
+
+  .mdv-tabs.is-reordering {
+    cursor: grabbing;
+  }
+
+  .mdv-tabs.is-reordering .mdv-tab {
+    user-select: none;
+  }
+</style>
