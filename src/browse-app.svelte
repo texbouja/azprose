@@ -16,6 +16,7 @@ import MarkdownPreview from "@/components/markdown/MarkdownPreview.svelte";
 import DocPreview from "@/components/markdown/DocPreview.svelte";
 import TabsBar from "@/components/editor/TabsBar.svelte";
 import BrowseToolbar from "@/components/nav/BrowseToolbar.svelte";
+import BrowseSidebar from "@/components/nav/BrowseSidebar.svelte";
 import { basename } from "@/lib";
 import { readText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
@@ -51,6 +52,7 @@ import { getT, language } from "@/lib/i18n";
 import "@/styles/markdown/prose.css";
 import "@/styles/markdown/preview.css";
 import "@/styles/editor/tabs.css";
+import "@/styles/files/sidebar.css";
 
 let t = $derived(getT($language));
 
@@ -240,7 +242,10 @@ $effect(() => {
   const source = tab?.source ?? "";
   const tabId = tab?.id ?? null;
   const r = root;
-  if (!path || !r) {
+  // Le front-matter sommaire:/parent: n'a de sens que pour du markdown — un
+  // .tex/.typ/.txt monté (résolu par un wikilink, cf. onWikilink) ne déclenche
+  // aucun calcul (extFromPath, pas isMarkdownPath : accepte aussi .markdown).
+  if (!path || !r || !["md", "markdown"].includes(extFromPath(path))) {
     currentToc = null;
     return;
   }
@@ -535,34 +540,44 @@ onMount(() => {
     <p class="browse__notice" role="status">{notice}</p>
   {/if}
 
-  <main class="browse__body">
-    <!-- Toolbar au SURVOL (phase 4) : remplace la barre back/forward fixe de
-         la phase 1 — même châssis que TabActions (zone de survol + reveal). -->
-    <BrowseToolbar
-      {sidebarVisible}
-      onToggleSidebar={() => { sidebarVisible = !sidebarVisible; }}
-      {canGoHome}
-      onHome={goHome}
-      {canGoBack}
-      onBack={() => void goBack()}
-      {canGoForward}
-      onForward={() => void goForward()}
-      canOpenInEditor={!!activeTab?.path}
-      onOpenInEditor={() => void openInEditor()}
-      {presentationAvailable}
-      {presentationActive}
-      onTogglePresentation={togglePresentation}
-      fullscreenActive={isFullscreen}
-      onToggleFullscreen={() => void toggleFullscreen()}
+  <div class="browse__row">
+    <!-- Sidebar TOC (phase 5) — même CSS que la sidebar du projet (R7). -->
+    <BrowseSidebar
+      visible={sidebarVisible}
+      rootPath={root}
+      toc={currentToc}
+      onNavigate={(path, heading, ctrlKey) => void navigateTo(path, heading, ctrlKey)}
     />
-    {#if !activeTab || !activeTab.path}
-      <p class="browse__empty" role="status">{t("browse.emptyHint")}</p>
-    {:else if isHelp}
-      <DocPreview value={activeTab.source} filePath={activeTab.path} />
-    {:else}
-      <MarkdownPreview value={activeTab.source} filePath={activeTab.path} rev={contentRev} />
-    {/if}
-  </main>
+
+    <main class="browse__body">
+      <!-- Toolbar au SURVOL (phase 4) : remplace la barre back/forward fixe de
+           la phase 1 — même châssis que TabActions (zone de survol + reveal). -->
+      <BrowseToolbar
+        {sidebarVisible}
+        onToggleSidebar={() => { sidebarVisible = !sidebarVisible; }}
+        {canGoHome}
+        onHome={goHome}
+        {canGoBack}
+        onBack={() => void goBack()}
+        {canGoForward}
+        onForward={() => void goForward()}
+        canOpenInEditor={!!activeTab?.path}
+        onOpenInEditor={() => void openInEditor()}
+        {presentationAvailable}
+        {presentationActive}
+        onTogglePresentation={togglePresentation}
+        fullscreenActive={isFullscreen}
+        onToggleFullscreen={() => void toggleFullscreen()}
+      />
+      {#if !activeTab || !activeTab.path}
+        <p class="browse__empty" role="status">{t("browse.emptyHint")}</p>
+      {:else if isHelp}
+        <DocPreview value={activeTab.source} filePath={activeTab.path} />
+      {:else}
+        <MarkdownPreview value={activeTab.source} filePath={activeTab.path} rev={contentRev} />
+      {/if}
+    </main>
+  </div>
 </div>
 
 <style>
@@ -572,6 +587,12 @@ onMount(() => {
   height: 100vh;
   background: var(--bg);
   color: var(--fg);
+}
+.browse__row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
 }
 .browse__tabbar {
   flex: none;
@@ -656,6 +677,7 @@ onMount(() => {
 .browse__body {
   position: relative; /* ancre l'overlay de BrowseToolbar (survol, phase 4) */
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: 1fr;

@@ -453,6 +453,8 @@
   "browse.addressNotFound": "Not found: {name}",
   "browse.toggleSidebar": "Show/hide sidebar",
   "browse.home": "Table of contents root",
+  "browse.tocOriginDeclared": "Declared summary",
+  "browse.tocOriginSingle": "Single document (no summary declared)",
   "nav.wikilinkUnresolved": "Link not found: {name}",
   "pinned.back": "Back to the previously mounted file (pinned tab)",
   "pinned.forward": "Forward in the pinned tab history",

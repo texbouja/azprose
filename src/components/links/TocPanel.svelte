@@ -32,8 +32,9 @@
     // du mode navigation, retiré des panneaux en Phase F/G (la lecture en
     // chaîne vit dans la fenêtre fille browser). Mode aide : helpMode prime
     // (catalogue complet quoi qu'il arrive).
-    /** Mode aide : article de la doc intégrée ACTUELLEMENT affiché dans le
-     *  lecteur (surbrillance de sa branche + dépli par défaut). */
+    /** Mode aide OU arbre externe (`declaredForest`) : chemin à mettre en
+     *  surbrillance et déplier par défaut — l'article de la doc ACTUELLEMENT
+     *  affiché, ou le document MONTÉ dans l'onglet NAV actif. */
     helpActivePath = null as string | null,
     /** Remontée de l'état pour le header de section (badge). */
     onStateChange = null as ((s: { total: number; loading: boolean }) => void) | null,
@@ -41,6 +42,14 @@
      *  permet au header de refléter le bouton y compris après un changement de
      *  fichier qui le désactive. */
     onOutlineChange = null as ((active: boolean) => void) | null,
+    /** Arbre PRÉ-CONSTRUIT (fenêtre NAV, phase 5 — noyau TOC déclaratif,
+     *  `@/lib/toc-declared`) : quand fourni, REMPLACE le fetch interne
+     *  (`buildTocForest`/`buildHelpForest`) — l'appelant construit l'arbre
+     *  (souvent déjà calculé pour son propre usage, ex. le bouton « home » de
+     *  la toolbar NAV) et ce panneau se contente de le RENDRE. Le cycle de vie
+     *  (repli, snippets, clics) reste inchangé — seule la SOURCE de l'arbre
+     *  change. `rootPath`/`filePath`/`source` sont alors ignorés. */
+    declaredForest = null as { root: TocFileNode | null; displayPath: string } | null,
   } = $props();
 
   let t = $derived(getT($language));
@@ -54,6 +63,13 @@
    *  reflète alors le CATALOGUE complet (arbre de site statique), quel que
    *  soit l'article affiché. Dérivé : ne dépend que de filePath/rootPath. */
   let helpMode = $derived(!!filePath && !!rootPath && isHelpPath(filePath, rootPath));
+
+  /** Mode « fichier à plat » (racine rendue comme une rangée, pas de
+   *  redirection titre-transclu → note, pas de numéro de ligne) : partagé par
+   *  le mode aide (catalogue) et l'arbre déclaré (NAV, `declaredForest`) — les
+   *  deux affichent une hiérarchie de FICHIERS explicite, jamais une
+   *  transclusion de liens. */
+  let flatFileMode = $derived(helpMode || declaredForest !== null);
 
   /** Nœuds repliés, par identité (`path#ligne` headings, `file:path` branches). */
   let collapsed = $state<Set<string>>(new Set());
@@ -96,6 +112,30 @@
   let buildVersion = 0;
 
   $effect(() => {
+    // Arbre PRÉ-CONSTRUIT (fenêtre NAV, phase 5) : aucun fetch, on RENDT tel
+    // quel. Seul le repli (collapsed) est réinitialisé au changement de
+    // document affiché — même logique que `keyChanged` ci-dessous, sur la clé
+    // `displayPath` (l'appelant a déjà géré la construction/mémoïsation de
+    // l'arbre lui-même, cf. `currentToc` de browse-app.svelte).
+    const df = declaredForest;
+    if (df !== null) {
+      const key = df.displayPath;
+      if (key !== prevKey) {
+        prevKey = key;
+        collapsed = new Set();
+        outlineSnapshot = null;
+        outlineActive = false;
+        onOutlineChange?.(false);
+      }
+      forest = df;
+      error = false;
+      onStateChange?.({
+        total: countArticles(df.root) + countHeadings(df.root),
+        loading: false,
+      });
+      return;
+    }
+
     const fp = filePath;
     const rp = rootPath;
     const src = source;
@@ -308,10 +348,12 @@
     else collapsed.add(key);
   }
 
-  function navigate(path: string, line: number, heading?: string, redirectInNote = true): void {
+  function navigate(path: string, line: number, heading?: string, redirectInNote = true, ctrlKey = false): void {
     // La cible remonte dans le VIEWER side, jamais l'éditeur main (décision
     // utilisateur) : le reducer `toc-navigate` réutilise la politique wikilink
-    // (tab viewer side, dédup par contenu — Phase G).
+    // (tab viewer side, dédup par contenu — Phase G). `ctrlKey` est transporté
+    // dans le détail pour la fenêtre NAV (R4 : ctrl+clic = nouvel onglet) —
+    // ignoré côté projet (règle atomique, D6).
     //
     // TITRES TRANSCLUS (décision utilisateur) : un clic sur un titre qui
     // n'appartient PAS au fichier affiché (forest.displayPath — titre d'un
@@ -320,31 +362,31 @@
     // note affichée et la LIGNE source n'est pas transmise (coordonnées du
     // fichier d'origine, sans signification dans la note hôte) — le scroll se
     // fait par l'ID du titre (slugify), immunisé aux décalages de
-    // transclusion. Mode aide : navigation d'articles intacte (les titres des
-    // chapitres ouvrent leur article). `navigateFile` (branche fichier)
-    // désactive la redirection : le label d'une branche ouvre toujours le
-    // fichier source.
+    // transclusion. Mode « fichier à plat » (aide, arbre déclaré) : navigation
+    // d'articles/chapitres intacte, chaque titre ouvre SON fichier.
+    // `navigateFile` (branche fichier) désactive la redirection : le label
+    // d'une branche ouvre toujours le fichier source.
     const display = forest?.displayPath;
-    const inNote = !helpMode && redirectInNote && display != null && display !== path;
+    const inNote = !flatFileMode && redirectInNote && display != null && display !== path;
     const target = inNote ? display : path;
     const line0 = inNote ? undefined : line;
     window.dispatchEvent(
       new CustomEvent("azprose:toc-navigate", {
         // line = 1-based source line (rendu preview) ; heading = raw text for
         // the id-based preview scroll (immune to transclusion line shifts).
-        detail: { path: target, line: line0, heading },
+        detail: { path: target, line: line0, heading, ctrlKey },
       }),
     );
   }
 
   /** Saut vers le début du fichier d'une branche transcluse (ou d'un article
-   *  de la doc intégrée). En mode aide, ouvrir un article déplie aussi sa
-   *  branche (navigation de site statique). La redirection « titre transclu →
-   *  note affichée » ne s'applique pas : le label d'une branche est une
-   *  navigation FICHIER (ouvrir le md source). */
-  function navigateFile(node: TocFileNode): void {
-    if (helpMode && collapsed.has(fileKey(node))) toggle(fileKey(node));
-    navigate(node.path, 1, undefined, false);
+   *  de la doc intégrée / d'un chapitre déclaré). En mode « fichier à plat »,
+   *  ouvrir un article déplie aussi sa branche (navigation de site statique).
+   *  La redirection « titre transclu → note affichée » ne s'applique pas : le
+   *  label d'une branche est une navigation FICHIER (ouvrir le md source). */
+  function navigateFile(node: TocFileNode, ctrlKey = false): void {
+    if (flatFileMode && collapsed.has(fileKey(node))) toggle(fileKey(node));
+    navigate(node.path, 1, undefined, false, ctrlKey);
   }
 </script>
 
@@ -366,7 +408,7 @@
           type="button"
           class="toc__branch-label"
           class:is-current={node.path === helpActivePath}
-          onclick={() => navigateFile(node)}
+          onclick={(e) => navigateFile(node, e.ctrlKey || e.metaKey)}
           title={node.path}
         >
           <i class="wxi wxi-file-text"></i>
@@ -390,11 +432,11 @@
           type="button"
           class="toc__item"
           style:padding-left={6 + (node.entry.level - minLevel) * 6 + "px"}
-          onclick={() => navigate(node.path, node.entry.line, node.entry.text)}
+          onclick={(e) => navigate(node.path, node.entry.line, node.entry.text, true, e.ctrlKey || e.metaKey)}
           title={node.entry.text}
         >
           <span class="toc__text">{node.entry.text}</span>
-          {#if !helpMode}
+          {#if !flatFileMode}
             <span class="toc__line">L{node.entry.line}</span>
           {/if}
         </button>
@@ -428,11 +470,12 @@
       <p>{t("toc.empty")}</p>
     </div>
   {:else}
-    {#if helpMode}
-      <!-- Mode aide : un VRAI sommaire de manuel — la racine index.md (page de
-           garde + sommaire) est rendue comme PREMIÈRE rangée, ses enfants sont
-           les chapitres (chacun portant ses sections H2+). La racine n'est
-           jamais repliée par défaut et redevient cliquable (retour au sommaire). -->
+    {#if flatFileMode}
+      <!-- Mode « fichier à plat » (aide OU arbre déclaré NAV) : un VRAI
+           sommaire — la racine (index.md, ou racine de l'arbre déclaré) est
+           rendue comme PREMIÈRE rangée, ses enfants sont les chapitres
+           (chacun portant ses sections H2+). La racine n'est jamais repliée
+           par défaut et redevient cliquable (retour au sommaire). -->
       <ul class="toc__list">
         {@render renderNode(forest.root, 0)}
       </ul>

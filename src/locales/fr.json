@@ -435,6 +435,8 @@
   "browse.addressNotFound": "Introuvable : {name}",
   "browse.toggleSidebar": "Afficher/masquer la sidebar",
   "browse.home": "Racine de la table des matières",
+  "browse.tocOriginDeclared": "Sommaire déclaré",
+  "browse.tocOriginSingle": "Document seul (aucun sommaire déclaré)",
   "nav.wikilinkUnresolved": "Lien introuvable : {name}",
   "pinned.back": "Remonter au fichier précédemment monté (onglet épinglé)",
   "pinned.forward": "Redescendre dans l'historique de l'onglet épinglé",
