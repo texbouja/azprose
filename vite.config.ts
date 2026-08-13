@@ -22,6 +22,13 @@ export default defineConfig(async () => ({
 
   build: {
     rollupOptions: {
+      // Deux points d'entrée (vague 2, phase 2.2, ★A) : PROJET (index.html)
+      // et NAV (nav.html) — chacun son propre socle, plus de branchement
+      // runtime sur ?browse= dans un seul bundle partagé.
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        nav: path.resolve(__dirname, "nav.html"),
+      },
       output: {
         manualChunks(id) {
           if (id.includes("/node_modules/mathjax/")) return "mathjax";

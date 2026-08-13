@@ -11,6 +11,11 @@
  * choix de chaque fenêtre : PROJET attend la config du projet
  * (`themeBootDone`, cf. app.svelte), NAV peut l'appeler dès son montage —
  * c'est précisément la frontière entre « commun » et « métier ».
+ *
+ * La config MathJax (phase 2.2) rejoint ce fichier pour la même raison que
+ * platformClass/crash : elle est déjà commune de fait (NAV monte le MÊME
+ * MarkdownPreview.svelte), il ne restait qu'à éviter sa duplication entre
+ * les deux points d'entrée JS (main.ts, nav-main.ts).
  */
 
 /** is-mac / is-windows / is-linux sur <html> — styles spécifiques à la
@@ -110,9 +115,55 @@ export function removeBootSplash(): void {
   });
 }
 
-/** Classe de plateforme + surface de crash — à appeler UNE fois par fenêtre,
- *  au tout début du point d'entrée (avant même `initPresentation()`). */
+/**
+ * Configure `window.MathJax` — DOIT s'exécuter avant que le chunk MathJax
+ * (chargé paresseusement par le pipeline de rendu) ne lise cet objet.
+ * Découvert en phase 2.2 : NAV monte `MarkdownPreview.svelte`, le MÊME
+ * composant que PROJET (aucun pipeline parallèle, cf. tête de
+ * browse-app.svelte) — donc les MÊMES maths, donc la MÊME configuration.
+ * Extrait ici plutôt que dupliqué entre main.ts et nav-main.ts : c'est
+ * exactement le défaut que la phase 1.7 avait déjà corrigé une fois
+ * (index.html vs main.ts) — pas de raison de le laisser réapparaître entre
+ * deux points d'entrée JS.
+ */
+function initMathJaxConfig(): void {
+  const mjPkgs: string[] = JSON.parse(
+    localStorage.getItem("mdview.mathjax.packages") ?? "[]"
+  );
+  (window as any).MathJax = {
+    // document.currentScript is null in ESM context so MathJax can't detect
+    // its own base URL — set it explicitly so autoload/loader.load resolve.
+    loader: {
+      paths: { mathjax: "/mathjax" },
+      ...(mjPkgs.length > 0 && { load: mjPkgs.map((p) => `[tex]/${p}`) }),
+    },
+    // ProseMark drives its own render cycle — MathJax must not scan the DOM
+    // on startup (V4 default is typeset: true, conflicts with widgets).
+    startup: { typeset: false },
+    ...(mjPkgs.length > 0 && { tex: { packages: { "[+]": mjPkgs } } }),
+    // V4 activates a11y extensions by default (unlike V3). SRE crashes under
+    // WebKitGTK — disable the full enrichment pipeline (speech/braille/
+    // explorer/complexity all depend on semantic-enrich, so disabling
+    // enrichment is the root switch) ; the menu's default enrich:true is
+    // also overridden to prevent SRE loading via the contextual menu.
+    options: {
+      enableEnrichment: false,
+      enableSpeech: false,
+      enableBraille: false,
+      enableExplorer: false,
+      enableComplexity: false,
+      menuOptions: {
+        settings: { enrich: false, speech: false, braille: false, assistiveMml: false },
+      },
+    },
+  };
+}
+
+/** Classe de plateforme + surface de crash + config MathJax — à appeler UNE
+ *  fois par fenêtre, au tout début du point d'entrée (avant même
+ *  `initPresentation()`). */
 export function initBoot(): void {
   applyPlatformClass();
   installCrashHandler();
+  initMathJaxConfig();
 }

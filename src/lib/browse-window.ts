@@ -112,7 +112,7 @@ export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<Webvi
   const params = new URLSearchParams({ browse: opts.path });
   if (opts.root) params.set("root", opts.root);
   return new WebviewWindow(browseWindowLabel(launcher.label, ++browseSeq), {
-    url: `index.html?${params.toString()}`,
+    url: `nav.html?${params.toString()}`,
     title: windowTitle(basename(opts.path)),
     width,
     height,
