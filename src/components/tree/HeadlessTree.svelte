@@ -1,4 +1,10 @@
 <script lang="ts" generics="T extends object">
+  // Contrat CSS du vocabulaire de rangée (vague 3, phase 3.1) : base commune
+  // de file-tree.svelte (donc de RootFolder ET de la liste déroulante de
+  // Breadcrumb) et de sidebar/virtual-tree.svelte (journal) — favorites.svelte
+  // rend ses propres lignes sans passer par ce composant, elle importe la
+  // même feuille de son côté (voir son en-tête).
+  import "@/styles/files/sidebar-tree.css";
   import type { Snippet } from "svelte";
   import { untrack } from "svelte";
   import { createTree, type ItemInstance, type TreeConfig, type TreeInstance } from "@headless-tree/core";

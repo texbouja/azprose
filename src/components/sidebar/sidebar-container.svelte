@@ -1,6 +1,10 @@
 <script lang="ts">
 import type { FileEntry } from "@/lib";
 import type { NewEntry } from "@/components/files/file-tree.svelte";
+// Chrome du conteneur (chrome/redimensionnement) — contrat CSS propre
+// (vague 3, phase 3.1) : partagé avec BrowseSidebar.svelte (NAV), qui
+// n'imbrique pas ce composant et importe donc la même feuille lui-même.
+import "@/styles/files/sidebar-shell.css";
 
 import FsView from "@/components/files/fs-view.svelte";
 import JournalView from "@/components/sidebar/journal-view.svelte";

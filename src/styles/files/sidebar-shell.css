@@ -1,0 +1,80 @@
+/* Contrat CSS du CONTENEUR de sidebar (vague 3, phase 3.1, R2/R3) — le chrome
+ * repliable/redimensionnable, dupliqué à l'identique par deux composants
+ * indépendants (sidebar-container.svelte pour PROJET, BrowseSidebar.svelte
+ * pour NAV : la fenêtre NAV n'imbrique pas sidebar-container, elle réimplante
+ * son propre gabarit avec les mêmes classes — cf. commentaire d'en-tête de
+ * BrowseSidebar.svelte). Importé directement par les DEUX, pas par la
+ * fenêtre qui les monte.
+ */
+
+.mdv-sidebar {
+  position: relative;
+  width: 0;
+  flex-shrink: 0;
+  overflow: visible;
+  background: var(--bg);
+  border-right: 1px solid transparent;
+  transition:
+    width var(--dur-base) var(--easing),
+    border-color var(--dur-base) var(--easing),
+    background-color var(--dur-base) var(--easing);
+  user-select: none;
+  --font-ui: var(--font-sidebar);
+  font-family: var(--font-sidebar);
+}
+
+.mdv-sidebar.is-open {
+  border-right-color: var(--border);
+}
+
+.mdv-sidebar__inner {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(-12px);
+  transition:
+    opacity var(--dur-base) var(--easing),
+    transform var(--dur-base) var(--easing);
+  pointer-events: none;
+}
+
+.mdv-sidebar.is-open .mdv-sidebar__inner {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.mdv-sidebar__view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* resize handle on right edge */
+.mdv-sidebar__resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  -webkit-app-region: no-drag;
+  opacity: 0;
+  background: var(--accent);
+  transition: opacity var(--dur-fast) var(--easing);
+}
+
+.mdv-sidebar.is-open .mdv-sidebar__resize:hover,
+.mdv-sidebar.is-open .mdv-sidebar__resize:active {
+  opacity: 0.5;
+}
+
+.mdv-sidebar:not(.is-open) .mdv-sidebar__resize {
+  pointer-events: none;
+}

@@ -89,3 +89,84 @@ $effect(() => {
     {/each}
   </div>
 {/if}
+
+<style>
+  /* Contrat CSS propre au composant (vague 3, phase 3.1, R2/R3) — rapatrié
+     depuis src/styles/files/sidebar.css, seul consommateur de .mdv-context-menu.
+     .mdv-menu/.mdv-menu__* (base) restent dans styles/shared/menu.css :
+     vocabulaire commun à tous les menus de l'app (palette, overlays…), pas
+     propre à celui-ci. Mounted at app level (outside .mdv-sidebar), donc
+     rebind --font-ui vers la police sidebar pour rester visuellement
+     cohérent avec le menu contextuel de l'arbre qui l'a ouvert. */
+  .mdv-context-menu {
+    min-width: 168px;
+    max-width: 240px;
+    padding: 3px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, white 4%, transparent) inset,
+      0 10px 28px rgba(var(--shadow-color), 0.22),
+      0 2px 8px rgba(var(--shadow-color), 0.08);
+    z-index: 950;
+    gap: 0;
+    --font-ui: var(--font-sidebar);
+    font-family: var(--font-sidebar);
+  }
+
+  .mdv-context-menu .mdv-menu__item {
+    width: 100%;
+    padding: 4px 9px;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    gap: 8px;
+  }
+
+  /* Generic hover feedback — the shared .mdv-menu__item:hover (surface-hover)
+     loses to the transparent background above (specificity 0-2-0 vs 0-1-1), so
+     the context menu had NO visual response on hover. */
+  .mdv-context-menu .mdv-menu__item:hover {
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+    color: var(--fg);
+  }
+
+  .mdv-context-menu .mdv-menu__item:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  .mdv-context-menu .mdv-menu__item:disabled:hover {
+    background: transparent;
+  }
+
+  .mdv-context-menu .mdv-menu__divider {
+    margin: 2px 6px;
+  }
+
+  /* destructive action (delete) — accent red only on hover so it doesn't shout */
+  .mdv-context-menu .mdv-menu__item--destructive:hover {
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: var(--color-error);
+  }
+
+  .mdv-context-menu .mdv-menu__item-hint {
+    margin-left: auto;
+    padding: 0 6px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--fg) 4%, transparent);
+    font-family: var(--font-ui);
+    font-size: 8.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+</style>

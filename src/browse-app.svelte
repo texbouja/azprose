@@ -60,9 +60,9 @@ import { removeBootSplash } from "@/shell/boot";
 // contrat CSS (vague 3, phase 3.1) — plus d'import ici pour elle.
 import "@/styles/markdown/prose.css";
 import "@/styles/markdown/preview.css";
-import "@/styles/files/sidebar.css";
-// TitleBar/ThemeButton (chrome de fenêtre) portent désormais leur propre
-// contrat CSS (vague 3, phase 3.1) — plus d'import ici pour eux.
+// TitleBar/ThemeButton (chrome de fenêtre) et BrowseSidebar (shell + en-tête
+// de sidebar) portent désormais leur propre contrat CSS (vague 3, phase
+// 3.1) — plus d'import ici pour eux.
 // PDF (phase 6) : pdf_viewer.css (chrome pdf.js, ~160 Ko) + pdf.css (habillage
 // AZprose) — mêmes deux feuilles que la fenêtre de projet (piège #1, R7), mais
 // chargées en LAZY (voir plus bas, effet sur activeTab) : contrairement à

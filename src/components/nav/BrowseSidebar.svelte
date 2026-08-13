@@ -1,18 +1,23 @@
 <script lang="ts">
 /**
  * Sidebar TOC de la fenêtre NAV (chantier fenêtre NAV, phase 5). Conteneur
- * repliable + largeur ajustable — CSS de la sidebar du projet
- * (`@/styles/files/sidebar.css`, R7 : héritage de présentation), et le
- * mécanisme de redimensionnement au pointeur repris de
- * `@/components/sidebar/sidebar-container.svelte`. La largeur est persistée
- * (phase 1.5, R6 : mobilier SYSTÈME de fenêtre, distinct du travail utilisateur
- * que R3 protège — une largeur de sidebar n'est pas un brouillon).
+ * repliable + largeur ajustable — CSS de la sidebar du projet (R7 : héritage
+ * de présentation), et le mécanisme de redimensionnement au pointeur repris
+ * de `@/components/sidebar/sidebar-container.svelte`. La largeur est
+ * persistée (phase 1.5, R6 : mobilier SYSTÈME de fenêtre, distinct du travail
+ * utilisateur que R3 protège — une largeur de sidebar n'est pas un brouillon).
  *
  * Affiche l'ORIGINE de l'arbre (§3 du plan, exigence d'ergonomie) : un arbre
  * qui apparaît sans dire d'où il vient est ce qui a fait échouer le
  * mécanisme précédent (analyse de liens). « Sommaire déclaré » (origin:
  * "declared") vs « Document seul » (origin: "single", repli sans `parent:`).
  */
+// Chrome + en-tête (vague 3, phase 3.1) : ce composant N'IMBRIQUE PAS
+// sidebar-container.svelte ni fs-view.svelte (gabarit NAV indépendant, plus
+// simple) mais rend les mêmes classes — importées ici directement, chacune
+// portant son propre contrat CSS plutôt que de compter sur la fenêtre.
+import "@/styles/files/sidebar-shell.css";
+import "@/styles/files/sidebar-header.css";
 import TocPanel from "@/components/links/TocPanel.svelte";
 import { getT, language } from "@/lib/i18n";
 import type { DeclaredToc } from "@/lib/toc-declared";

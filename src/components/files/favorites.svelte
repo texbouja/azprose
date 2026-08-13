@@ -1,4 +1,9 @@
 <script lang="ts">
+// Contrat CSS des rangées (vague 3, phase 3.1) : ce composant rend ses
+// propres .mdv-tree__item/__row SANS passer par HeadlessTree.svelte (aucune
+// composition entre les deux) — import direct, la feuille est partagée mais
+// idempotente (déjà chargée si HeadlessTree a aussi rendu ailleurs).
+import "@/styles/files/sidebar-tree.css";
 import FileIcon from "./FileIcon.svelte";
 import { basename, type FileEntry } from "@/lib";
 

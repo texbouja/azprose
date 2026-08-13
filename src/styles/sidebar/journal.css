@@ -1,4 +1,5 @@
-/* virtual tree — uses mdv-tree classes from sidebar.css for identical look */
+/* virtual tree — uses mdv-tree classes from sidebar-tree.css (importée par
+   HeadlessTree.svelte, vague 3 phase 3.1) for identical look */
 /* The headless-tree migration renders a FLAT item list (inline padding per
    level, like the explorer), so the old nested-ul indent/guide rules are gone. */
 

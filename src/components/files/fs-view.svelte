@@ -1,4 +1,10 @@
 <script lang="ts">
+// En-tête (partagée avec BrowseSidebar.svelte) + sections propres à cette
+// vue — contrat CSS du composant (vague 3, phase 3.1). Couvre RootFolder,
+// Favorites, SearchResults et ProjectSelector : tous des enfants exclusifs
+// de ce composant (aucun autre import ailleurs dans le dépôt).
+import "@/styles/files/sidebar-header.css";
+import "@/styles/files/sidebar-content.css";
 import { Button } from "@/components/primitives";
 import { language, getT } from "@/lib/i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";

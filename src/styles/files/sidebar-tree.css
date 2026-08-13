@@ -1,0 +1,417 @@
+/* Contrat CSS de la RANGÉE d'arbre (vague 3, phase 3.1, R2/R3) — vocabulaire
+ * visuel partagé par plusieurs templates indépendants qui rendent tous des
+ * `.mdv-tree__row`/`.mdv-tree__item` : HeadlessTree.svelte (base commune de
+ * file-tree.svelte ET sidebar/virtual-tree.svelte — donc de RootFolder, de la
+ * liste déroulante de Breadcrumb, ET du journal) et favorites.svelte (qui
+ * REND ses propres lignes sans passer par HeadlessTree — cf. investigation
+ * phase 3.1, aucune composition entre les deux). Importé par les DEUX, pas
+ * par la fenêtre ni par les composants qui ne font que les entourer
+ * (RootFolder, file-tree, éditable, Breadcrumb héritent via le graphe de
+ * modules statique — HeadlessTree est toujours évalué avant leur rendu).
+ */
+
+.mdv-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+.mdv-tree .mdv-tree {
+  padding-left: 0;
+}
+
+/* vertical guide line — applies to all depths inside a root folder */
+.mdv-rootfolder .mdv-tree::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: calc(14px + (var(--tree-depth, 1) - 1) * 12px);
+  width: 1px;
+  background: color-mix(in srgb, var(--border) 72%, transparent);
+  pointer-events: none;
+}
+
+.mdv-favorites .mdv-tree::before {
+  display: none;
+}
+
+.mdv-tree__item {
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+.mdv-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  /* right padding clears the 10px scrollbar so active-row tint doesn't bleed */
+  padding: 4px 14px 4px 8px;
+  font-size: 12.5px;
+  color: var(--fg);
+  text-align: left;
+  border-radius: 4px;
+  position: relative;
+  transition:
+    background var(--dur-fast) var(--easing),
+    color var(--dur-fast) var(--easing);
+}
+
+.mdv-tree__row--file {
+  padding: 4px 34px 4px 8px;
+}
+
+/* Active-file highlight: PURELY DECORATIVE — the file open in the main
+   panel. Driven only by the `activePath` prop, never by selection/focus, so
+   keyboard navigation must not touch it (no animation: the {#key version}
+   re-render would replay it on every selection change). Visually distinct
+   from a real selection (is-selected): faint tint + accent left bar. */
+.mdv-tree__row.is-active {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--accent);
+}
+
+.mdv-tree__row.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.mdv-tree__row.is-active .mdv-tree__icon {
+  color: var(--accent);
+}
+
+.mdv-tree__row.is-staged {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.mdv-tree__row.is-staged .mdv-tree__icon {
+  color: var(--accent);
+}
+
+.mdv-tree__row.is-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  outline-offset: -1px;
+}
+
+.mdv-tree__row.is-selected .mdv-tree__icon {
+  color: var(--accent);
+}
+
+/* Selected + active simultaneously (row was clicked to open): the selection
+   fill wins, the active accent bar still marks the open file. */
+.mdv-tree__row.is-active.is-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Keyboard focus frame: the item focused via updateDomFocus (the <li> has
+   tabIndex 0 when isFocused) gets a thin outline WITHOUT any fill. This is
+   what makes arrow-key navigation visible — the frame follows the focus
+   while the selection fill stays put (focus ≠ selection, VS Code semantics).
+   Distinct from is-selected (tint + outline) and is-active (decorative tint
+   + bar). The <li> itself is the focused element: kill the browser's default
+   ring on it so the row frame is the single focus indicator. */
+.mdv-tree__item:focus {
+  outline: none;
+}
+
+.mdv-tree__item:focus > .mdv-tree__rowline,
+.mdv-tree__item:focus > .mdv-tree__row--file {
+  outline: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: -1px;
+}
+
+.mdv-tree__stage {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity var(--dur-fast) var(--easing),
+    color var(--dur-fast) var(--easing),
+    background var(--dur-fast) var(--easing);
+}
+
+.mdv-tree__item:hover .mdv-tree__stage,
+.mdv-tree__stage:focus-visible,
+.mdv-tree__stage.is-staged {
+  opacity: 1;
+}
+
+.mdv-tree__stage:hover,
+.mdv-tree__stage.is-staged {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* drag + drop */
+.mdv-tree__row[draggable="true"]:active {
+  opacity: 0.5;
+}
+
+.mdv-tree__row.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: -1px;
+}
+
+/* inline rename / new entry input */
+.mdv-tree__row--editing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-right: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.mdv-tree__edit-input {
+  flex: 1;
+  min-width: 0;
+  margin-left: 2px;
+  padding: 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  caret-color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  outline: none;
+}
+
+.mdv-tree__edit-input:focus {
+  border-color: var(--accent);
+}
+
+/* Folder rowlines wrap the chevron + row so the selection tint spans the
+   full width including the chevron (file-manager semantics: a folder row
+   selects on click, only the chevron toggles). The row inside loses its own
+   tint/outline — the rowline carries them via :has() on the inner row. */
+.mdv-tree__rowline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  /* right padding clears the 10px scrollbar so active-row tint doesn't bleed */
+  padding: 0 14px 0 8px;
+  border-radius: 4px;
+  position: relative;
+}
+
+.mdv-tree__rowline > .mdv-tree__row {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 14px 4px 0;
+  background: transparent;
+}
+
+.mdv-tree__rowline:has(> .mdv-tree__row.is-selected) {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  outline-offset: -1px;
+}
+
+/* Active-file marker on folder rowlines: purely decorative, same recipe as
+   the flat rows (faint tint + accent bar, no outline = not a selection). */
+.mdv-tree__rowline:has(> .mdv-tree__row.is-active) {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--accent);
+}
+
+.mdv-tree__rowline:has(> .mdv-tree__row.is-active)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.mdv-tree__rowline:has(> .mdv-tree__row.is-drop-target) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: -1px;
+}
+
+/* Chevron button — a real 18px hit target, the only folder toggle on click.
+   The icon inside rotates so the button shape stays put. */
+.mdv-tree__chevron-btn {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--easing);
+}
+
+.mdv-tree__chevron-btn i {
+  transition: transform var(--dur-fast) var(--easing);
+}
+
+.mdv-tree__chevron-btn.is-open i {
+  transform: rotate(90deg);
+}
+
+.mdv-tree__chevron-btn:hover {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--fg);
+}
+
+.mdv-tree__chevron-btn:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 60%, var(--border));
+  outline-offset: -1px;
+}
+
+/* Legacy non-interactive chevron span — still used by the favorites panel,
+   the root folder header, the editable row and any non-HeadlessTree tree. */
+.mdv-tree__chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  transition: transform var(--dur-fast) var(--easing);
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.mdv-tree__chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.mdv-tree__icon {
+  display: inline-flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  flex-shrink: 0;
+}
+
+/* Tree display text uses var(--font-ui) so it follows the sidebar font
+   (rebind --font-ui: var(--font-sidebar)) inside .mdv-sidebar, the
+   breadcrumb dropdown, and the context menu. */
+.mdv-tree__name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.mdv-tree__loading,
+.mdv-tree__empty {
+  padding: 8px 14px;
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--font-ui);
+}
+
+.mdv-tree__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  text-align: center;
+}
+
+.mdv-tree__error-art {
+  opacity: 0.9;
+}
+
+/* DnD insertion line (headless-tree dragAndDropFeature) */
+.mdv-tree__dragline {
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  z-index: 5;
+}
+
+/* favorite (star) toggle — sits to the right of the stage button */
+.mdv-tree__row--file.has-fav {
+  padding-right: 54px;
+}
+
+.mdv-tree__stage.has-fav {
+  right: 28px;
+}
+
+.mdv-tree__fav {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity var(--dur-fast) var(--easing),
+    color var(--dur-fast) var(--easing),
+    background var(--dur-fast) var(--easing);
+}
+
+.mdv-tree__item:hover .mdv-tree__fav,
+.mdv-tree__fav:focus-visible,
+.mdv-tree__fav.is-fav {
+  opacity: 1;
+}
+
+.mdv-tree__fav:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.mdv-tree__fav.is-fav {
+  color: var(--accent);
+}
+
+/* CSS `fill` overrides lucide's fill="none" presentation attribute */
+.mdv-tree__fav.is-fav svg {
+  fill: currentColor;
+}
+
+/* favorites reorder drop indicator */
+.mdv-tree__item.is-fav-over .mdv-tree__row {
+  box-shadow: inset 0 2px 0 var(--accent);
+}

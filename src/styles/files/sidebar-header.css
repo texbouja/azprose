@@ -1,0 +1,68 @@
+/* Contrat CSS de l'en-tête + corps de sidebar (vague 3, phase 3.1, R2/R3) —
+ * rendu directement par fs-view.svelte (PROJET) ET BrowseSidebar.svelte
+ * (NAV, gabarit plus simple mais mêmes classes de base) : importé par les
+ * deux, pas par la fenêtre qui les monte.
+ */
+
+.mdv-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--border);
+  min-height: 34px;
+}
+
+.mdv-sidebar__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+  text-transform: lowercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mdv-sidebar__title.is-empty {
+  color: var(--muted);
+}
+
+.mdv-sidebar__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 0 16px;
+  transition: box-shadow var(--dur-fast) var(--easing);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.35) transparent;
+}
+
+.mdv-sidebar__body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.mdv-sidebar__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mdv-sidebar__body::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 4px;
+}
+
+.mdv-sidebar__body::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.6);
+}
+
+/* drop de fichiers sur la racine — PROJET seul (NAV ne réordonne rien), la
+   règle reste ici (classe posée sur .mdv-sidebar__body, base commune) plutôt
+   que dans sidebar-content.css : NAV ne pose jamais is-root-drop, règle
+   inerte pour elle, pas de raison de fragmenter davantage pour ça. */
+.mdv-sidebar__body.is-root-drop {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent);
+}
