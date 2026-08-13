@@ -1629,7 +1629,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               <Combo
                 value={theme.mode}
                 options={THEME_GROUPS
-                  .filter(g => g.label !== "crafted")
                   .flatMap(g => g.choices)
                   .map(c => ({ id: c.value, label: c.label }))}
                 onchange={(ev) => { theme.setMode(ev.value as ThemeMode); }}

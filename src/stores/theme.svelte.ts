@@ -15,8 +15,10 @@ function resolve(mode: ThemeMode): Theme {
 
 let _mode = $state(readMode());
 let _opacity = $state(readTransparencyOpacity());
-// Project root that owns the crafted themes (.azprose/themes/). Set by app.svelte at
-// boot and on root change; read by the theme menu for install/list/remove.
+// Racine du projet courant. Positionnée par app.svelte au boot et au changement de
+// racine. N'a plus de lecteur depuis la suppression des thèmes crafted (phase 1.1
+// de la refonte UI) — conservée car app.svelte/session-restore.ts l'alimentent
+// encore ; sa suppression complète est hors périmètre de cette phase.
 let _projectRoot = $state<string | null>(null);
 
 subscribeMode(() => {

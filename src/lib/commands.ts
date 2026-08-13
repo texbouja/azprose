@@ -119,8 +119,6 @@ export type CommandActions = {
 const THEME_ICONS: Record<string, string> = {
   system: "wxi-monitor",
   latte: "wxi-sun",
-  mono: "wxi-sun",
-  "mono-dark": "wxi-moon",
   frappe: "wxi-moon",
   macchiato: "wxi-moon",
   mocha: "wxi-moon",

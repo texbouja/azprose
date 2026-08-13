@@ -2,8 +2,6 @@ import { STORAGE_KEYS } from "./storage";
 
 export type BuiltinTheme =
   | "latte"
-  | "mono"
-  | "mono-dark"
   | "frappe"
   | "macchiato"
   | "mocha"
@@ -19,8 +17,6 @@ export type ThemeGroup = { label: string; choices: ThemeChoice[] };
 
 export const BUILTIN_THEMES: readonly BuiltinTheme[] = [
   "latte",
-  "mono",
-  "mono-dark",
   "frappe",
   "macchiato",
   "mocha",
@@ -36,8 +32,6 @@ export const THEME_GROUPS: ThemeGroup[] = [
     label: "neutral",
     choices: [
       { value: "system", label: "system" },
-      { value: "mono", label: "mono" },
-      { value: "mono-dark", label: "mono dark" },
     ],
   },
   {
@@ -59,10 +53,6 @@ export const THEME_GROUPS: ThemeGroup[] = [
       { value: "mocha", label: "mocha" },
     ],
   },
-  {
-    label: "crafted",
-    choices: [],
-  },
 ];
 
 export const THEME_CHOICES: ThemeChoice[] = [];
@@ -73,8 +63,6 @@ for (const group of THEME_GROUPS) {
 export const THEME_HINTS: Record<string, string> = {
   system: "follow macOS appearance",
   latte: "catppuccin light",
-  mono: "plain black and white",
-  "mono-dark": "reverse black and white",
   frappe: "catppuccin mid-dark",
   macchiato: "catppuccin deeper dark",
   mocha: "catppuccin deepest dark",

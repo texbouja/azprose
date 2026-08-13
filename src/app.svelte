@@ -390,8 +390,7 @@ $effect(() => {
   else themeBootDone = true;
 });
 
-// Fade out the boot splash once the theme is ready (crafted CSS injected + themeMode
-// applied) → no flash, crafted themes correct at first paint.
+// Efface l'écran de boot une fois le thème appliqué (themeMode) → pas de flash.
 let splashRemoved = false;
 $effect(() => {
   if (!themeBootDone || splashRemoved) return;

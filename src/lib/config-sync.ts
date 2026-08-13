@@ -7,7 +7,6 @@ import { latexSettings } from "@/stores/latex-settings.svelte"
 import { calloutSettings } from "@/stores/callout-settings.svelte"
 import { DEFAULT_TYPOGRAPHY, type TypographySettings } from "@/lib/typography"
 import { theme } from "@/stores/theme.svelte"
-import { listCustomThemes, injectThemeCSS } from "@/lib/custom-themes"
 import { BUILTIN_THEMES } from "@/lib/theme"
 import type { FileOpsManager } from "@/lib/file-operations.svelte"
 import { editorSettings, DEFAULT_EDITOR_SETTINGS } from "@/stores/editor-settings.svelte"
@@ -115,11 +114,6 @@ export interface LoadConfigDeps {
 }
 
 export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<string> {
-  let crafted: { name: string; css: string }[] = [];
-  try {
-    crafted = await listCustomThemes(root);
-    for (const c of crafted) injectThemeCSS(c.name, c.css);
-  } catch { /* crafted CSS is best-effort */ }
   const { config: cfg, warnings } = await loadProjectConfig(root);
 
   const app = cfg.application;
@@ -132,9 +126,7 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
     theme.setMode(app.theme);
   } else {
     const m = theme.mode;
-    const ok = m === "system"
-      || (BUILTIN_THEMES as readonly string[]).includes(m)
-      || crafted.some((c) => c.name === m);
+    const ok = m === "system" || (BUILTIN_THEMES as readonly string[]).includes(m);
     if (!ok) theme.setMode("latte");
   }
 

@@ -17,15 +17,6 @@
     type LineHeight,
     type TextAlign,
   } from "@/lib/typography";
-  import {
-    listCustomThemes,
-    installCustomTheme,
-    injectThemeCSS,
-    deleteCustomTheme,
-    removeThemeCSS,
-    type CustomThemeEntry,
-  } from "@/lib/custom-themes";
-  import { tokensToCSS, type CatalogTheme } from "@/lib/theme-css";
   import { theme } from "@/stores/theme.svelte";
 
   let {
@@ -47,8 +38,6 @@
   const THEME_ICONS: Record<string, string> = {
     system: "wxi-monitor",
     latte: "wxi-sun",
-    mono: "wxi-sun",
-    "mono-dark": "wxi-moon",
     frappe: "wxi-moon",
     macchiato: "wxi-moon",
     mocha: "wxi-moon",
@@ -64,73 +53,6 @@
   let openThemeGroups = $state(new Set<string>());
   let anchorEl = $state<HTMLDivElement | null>(null);
   let hoverTimer: number | null = null;
-  let customThemes = $state<CustomThemeEntry[]>([]);
-  let addThemeOpen = $state(false);
-  let availableThemes = $state<CatalogTheme[]>([]);
-  let themeSearch = $state("");
-
-  // Crafted themes live in the current project's .azprose/themes/. Re-list whenever the
-  // project root changes (e.g. main window opens its first folder).
-  $effect(() => {
-    const root = theme.projectRoot;
-    listCustomThemes(root).then((t) => { customThemes = t; });
-  });
-
-  let filteredThemes = $derived(
-    themeSearch
-      ? availableThemes.filter((t) =>
-          t.displayName.toLowerCase().includes(themeSearch.toLowerCase()) ||
-          t.id.toLowerCase().includes(themeSearch.toLowerCase())
-        )
-      : availableThemes,
-  );
-
-  // Crafted = only user-added themes. None are persistent; all are removable.
-  let allCraftedThemes = $derived(customThemes.map((ct) => ({ name: ct.name, label: ct.name })));
-
-  function themeIcon(value: string): string {
-    if (value === "system") return "wxi-monitor";
-    const icon = THEME_ICONS[value];
-    if (icon) return icon;
-    const info = availableThemes.find((t) => t.id === value);
-    if (info) return info.type === "light" ? "wxi-sun" : "wxi-moon";
-    return "wxi-moon";
-  }
-
-  async function openAddTheme() {
-    // Lazy-load the static curated catalog (no Shiki at runtime).
-    if (availableThemes.length === 0) {
-      const mod = await import("@/lib/crafted-catalog.json");
-      availableThemes = (mod.default ?? mod) as unknown as CatalogTheme[];
-    }
-    themeSearch = "";
-    addThemeOpen = true;
-  }
-
-  async function handleAddTheme(item: CatalogTheme) {
-    const root = theme.projectRoot;
-    if (!root) return; // crafted themes require an open project (vault model)
-    try {
-      const css = tokensToCSS(item.id, item.type, item.tokens);
-      await installCustomTheme(root, item.id, css);
-      injectThemeCSS(item.id, css);
-      customThemes = await listCustomThemes(root);
-      theme.setMode(item.id);
-    } catch (err) {
-      console.error("azprose: failed to install theme", err);
-    }
-    addThemeOpen = false;
-  }
-
-  async function handleRemoveTheme(name: string) {
-    const root = theme.projectRoot;
-    removeThemeCSS(name);
-    if (root) await deleteCustomTheme(root, name);
-    customThemes = await listCustomThemes(root);
-    if (theme.mode === name) {
-      theme.setMode("latte");
-    }
-  }
 
   function resolveThemeForPreview(value: ThemeMode): Theme {
     return value === "system" ? getSystemTheme() : value;
@@ -159,7 +81,6 @@
   function closeMenu() {
     cancelPreview();
     menuOpen = false;
-    addThemeOpen = false;
   }
 
   function toggleThemeGroup(label: string) {
@@ -273,117 +194,10 @@
                   {/if}
                 </button>
               {/each}
-              {#if group.label === "crafted"}
-                {#each allCraftedThemes as item}
-                  {@const active = theme.mode === item.name}
-                  <!-- A crafted row holds an inner trash <button>, so the row itself is a
-                       div (a button can't contain a button) with keyboard activation. -->
-                  <div
-                    class="mdv-menu__item"
-                    class:is-active={active}
-                    role="menuitemradio"
-                    aria-checked={active}
-                    tabindex="0"
-                    onmouseenter={() => previewOnHover(item.name)}
-                    onmouseleave={cancelHoverTimer}
-                    onfocus={() => previewOnHover(item.name)}
-                    onblur={cancelHoverTimer}
-                    onclick={() => {
-                      cancelPreview();
-                      theme.setMode(item.name);
-                      menuOpen = false;
-                    }}
-                    onkeydown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        cancelPreview();
-                        theme.setMode(item.name);
-                        menuOpen = false;
-                      }
-                    }}
-                  >
-                    <span class="mdv-menu__item-icon">
-                      <i class={themeIcon(item.name)} style="font-size:14px"></i>
-                    </span>
-                    <span class="mdv-menu__item-label">{item.label}</span>
-                    {#if active}
-                      <span class="mdv-menu__item-check">
-                        <i class="wxi-check" style="font-size:13px"></i>
-                      </span>
-                    {/if}
-                    <button
-                      type="button"
-                      class="mdv-menu__item-action"
-                      onclick={(e) => { e.stopPropagation(); handleRemoveTheme(item.name); }}
-                      aria-label={t("theme.removeTheme")}
-                    >
-                      <i class="wxi-trash-2" style="font-size:12px"></i>
-                    </button>
-                  </div>
-                {/each}
-              {/if}
             </div>
           </div>
         </section>
       {/each}
-      <section class="mdv-menu__group">
-        <button
-          type="button"
-          class="mdv-menu__group-trigger"
-          onclick={openAddTheme}
-        >
-          <span>{t("theme.addTheme")}</span>
-          <i class="wxi-chevron-right" style="font-size:13px"></i>
-        </button>
-      </section>
-      {#if addThemeOpen}
-        <div class="mdv-theme-picker">
-          <div class="mdv-theme-picker__header">
-            <button
-              type="button"
-              class="mdv-theme-picker__back"
-              aria-label={t("app.close")}
-              onclick={() => (addThemeOpen = false)}
-            >
-              <i class="wxi-x" style="font-size:14px"></i>
-            </button>
-            <!-- svelte-ignore a11y_autofocus -->
-            <input
-              type="text"
-              class="mdv-theme-picker__search"
-              placeholder={t("theme.searchShiki")}
-              bind:value={themeSearch}
-              spellcheck={false}
-              autofocus
-              onkeydown={(e) => { if (e.key === "Escape") { e.stopPropagation(); addThemeOpen = false; } }}
-            />
-          </div>
-          <div class="mdv-theme-picker__grid">
-            {#each filteredThemes as t (t.id)}
-              <button
-                type="button"
-                class="mdv-theme-card"
-                onclick={() => handleAddTheme(t)}
-                title={t.displayName}
-                style="--c-bg:{t.tokens.bg}; --c-fg:{t.tokens.fg}; --c-surface:{t.tokens.surface}; --c-border:{t.tokens.border}; --c-accent:{t.tokens.accent}; --c-muted:{t.tokens.muted};"
-              >
-                <span class="mdv-theme-card__preview">
-                  <span class="mdv-theme-card__bar"></span>
-                  <span class="mdv-theme-card__line"></span>
-                  <span class="mdv-theme-card__line mdv-theme-card__line--short"></span>
-                  <span class="mdv-theme-card__chips">
-                    <span style="background:{t.tokens.syntax['--syntax-keyword'] ?? t.tokens.accent}"></span>
-                    <span style="background:{t.tokens.syntax['--syntax-string'] ?? t.tokens.fg}"></span>
-                    <span style="background:{t.tokens.syntax['--syntax-function'] ?? t.tokens.accent}"></span>
-                    <span class="mdv-theme-card__accent"></span>
-                  </span>
-                </span>
-                <span class="mdv-theme-card__name">{t.displayName}</span>
-              </button>
-            {/each}
-          </div>
-        </div>
-      {/if}
       <div class="mdv-menu__divider" aria-hidden="true"></div>
       <section
         class="mdv-menu__group"
@@ -502,150 +316,3 @@
   </Popover>
 </div>
 
-<style>
-.mdv-theme-picker {
-  position: absolute;
-  inset: 0;
-  background: var(--bg, var(--bg));
-  display: flex;
-  flex-direction: column;
-  z-index: 10;
-}
-.mdv-theme-picker__header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px;
-  border-bottom: 1px solid var(--border, var(--border));
-}
-.mdv-theme-picker__back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 28px;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-.mdv-theme-picker__back:hover {
-  background: var(--surface-hover);
-  color: var(--fg);
-}
-.mdv-theme-picker__search {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 8px;
-  font-size: 12px;
-  background: var(--bg-hover, var(--surface-hover));
-  border: 1px solid var(--border, var(--border));
-  border-radius: 4px;
-  color: var(--fg, var(--fg));
-  outline: none;
-}
-.mdv-theme-picker__search:focus {
-  border-color: var(--accent, var(--accent));
-}
-.mdv-theme-picker__grid {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
-  align-content: start;
-}
-.mdv-theme-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-}
-/* HTML render preview built from the theme's own derived tokens */
-.mdv-theme-card__preview {
-  display: block;
-  height: 54px;
-  padding: 6px;
-  border-radius: 6px;
-  background: var(--c-bg);
-  border: 1px solid var(--c-border);
-  overflow: hidden;
-  transition: transform var(--dur-fast, 0.1s), box-shadow var(--dur-fast, 0.1s);
-}
-.mdv-theme-card:hover .mdv-theme-card__preview {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-}
-.mdv-theme-card__bar {
-  display: block;
-  height: 8px;
-  margin: -6px -6px 6px;
-  background: var(--c-surface);
-  border-bottom: 1px solid var(--c-border);
-}
-.mdv-theme-card__line {
-  display: block;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--c-fg);
-  opacity: 0.85;
-  margin-bottom: 4px;
-}
-.mdv-theme-card__line--short {
-  width: 60%;
-  background: var(--c-muted);
-  opacity: 0.75;
-}
-.mdv-theme-card__chips {
-  display: flex;
-  gap: 3px;
-  margin-top: 6px;
-}
-.mdv-theme-card__chips > span {
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
-}
-.mdv-theme-card__chips > .mdv-theme-card__accent {
-  background: var(--c-accent);
-  border-radius: 50%;
-  margin-left: auto;
-}
-.mdv-theme-card__name {
-  font-size: 10px;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0 2px;
-}
-.mdv-theme-card:hover .mdv-theme-card__name {
-  color: var(--fg);
-}
-.mdv-menu__item-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.mdv-menu__item-action:hover {
-  background: var(--surface-hover);
-  color: var(--color-error);
-}
-</style>
