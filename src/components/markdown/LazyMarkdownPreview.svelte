@@ -1,6 +1,12 @@
 <script lang="ts">
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
+// Capacités du pipeline preview (vague 3, phase 3.2) : câblées ICI, pas dans
+// MarkdownPreview.svelte lui-même — ce composant n'est mounté QUE par PROJET
+// (ContentRenderer.svelte ; NAV importe MarkdownPreview.svelte directement,
+// sans capacité). markTranscludedBlocks() ne rejoint donc le bundle NAV que
+// si NAV en avait besoin — ce n'est pas le cas.
+import { markTranscludedBlocks } from "@/markdown";
 
 let {
   value = "",
@@ -36,5 +42,5 @@ $effect(() => {
 {#if loading}
   <div class="mdv-editor mdv-editor--loading">{t("lazy.loadingPreview")}</div>
 {:else if Cmp}
-  <Cmp {value} {filePath} {rev} />
+  <Cmp {value} {filePath} {rev} onTransclusion={markTranscludedBlocks} />
 {/if}

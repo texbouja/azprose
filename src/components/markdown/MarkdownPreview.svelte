@@ -15,12 +15,12 @@ import {
   renderMarkdown,
   decorateCodeBlocks,
   ensurePreviewReady,
-  markTranscludedBlocks,
   makeCalloutsCollapsible,
   updateCalloutIcons,
   stripAutoCalloutTitles,
   postRenderDom,
   slugify,
+  type RenderResult,
 } from "@/markdown";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { subscribeMode, type Theme } from "@/lib/theme";
@@ -38,6 +38,7 @@ let {
   value = "",
   filePath = null as string | null,
   rev = 0,
+  onTransclusion,
 }: {
   value?: string;
   filePath?: string | null;
@@ -46,6 +47,13 @@ let {
    *  `rev` change → l'effet de rendu re-run. Remplace le listener
    *  `azprose:preview-force-rerender` (bouton « Recharger », reload externe). */
   rev?: number;
+  /** Capacité « transclusion » (vague 3, phase 3.2) : marque les blocs transclus
+   *  (data-transcluded-from/-line) pour que le double-clic ouvre le fichier
+   *  source — sans objet sans éditeur pour recevoir le saut (NAV, R1 lecture
+   *  seule). Callback injectée par l'appelant plutôt qu'importée ici :
+   *  markTranscludedBlocks() (et son import de @/markdown) ne rejoint donc
+   *  le bundle QUE des fenêtres qui la fournissent (PROJET). */
+  onTransclusion?: (article: HTMLElement, ranges: RenderResult["ranges"]) => void;
 } = $props();
 
 let articleEl: HTMLElement | undefined = $state();
@@ -207,7 +215,7 @@ $effect(() => {
     if (!cancelled) collectRenderDiagnostics(articleEl, brokenImages);
 
     // Mark transcluded blocks so double-click opens the original source file
-    markTranscludedBlocks(articleEl, result.ranges);
+    onTransclusion?.(articleEl, result.ranges);
 
     // Scroll to heading if navigated via wikilink
     const scrollHeading = consumeScrollTarget();
