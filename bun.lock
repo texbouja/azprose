@@ -34,6 +34,7 @@
         "@fontsource/fira-sans": "^5.2.7",
         "@fontsource/inter": "^5.2.8",
         "@fontsource/jetbrains-mono": "^5.2.8",
+        "@fontsource/material-symbols-outlined": "^5.3.2",
         "@fontsource/ubuntu": "^5.3.0",
         "@fontsource/ubuntu-condensed": "^5.3.0",
         "@fontsource/ubuntu-mono": "^5.3.0",
@@ -177,6 +178,8 @@
     "@fontsource/inter": ["@fontsource/inter@5.2.8", "", {}, "sha512-P6r5WnJoKiNVV+zvW2xM13gNdFhAEpQ9dQJHt3naLvfg+LkF2ldgSLiF4T41lf1SQCM9QmkqPTn4TH568IRagg=="],
 
     "@fontsource/jetbrains-mono": ["@fontsource/jetbrains-mono@5.2.8", "", {}, "sha512-6w8/SG4kqvIMu7xd7wt6x3idn1Qux3p9N62s6G3rfldOUYHpWcc2FKrqf+Vo44jRvqWj2oAtTHrZXEP23oSKwQ=="],
+
+    "@fontsource/material-symbols-outlined": ["@fontsource/material-symbols-outlined@5.3.2", "", {}, "sha512-yHGq5aOBpvNntjlQVMWmZibX1FwnCdRrHesW3T+N/TEVUHFb5CAj8FhJtQI9BeXikIS2etiOpXf1qvuqyny+vQ=="],
 
     "@fontsource/ubuntu": ["@fontsource/ubuntu@5.3.0", "", {}, "sha512-LsjJXgE430QLs8LKfn1RIFbbdGAiZBU1gao8ASa4Z2kGNGh7lMb7Rzx09v3bLLuuK+3XA/JSLgPWTAbLD6r1fg=="],
 

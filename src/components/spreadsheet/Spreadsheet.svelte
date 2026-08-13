@@ -3,6 +3,13 @@
   import jspreadsheet from "jspreadsheet-ce";
   import "jsuites/dist/jsuites.css";
   import "jspreadsheet-ce/dist/jspreadsheet.css";
+  // Paquet local (phase 1.7, R7) — jsuites code en dur la classe .material-icons
+  // dans sa toolbar (cf. règle .material-icons ci-dessous). Un seul poids (400,
+  // celui utilisé par la règle) plutôt que index.css (les 7 poids) : la
+  // variable font-weight n'est jamais changée ici. Chargé UNIQUEMENT dans ce
+  // chunk lazy (LazySpreadsheetViewer) — jamais au boot, jamais de dépendance
+  // réseau (ex-<link> fonts.googleapis.com, cause du gel de l'UI au démarrage).
+  import "@fontsource/material-symbols-outlined/400.css";
   import { csvSettings } from "@/stores/markdown-settings.svelte";
 
   export type JspreadsheetInstance = ReturnType<typeof jspreadsheet>[number];
