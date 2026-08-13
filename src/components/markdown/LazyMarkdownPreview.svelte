@@ -4,10 +4,13 @@ import { language } from "@/lib/i18n";
 // Capacités du pipeline preview (vague 3, phase 3.2) : câblées ICI, pas dans
 // MarkdownPreview.svelte lui-même — ce composant n'est mounté QUE par PROJET
 // (ContentRenderer.svelte ; NAV importe MarkdownPreview.svelte directement,
-// sans capacité). markTranscludedBlocks() ne rejoint donc le bundle NAV que
-// si NAV en avait besoin — ce n'est pas le cas.
+// sans capacité). Transclusion (double-clic → source), diagnostics de rendu
+// (console PROJET) et sync de scroll éditeur : trois fonctionnalités sans
+// objet sans éditeur/console PROJET (R1, NAV lecture seule) — leurs modules
+// ne rejoignent donc le bundle NAV que si NAV en avait besoin (pas le cas).
 import { markTranscludedBlocks } from "@/markdown";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
+import { consumeSyncLine, setSyncLine } from "@/stores/sync-line.svelte";
 
 let {
   value = "",
@@ -50,5 +53,7 @@ $effect(() => {
     onTransclusion={markTranscludedBlocks}
     onDiagnostics={collectRenderDiagnostics}
     onDiagnosticsClear={clearRenderDiagnostics}
+    onConsumeSyncLine={consumeSyncLine}
+    onClearSyncLine={() => setSyncLine(null)}
   />
 {/if}

@@ -30,7 +30,6 @@ import { previewSettings } from "@/stores/markdown-settings.svelte";
 import { buildPreviewProseCss } from "@/lib/prose-style-css";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { clearScrollTarget, consumeScrollTarget } from "@/stores/scroll-target.svelte";
-import { consumeSyncLine, setSyncLine } from "@/stores/sync-line.svelte";
 import { getPreviewFocusStore } from "@/stores/preview-focus.svelte";
 
 let {
@@ -40,6 +39,8 @@ let {
   onTransclusion,
   onDiagnostics,
   onDiagnosticsClear,
+  onConsumeSyncLine,
+  onClearSyncLine,
 }: {
   value?: string;
   filePath?: string | null;
@@ -62,6 +63,16 @@ let {
   onDiagnostics?: (article: HTMLElement, brokenImages: string[]) => void;
   /** Nettoyage au démontage — pendant du précédent, jamais appelé si absent. */
   onDiagnosticsClear?: () => void;
+  /** Capacité « synchronisation de scroll éditeur » (vague 3, phase 3.2) :
+   *  consomme la ligne de saut en attente (TOC/backlinks/tags/curseur après
+   *  sauvegarde) posée par l'éditeur — sans objet sans éditeur (NAV, R1). À
+   *  distinguer de consumeScrollTarget ci-dessus (scroll-target.svelte, saut
+   *  vers un TITRE après navigation wikilink) : ce dernier reste utile à NAV
+   *  (R4, navigation par wikilink) et n'est PAS mis en capacité ici. */
+  onConsumeSyncLine?: (filePath?: string | null) => number | null;
+  /** Appelée pour annuler un saut déjà honoré par l'écouteur d'événement
+   *  (azprose:preview-jump-line) — pendant de setSyncLine(null). */
+  onClearSyncLine?: () => void;
 } = $props();
 
 let articleEl: HTMLElement | undefined = $state();
@@ -246,7 +257,7 @@ $effect(() => {
 
     // Scroll to editor cursor position after save (line-bound pending jump —
     // guarded by file path so an unrelated render never consumes it).
-    const syncLine = consumeSyncLine(filePath);
+    const syncLine = onConsumeSyncLine?.(filePath) ?? null;
     if (syncLine != null && articleEl) {
       const target = findLineTarget(articleEl, syncLine);
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -315,7 +326,7 @@ $effect(() => {
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       // The event scrolled already — cancel the pending render-time syncs.
-      setSyncLine(null);
+      onClearSyncLine?.();
       clearScrollTarget();
     }
   };
