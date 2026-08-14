@@ -1,17 +1,31 @@
 /* Cœur MINIMAL chargé par les DEUX fenêtres au boot (vague 2, phase 2.4) —
- * reset, tokens, pack d'icônes, et le petit chrome global (typographie de
- * base, boutons, scrollbars, tooltip, sélection, impression) qui n'a pas de
- * consommateur unique à qui être délégué (R3 : « tout le reste voyage avec
- * son consommateur » — polices de document, thème SVAR et diapositives sont
- * dans des feuilles séparées, importées par les composants qui en ont
- * besoin, pas par le boot).
+ * reset, tokens, pack d'icônes, pont de variables SVAR, et le petit chrome
+ * global (typographie de base, boutons, scrollbars, tooltip, sélection,
+ * impression) qui n'a pas de consommateur unique à qui être délégué (R3 :
+ * « tout le reste voyage avec son consommateur » — polices de document et
+ * diapositives sont dans des feuilles séparées, importées par les
+ * composants qui en ont besoin, pas par le boot).
  *
  * Ex-globals.css (supprimé) : les polices UI (fonts-ui.css), les polices de
- * document (fonts-doc.css), le thème SVAR (svar-theme.css) et les
- * diapositives (markdown/slides.css) en ont été extraites. */
+ * document (fonts-doc.css) et les diapositives (markdown/slides.css) en ont
+ * été extraites. */
 
 @import "./tokens.css";
 @import "./wxi-lucide.css";
+/* Pont de variables SVAR (`--wx-*` → tokens AZprose). INFRASTRUCTURE, pas
+ * contrat de composant : R3 ne s'y applique pas, au même titre que
+ * tokens.css. AZprose ne monte AUCUN composant de thème SVAR (Willow*.svelte
+ * — ils injecteraient un <link> vers cdn.svar.dev) : cette feuille est la
+ * SEULE source des `--wx-*`, dont dépendent la taille et la couleur des
+ * icônes de tout composant SVAR (--wx-icon-size, --wx-color-font…).
+ *
+ * La phase 2.4 l'avait déplacée dans TabActions.svelte / BrowseToolbar.svelte
+ * en pariant sur l'ordre de montage. Erreur corrigée (vague 4, tests app) :
+ * un contrat GLOBAL était devenu tributaire du composant monté en premier —
+ * elle se retrouvait dupliquée dans 6 chunks lazy et absente du chargement
+ * initial, laissant tout composant SVAR non thémé tant que le bon chunk
+ * n'était pas arrivé. */
+@import "./svar-theme.css";
 
 *,
 *::before,

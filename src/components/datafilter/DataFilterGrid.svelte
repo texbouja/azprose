@@ -27,6 +27,12 @@
   // et les colonnes restent visibles. Elle remonte ses colonnes (titre +
   // type détecté) via `onFieldsChanged` pour la liste de champs du widget.
 
+  // Police des icônes `material-symbols-outlined` rendues plus bas
+  // (table_view, undo/redo, table_chart, close). Importée par CE composant
+  // et pas seulement par son parent DataFilterViewer : même règle que
+  // SpreadsheetViewer (vague 4) — un composant qui rend une icône Material
+  // porte sa police, sans dépendre de qui le monte.
+  import "@fontsource/material-symbols-outlined/400.css";
   import { onMount, onDestroy, tick } from "svelte";
   import SvarGrid from "./SvarGrid.svelte";
   import type { IApi, IColumn, IColumnEditor, IOption, IRow } from "@svar-ui/grid-store";

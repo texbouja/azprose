@@ -1,4 +1,12 @@
 <script lang="ts">
+  // Police auto-hébergée des icônes `material-symbols-outlined` (phase 1.7 :
+  // scopée à ses consommateurs, JAMAIS globale — c'était l'ex-<link> CDN
+  // render-blocking qui gelait le boot). Importée ICI et pas seulement dans
+  // Spreadsheet.svelte : la page d'accueil ci-dessous (grid_on / add /
+  // download / folder_managed) est rendue dans la branche où <Spreadsheet>
+  // n'est justement PAS monté — ses 4 icônes restaient invisibles tant
+  // qu'aucune feuille n'était ouverte (bug signalé en test, vague 4).
+  import "@fontsource/material-symbols-outlined/400.css";
   import { tick } from "svelte";
   import Spreadsheet from "./Spreadsheet.svelte";
   import type { JspreadsheetInstance } from "./Spreadsheet.svelte";

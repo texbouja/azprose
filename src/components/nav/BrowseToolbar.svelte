@@ -13,10 +13,9 @@
 import { Toolbar } from "@svar-ui/svelte-toolbar";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
-// Thème SVAR — PAS chargé au boot (vague 2, phase 2.4) : équivalent NAV de
-// TabActions.svelte (voir son commentaire) — premier consommateur SVAR
-// monté par cette fenêtre, porte le thème pour elle.
-import "@/styles/svar-theme.css";
+// Thème SVAR : PLUS importé ici (vague 4, correction de la phase 2.4) — il est
+// redevenu global (src/styles/core.css, chargé par nav-main.ts comme par
+// main.ts). Voir TabActions.svelte pour le détail de l'erreur corrigée.
 
 let {
   sidebarVisible = true,

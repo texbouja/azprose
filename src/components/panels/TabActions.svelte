@@ -1,13 +1,11 @@
 <script lang="ts">
 import { Toolbar } from "@svar-ui/svelte-toolbar";
 import { registerToolbarItem } from "@svar-ui/svelte-toolbar";
-// Thème SVAR — PAS chargé au boot (vague 2, phase 2.4) : ce composant est le
-// premier consommateur SVAR monté par PROJET (toolbar de tabs, toujours
-// présente), il porte le thème pour lui-même ET pour les autres composants
-// SVAR occasionnels de la même fenêtre (calendrier, tableur, réglages…) —
-// une feuille CSS importée devient globale au document dès qu'elle charge,
-// pas besoin que chacun la réimporte séparément.
-import "@/styles/svar-theme.css";
+// Thème SVAR : PLUS importé ici (vague 4, correction de la phase 2.4). Il est
+// redevenu global (src/styles/core.css) — c'est un pont de variables, pas un
+// contrat de composant. Le pari « ce composant monte en premier, il porte le
+// thème pour tous » était faux : la feuille finissait dupliquée dans 6 chunks
+// lazy et absente du boot.
 import { extFromPath } from "@/lib/editor-languages";
 import { isPdfPath, isImagePath } from "@/lib";
 import { getT } from "@/lib/i18n";
