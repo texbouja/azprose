@@ -3,11 +3,13 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 
 // Garde-fou contre la dérive du pack d'icônes généré (phase 2.3 de la
-// refonte UI, vague 2) — module pur, lit les fichiers CSS/source, aucun DOM.
-// Miroir de scripts/build-icons.mjs : si une icône utilisée dans le code
-// n'est plus émise (ou si un pack périmé traîne, non régénéré après un
-// changement source), ce test doit rougir plutôt qu'un flash silencieux
-// d'icône manquante au runtime (même principe que theme-catalog.test.ts §2.5).
+// refonte UI, vague 2 ; tree-shaking par usage RETIRÉ en vague 4 — pack
+// complet désormais, cf. commentaire d'en-tête de scripts/build-icons.mjs).
+// Module pur, lit les fichiers CSS/source, aucun DOM. Si une icône utilisée
+// dans le code n'est plus émise (pack périmé, non régénéré après un ajout
+// dans wxi-lucide.source.css), ce test doit rougir plutôt qu'un flash
+// silencieux d'icône manquante au runtime (même principe que
+// theme-catalog.test.ts §2.5).
 
 const ROOT = join(import.meta.dir, "..");
 const SRC_DIR = join(ROOT, "src");
@@ -47,25 +49,7 @@ test("toute classe wxi-* littérale trouvée dans src/** a une déclaration dans
   expect(missing).toEqual([]);
 });
 
-test("le pack généré ne contient aucune icône non utilisée", () => {
-  const used = scanUsedNames();
-  const declared = declaredNames(GENERATED);
-  // Les utilitaires (wxi-empty, wxi-spin) ne sont pas des icônes tree-shakées
-  // par usage (cf. KNOWN_UTILITIES du générateur) — exclus de cette vérification.
-  const KNOWN_UTILITIES = new Set(["empty", "spin"]);
-  const unused = [...declared].filter((n) => !used.has(n) && !KNOWN_UTILITIES.has(n));
-  expect(unused).toEqual([]);
-});
-
 test("la règle de base contient -webkit-mask-image et mask-image (via var(--wxi))", () => {
   expect(GENERATED).toContain("-webkit-mask-image: var(--wxi);");
   expect(GENERATED).toContain("mask-image: var(--wxi);");
-});
-
-test("aucune source ne construit de classe wxi-* dynamiquement", () => {
-  const offenders = files.filter((f) => {
-    const text = readFileSync(f, "utf8");
-    return /`wxi-\$\{|"wxi-"\s*\+|'wxi-'\s*\+/.test(text);
-  });
-  expect(offenders).toEqual([]);
 });

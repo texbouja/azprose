@@ -5,26 +5,30 @@
 // Source unique = src/styles/wxi-lucide.source.css (bibliothèque complète,
 // maintenue à la main — c'est LÀ qu'on ajoute une icône, modèle .wxi-compass).
 // Ce script en émet src/styles/wxi-lucide.css (GÉNÉRÉ, versionné comme
-// tokens.css) : seules les icônes réellement utilisées dans src/**, et
-// chaque data URI écrit UNE fois (propriété personnalisée --wxi) plutôt que
-// deux (-webkit-mask-image ET mask-image dupliqués dans la source).
+// tokens.css) : TOUTES les icônes de la source, chaque data URI écrit UNE
+// fois (propriété personnalisée --wxi) plutôt que deux (-webkit-mask-image
+// ET mask-image dupliqués dans la source).
 //
-// Vague 2, phase 2.3 de la refonte UI — voir refonte-ui-plan.md §2.3.
+// Vague 2, phase 2.3 de la refonte UI : posait AUSSI un tree-shaking par
+// usage (scan de src/**, icônes non référencées exclues). Retiré en vague 4
+// (retour utilisateur après tests) : le gain (~200 Ko) était marginal à
+// l'échelle de l'app, et le risque — une icône silencieusement absente du
+// pack généré si son usage échappait au scanner (ex. DataFilterViewer.svelte,
+// vu tardivement) — ne le justifiait pas. Seule la déduplication reste.
 
-import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, join, extname } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE = resolve(root, "src/styles/wxi-lucide.source.css");
 const OUT = resolve(root, "src/styles/wxi-lucide.css");
-const SRC_DIR = resolve(root, "src");
 
 // Utilitaires connus : blocs `.wxi-X::before { … }` qui ne portent PAS de
-// data URI (pas des icônes — pas de tree-shaking par usage). Émis TELS QUELS
-// depuis la source, pas recopiés en dur ici — seul leur NOM est une liste
-// blanche, pour qu'un bloc réellement inconnu fasse ÉCHOUER le script (§piège
-// ci-dessous) plutôt que d'être silencieusement perdu.
+// data URI (pas des icônes). Émis TELS QUELS depuis la source, pas recopiés
+// en dur ici — seul leur NOM est une liste blanche, pour qu'un bloc
+// réellement inconnu fasse ÉCHOUER le script (§piège ci-dessous) plutôt que
+// d'être silencieusement perdu.
 const KNOWN_UTILITIES = new Set(["empty", "spin"]);
 
 /** Extrait le bloc `{ … }` équilibré démarrant à `startIndex` (position du
@@ -93,46 +97,16 @@ function parseSource(css) {
   return { icons, utilities, keyframes };
 }
 
-// ── 2. Scanner src/**/*.{ts,svelte} pour les classes wxi-* LITTÉRALES ───
-function walk(dir, files = []) {
-  for (const entry of readdirSync(dir)) {
-    const p = join(dir, entry);
-    const st = statSync(p);
-    if (st.isDirectory()) walk(p, files);
-    else if (extname(p) === ".ts" || extname(p) === ".svelte") files.push(p);
-  }
-  return files;
-}
-
-function scanUsage(files) {
-  const used = new Set();
-  const dynamicOffenders = [];
-  for (const file of files) {
-    const text = readFileSync(file, "utf8");
-    // Piège documenté (§2.3 du plan) : le tree-shaking suppose des classes
-    // littérales. Une construction dynamique rendrait une icône absente
-    // SILENCIEUSEMENT — on refuse de construire plutôt que produire un pack
-    // incomplet.
-    if (/`wxi-\$\{|"wxi-"\s*\+|'wxi-'\s*\+/.test(text)) {
-      dynamicOffenders.push(file);
-    }
-    for (const m of text.matchAll(/wxi-[a-z0-9-]+/g)) used.add(m[0].slice(4));
-  }
-  return { used, dynamicOffenders };
-}
-
-// ── 3. Émettre le pack généré ────────────────────────────────────────────
-function render(icons, utilities, keyframes, used) {
-  const usedIcons = [...icons.entries()]
-    .filter(([name]) => used.has(name))
-    .sort(([a], [b]) => a.localeCompare(b));
+// ── 2. Émettre le pack généré ────────────────────────────────────────────
+function render(icons, utilities, keyframes) {
+  const allIcons = [...icons.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   const banner = "/* GÉNÉRÉ par scripts/build-icons.mjs — ne pas éditer.\n" +
     "   Éditer src/styles/wxi-lucide.source.css, puis `bun run icons`. */\n";
 
   const header =
     `/* ================================================================\n` +
-    ` * wxi-lucide.css — icônes via masques CSS (${usedIcons.length} utilisées / ${icons.size} disponibles)\n` +
+    ` * wxi-lucide.css — icônes via masques CSS (${allIcons.length} icônes, pack complet — pas de tree-shaking, cf. commentaire d'en-tête du script)\n` +
     ` * API: <i class="wxi-*"></i> or <i class="wxi-*" style="font-size:16px">\n` +
     ` * ================================================================ */\n\n`;
 
@@ -144,7 +118,7 @@ function render(icons, utilities, keyframes, used) {
     `}\n\n`;
 
   // Règle de base — les DEUX propriétés, écrites UNE seule fois pour tout le
-  // pack (levier A du §2.3) : chaque icône ne pose plus que --wxi.
+  // pack : chaque icône ne pose plus que --wxi.
   const base =
     `[class^="wxi-"]::before,\n` +
     `[class*=" wxi-"]::before {\n` +
@@ -165,14 +139,13 @@ function render(icons, utilities, keyframes, used) {
     `  flex-shrink: 0;\n` +
     `}\n\n`;
 
-  // Utilitaires (wxi-empty, wxi-spin…) — pas des icônes, jamais tree-shakés,
-  // recopiés VERBATIM depuis la source (cf. KNOWN_UTILITIES).
+  // Utilitaires (wxi-empty, wxi-spin…) — pas des icônes, recopiés VERBATIM
+  // depuis la source (cf. KNOWN_UTILITIES).
   const utilBlocks = utilities.map((u) => u.raw).join("\n\n");
   const utilSection = utilBlocks ? utilBlocks + "\n\n" + (keyframes ? keyframes + "\n\n" : "") : "";
 
-  // Une déclaration --wxi par icône UTILISÉE (levier B : les inutilisées
-  // n'atteignent jamais le fichier généré).
-  const decls = usedIcons
+  // Une déclaration --wxi par icône de la source — TOUTES, pack complet.
+  const decls = allIcons
     .map(([name, uri]) => `.wxi-${name} { --wxi: url("${uri}"); }`)
     .join("\n");
 
@@ -183,23 +156,12 @@ function main() {
   const sourceCss = readFileSync(SOURCE, "utf8");
   const { icons, utilities, keyframes } = parseSource(sourceCss);
 
-  const files = walk(SRC_DIR);
-  const { used, dynamicOffenders } = scanUsage(files);
-
-  if (dynamicOffenders.length > 0) {
-    console.error("icônes: construction dynamique de classe wxi-* détectée — le tree-shaking serait silencieusement incorrect.");
-    console.error("Fichiers concernés:");
-    for (const f of dynamicOffenders) console.error(`  - ${f.replace(root + "/", "")}`);
-    process.exit(1);
-  }
-
-  const out = render(icons, utilities, keyframes, used);
+  const out = render(icons, utilities, keyframes);
   const before = statSync(SOURCE).size;
   writeFileSync(OUT, out, "utf8");
   const after = Buffer.byteLength(out, "utf8");
 
-  const usedCount = [...icons.keys()].filter((n) => used.has(n)).length;
-  console.log(`icons: ${usedCount} utilisées / ${icons.size} disponibles, ${after} octets (source: ${before} octets)`);
+  console.log(`icons: ${icons.size} icônes (pack complet), ${after} octets (source: ${before} octets)`);
 }
 
 main();
