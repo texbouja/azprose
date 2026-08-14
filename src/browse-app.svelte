@@ -252,6 +252,28 @@ function onAddressKeydown(e: KeyboardEvent): void {
  *  fenêtre, clé DISTINCTE de celle de PROJET). */
 const sidebarVisible = persistedState<boolean>(STORAGE_KEYS.navSidebarOpen, true);
 
+/** État maximisé de la fenêtre — remonté ICI (pas dans NavTitleBar) : sert à
+ *  la fois au bouton restaurer/maximiser (icône) ET à `.browse` elle-même,
+ *  qui doit perdre marge/ombre/coins arrondis en plein écran (2026-08-14,
+ *  constat visuel post-test — l'effet « carte flottante » n'a pas de sens
+ *  une fois la fenêtre maximisée : il n'y a plus de bureau à montrer autour).
+ *  Source UNIQUE ici plutôt que dupliquée dans NavTitleBar (un seul
+ *  `onResized`, un seul état, propagé en prop). */
+let isMaximized = $state(false);
+
+async function refreshMaximized() {
+  try { isMaximized = await getCurrentWindow().isMaximized(); } catch {}
+}
+
+// Le WM ne prévient pas d'un maximize externe (raccourci clavier, tuilage) :
+// on se resynchronise sur chaque redimensionnement.
+$effect(() => {
+  const win = getCurrentWindow();
+  const unlisten = win.onResized(() => { refreshMaximized(); });
+  refreshMaximized();
+  return () => { unlisten.then((fn) => fn()); };
+});
+
 /** TOC déclarative (§3) de l'onglet ACTIF — recalculée à chaque navigation
  *  aboutie. Sert ICI au bouton « home » (racine de l'arbre déclaré) ; sert
  *  aussi de base à la sidebar (phase 5), évitant un second calcul. */
@@ -580,8 +602,8 @@ onMount(() => {
 });
 </script>
 
-<div class="browse">
-  <NavTitleBar>
+<div class="browse" class:browse--maximized={isMaximized}>
+  <NavTitleBar {isMaximized}>
     <div class="browse__tabs">
       <TabsBar
         {tabs}
@@ -709,10 +731,21 @@ onMount(() => {
 }
 
 .browse {
+  /* Marge ET ombre dérivées de la MÊME variable pour ne plus pouvoir
+     diverger (constat visuel 2026-08-14 : la marge d'origine, 12px, était
+     plus étroite que la portée réelle de l'ombre — celle-ci se faisait
+     couper net par le bord RÉEL de la fenêtre OS, qui reste un rectangle
+     carré même transparent. Résultat : un bord droit bien visible là où le
+     dégradé de l'ombre s'arrêtait brutalement, trahissant la triche.
+     `--nav-float-reach` borne la portée MAXIMALE de la plus grosse couche
+     d'ombre ci-dessous (offset 6px + blur 20px = 26px) ; la marge (28px) lui
+     laisse 2px de marge de sécurité — le dégradé s'éteint AVANT d'atteindre
+     le bord réel, invisible où qu'on regarde. */
+  --nav-float-margin: 28px;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 24px);
-  margin: 12px;
+  height: calc(100vh - (var(--nav-float-margin) * 2));
+  margin: var(--nav-float-margin);
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
@@ -725,8 +758,23 @@ onMount(() => {
      celui-ci ne pose ni transform ni filter, ce qui n'est pas le cas ici). */
   overflow: hidden;
   box-shadow:
-    0 12px 40px -8px rgba(0, 0, 0, 0.45),
-    0 2px 10px -2px rgba(0, 0, 0, 0.3);
+    0 6px 20px rgba(0, 0, 0, 0.4),
+    0 1px 6px rgba(0, 0, 0, 0.25);
+  /* Pas de transition CSS sur la marge/hauteur : le maximize/restore anime
+     déjà la fenêtre OS elle-même (durée hors contrôle CSS) — animer la carte
+     EN PLUS, sur une durée forcément désynchronisée, ferait plus de mal que
+     de bien (à-coup visible entre les deux animations). */
+}
+
+/* Fenêtre maximisée : plus de bureau visible autour, la carte flottante n'a
+   plus de sens (constat 2026-08-14) — la fenêtre doit se comporter comme
+   n'importe quelle fenêtre maximisée : à ras bord, sans marge ni ombre ni
+   coins arrondis. Piloté par `isMaximized`, remonté depuis NavTitleBar. */
+.browse--maximized {
+  --nav-float-margin: 0px;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 .browse__row {
   flex: 1;

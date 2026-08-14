@@ -13,33 +13,22 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import type { Snippet } from "svelte";
 
-  let { children }: { children: Snippet } = $props();
-
-  let isMaximized = $state(false);
-
-  async function refreshMaximized() {
-    try { isMaximized = await getCurrentWindow().isMaximized(); } catch {}
-  }
+  // `isMaximized` REÇU en prop (2026-08-14) — plus suivi ici : browse-app.svelte
+  // en est la source unique (un seul `onResized`, un seul état), car elle en a
+  // aussi besoin pour `.browse` (marge/ombre supprimées en plein écran). Ce
+  // composant reste dumb pour cette donnée, ne fait plus qu'émettre la
+  // commande de fenêtre au clic.
+  let { children, isMaximized = false }: { children: Snippet; isMaximized?: boolean } = $props();
 
   async function handleMinimize() {
     await getCurrentWindow().minimize();
   }
   async function handleMaximize() {
     await getCurrentWindow().toggleMaximize();
-    await refreshMaximized();
   }
   async function handleClose() {
     await getCurrentWindow().close();
   }
-
-  // Le WM ne nous prévient pas d'un maximize externe (raccourci clavier,
-  // tuilage) : on se resynchronise sur chaque redimensionnement.
-  $effect(() => {
-    const win = getCurrentWindow();
-    const unlisten = win.onResized(() => { refreshMaximized(); });
-    refreshMaximized();
-    return () => { unlisten.then((fn) => fn()); };
-  });
 </script>
 
 <!-- `data-tauri-drag-region` sur le FOND seulement (piège P1 du plan) : tout
