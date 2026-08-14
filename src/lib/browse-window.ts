@@ -109,6 +109,22 @@ export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<Webvi
     // donc pas de retour du bug « boutons WM inopérants après aller-retour ».
     // PROJET reste décorée par le WM.
     decorations: false,
+    // Bordure « flottante » (demande du 2026-08-14, option 2) : l'API native
+    // Tauri (`shadow`/`setShadow()`) est CONFIRMÉE non supportée sous Linux
+    // (l'ombre y dépend du compositeur, pas de l'app — même famille de
+    // limitation que la hauteur de la titlebar GTK, déjà actée « problème
+    // OS »). La voie portable, documentée par la communauté Tauri pour ce cas
+    // précis (fenêtre `decorations:false` sous Wayland, discussion
+    // tauri-apps/tauri#discussions/15371), est de dessiner l'effet EN CSS,
+    // dans la webview elle-même : `transparent:true` ici rend la fenêtre OS
+    // invisible en dehors du contenu peint ; `.browse` (browse-app.svelte)
+    // se pose en retrait avec sa propre `box-shadow` — la marge transparente
+    // laisse voir le bureau à travers, donnant l'impression d'une carte
+    // détachée du fond. `shadow:false` explicite : évite l'ombre native
+    // Windows (bordure blanche 1px ajoutée automatiquement aux fenêtres non
+    // décorées sous Windows 11) qui entrerait en conflit avec l'ombre CSS.
+    transparent: true,
+    shadow: false,
     // PAS de `parent` (2026-08-14) : NAV est une fenêtre AUTONOME — clic =
     // focus + premier plan comme n'importe quelle fenêtre, minimisation et
     // taskbar indépendantes. Sa fermeture avec la fenêtre de projet reste

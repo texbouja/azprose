@@ -694,12 +694,39 @@ onMount(() => {
 />
 
 <style>
+/* Fenêtre NAV créée avec `transparent:true` (browse-window.ts, 2026-08-14,
+   option 2 — bordure « flottante ») : la fenêtre OS est invisible hors du
+   contenu peint. `body`/`html` peignent leur propre fond dans core.css
+   (PARTAGÉ par les deux fenêtres, PROJET y compris) — ce `:global()` ne vise
+   QUE le document NAV (bundle séparé, nav-main.ts) : `!important` prime sur
+   core.css sans dépendre d'un ordre de chargement entre feuilles distinctes,
+   qui n'est pas une garantie assez solide à elle seule. Sans ce retrait de
+   fond, `body` resterait opaque sous la marge de `.browse` et annulerait
+   l'effet de flottement (le bureau ne serait jamais visible à travers). */
+:global(html),
+:global(body) {
+  background: transparent !important;
+}
+
 .browse {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: calc(100vh - 24px);
+  margin: 12px;
   background: var(--bg);
   color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  /* `overflow:hidden` : nécessaire pour que les enfants (titlebar, toolbar…)
+     respectent les coins arrondis — sans ça leurs fonds carrés dépasseraient
+     du rayon. Sans risque de clipper `.browse__suggestions` (position:
+     absolute, mais contenue verticalement bien avant le bas de `.browse`) ni
+     le Toast (position:fixed — échappe à TOUT overflow d'ancêtre tant que
+     celui-ci ne pose ni transform ni filter, ce qui n'est pas le cas ici). */
+  overflow: hidden;
+  box-shadow:
+    0 12px 40px -8px rgba(0, 0, 0, 0.45),
+    0 2px 10px -2px rgba(0, 0, 0, 0.3);
 }
 .browse__row {
   flex: 1;
