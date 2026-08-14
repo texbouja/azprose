@@ -29,7 +29,7 @@
   // DataFilter en est un au même titre que Spreadsheet.svelte, et ne
   // l'importait pas : les icônes n'apparaissaient que « par chance », si un
   // tableur était aussi ouvert dans la même fenêtre (bug signalé en test).
-  import "@fontsource/material-symbols-outlined/400.css";
+  import "@/styles/material-symbols.css";
   import { onMount } from "svelte";
   import { Modal, RichSelect } from "@svar-ui/svelte-core";
   import { Button } from "@/components/primitives";

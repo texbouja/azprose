@@ -32,7 +32,7 @@
   // et pas seulement par son parent DataFilterViewer : même règle que
   // SpreadsheetViewer (vague 4) — un composant qui rend une icône Material
   // porte sa police, sans dépendre de qui le monte.
-  import "@fontsource/material-symbols-outlined/400.css";
+  import "@/styles/material-symbols.css";
   import { onMount, onDestroy, tick } from "svelte";
   import SvarGrid from "./SvarGrid.svelte";
   import type { IApi, IColumn, IColumnEditor, IOption, IRow } from "@svar-ui/grid-store";

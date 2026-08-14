@@ -7,30 +7,14 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <style>
-      /* Material Symbols for jsuites toolbar (which hardcodes .material-icons class).
-         Police auto-hébergée (@fontsource/material-symbols-outlined, phase 1.7) —
-         importée uniquement dans Spreadsheet.svelte (chunk lazy du tableur),
-         JAMAIS ici : c'était l'ex-<link> fonts.googleapis.com render-blocking,
-         cause du gel de l'UI avant l'animation de démarrage (aucune ressource
-         distante au boot désormais). Cette règle reste valide telle quelle :
-         seule la SOURCE de la police change, pas son nom ni ses métriques. */
-      .material-icons {
-        font-family: 'Material Symbols Outlined';
-        font-weight: normal;
-        font-style: normal;
-        font-size: 24px;
-        line-height: 1;
-        letter-spacing: normal;
-        text-transform: none;
-        display: inline-block;
-        white-space: nowrap;
-        word-wrap: normal;
-        direction: ltr;
-        -webkit-font-feature-settings: 'liga';
-        -webkit-font-smoothing: antialiased;
-      }
-    </style>
+    <!-- PAS de règle .material-icons ici (vague 4) : elle vivait dans ce
+         fichier alors que sa POLICE est chargée en lazy par les composants —
+         une classe globale dont la police ne l'est pas. Les deux voyagent
+         désormais ensemble dans src/styles/material-symbols.css, importée par
+         chaque composant qui rend une icône Material. Voir l'en-tête de cette
+         feuille : c'est la séparation des deux qui affichait « folder_open »
+         en toutes lettres partout où la classe .material-symbols-outlined,
+         elle, n'était définie NULLE PART. -->
     <title>AZprose</title>
 
     <style>

@@ -6,7 +6,7 @@
   // download / folder_managed) est rendue dans la branche où <Spreadsheet>
   // n'est justement PAS monté — ses 4 icônes restaient invisibles tant
   // qu'aucune feuille n'était ouverte (bug signalé en test, vague 4).
-  import "@fontsource/material-symbols-outlined/400.css";
+  import "@/styles/material-symbols.css";
   import { tick } from "svelte";
   import Spreadsheet from "./Spreadsheet.svelte";
   import type { JspreadsheetInstance } from "./Spreadsheet.svelte";
