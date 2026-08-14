@@ -264,7 +264,7 @@ test("normalizeLegacyKind migre datagrid → datafilter et préserve les kinds c
   expect(normalizeLegacyKind("datafilter")).toBe("datafilter");
 });
 
-test("fromJSON FILTRE les tabs custom ET doc (outil : s'ouvre depuis le journal ; doc : chantier fenêtre NAV phase 7, plus de tab doc côté projet)", () => {
+test("fromJSON FILTRE toutes les vues d'outil (custom/spreadsheet/datafilter) et les tabs doc legacy", () => {
   const p = new PanelState("side");
   p.fromJSON({
     tabs: [
@@ -278,13 +278,25 @@ test("fromJSON FILTRE les tabs custom ET doc (outil : s'ouvre depuis le journal 
     ],
     activePath: null,
   });
-  // custom et doc filtrés, les autres kinds restaurés
-  expect(p.tabs.map(t => t.kind)).toEqual([undefined, "spreadsheet", "datafilter"]);
-  expect(p.tabs.find(t => t.kind === "spreadsheet")?.spreadsheetId).toBe("abc");
-  expect(p.tabs.find(t => t.kind === "datafilter")?.datafilterIds).toEqual(["g1", "g2"]);
+  // Seul le tab de FICHIER survit : les vues d'outil n'ont aucun état interne
+  // à rétablir (il vit dans data.db) — décision 2026-08-14.
+  expect(p.tabs.map(t => t.kind)).toEqual([undefined]);
+  expect(p.tabs.map(t => t.path)).toEqual(["/a.md"]);
 });
 
-test("fromJSON migre le kind legacy datagrid → datafilter (pile d'une carte)", () => {
+test("toJSON N'ÉCRIT PAS les vues d'outil — un seul filtre couvre localStorage ET .azprose/session.json", () => {
+  const p = new PanelState("side");
+  p.openCustom("svar-calendar", "Calendrier");
+  p.openSpreadsheet("abc", "Feuille");
+  p.openDataFilter(["g1"], "Filtre");
+  // Trois vues d'outil ouvertes côté runtime…
+  expect(p.tabs.length).toBe(3);
+  // …et RIEN de persisté : `session-utils.ts` dérive les deux canaux de ce
+  // seul `toJSON()`, filtrer ici suffit donc pour les deux.
+  expect(p.toJSON().tabs).toEqual([]);
+});
+
+test("fromJSON : le kind legacy datagrid est NORMALISÉ avant filtrage — donc écarté comme vue d'outil", () => {
   const p = new PanelState("side");
   // La session legacy (JSON brut d'une ancienne version) n'est pas typée :
   // `datagrid` et `datagridIds` n'existent pas dans PanelSessionData — cast
@@ -295,9 +307,12 @@ test("fromJSON migre le kind legacy datagrid → datafilter (pile d'une carte)",
     { path: "/b.md", title: "b.md", datagridIds: ["x"] },
   ] as unknown as Parameters<PanelState["fromJSON"]>[0]["tabs"];
   p.fromJSON({ tabs: legacy, activePath: null });
-  const migrated = p.tabs.find(t => t.path === "datagrid://dg-1");
-  expect(migrated?.kind).toBe("datafilter");
-  expect(migrated?.datafilterIds).toEqual(["dg-1"]);
+  // `datagrid` → normalisé en `datafilter` → reconnu comme vue d'OUTIL →
+  // écarté (2026-08-14). C'est l'ORDRE qui compte : filtrer sur le kind BRUT
+  // aurait laissé passer ce tab legacy, que `TabKind` ne connaît plus.
+  expect(p.tabs.find(t => t.path === "datagrid://dg-1")).toBeUndefined();
+  // Un tab de FICHIER porteur d'ids legacy survit et garde sa migration : le
+  // filtre porte sur le KIND, pas sur la présence de `datafilterIds`.
   const viaIds = p.tabs.find(t => t.path === "/b.md");
   expect(viaIds?.kind).toBeUndefined();
   expect(viaIds?.datafilterIds).toEqual(["x"]);

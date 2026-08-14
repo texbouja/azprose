@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { loadSession, saveSession, saveLastFile, loadLastFile } from "@/lib/session";
 import { loadProjectSession } from "@/lib/project-session";
 import type { PanelManager } from "@/lib/panel-manager";
+import { normalizeLegacyKind, tabContentKind, type LegacyTabKind } from "@/lib/panel-store";
 
 export interface SessionRestoreDeps {
   pm: PanelManager
@@ -69,9 +70,17 @@ export function setupSessionRestore(
                 if (cancelled) break;
                 // "doc" (chantier fenêtre NAV, phase 7) : plus de tab doc dans
                 // la fenêtre de projet — une session ANCIENNE en contenant un
-                // le laisse simplement de côté au restore (comme un panneau
-                // custom, jamais restauré non plus).
+                // le laisse simplement de côté au restore.
                 if (tab.kind === "doc") continue;
+                // Vues d'OUTIL (custom / spreadsheet / datafilter) : jamais
+                // restaurées (décision 2026-08-14, cf. `PanelState.toJSON`).
+                // `toJSON` ne les écrit plus, mais CE chemin lit le
+                // `.azprose/session.json` du DISQUE : les sessions déjà
+                // écrites en contiennent encore. Sans ce garde-fou, un
+                // tableur revenait en page d'accueil vide —
+                // `restoreDormantTab` ne transporte ni `spreadsheetId` ni
+                // `datafilterIds`, l'état de ces vues vit dans data.db.
+                if (tabContentKind(normalizeLegacyKind(tab.kind as LegacyTabKind)) === "data") continue;
                 ctx.pm.side.restoreDormantTab({
                   path: tab.path,
                   title: tab.title,

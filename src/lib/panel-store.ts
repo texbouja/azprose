@@ -802,34 +802,65 @@ export class PanelState {
     this.notify();
   }
 
+  /**
+   * Sérialisation de session. **Les vues d'OUTIL ne sont JAMAIS persistées**
+   * (décision utilisateur 2026-08-14) : `custom` (calendriers SVAR),
+   * `spreadsheet` et `datafilter` — c'est-à-dire tout `tabContentKind`
+   * `"data"`. Seuls les tabs de FICHIER (éditeur, previews) le sont.
+   *
+   * Motif : ces composants n'ont AUCUN moyen propre de rétablir leur état
+   * interne. Leurs données vivent dans `.azprose/data.db` — tant que SQLite
+   * gère correctement ces I/O, les persister en session n'apporte rien.
+   * Symptôme concret côté restore : `restoreDormantTab` ne transporte ni
+   * `spreadsheetId` ni `datafilterIds`, un tableur « restauré » revenait donc
+   * en page d'accueil vide, sans sa feuille.
+   *
+   * Filtrer ICI (à l'ÉCRITURE) couvre les DEUX canaux de persistance d'un
+   * seul geste : le `localStorage` scopé (`saveSession`) et la copie portable
+   * `.azprose/session.json` (`saveProjectSession`) dérivent tous deux de ce
+   * `toJSON()` via `session-utils.ts`.
+   */
   toJSON(): PanelSessionData {
     return {
-      tabs: this.tabs.map(t => ({
-        path: t.path,
-        title: t.title,
-        renderMode: t.renderMode,
-        sourceType: t.sourceType,
-        kind: t.kind,
-        panelId: t.panelId,
-        spreadsheetId: t.spreadsheetId,
-        datafilterIds: t.datafilterIds ? [...t.datafilterIds] : undefined,
-      })),
+      tabs: this.tabs
+        .filter(t => tabContentKind(t.kind) !== "data")
+        .map(t => ({
+          path: t.path,
+          title: t.title,
+          renderMode: t.renderMode,
+          sourceType: t.sourceType,
+          kind: t.kind,
+          panelId: t.panelId,
+          spreadsheetId: t.spreadsheetId,
+          datafilterIds: t.datafilterIds ? [...t.datafilterIds] : undefined,
+        })),
       activePath: this.activePath,
     };
   }
 
   fromJSON(data: PanelSessionData): void {
-    // Le filtre `kind !== "custom"` est un comportement DOCUMENTÉ (phase 4,
-    // idée G) : les panneaux custom (calendrier, éditeur calendar, journal)
-    // ne sont PAS restaurés en session — l'outil s'ouvre depuis le journal à
-    // la demande. Ne pas « corriger » par accident : c'est volontaire.
+    // Aucune vue d'OUTIL n'est restaurée — `custom` (calendriers SVAR),
+    // `spreadsheet` et `datafilter`, soit tout `tabContentKind` `"data"`.
+    // C'est la même règle qu'à l'écriture (`toJSON`, voir son commentaire) ;
+    // ici elle sert de GARDE-FOU pour les sessions déjà écrites sur le disque
+    // AVANT la décision du 2026-08-14, qui contiennent encore ces tabs. Le
+    // comportement pour `custom` est inchangé (documenté phase 4, idée G :
+    // l'outil s'ouvre depuis le journal à la demande) — il est simplement
+    // étendu aux deux autres kinds d'outil.
+    //
+    // Le filtre passe APRÈS `normalizeLegacyKind` : un tab legacy `datagrid`
+    // doit d'abord devenir `datafilter` pour être RECONNU comme une vue
+    // d'outil et donc écarté.
+    //
     // `kind !== "doc"` (chantier fenêtre NAV, phase 7) : l'aide intégrée n'a
-    // plus de tab dans la fenêtre de projet — un tab doc d'une session
-    // ANCIENNE est abandonné au restore, comme un panneau custom. `TabKind` ne
-    // porte plus "doc" : cast défensif sur la valeur BRUTE (potentiellement
-    // legacy) lue depuis le disque.
+    // plus de tab dans la fenêtre de projet. `TabKind` ne porte plus "doc" :
+    // cast défensif sur la valeur BRUTE lue depuis le disque.
     this.tabs = data.tabs
-      .filter(t => t.kind !== "custom" && (t.kind as string | undefined) !== "doc")
+      .filter(t => {
+        if ((t.kind as string | undefined) === "doc") return false;
+        const normalized = normalizeLegacyKind((t as { kind?: LegacyTabKind }).kind);
+        return tabContentKind(normalized) !== "data";
+      })
       .map(t => {
         // Reconstruct spreadsheetId from path if not stored directly
         let spreadsheetId = t.spreadsheetId;
