@@ -1,4 +1,12 @@
 <script lang="ts">
+// Contrat CSS propre au composant (R3, même règle que TabsBar/TitleBar/
+// MarkdownPreview…) : jusqu'ici toast.css n'était importée que par app.css,
+// donc invisible à toute fenêtre qui n'a pas ce fichier — NAV notamment,
+// qui l'adopte le 2026-08-14 pour ses messages transitoires (remplace une
+// barre fixe consommant de l'espace en permanence). Importée ICI, devient
+// globale au document dès le montage — app.css n'a plus besoin de la
+// charger séparément.
+import "@/styles/shared/toast.css";
 import { Button } from "@/components/primitives";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";

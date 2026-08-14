@@ -20,6 +20,8 @@ import TabsBar from "@/components/editor/TabsBar.svelte";
 import NavTitleBar from "@/components/nav/NavTitleBar.svelte";
 import BrowseToolbar from "@/components/nav/BrowseToolbar.svelte";
 import BrowseSidebar from "@/components/nav/BrowseSidebar.svelte";
+import Toast from "@/components/overlays/Toast.svelte";
+import { notifications } from "@/stores/notifications.svelte";
 import { basename, isPdfPath } from "@/lib";
 import { readText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
@@ -105,14 +107,18 @@ let canGoForward = $derived.by(() => {
  *  non lisible ici, échec de chargement) : un clic de navigation qui ne
  *  produit rien est indiscernable d'une panne — la fenêtre doit toujours dire
  *  ce qu'elle fait. Ne remplace JAMAIS le contenu affiché (piège #3 du plan) :
- *  `repoint`/`open` laissent l'onglet inchangé sur échec, rien n'est perdu. */
-let notice = $state<string | null>(null);
-let noticeTimer: ReturnType<typeof setTimeout> | null = null;
-
+ *  `repoint`/`open` laissent l'onglet inchangé sur échec, rien n'est perdu.
+ *
+ *  Toast plutôt qu'une barre fixe (2026-08-14) : une barre occupait un espace
+ *  PERMANENT pour un message qui ne l'est pas — contraire à l'objectif même
+ *  du chantier chrome façon navigateur (récupérer l'espace vertical gâchi
+ *  par la barre de titre GTK). `notifications` est un store GÉNÉRIQUE (pas de
+ *  dépendance PROJET) — sûr à réutiliser ici : chaque fenêtre Tauri est son
+ *  propre process JS, aucune instance partagée entre PROJET et NAV. */
 function say(message: string): void {
-  notice = message;
-  if (noticeTimer) clearTimeout(noticeTimer);
-  noticeTimer = setTimeout(() => { notice = null; }, 4000);
+  // `setInfo` porte déjà son propre minuteur d'auto-effacement (4s) — rien à
+  // gérer ici.
+  notifications.setInfo(message);
 }
 
 /** Compteur de RENDU (indépendant de `navState.panelRev`, qui bouge aussi pour des
@@ -648,12 +654,6 @@ onMount(() => {
     </div>
   </BrowseToolbar>
 
-  {#if notice}
-    <!-- Message TRANSIENT : il informe SANS masquer la page en cours de
-         lecture (une cible introuvable ne doit pas coûter la page affichée). -->
-    <p class="browse__notice" role="status">{notice}</p>
-  {/if}
-
   <div class="browse__row">
     <!-- Sidebar TOC (phase 5) — même CSS que la sidebar du projet (R7). -->
     <BrowseSidebar
@@ -683,6 +683,15 @@ onMount(() => {
     </main>
   </div>
 </div>
+
+<!-- position:fixed (toast.css) : l'emplacement dans l'arbre n'a pas
+     d'incidence visuelle, monté ici par cohérence avec la fin de gabarit. -->
+<Toast
+  open={notifications.infoToast != null}
+  message={notifications.infoToast ?? ""}
+  variant="info"
+  onDismiss={notifications.dismissInfoToast}
+/>
 
 <style>
 .browse {
@@ -806,13 +815,7 @@ onMount(() => {
   color: var(--muted);
   font-size: 13px;
 }
-.browse__notice {
-  flex: none;
-  margin: 0;
-  padding: 0.4rem 0.75rem;
-  font-size: 13px;
-  color: var(--color-error);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
+/* .browse__notice retirée (2026-08-14) : remplacée par un Toast, cf. say()
+   et son commentaire — plus de barre fixe consommant de l'espace en
+   permanence pour un message transitoire. */
 </style>
