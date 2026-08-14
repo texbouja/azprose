@@ -598,34 +598,55 @@ onMount(() => {
     </button>
   </NavTitleBar>
 
-  <!-- Barre d'adresse : reste ICI pour l'instant (phase B2) — elle déménage
-       dans la toolbar permanente en phase B3, avec le toggle sidebar. -->
-  <div class="browse__address-wrap">
-    <input
-      bind:this={addressEl}
-      bind:value={addressValue}
-      type="text"
-      class="browse__address"
-      placeholder={t("browse.emptyHint")}
-      aria-label={t("browse.emptyHint")}
-      oninput={() => void updateSuggestions()}
-      onkeydown={onAddressKeydown}
-    />
-    {#if vaultSuggestions.length > 0 || helpSuggestions.length > 0}
-      <ul class="browse__suggestions" role="listbox">
-        {#each vaultSuggestions as s (s.path)}
-          <li role="option" aria-selected="false">
-            <button type="button" onclick={() => void chooseSuggestion(s.path)}>{s.base}</button>
-          </li>
-        {/each}
-        {#each helpSuggestions as a (a.path)}
-          <li role="option" aria-selected="false">
-            <button type="button" onclick={() => void chooseSuggestion(helpFilePath(root ?? "", a.path))}>{a.title}</button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
+  <!-- Toolbar PERMANENTE (phase B3, remplace le mode « au survol » de la
+       phase 4) — pleine largeur, rangée dédiée AU-DESSUS de la sidebar ET du
+       contenu (cf. maquette du plan §2), pas nichée dans .browse__body :
+       toggle sidebar tout à gauche (props existantes), navigation, champ de
+       recherche au milieu (passé en children — état/logique restent ici). -->
+  <BrowseToolbar
+    sidebarVisible={sidebarVisible.current}
+    onToggleSidebar={() => { sidebarVisible.current = !sidebarVisible.current; }}
+    {canGoHome}
+    onHome={goHome}
+    {canGoBack}
+    onBack={() => void goBack()}
+    {canGoForward}
+    onForward={() => void goForward()}
+    canOpenInEditor={!!activeTab?.path}
+    onOpenInEditor={() => void openInEditor()}
+    {presentationAvailable}
+    {presentationActive}
+    onTogglePresentation={togglePresentation}
+    fullscreenActive={isFullscreen}
+    onToggleFullscreen={() => void toggleFullscreen()}
+  >
+    <div class="browse__address-wrap">
+      <input
+        bind:this={addressEl}
+        bind:value={addressValue}
+        type="text"
+        class="browse__address"
+        placeholder={t("browse.emptyHint")}
+        aria-label={t("browse.emptyHint")}
+        oninput={() => void updateSuggestions()}
+        onkeydown={onAddressKeydown}
+      />
+      {#if vaultSuggestions.length > 0 || helpSuggestions.length > 0}
+        <ul class="browse__suggestions" role="listbox">
+          {#each vaultSuggestions as s (s.path)}
+            <li role="option" aria-selected="false">
+              <button type="button" onclick={() => void chooseSuggestion(s.path)}>{s.base}</button>
+            </li>
+          {/each}
+          {#each helpSuggestions as a (a.path)}
+            <li role="option" aria-selected="false">
+              <button type="button" onclick={() => void chooseSuggestion(helpFilePath(root ?? "", a.path))}>{a.title}</button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  </BrowseToolbar>
 
   {#if notice}
     <!-- Message TRANSIENT : il informe SANS masquer la page en cours de
@@ -643,25 +664,6 @@ onMount(() => {
     />
 
     <main class="browse__body">
-      <!-- Toolbar au SURVOL (phase 4) : remplace la barre back/forward fixe de
-           la phase 1 — même châssis que TabActions (zone de survol + reveal). -->
-      <BrowseToolbar
-        sidebarVisible={sidebarVisible.current}
-        onToggleSidebar={() => { sidebarVisible.current = !sidebarVisible.current; }}
-        {canGoHome}
-        onHome={goHome}
-        {canGoBack}
-        onBack={() => void goBack()}
-        {canGoForward}
-        onForward={() => void goForward()}
-        canOpenInEditor={!!activeTab?.path}
-        onOpenInEditor={() => void openInEditor()}
-        {presentationAvailable}
-        {presentationActive}
-        onTogglePresentation={togglePresentation}
-        fullscreenActive={isFullscreen}
-        onToggleFullscreen={() => void toggleFullscreen()}
-      />
       {#if !activeTab || !activeTab.path}
         <p class="browse__empty" role="status">{t("browse.emptyHint")}</p>
       {:else if isPdfPath(activeTab.path)}
@@ -696,30 +698,27 @@ onMount(() => {
   display: flex;
   flex-direction: row;
 }
-.browse__tabbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
 .browse__tabs {
-  /* flex:0 (pas flex:1 hérité de l'ex-tabbar) : dans NavTitleBar, ce bloc
-     doit se limiter au contenu réel des onglets (comme sur la maquette du
-     plan, "[onglet][onglet][+]" collés à gauche) — sinon .mdv-tabs (racine
-     de TabsBar, sans largeur propre) s'étire jusqu'à occuper la moitié de la
+  /* flex:0 (pas flex:1 hérité de l'ex-tabbar, retirée en phase B3 — voir
+     historique git pour .browse__tabbar) : dans NavTitleBar, ce bloc doit se
+     limiter au contenu réel des onglets (comme sur la maquette du plan,
+     "[onglet][onglet][+]" collés à gauche) — sinon .mdv-tabs (racine de
+     TabsBar, sans largeur propre) s'étire jusqu'à occuper la moitié de la
      barre au profit de .nav-titlebar__spacer, avec une COULEUR DE FOND
      différente de ce dernier (var(--bg) vs var(--surface)) : une rupture
-     visible en plein milieu de la barre. Règle amenée à disparaître avec
-     .browse__tabbar (orphelines, nettoyées en phase B3). */
+     visible en plein milieu de la barre. Toujours utilisée (habille le
+     wrapper de TabsBar dans NavTitleBar) — PAS orpheline, contrairement à ce
+     que la phase B3 du plan anticipait : conservée. */
   flex: 0 1 auto;
   min-width: 0;
 }
 .browse__address-wrap {
+  /* Plus de margin-left (ex-espacement après .browse__tabs dans l'ancienne
+     tabbar) : ce bloc est désormais centré par .nt-search (BrowseToolbar,
+     phase B3), un margin résiduel l'aurait décalé du centre. */
   position: relative;
   flex: none;
   width: 240px;
-  margin-left: 6px;
 }
 .browse__address {
   width: 100%;
@@ -785,7 +784,12 @@ onMount(() => {
   background: var(--surface-hover);
 }
 .browse__body {
-  position: relative; /* ancre l'overlay de BrowseToolbar (survol, phase 4) */
+  /* BrowseToolbar n'est plus un overlay ancré ici depuis la phase B3 (rangée
+     permanente, pleine largeur, hors de .browse__body) — position:relative
+     conservée par prudence (repli défensif, pas de positionnement absolu
+     connu en dépendant parmi MarkdownPreview/LazyPdfViewer/LazySlideDeck/
+     LazyDocPreview, mais non vérifié pour chacun). */
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;

@@ -1,18 +1,23 @@
 <script lang="ts">
 /**
- * Toolbar au survol de la fenêtre NAV (chantier fenêtre NAV, phase 4).
- * Châssis repris de `@/components/panels/TabActions.svelte` (zone de survol
- * révélant une barre SVAR au-dessus du contenu) — un composant DÉDIÉ plutôt
- * qu'une réutilisation directe : TabActions porte des concepts du panneau
- * projet (colles, brouillons, sphère épinglée) sans objet ici.
+ * Toolbar PERMANENTE de la fenêtre NAV (chantier chrome façon navigateur,
+ * phase B3 — remplace le mode « au survol » de la phase 4). Rangée dédiée,
+ * sous la titlebar à onglets (NavTitleBar.svelte) : replier/afficher la
+ * sidebar TOUT À GAUCHE, home/précédent/suivant, champ de recherche AU
+ * MILIEU (passé en `children` par browse-app.svelte — sa logique de
+ * suggestions/navigation reste sa propriété, ce composant ne fait que le
+ * positionner), ouvrir dans l'éditeur/Présentation/plein écran à droite.
  *
- * Gauche : replier/afficher la sidebar · home (racine de l'arbre déclaré) ·
- * précédent · suivant. Droite : ouvrir dans l'éditeur (R10) · Présentation ·
- * plein écran.
+ * Deux `<Toolbar>` SVAR distinctes (gauche/droite) plutôt qu'une seule avec
+ * un item `{ spacer: true }` : le `<Toolbar>` SVAR ne rend pas d'`<input>`
+ * en son sein — le champ de recherche est un VRAI élément DOM, posé À CÔTÉ,
+ * dans le même conteneur flex (le spacer synthétique de la barre au survol
+ * n'a donc plus lieu d'être).
  */
 import { Toolbar } from "@svar-ui/svelte-toolbar";
 import { getT } from "@/lib/i18n";
 import { language } from "@/lib/i18n";
+import type { Snippet } from "svelte";
 // Thème SVAR : PLUS importé ici (vague 4, correction de la phase 2.4) — il est
 // redevenu global (src/styles/core.css, chargé par nav-main.ts comme par
 // main.ts). Voir TabActions.svelte pour le détail de l'erreur corrigée.
@@ -33,6 +38,7 @@ let {
   onTogglePresentation,
   fullscreenActive = false,
   onToggleFullscreen,
+  children,
 }: {
   sidebarVisible?: boolean;
   onToggleSidebar?: () => void;
@@ -49,47 +55,34 @@ let {
   onTogglePresentation?: () => void;
   fullscreenActive?: boolean;
   onToggleFullscreen?: () => void;
+  /** Champ de recherche (barre d'adresse) — markup ET état/logique restent
+   *  la propriété de browse-app.svelte (index du vault, suggestions,
+   *  navigation) ; ce composant ne fait que le positionner AU MILIEU. */
+  children?: Snippet;
 } = $props();
 
 let t = $derived(getT($language));
 
-let visible = $state(false);
-let toolbarEl = $state<HTMLElement | null>(null);
-let hoverZoneEl = $state<HTMLElement | null>(null);
+/** Groupe de GAUCHE : replier/afficher la sidebar (toujours en tête, cf.
+ *  décision utilisateur — « toggle sidebar tout à gauche ») puis navigation. */
+let leftItems = $derived.by(() => [
+  { comp: "icon", icon: sidebarVisible ? "wxi-panel-left-close" : "wxi-panel-left-open",
+    text: t("browse.toggleSidebar"), pinned: true,
+    handler: () => onToggleSidebar?.() },
+  { comp: "icon", icon: "wxi-home", text: t("browse.home"), pinned: true,
+    disabled: !canGoHome, handler: () => onHome?.() },
+  { comp: "icon", icon: "wxi-arrow-left", text: t("preview.back"), pinned: true,
+    disabled: !canGoBack, handler: () => onBack?.() },
+  { comp: "icon", icon: "wxi-arrow-right", text: t("preview.forward"), pinned: true,
+    disabled: !canGoForward, handler: () => onForward?.() },
+]);
 
-function show() { visible = true; }
-function hide() { visible = false; }
-
-function clickOutside(e: MouseEvent) {
-  if (!toolbarEl && !hoverZoneEl) return;
-  const target = e.target as Node;
-  if (toolbarEl && !toolbarEl.contains(target) && hoverZoneEl && !hoverZoneEl.contains(target)) hide();
-}
-
-$effect(() => {
-  if (!visible) return;
-  const handler = (e: MouseEvent) => clickOutside(e);
-  requestAnimationFrame(() => document.addEventListener("click", handler));
-  return () => document.removeEventListener("click", handler);
-});
-
-let items = $derived.by(() => {
+/** Groupe de DROITE : actions sur le document affiché. */
+let rightItems = $derived.by(() => {
   const list: any[] = [
-    { comp: "icon", icon: sidebarVisible ? "wxi-panel-left-close" : "wxi-panel-left-open",
-      text: t("browse.toggleSidebar"), pinned: true,
-      handler: () => onToggleSidebar?.() },
-    { comp: "icon", icon: "wxi-home", text: t("browse.home"), pinned: true,
-      disabled: !canGoHome, handler: () => onHome?.() },
-    { comp: "icon", icon: "wxi-arrow-left", text: t("preview.back"), pinned: true,
-      disabled: !canGoBack, handler: () => onBack?.() },
-    { comp: "icon", icon: "wxi-arrow-right", text: t("preview.forward"), pinned: true,
-      disabled: !canGoForward, handler: () => onForward?.() },
-    { spacer: true },
+    { comp: "icon", icon: "wxi-external", text: t("preview.openInEditor"), pinned: true,
+      disabled: !canOpenInEditor, handler: () => onOpenInEditor?.() },
   ];
-  list.push({
-    comp: "icon", icon: "wxi-external", text: t("preview.openInEditor"), pinned: true,
-    disabled: !canOpenInEditor, handler: () => onOpenInEditor?.(),
-  });
   if (presentationAvailable) {
     list.push({
       comp: "icon", icon: "wxi-slideshow", text: "Presentation", pinned: true,
@@ -106,39 +99,31 @@ let items = $derived.by(() => {
 });
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="nt-hover-zone" bind:this={hoverZoneEl} onmouseenter={show}></div>
-
-{#if visible}
-  <div class="nt-wrap" bind:this={toolbarEl}>
-    <Toolbar {items} css="nt-toolbar" />
+<div class="nt-wrap">
+  <Toolbar items={leftItems} css="nt-toolbar" />
+  <div class="nt-search">
+    {@render children?.()}
   </div>
-{/if}
+  <Toolbar items={rightItems} css="nt-toolbar" />
+</div>
 
 <style>
-.nt-hover-zone {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 34px;
-  z-index: 19;
-  pointer-events: auto;
-}
 .nt-wrap {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 20;
-  height: 34px;
+  flex: none;
   display: flex;
-  pointer-events: auto;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(6px);
+  align-items: center;
+  height: 34px;
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   overflow-y: hidden;
+}
+.nt-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .nt-wrap :global(.wx-toolbar) {
   background: transparent !important;
@@ -147,6 +132,7 @@ let items = $derived.by(() => {
   height: 100%;
   min-height: 0;
   flex-wrap: nowrap;
+  flex: none;
 }
 .nt-wrap :global(.wx-toolbar .wx-button) {
   flex-shrink: 0;
@@ -187,8 +173,5 @@ let items = $derived.by(() => {
 }
 .nt-wrap :global(.wx-toolbar .wx-button[disabled]:hover) {
   background: transparent;
-}
-.nt-wrap :global(.wx-toolbar .wx-spacer) {
-  flex: 1;
 }
 </style>
