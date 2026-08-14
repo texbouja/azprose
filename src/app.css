@@ -31,7 +31,9 @@
   --prose-line-height: 1.65;
   --prose-align: left;
   display: grid;
-  grid-template-rows: var(--titlebar-h) var(--breadcrumb-h) 1fr var(--statusbar-h);
+  /* Plus de rangée de barre de titre : la fenêtre est décorée par le WM
+     (décorations de l'app supprimées le 2026-08-14). */
+  grid-template-rows: var(--breadcrumb-h) 1fr var(--statusbar-h);
   height: 100vh;
   width: 100vw;
   background: var(--bg);
@@ -41,10 +43,9 @@
     color var(--dur-base) var(--easing);
 }
 
-.mdv-app > .mdv-titlebar { grid-row: 1; }
-.mdv-app > .mdv-breadcrumb { grid-row: 2; }
-.mdv-app > .mdv-shell { grid-row: 3; }
-.mdv-app > .mdv-statusbar { grid-row: 4; }
+.mdv-app > .mdv-breadcrumb { grid-row: 1; }
+.mdv-app > .mdv-shell { grid-row: 2; }
+.mdv-app > .mdv-statusbar { grid-row: 3; }
 
 /* shell = sidebar + workspace row */
 .mdv-shell {
@@ -107,18 +108,9 @@
   position: relative;
 }
 
-/* titlebar hidden mode */
-.mdv-app.has-hidden-titlebar {
-  grid-template-rows: 0 var(--breadcrumb-h) 1fr var(--statusbar-h);
-}
-.mdv-app.has-hidden-titlebar .mdv-titlebar {
-  display: none;
-}
-
 
 
 /* theme transition smoothing — common surfaces fade between palettes */
-.mdv-titlebar,
 .mdv-statusbar,
 .mdv-popover,
 .mdv-menu__item,

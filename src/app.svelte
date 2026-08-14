@@ -42,7 +42,6 @@ import AboutOverlay from "@/components/overlays/AboutOverlay.svelte";
 import SettingsOverlay from "@/components/overlays/SettingsOverlay.svelte";
 import WelcomeOverlay from "@/components/overlays/WelcomeOverlay.svelte";
 import ProjectGate from "@/components/overlays/ProjectGate.svelte";
-import TitleBar from "@/components/chrome/TitleBar.svelte";
 import Breadcrumb from "@/components/chrome/Breadcrumb.svelte";
 import StatusBar from "@/components/chrome/StatusBar.svelte";
 import SidebarContainer from "@/components/sidebar/sidebar-container.svelte";
@@ -52,7 +51,7 @@ import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
 import { tabPinFormat, tabSpace } from "@/lib/panel-store";
-import { openOrFocusBrowseWindow, broadcastDecorationsToChildren } from "@/lib/browse-window";
+import { openOrFocusBrowseWindow } from "@/lib/browse-window";
 import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
@@ -1196,18 +1195,11 @@ $effect(() => {
   return () => window.removeEventListener("keydown", onKey);
 });
 
-// État de FENÊTRE (vague 4, phase 4.2) : la fenêtre native est la source de
-// vérité — AUCUN stockage, comme isMaximized dans TitleBar.svelte (même
-// motif : $state miroir, rafraîchi une fois au montage). L'app démarre
-// TOUJOURS en décorations WM (Tauri, tauri.conf.json ne porte aucune clé
-// `decorations`) : le défaut `true` ci-dessous ne fait que refléter ce que
-// isDecorated() confirmera de toute façon, aucun flash possible pour PROJET.
-let nativeDecorations = $state(true);
-$effect(() => {
-  let cancelled = false;
-  void getCurrentWindow().isDecorated().then((v) => { if (!cancelled) nativeDecorations = v; }).catch(() => {});
-  return () => { cancelled = true; };
-});
+// Décorations : la fenêtre est TOUJOURS décorée par le WM (défaut Tauri —
+// `tauri.conf.json` ne porte aucune clé `decorations`). Le mode « décorations
+// de l'app » a été SUPPRIMÉ le 2026-08-14 (bénéfice marginal après
+// simplification, et `setDecorations(false)` puis `true` laissait les boutons
+// du WM inopérants sous GTK). L'app ne communique plus à l'OS que le TITRE.
 
 // Apply font hinting override
 $effect(() => {
@@ -1217,20 +1209,6 @@ $effect(() => {
 
 const handleToggleVim = () => {
   vimOn = !vimOn;
-};
-
-// Bascule décorations natives (WM) ↔ décorations custom de l'app — un SEUL
-// commutateur : true → chrome WM, barre custom masquée ; false → chrome WM
-// retiré, barre custom visible avec ses propres boutons (TitleBar.svelte,
-// {#if !nativeDecorations}). Aucun stockage (vague 4, phase 4.2) : on
-// applique directement à la fenêtre, le miroir $state suit ; « PROJET
-// instaure, NAV suit » — la bascule se propage à chaud aux fenêtres NAV de
-// ce projet (broadcastDecorationsToChildren), jamais l'inverse.
-const handleToggleDecorations = async () => {
-  const next = !nativeDecorations;
-  await getCurrentWindow().setDecorations(next).catch(() => {});
-  nativeDecorations = next;
-  void broadcastDecorationsToChildren(getCurrentWindow().label, next);
 };
 
 const editorMode = $derived<EditorMode>(
@@ -1572,7 +1550,6 @@ let cmds = $derived(
     recentFiles: [],
     hasActivePath: activePath != null,
     sidebarOpen: sidebarOpen.current,
-    nativeDecorations,
     toggleFavorite: () => { if (activePath) fo.toggleFavorite(activePath); },
     currentFilePath: activePath,
     // oxide: daily note commands
@@ -1622,7 +1599,6 @@ let cmds = $derived(
     },
     toggleConsole: handleToggleConsole,
     toggleViewPanel: handleToggleSidebar,
-    toggleDecorations: handleToggleDecorations,
     openSettings: () => overlays.openSettings("general"),
     openCalendarEditor: () => {
       pm.openCustomInSide("calendar-editor", "Calendrier");
@@ -1651,7 +1627,7 @@ let cmds = $derived(
 </script>
 
 <div
-  class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}{nativeDecorations ? " has-hidden-titlebar" : ""}"
+  class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}"
   style={Object.entries(typographyStyle).map(([k, v]) => `${k}:${v}`).join(";")}
 >
   {#if !rootPath && !overlays.welcomeOpen}
@@ -1664,17 +1640,10 @@ let cmds = $derived(
          l'ouvre. -->
     <ProjectGate onChooseFolder={handleInitProject} />
   {/if}
-  <TitleBar
-    rootName={rootPath ? basename(rootPath) : undefined}
-    {nativeDecorations}
-  />
-
   <Breadcrumb
     {rootPath}
     {activePath}
     {saveStatus}
-    {nativeDecorations}
-    onToggleDecorations={handleToggleDecorations}
     {vimOn}
     onToggleVim={handleToggleVim}
     typography={typo}

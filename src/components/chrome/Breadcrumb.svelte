@@ -11,8 +11,6 @@
     rootPath,
     activePath,
     saveStatus,
-    nativeDecorations,
-    onToggleDecorations,
     vimOn,
     onToggleVim,
     typography,
@@ -34,13 +32,6 @@
     rootPath: string | null;
     activePath: string | null;
     saveStatus: "idle" | "dirty" | "saving" | "saved";
-    /** true = décorations WM natives (barre de titre custom masquée) ; false =
-     *  décorations custom de l'app (TitleBar.svelte visible avec ses propres
-     *  boutons). Source unique de vérité : la fenêtre native elle-même
-     *  (isDecorated(), vague 4 phase 4.2) — AUCUN stockage, ce prop reflète
-     *  le miroir $state tenu par app.svelte, sur le modèle d'isMaximized. */
-    nativeDecorations: boolean;
-    onToggleDecorations: () => void;
     vimOn?: boolean;
     onToggleVim?: () => void;
     typography: TypographySettings;
@@ -193,16 +184,6 @@
 
   <div class="mdv-breadcrumb__actions" data-tauri-drag-region>
     <div class="mdv-breadcrumb__display">
-      <Button
-        data-tooltip={nativeDecorations ? t("title.useAppTitlebar") : t("title.useSystemTitlebar")}
-        aria-label={nativeDecorations ? t("title.useAppTitlebar") : t("title.useSystemTitlebar")}
-        aria-pressed={!nativeDecorations}
-        onclick={onToggleDecorations}
-      >
-        {#snippet icon()}
-          <i class={!nativeDecorations ? 'wxi-panel-top-close' : 'wxi-panel-top-open'} style="font-size:14px"></i>
-        {/snippet}
-      </Button>
       {#if onToggleConsole}
         <Button
           data-tooltip={t("command.toggleConsole")}

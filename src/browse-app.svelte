@@ -19,7 +19,6 @@ import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import TabsBar from "@/components/editor/TabsBar.svelte";
 import BrowseToolbar from "@/components/nav/BrowseToolbar.svelte";
 import BrowseSidebar from "@/components/nav/BrowseSidebar.svelte";
-import TitleBar from "@/components/chrome/TitleBar.svelte";
 import { basename, isPdfPath } from "@/lib";
 import { readText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
@@ -77,28 +76,9 @@ const params = new URLSearchParams(location.search);
 const root = params.get("root");
 setRootPath(root);
 
-// État de FENÊTRE (vague 4, phase 4.2) : la fenêtre native est la source de
-// vérité, AUCUN stockage — « PROJET instaure, NAV suit », jamais l'inverse
-// (cette fenêtre n'a pas de bouton de bascule). Miroir $state initialisé
-// depuis le paramètre d'URL `decorated` (posé par browse-window.ts à la
-// création, valeur déjà appliquée à CETTE fenêtre — lire isDecorated() ici
-// reproduirait le flash que la pose à la création évite : l'appel est
-// asynchrone, IPC Tauri). La propagation À CHAUD passe par l'événement Tauri
-// `azprose:decorations` (émis par PROJET, broadcastDecorationsToChildren) —
-// plus par le canal `storage` de la phase 1.3, qui n'a plus rien à lire.
-let nativeDecorations = $state(params.get("decorated") !== "0");
-$effect(() => {
-  let cancelled = false;
-  let un: (() => void) | null = null;
-  listen<boolean>("azprose:decorations", (event) => {
-    nativeDecorations = event.payload;
-    void getCurrentWindow().setDecorations(event.payload).catch(() => {});
-  }).then((fn) => {
-    if (cancelled) { fn(); return; }
-    un = fn;
-  });
-  return () => { cancelled = true; un?.(); };
-});
+// Décorations : cette fenêtre est TOUJOURS décorée par le WM, comme PROJET.
+// Le mode « décorations de l'app » (et sa propagation PROJET→NAV par
+// l'événement `azprose:decorations`) a été SUPPRIMÉ le 2026-08-14.
 
 // Panel, piles back/forward et pages PDF cibles : état de FENÊTRE, à la portée
 // module de nav-state.svelte.ts (phase 1.4) — survit au remontage HMR de CE
@@ -108,11 +88,6 @@ $effect(() => {
 let tabs = $derived.by(() => { navState.panelRev; return navState.panel.tabs; });
 let activeTabId = $derived.by(() => { navState.panelRev; return navState.panel.activeTabId; });
 let activeTab = $derived.by(() => tabs.find(tb => tb.id === activeTabId) ?? null);
-
-// Nom affiché par la barre de titre CUSTOM (TitleBar) — même dérivation que
-// setWindowTitle() (titre OS) pour que les deux affichent EXACTEMENT la même
-// chaîne (correction 2026-08-14, même principe que PROJET/window-title.ts).
-let navTitleName = $derived(activeTab && activeTab.path ? basename(activeTab.path) : t("browse.emptyTab"));
 
 let canGoBack = $derived.by(() => {
   navState.stackRev;
@@ -570,15 +545,6 @@ onMount(() => {
 </script>
 
 <div class="browse">
-  {#if !nativeDecorations}
-    <!-- Décorations natives = la barre custom serait redondante avec le
-         chrome WM (même logique que app.svelte .has-hidden-titlebar). -->
-    <TitleBar
-      rootName={navTitleName}
-      {nativeDecorations}
-    />
-  {/if}
-
   <div class="browse__tabbar">
     <div class="browse__tabs">
       <TabsBar

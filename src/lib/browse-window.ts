@@ -89,37 +89,22 @@ export interface BrowseWindowOptions {
 /** Ouvre une fenêtre fille de navigation sur `path`. */
 export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<WebviewWindow> {
   const launcher = getCurrentWindow();
-  const [monitor, fullscreen, decorated] = await Promise.all([
+  const [monitor, fullscreen] = await Promise.all([
     currentMonitor().catch(() => null),
     launcher.isFullscreen().catch(() => false),
-    // État de FENÊTRE (vague 4, phase 4.2) : la fenêtre native de LANCEMENT
-    // est la source de vérité, aucun stockage — on l'interroge directement
-    // au lieu de lire un réglage. Repli `true` (décorations WM) si l'appel
-    // échoue : c'est aussi l'état de démarrage par défaut de toute fenêtre.
-    launcher.isDecorated().catch(() => true),
   ]);
   const { width, height } = browseWindowSize(monitor);
   const params = new URLSearchParams({ browse: opts.path });
   if (opts.root) params.set("root", opts.root);
-  // Transporté en paramètre d'URL (comme `root`/`browse`) plutôt que lu par
-  // NAV via isDecorated() à son propre montage : cette lecture est ASYNCHRONE
-  // (IPC Tauri) et la fenêtre a déjà l'ANIMATION long JS à charger — l'écart,
-  // même bref, reproduirait le flash que la pose à la création évite déjà ici.
-  params.set("decorated", decorated ? "1" : "0");
   return new WebviewWindow(browseWindowLabel(launcher.label, ++browseSeq), {
     url: `nav.html?${params.toString()}`,
     title: windowTitle(basename(opts.path)),
     width,
     height,
     center: true,
-    // Décorations posées à la CRÉATION, pas dans un $effect au montage
-    // (correction 2026-08-14) : une fenêtre créée décorée puis re-décorée à
-    // chaud montre un flash « chrome WM → chrome app » au démarrage. NAV est
-    // créée depuis le JS de PROJET, qui connaît déjà le réglage — il n'y a
-    // aucune raison d'attendre son propre bundle. (La fenêtre PROJET, elle,
-    // est créée par Rust avant tout JS : son flash relève de la séquence de
-    // boot, traité en vague 4 du plan.)
-    decorations: decorated,
+    // Aucune option `decorations` : la fenêtre est décorée par le WM, comme
+    // toute fenêtre AZprose (défaut Tauri). Le mode « décorations de l'app »
+    // a été supprimé le 2026-08-14 — il n'y a plus rien à propager du parent.
     // PAS de `parent` (2026-08-14) : NAV est une fenêtre AUTONOME — clic =
     // focus + premier plan comme n'importe quelle fenêtre, minimisation et
     // taskbar indépendantes. Sa fermeture avec la fenêtre de projet reste
@@ -163,13 +148,4 @@ export async function openOrFocusBrowseWindow(opts: BrowseWindowOptions): Promis
 export async function closeBrowseChildren(parentLabel: string): Promise<void> {
   const windows = await findBrowseChildren(parentLabel);
   await Promise.all(windows.map((w) => w.destroy().catch(() => {})));
-}
-
-/** Propage la bascule de décorations à chaud vers toutes les fenêtres NAV de
- *  ce projet (vague 4, phase 4.2 — « PROJET instaure, NAV suit », jamais
- *  l'inverse : NAV n'a pas de bouton de bascule). Symétrique de
- *  `closeBrowseChildren` ; sans effet si aucune fenêtre NAV n'est ouverte. */
-export async function broadcastDecorationsToChildren(parentLabel: string, decorated: boolean): Promise<void> {
-  const windows = await findBrowseChildren(parentLabel);
-  await Promise.all(windows.map((w) => emitTo(w.label, "azprose:decorations", decorated).catch(() => {})));
 }

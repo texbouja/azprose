@@ -18,20 +18,13 @@
  * les deux points d'entrée JS (main.ts, nav-main.ts).
  */
 
-/** is-mac / is-windows / is-linux sur <html> — styles spécifiques à la
- *  plateforme (ex. espace réservé aux traffic lights macOS dans
- *  TitleBar.svelte, `html.is-mac .mdv-titlebar`). */
-function applyPlatformClass(): void {
-  const ua = navigator.userAgent;
-  const platformClass = /Mac|iPhone|iPad|iPod/i.test(ua)
-    ? "is-mac"
-    : /Windows/i.test(ua)
-      ? "is-windows"
-      : /Linux/i.test(ua)
-        ? "is-linux"
-        : "is-unknown";
-  document.documentElement.classList.add(platformClass);
-}
+/* `applyPlatformClass()` (is-mac / is-windows / is-linux sur <html>) a été
+ * SUPPRIMÉ le 2026-08-14 avec les décorations de l'app : son UNIQUE
+ * consommateur était `html.is-mac .mdv-titlebar` (espace réservé aux traffic
+ * lights macOS dans TitleBar.svelte). Plus aucune règle CSS ni aucun code ne
+ * lisait ces classes — vérifié par grep avant retrait. C'était par ailleurs
+ * la dernière logique de branchement par OS du démarrage : la fenêtre est
+ * désormais décorée par le WM partout, sans exception ni cas particulier. */
 
 /**
  * Surface de crash non destructive : un overlay dismissible plutôt que de
@@ -159,11 +152,9 @@ function initMathJaxConfig(): void {
   };
 }
 
-/** Classe de plateforme + surface de crash + config MathJax — à appeler UNE
- *  fois par fenêtre, au tout début du point d'entrée (avant même
- *  `initPresentation()`). */
+/** Surface de crash + config MathJax — à appeler UNE fois par fenêtre, au
+ *  tout début du point d'entrée (avant même `initPresentation()`). */
 export function initBoot(): void {
-  applyPlatformClass();
   installCrashHandler();
   initMathJaxConfig();
 }
