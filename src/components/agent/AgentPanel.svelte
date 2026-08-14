@@ -9,6 +9,11 @@
 import { onMount, onDestroy, tick } from "svelte";
 import { createAgentClient, type AgentClient } from "@/lib/agent/client";
 import type { SessionUpdate } from "@/lib/agent/types";
+import {
+  createAgentHandlers,
+  type PermissionOption,
+  type PermissionRequest,
+} from "@/lib/agent/handlers";
 import { getProjectRoot } from "@/lib/session";
 import { getT, language } from "@/lib/i18n";
 
@@ -22,7 +27,9 @@ type FeedItem =
   | { id: number; kind: "agent"; text: string }
   | { id: number; kind: "thought"; text: string; open: boolean }
   | { id: number; kind: "tool"; toolCallId: string; title: string; toolKind: string; status: string; detail: string; open: boolean }
-  | { id: number; kind: "permission"; requestId: number | string; description: string; resolved: boolean };
+  // Permission DANS LE FIL (jamais en modale — règle 3 de l'anatomie) :
+  // `resolve` renvoie l'optionId choisi au handler suspendu, null = annulé.
+  | { id: number; kind: "permission"; title: string; location?: string; options: PermissionOption[]; resolved: boolean; resolve: (optionId: string | null) => void };
 
 type Status = "starting" | "ready" | "busy" | "not-installed" | "error";
 
@@ -40,8 +47,37 @@ let nextId = 0;
 let client: AgentClient | null = null;
 let sessionId = $state<string | null>(null);
 let offUpdate: (() => void) | null = null;
-// Phase 4 y ajoutera `onServerRequest` (fs/*, permissions) ; en phase 3,
-// aucune capacité n'est déclarée (P3) donc le filet -32601 du transport suffit.
+// Handlers phase 4 : fs/* en accès disque pur (D9) + permissions dans le fil.
+// Recréés à chaque session (startSession) : les « toujours » ne survivent pas
+// à une réinitialisation (D12 — mémoire de session, jamais disque).
+let handlers = $state<ReturnType<typeof createAgentHandlers> | null>(null);
+
+/** Rend une demande de permission dans le fil et suspend jusqu'au clic. */
+function askPermission(req: PermissionRequest): Promise<string | null> {
+  return new Promise((resolve) => {
+    pushItem({
+      kind: "permission",
+      title: req.title,
+      location: req.location,
+      options: req.options,
+      resolved: false,
+      resolve,
+    });
+    scrollToBottom();
+  });
+}
+
+function answerPermission(item: Extract<FeedItem, { kind: "permission" }>, optionId: string | null) {
+  if (item.resolved) return;
+  item.resolved = true;
+  item.resolve(optionId);
+}
+
+/** D12 : trois issues — une fois / toujours (cette session) / refuser.
+ *  Les kinds viennent de l'agent ; un kind absent n'affiche pas son bouton. */
+function optionOfKind(item: Extract<FeedItem, { kind: "permission" }>, prefix: string): PermissionOption | undefined {
+  return item.options.find((o) => o.kind?.startsWith(prefix));
+}
 
 // Agrégation des chunks streamés, par messageId (phase 0 : OpenCode émet des
 // chunks de quelques caractères, jamais un message complet).
@@ -136,7 +172,14 @@ async function startSession() {
   toolItems.clear();
   sessionId = null;
   try {
-    client ??= createAgentClient({ cwd: getProjectRoot() ?? "/" });
+    handlers = createAgentHandlers(undefined, askPermission);
+    client ??= createAgentClient({
+      cwd: getProjectRoot() ?? "/",
+      // Phase 4 : les capacités fs sont déclarées MAINTENANT qu'elles sont
+      // implémentées (P3 — jamais avant). Servies depuis le disque (D9).
+      capabilities: { fs: { readTextFile: true, writeTextFile: true } },
+      onServerRequest: (req) => handlers!.handle(req),
+    });
     await client.start();
     offUpdate ??= client.onUpdate(applyUpdate);
     sessionId = await client.newSession(getProjectRoot() ?? "/");
@@ -230,6 +273,34 @@ onDestroy(() => {
             <span class="agent__tool-status">{item.status}</span>
           </summary>
         </details>
+      {:else if item.kind === "permission"}
+        <div class="agent__perm" class:agent__perm--resolved={item.resolved}>
+          <div class="agent__perm-q">
+            <i class="wxi-alert-circle"></i>
+            {t("agent.permission", { action: item.title })}
+            {#if item.location}<span class="agent__perm-loc">{item.location}</span>{/if}
+          </div>
+          {#if !item.resolved}
+            <div class="agent__perm-btns">
+              {#if optionOfKind(item, "allow_once")}
+                <button class="agent__btn" onclick={() => answerPermission(item, optionOfKind(item, "allow_once")!.optionId)}>
+                  {t("agent.permOnce")}
+                </button>
+              {/if}
+              {#if optionOfKind(item, "allow_always")}
+                <button class="agent__btn" onclick={() => answerPermission(item, optionOfKind(item, "allow_always")!.optionId)}>
+                  {t("agent.permAlways")}
+                </button>
+              {/if}
+              <button
+                class="agent__btn agent__btn--deny"
+                onclick={() => answerPermission(item, optionOfKind(item, "reject")?.optionId ?? null)}
+              >
+                {t("agent.permDeny")}
+              </button>
+            </div>
+          {/if}
+        </div>
       {:else if item.kind === "agent"}
         {#if item.text}<div class="agent__msg agent__msg--agent">{item.text}</div>{/if}
       {/if}
@@ -343,6 +414,24 @@ onDestroy(() => {
     white-space: nowrap;
     max-width: 40%;
   }
+
+  .agent__perm {
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .agent__perm--resolved { opacity: 0.55; border-color: var(--border); }
+  .agent__perm-q { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .agent__perm-loc {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    color: var(--fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .agent__perm-btns { display: flex; gap: 6px; margin-top: 8px; }
+  .agent__btn--deny { color: var(--danger, #d33); }
 
   .agent__composer {
     flex: none;
