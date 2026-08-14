@@ -20,6 +20,8 @@ mod latex_engine;
 
 mod lsp_bridge;
 
+mod agent;
+
 mod mdprinter;
 
 mod fonts;
@@ -32,6 +34,7 @@ mod db;
 use db::Db;
 
 use lsp_bridge::LspBridgeState;
+use agent::AcpBridgeState;
 
 struct PendingOpenFiles(Mutex<Vec<String>>);
 struct PendingProjectFolders(Mutex<HashMap<String, String>>);
@@ -378,6 +381,7 @@ pub fn run() {
         .manage(OpenProjectWindows(Mutex::new(HashMap::new())))
         .manage(TerminalState::default())
         .manage(LspBridgeState::default())
+        .manage(AcpBridgeState::default())
         .manage(Db(Mutex::new(None)))
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let mut project_dir = None;
@@ -437,6 +441,9 @@ pub fn run() {
             lsp_bridge::lsp_spawn,
             lsp_bridge::lsp_write,
             lsp_bridge::lsp_kill,
+            agent::bridge::acp_spawn,
+            agent::bridge::acp_write,
+            agent::bridge::acp_kill,
             open_folder,
             latex_engine::latex_build,
             latex_engine::latex_find_root,
