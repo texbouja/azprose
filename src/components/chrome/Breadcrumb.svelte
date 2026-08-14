@@ -26,6 +26,7 @@
     onOpenSpreadsheet,
     onOpenDataFilter,
     onOpenNav,
+    onOpenAgent,
     onOpenPalette,
     onSelectFile,
   }: {
@@ -49,6 +50,8 @@
     /** Lance (ou cible, SINGLETON — R2) la fenêtre NAV (chantier fenêtre NAV,
      *  phase 8) : nouvel onglet vide si elle est déjà ouverte. */
     onOpenNav?: () => void;
+    /** Ouvre l'onglet « Assistant » dans le side panel (chantier OpenCode). */
+    onOpenAgent?: () => void;
     onOpenPalette?: () => void;
     onSelectFile?: (path: string, newTab?: boolean) => void;
   } = $props();
@@ -235,8 +238,19 @@
       {/if}
     </div>
 
-    {#if onOpenSvarCalendar || onOpenSpreadsheet || onOpenDataFilter || onOpenNav}
+    {#if onOpenSvarCalendar || onOpenSpreadsheet || onOpenDataFilter || onOpenNav || onOpenAgent}
       <div class="mdv-breadcrumb__tools">
+        {#if onOpenAgent}
+          <Button
+            data-tooltip={t("agent.title")}
+            aria-label={t("agent.title")}
+            onclick={onOpenAgent}
+          >
+            {#snippet icon()}
+              <i class="wxi-sparkles" style="font-size:14px"></i>
+            {/snippet}
+          </Button>
+        {/if}
         {#if onOpenNav}
           <Button
             data-tooltip={t("breadcrumb.nav")}

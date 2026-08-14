@@ -1657,6 +1657,7 @@ let cmds = $derived(
     onOpenSpreadsheet={handleOpenSpreadsheet}
     onOpenDataFilter={handleOpenDataFilter}
     onOpenNav={openNav}
+    onOpenAgent={() => pm.openCustomInSide("ai-agent", t("agent.title"))}
     onOpenPalette={() => overlays.setPaletteOpen(true)}
     onSelectFile={handleSidebarFileSelect}
   />

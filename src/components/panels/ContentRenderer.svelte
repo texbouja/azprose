@@ -2,7 +2,7 @@
 // Ordre des branches VOLONTAIRE et exhaustif (phase 4, idée G) — tout
 // nouveau `TabKind` de données DOIT avoir sa branche explicite ici avant le
 // `{:else}` final (l'éditeur de fichiers) :
-//   1. custom (calendar-editor / journal-calendar / svar-calendar),
+//   1. custom (calendar-editor / journal-calendar / svar-calendar / ai-agent),
 //   2. pdf / image (viewers dédiés, pas de contenu texte),
 //   3. md side → colle / presentation / preview (rendus dérivés),
 //   4. html side → preview html,
@@ -28,6 +28,7 @@ import LazyJournalCalendarPanel from "@/components/sidebar/LazyJournalCalendarPa
 import LazySvarCalendarPanel from "@/components/calendar/LazySvarCalendarPanel.svelte";
 import LazySpreadsheetViewer from "@/components/spreadsheet/LazySpreadsheetViewer.svelte";
 import LazyDataFilterViewer from "@/components/datafilter/LazyDataFilterViewer.svelte";
+import LazyAgentPanel from "@/components/agent/LazyAgentPanel.svelte";
 
 import type { TypographySettings } from "@/lib/typography";
 import { getTexlabClient } from "@/lib/lsp/texlab";
@@ -95,6 +96,8 @@ let {
   <LazyJournalCalendarPanel />
 {:else if tab.kind === "custom" && tab.panelId === "svar-calendar"}
   <LazySvarCalendarPanel />
+{:else if tab.kind === "custom" && tab.panelId === "ai-agent"}
+  <LazyAgentPanel />
 {:else if isPdfPath(tab.path)}
   <!-- CONTAINER du viewer PDF (Phase C — D5) : le message d'échec s'affiche
        ICI, jamais dans le PDFViewer, qui garde le DERNIER BUFFER VALIDE. -->
