@@ -23,6 +23,6 @@ Thème du programme de Terminale — suites, limites, convergence, suites adjace
 - [[2026-01-07]] — colles : limites et convergence, suites adjacentes
 
 > [!tip] Le réseau autour de cette fiche
-> La section Backlinks de la vue Liens regroupe toutes les notes qui citent cette matière : séances, cours, colles — voir [[06-vue-liens|La vue Liens]].
+> La section Backlinks de la vue Liens regroupe toutes les notes qui citent cette matière : séances, cours, colles — voir [[vue-liens|La vue Liens]].
 
 #maths #revision

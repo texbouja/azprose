@@ -1,4 +1,8 @@
-# 9. Imprimer en PDF
+---
+parent: index
+---
+
+# Imprimer en PDF
 
 AZprose convertit vos notes **Markdown en PDF** du bouton Exporter : une note de cours, une fiche, un polycopié — le résultat est un vrai document PDF, prêt à imprimer ou à distribuer. Ce chapitre réunit tout le parcours : le principe, le dialogue d'impression, les gabarits, les réglages et le cas des planches de colles.
 
@@ -15,12 +19,12 @@ Votre note est d'abord transformée en **page web autonome** (mise en page, imag
 |----|------|
 | **Raccourci ⌘P** sur une note Markdown ouverte | Ouvre le dialogue d'impression de la note (mode *note*) |
 | **Palette de commandes** (⌘⇧P) → « exporter en PDF » | Le même dialogue, sur la note active |
-| **Bouton imprimante** dans la vue colle d'une note quotidienne | Ouvre le dialogue en mode *planches de colles* — voir [[09-impression#Les planches de colles|plus bas]] |
+| **Bouton imprimante** dans la vue colle d'une note quotidienne | Ouvre le dialogue en mode *planches de colles* — voir [[impression#Les planches de colles|plus bas]] |
 
 ## Le parcours type
 
 1. Ouvrez une note `.md` et appuyez sur **⌘P** — le dialogue d'impression s'ouvre avec **vos derniers réglages**.
-2. Ajustez la mise en page (papier, marges, gabarit, colonnes, en-tête…) — chaque champ est expliqué dans [[09-impression#Le dialogue d'impression pas à pas|la section du dialogue]].
+2. Ajustez la mise en page (papier, marges, gabarit, colonnes, en-tête…) — chaque champ est expliqué dans [[impression#Le dialogue d'impression pas à pas|la section du dialogue]].
 3. Cliquez **Aperçu** si vous voulez vérifier le rendu avant d'exporter : une fenêtre Chromium s'ouvre avec la page exacte du futur PDF (voir plus bas).
 4. Cliquez **Exporter** — un dialogue d'enregistrement vous demande où écrire le fichier, puis le PDF est généré et le chemin vous est notifié.
 
@@ -32,8 +36,8 @@ Votre note est d'abord transformée en **page web autonome** (mise en page, imag
 - tout le **Markdown** de la note : titres, listes, tableaux, citations, encadrés (*callouts*), blocs de code ;
 - les **images** locales (embarquées directement dans le PDF, pas de fichier à joindre) ;
 - les **formules mathématiques** (requièrent une connexion Internet pour le chargement du moteur MathJax — voir plus bas) ;
-- les **wikilinks** : en mode note, vous pouvez choisir d'« Inclure les fichiers liés » pour transformer en [[04-transclusions|transclusions]] les liens isolés sur leur ligne ;
-- les **métadonnées** de la note via le gabarit choisi (titre, date, logo) — voir [[09-impression#Les gabarits et templates|les gabarits]].
+- les **wikilinks** : en mode note, vous pouvez choisir d'« Inclure les fichiers liés » pour transformer en [[transclusions|transclusions]] les liens isolés sur leur ligne ;
+- les **métadonnées** de la note via le gabarit choisi (titre, date, logo) — voir [[impression#Les gabarits et templates|les gabarits]].
 
 ## Le dialogue d'impression pas à pas
 
@@ -41,13 +45,13 @@ Le **dialogue d'impression** est la fenêtre qui s'ouvre quand vous appuyez sur 
 
 > [!info] Deux modes, un seul dialogue
 > - Mode **note** (⌘P) : tous les réglages décrits ci-dessous.
-> - Mode **planches de colles** : le dialogue est simplifié (pas de gabarit, pas d'« inclure les fichiers liés ») et gagne la case « avec évaluation » — voir [[09-impression#Les planches de colles|les planches de colles]].
+> - Mode **planches de colles** : le dialogue est simplifié (pas de gabarit, pas d'« inclure les fichiers liés ») et gagne la case « avec évaluation » — voir [[impression#Les planches de colles|les planches de colles]].
 >
 > Vos derniers réglages sont chargés à chaque ouverture, selon le mode.
 
 ### Gabarit
 
-Le gabarit qui encadre le document — Document simple, Cours ou Dense. Réservé au mode note — voir [[09-impression#Les gabarits et templates|les gabarits et templates]].
+Le gabarit qui encadre le document — Document simple, Cours ou Dense. Réservé au mode note — voir [[impression#Les gabarits et templates|les gabarits et templates]].
 
 ### Papier et orientation
 
@@ -95,7 +99,7 @@ Un champ **vide désactive** la zone. Quatre *placeholders* sont disponibles, re
 
 ### Inclure les fichiers liés (mode note)
 
-Quand cette option est active, les **wikilinks isolés sur leur ligne** (entourés de lignes vides, hors listes et blocs de code) deviennent des [[04-transclusions|transclusions]] : le contenu de la note liée est **inclus dans le PDF** à la place du lien, récursivement (limite de profondeur et détection de boucles incluses). Un lien au **milieu d'un paragraphe** reste une simple référence.
+Quand cette option est active, les **wikilinks isolés sur leur ligne** (entourés de lignes vides, hors listes et blocs de code) deviennent des [[transclusions|transclusions]] : le contenu de la note liée est **inclus dans le PDF** à la place du lien, récursivement (limite de profondeur et détection de boucles incluses). Un lien au **milieu d'un paragraphe** reste une simple référence.
 
 ### Aperçu et export
 
@@ -129,7 +133,7 @@ Un **gabarit** (*template*) est une coquille qui encadre le contenu rendu de vot
 | **Dense** | Typographie resserrée (petite police, interligne et marges réduits) | Les documents longs, pour économiser le papier |
 
 > [!info] Le gabarit ne touche pas au contenu
-> Le gabarit encadre le contenu — il ne le modifie pas. Le corps du document (titres, paragraphes, images, tableaux) est mis en forme par les réglages typographiques de la section Impression — voir [[09-impression#Les réglages d'impression|les réglages]].
+> Le gabarit encadre le contenu — il ne le modifie pas. Le corps du document (titres, paragraphes, images, tableaux) est mis en forme par les réglages typographiques de la section Impression — voir [[impression#Les réglages d'impression|les réglages]].
 
 ### Les variables du gabarit
 
@@ -146,7 +150,7 @@ Le titre et la date se remplissent tout seuls : vous n'avez rien à configurer.
 
 ### Le logo vient de la note elle-même
 
-Si votre note déclare un **logo dans son front matter** (les métadonnées YAML en tête de note — voir le chapitre 7, [[07-front-matter|Les métadonnées]]), le gabarit l'affiche automatiquement :
+Si votre note déclare un **logo dans son front matter** (les métadonnées YAML en tête de note — voir [[front-matter|Les métadonnées]]), le gabarit l'affiche automatiquement :
 
 ````markdown
 ---
@@ -211,7 +215,7 @@ Ce sont ces réglages qui donnent la hiérarchie visuelle du document imprimé.
 
 ### Gabarit du rapport de colle
 
-La section la plus puissante — elle ne concerne que les **colles**. Le rapport de colle (le visuel envoyé par email et imprimé sur les planches — voir [[09-impression#Les planches de colles|les planches]]) est composé de **5 zones dans un ordre fixe** :
+La section la plus puissante — elle ne concerne que les **colles**. Le rapport de colle (le visuel envoyé par email et imprimé sur les planches — voir [[impression#Les planches de colles|les planches]]) est composé de **5 zones dans un ordre fixe** :
 
 | Zone | Contenu par défaut |
 |------|--------------------|
@@ -266,11 +270,11 @@ Le bouton **Réinitialiser** en bas de la section restaure tous les réglages d'
 
 ## Les planches de colles
 
-Les **planches de colles** sont les fiches d'interrogation d'une note quotidienne (une fiche par élève, bloc de métadonnées + énoncé — voir le chapitre 10, [[10-colles|Les colles]]). Elles s'impriment via le **même dialogue d'impression** que les notes, mais dans un mode dédié.
+Les **planches de colles** sont les fiches d'interrogation d'une note quotidienne (une fiche par élève, bloc de métadonnées + énoncé — voir [[colles|Les colles]]). Elles s'impriment via le **même dialogue d'impression** que les notes, mais dans un mode dédié.
 
 ### Le point d'entrée
 
-1. Ouvrez la **note quotidienne** du jour de colle et passez son aperçu en **mode colle** (l'icône colle de la barre d'outils de l'aperçu) — voir le chapitre 8, [[08-journal|Les notes quotidiennes]].
+1. Ouvrez la **note quotidienne** du jour de colle et passez son aperçu en **mode colle** (l'icône colle de la barre d'outils de l'aperçu) — voir [[journal|Les notes quotidiennes]].
 2. Dans la barre d'outils, cliquez le bouton **imprimante** (« Imprimer »).
 3. Le dialogue d'impression s'ouvre en mode *planches* : il compte les planches de la note et propose la mise en page.
 
@@ -294,7 +298,7 @@ La case (décochée par défaut) décide si la section **Évaluation** de chaque
 | **Avec** | La planche complète, notes et observations comprises | La version **administration / archivage** de la séance |
 
 > [!note] L'élève, lui, reçoit toujours le compte rendu complet
-> Le rapport envoyé par email à chaque famille contient toujours l'évaluation (note, rubriques, observations) — la case ne concerne que l'impression des planches. Voir le chapitre 10, [[10-colles|Les colles]].
+> Le rapport envoyé par email à chaque famille contient toujours l'évaluation (note, rubriques, observations) — la case ne concerne que l'impression des planches. Voir [[colles|Les colles]].
 
 ### La mise en page par défaut
 
@@ -302,7 +306,7 @@ Par défaut, les planches s'impriment en **A4 paysage avec deux planches par pag
 
 ### La planche : le gabarit du rapport
 
-Chaque planche reprend le **gabarit du rapport de colle** configurable dans les réglages — 5 zones (titre, sous-titre, métadonnées, corps, évaluation), variables, blocs conditionnels — voir [[09-impression#Gabarit du rapport de colle|le gabarit du rapport]]. Particularités des planches imprimées :
+Chaque planche reprend le **gabarit du rapport de colle** configurable dans les réglages — 5 zones (titre, sous-titre, métadonnées, corps, évaluation), variables, blocs conditionnels — voir [[impression#Gabarit du rapport de colle|le gabarit du rapport]]. Particularités des planches imprimées :
 
 - la **salle** est omise (le PDF est une feuille d'examen, pas un courrier — l'email la conserve) ;
 - la **signature** n'apparaît dans aucun rendu ;
@@ -321,8 +325,8 @@ Les derniers réglages d'impression sont **sauvegardés par projet** (fichier `.
 
 ## Voir aussi
 
-- Embarquer le contenu d'une note (les transclusions de l'export) : chapitre 4, [[04-transclusions|Embarquer une note]]
-- Le logo vient du front matter : chapitre 7, [[07-front-matter|Les métadonnées]]
-- Le cas d'usage des colles : chapitre 10, [[10-colles|Les colles]]
+- Embarquer le contenu d'une note (les transclusions de l'export) : [[transclusions|Embarquer une note]]
+- Le logo vient du front matter : [[front-matter|Les métadonnées]]
+- Le cas d'usage des colles : [[colles|Les colles]]
 
 #guide #impression

@@ -1,4 +1,8 @@
-# 1. Prise en main
+---
+parent: index
+---
+
+# Prise en main
 
 Ce chapitre vous fait faire le tour d'AZprose en cinq minutes. À la fin, vous saurez ouvrir un projet, créer une note, l'enregistrer et passer de l'écriture à l'aperçu.
 
@@ -14,7 +18,7 @@ Un projet AZprose est un simple **dossier** sur votre ordinateur, appelé *vault
 ## Créer une note
 
 1. Appuyez sur `⌘N` (ou `Ctrl+N`) pour créer un nouveau fichier, ou créez-le dans l'explorateur (la barre latérale gauche).
-2. Donnez-lui un nom parlant : c'est ce nom qui servira à le relier aux autres notes (voir le chapitre 3, [[03-wikilinks|Les liens entre notes]]).
+2. Donnez-lui un nom parlant : c'est ce nom qui servira à le relier aux autres notes (voir [[wikilinks|Les liens entre notes]]).
 3. Écrivez ! Le texte suit la syntaxe Markdown : `# Titre`, `## Sous-titre`, `**gras**`, `*italique*`, listes, etc.
 
 ## Trois façons de travailler
@@ -51,15 +55,15 @@ La suite de Fibonacci[^1] apparaît partout en mathématiques.
 Une note très courte peut aussi se définir directement sur place, entre crochets : `^[note directement dans le texte]`.^[C'est ce que nous venons de faire — la voilà, affichée en bas de page !]
 
 > [!note] Markdown simplifié
-> Ce chapitre couvre l'essentiel de la syntaxe : titres, gras, italique, listes, notes de bas de page. Le guide détaille ensuite ce qui fait la force d'AZprose : les liens (chapitre 3, [[03-wikilinks|Les liens entre notes]]), les encadrés (chapitre 5, [[05-callouts|Les encadrés]]) et les étiquettes (chapitre 6, [[06-vue-liens|La vue Liens]]).
+> Ce chapitre couvre l'essentiel de la syntaxe : titres, gras, italique, listes, notes de bas de page. Le guide détaille ensuite ce qui fait la force d'AZprose : les liens ([[wikilinks|Les liens entre notes]]), les encadrés ([[callouts|Les encadrés]]) et les étiquettes ([[vue-liens|La vue Liens]]).
 
 ## La barre latérale gauche
 
 La barre latérale gauche contient trois vues, accessibles par les trois icônes en haut :
 
 1. **Explorateur** (icône dossier) — l'arborescence de vos fichiers.
-2. **Journal** (icône calendrier) — vos notes quotidiennes, classées par mois (voir le chapitre 8, [[08-journal|Les notes quotidiennes]]).
-3. **Liens** (icône lien) — le sommaire de la note, ses liens entrants (*backlinks*) et les tags du coffre (voir le chapitre 6, [[06-vue-liens|La vue Liens]]).
+2. **Journal** (icône calendrier) — vos notes quotidiennes, classées par mois (voir [[journal|Les notes quotidiennes]]).
+3. **Liens** (icône lien) — le sommaire de la note, ses liens entrants (*backlinks*) et les tags du coffre (voir [[vue-liens|La vue Liens]]).
 
 ## La palette de commandes
 
@@ -67,7 +71,7 @@ Appuyez sur `⌘⇧P` (ou `Ctrl+⇧P`) : une fenêtre s'ouvre avec toutes les ac
 
 ## Continuer
 
-- Lire le chapitre suivant : [[03-wikilinks|Les liens entre notes]] — relier vos notes entre elles.
-- Consulter l'aide-mémoire : chapitre 2, [[02-raccourcis|Les raccourcis]].
+- Lire le chapitre suivant : [[wikilinks|Les liens entre notes]] — relier vos notes entre elles.
+- Consulter l'aide-mémoire : [[raccourcis|Les raccourcis]].
 
 #guide #premiers-pas

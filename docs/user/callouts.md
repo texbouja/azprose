@@ -1,4 +1,8 @@
-# 5. Les encadrés — callouts
+---
+parent: index
+---
+
+# Les encadrés — callouts
 
 Un *callout* est un **encadré coloré** qui met un passage en valeur. C'est un bloc de citation spécial : il commence par `>` (comme une citation), suivi de `[!type]`, où `type` donne la couleur et la signification de l'encadré.
 
@@ -97,11 +101,11 @@ Votre type est aussitôt disponible partout :
 - **Attention** pour les pièges classiques en exercice.
 - **Définition** et **Théorème** pour structurer un cours.
 - **À retenir** (votre type personnalisé) pour les points à réviser avant un contrôle.
-- Dans les colles, chaque planche peut commencer par un encadré *Programme* — voir le chapitre 10, [[10-colles|Les colles]].
+- Dans les colles, chaque planche peut commencer par un encadré *Programme* — voir [[colles|Les colles]].
 
 ## Voir aussi
 
-- Organiser vos notes avec des étiquettes : chapitre 6, [[06-vue-liens|La vue Liens]]
-- Les métadonnées en tête de note : chapitre 7, [[07-front-matter|Les métadonnées]]
+- Organiser vos notes avec des étiquettes : [[vue-liens|La vue Liens]]
+- Les métadonnées en tête de note : [[front-matter|Les métadonnées]]
 
 #guide #callouts

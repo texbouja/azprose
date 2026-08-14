@@ -22,21 +22,25 @@ describe("catalog (doc intégrée, générée par scripts/sync-help.mjs)", () =>
     expect([...rest].sort()).toEqual(rest);
   });
 
+  // Noms SANS préfixe numérique (2026-08-14) : l'ordre de lecture est déclaré
+  // dans le `sommaire:` d'index.md, plus dans les noms de fichiers — un
+  // chapitre inséré ne renomme plus rien. Ce catalogue-ci reste un index de
+  // RECHERCHE (complétion `aide:`), d'où le tri alphabétique du test voisin.
   it("le guide complet est au catalogue (10 chapitres), les exemples exclus du footer", () => {
     const paths = catalog.map((a) => a.path);
     expect(paths).toHaveLength(11); // index.md + 10 chapitres
     for (const p of [
       "index.md",
-      "01-prise-en-main.md",
-      "02-raccourcis.md",
-      "03-wikilinks.md",
-      "04-transclusions.md",
-      "05-callouts.md",
-      "06-vue-liens.md",
-      "07-front-matter.md",
-      "08-journal.md",
-      "09-impression.md",
-      "10-colles.md",
+      "prise-en-main.md",
+      "raccourcis.md",
+      "wikilinks.md",
+      "transclusions.md",
+      "callouts.md",
+      "vue-liens.md",
+      "front-matter.md",
+      "journal.md",
+      "impression.md",
+      "colles.md",
     ]) {
       expect(paths).toContain(p);
     }
@@ -53,13 +57,13 @@ describe("catalog (doc intégrée, générée par scripts/sync-help.mjs)", () =>
   });
 
   it("helpRelativePath : chemin relatif normalisé", () => {
-    expect(helpRelativePath("/vault/.azprose/help/03-wikilinks.md", "/vault/.azprose/help")).toBe("03-wikilinks.md");
+    expect(helpRelativePath("/vault/.azprose/help/wikilinks.md", "/vault/.azprose/help")).toBe("wikilinks.md");
     // anti-slash toléré (Windows)
     expect(helpRelativePath("C:\\vault\\.azprose\\help\\index.md", "C:/vault/.azprose/help")).toBe("index.md");
   });
 
   it("helpRelativePath : hors du dossier help → null", () => {
-    expect(helpRelativePath("/vault/notes/01-prise-en-main.md", "/vault/.azprose/help")).toBeNull();
+    expect(helpRelativePath("/vault/notes/prise-en-main.md", "/vault/.azprose/help")).toBeNull();
     // préfixe trompeur (dossier voisin partageant le préfixe)
     expect(helpRelativePath("/vault/.azprose/help-backup/index.md", "/vault/.azprose/help")).toBeNull();
   });

@@ -1,4 +1,8 @@
-# 2. Les raccourcis
+---
+parent: index
+---
+
+# Les raccourcis
 
 Les raccourcis sont donnés pour macOS (`⌘` = Commande). Sur Windows et Linux, remplacez `⌘` par `Ctrl`.
 
@@ -42,11 +46,11 @@ Les raccourcis sont donnés pour macOS (`⌘` = Commande). Sur Windows et Linux,
 - **Double-clic dans l'aperçu** : ramène l'éditeur à la ligne correspondante.
 - **`⌘S`** : après un enregistrement, l'aperçu se place automatiquement sur la ligne du curseur.
 - **Clic sur un lien** : ouvre la note dans le panneau d'aperçu (`⌘\`).
-- **`Alt + glisser` sur un PDF** : sélectionne une zone rectangulaire et copie son lien (voir le chapitre 3, [[03-wikilinks|Les liens entre notes]]).
+- **`Alt + glisser` sur un PDF** : sélectionne une zone rectangulaire et copie son lien (voir [[wikilinks|Les liens entre notes]]).
 
 ## Voir aussi
 
-- La prise en main complète : chapitre 1, [[01-prise-en-main|Prise en main]]
-- Les liens entre notes : chapitre 3, [[03-wikilinks|Les liens entre notes]]
+- La prise en main complète : [[prise-en-main|Prise en main]]
+- Les liens entre notes : [[wikilinks|Les liens entre notes]]
 
 #guide #raccourcis

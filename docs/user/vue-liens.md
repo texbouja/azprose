@@ -1,4 +1,8 @@
-# 6. La vue Liens — sommaire, backlinks et tags
+---
+parent: index
+---
+
+# La vue Liens — sommaire, backlinks et tags
 
 Quand vous écrivez `[[une-note]]` dans vos notes, vous créez un lien **sortant**. Mais l'intérêt d'un réseau, c'est aussi de connaître les liens **entrants** : quelles notes pointent vers la note que je suis en train de lire ? Ce sont les *backlinks* (liens retour). La **vue Liens** rassemble, en un seul endroit de la barre latérale gauche, le sommaire de la note, ses backlinks et les tags du coffre.
 
@@ -38,7 +42,7 @@ Les backlinks transforment votre coffre en réseau **bidirectionnel** :
 - une fiche d'élève devient automatiquement son **historique** : chaque colle qui le mentionne apparaît dans ses backlinks ;
 - une fiche de matière devient sa **liste de séances** : toutes les notes de cours qui la citent.
 
-C'est exactement le mécanisme qu'exploite le cas d'usage des colles (chapitre 10, [[10-colles|Les colles]]).
+C'est exactement le mécanisme qu'exploite le cas d'usage des colles ([[colles|Les colles]]).
 
 ## Les étiquettes — tags
 
@@ -61,7 +65,7 @@ Les tags servent à **retrouver** et à **agréger** :
 - marquer la nature d'une note : #idee, #question, #source, #revision.
 
 > [!tip] Peu de tags, mais bien choisis
-> La tentation est grande de multiplier les tags. Résistez : un tag n'est utile que s'il regroupe plusieurs notes. Si un tag ne sert qu'une fois, c'est sans doute un sujet qui mérite plutôt une note (et un [[03-wikilinks|lien]]).
+> La tentation est grande de multiplier les tags. Résistez : un tag n'est utile que s'il regroupe plusieurs notes. Si un tag ne sert qu'une fois, c'est sans doute un sujet qui mérite plutôt une note (et un [[wikilinks|lien]]).
 
 ### Le panneau des tags
 
@@ -72,16 +76,16 @@ Les tags de tout votre coffre sont réunis dans la **section Tags** de la vue Li
 - un bouton de rafraîchissement en haut de la section.
 
 > [!note] Quels tags sont listés ?
-> Le panneau collecte les tags écrits avec le `#` dans le corps des notes (la forme `#tag`). Les tags placés dans les métadonnées en tête de note suivent d'autres règles — voir le chapitre 7, [[07-front-matter|Les métadonnées]].
+> Le panneau collecte les tags écrits avec le `#` dans le corps des notes (la forme `#tag`). Les tags placés dans les métadonnées en tête de note suivent d'autres règles — voir [[front-matter|Les métadonnées]].
 
 ## Combiner tags et liens
 
-Les tags et les [[03-wikilinks|liens]] sont complémentaires :
+Les tags et les [[wikilinks|liens]] sont complémentaires :
 
 - le **lien** crée une relation précise et bidirectionnelle (« cette colle concerne cet élève ») ;
 - le **tag** regroupe sans relation explicite (« tout ce qui concerne les maths »).
 
-Exemple pour une colle : la note du jour porte le tag `#colles` (retrouvable dans le panneau Tags) et contient des liens vers l'élève et la matière (retrouvables dans les backlinks de ces notes). Voir le cas d'usage complet : chapitre 10, [[10-colles|Les colles]].
+Exemple pour une colle : la note du jour porte le tag `#colles` (retrouvable dans le panneau Tags) et contient des liens vers l'élève et la matière (retrouvables dans les backlinks de ces notes). Voir le cas d'usage complet : [[colles|Les colles]].
 
 ## Cas d'usage concrets
 
@@ -96,13 +100,13 @@ Exemple pour une colle : la note du jour porte le tag `#colles` (retrouvable dan
 > Une note sans backlinks n'a pas encore de relations entrantes. C'est souvent le signe qu'elle mérite d'être reliée — ou qu'elle est orpheline et peut être archivée.
 
 > [!example] Le fil rouge des colles
-> Dans le cas d'usage des colles (chapitre 10, [[10-colles|Les colles]]), chaque note de colle est taguée `#colles`, chaque fiche d'élève `#suivi`. Le panneau Tags permet alors de répondre en une seconde à « quels élèves sont suivis en ce moment ? » et « combien de colles cette semaine ? ».
+> Dans le cas d'usage des colles ([[colles|Les colles]]), chaque note de colle est taguée `#colles`, chaque fiche d'élève `#suivi`. Le panneau Tags permet alors de répondre en une seconde à « quels élèves sont suivis en ce moment ? » et « combien de colles cette semaine ? ».
 
 ## Voir aussi
 
-- Créer des liens : chapitre 3, [[03-wikilinks|Les liens entre notes]]
-- Les métadonnées en tête de note : chapitre 7, [[07-front-matter|Les métadonnées]]
-- Les notes quotidiennes où l'on tague beaucoup : chapitre 8, [[08-journal|Les notes quotidiennes]]
-- Le cas d'usage qui combine tout : chapitre 10, [[10-colles|Les colles]]
+- Créer des liens : [[wikilinks|Les liens entre notes]]
+- Les métadonnées en tête de note : [[front-matter|Les métadonnées]]
+- Les notes quotidiennes où l'on tague beaucoup : [[journal|Les notes quotidiennes]]
+- Le cas d'usage qui combine tout : [[colles|Les colles]]
 
 #guide #backlinks #tags
