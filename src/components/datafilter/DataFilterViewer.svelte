@@ -22,6 +22,14 @@
   //  - le bouton « Ouvrir dans le filtre de données » du tableur ouvre cette
   //    vue avec le tableau déjà chargé — l'utilisateur peut en ajouter d'autres.
 
+  // Police auto-hébergée pour les icônes `material-symbols-outlined` de ce
+  // composant ET de DataFilterGrid.svelte (son seul enfant — CSS globale une
+  // fois chargée). Restriction posée vague 1 phase 1.7 : la police n'est
+  // importée QUE par ses consommateurs directs, jamais globalement — mais
+  // DataFilter en est un au même titre que Spreadsheet.svelte, et ne
+  // l'importait pas : les icônes n'apparaissaient que « par chance », si un
+  // tableur était aussi ouvert dans la même fenêtre (bug signalé en test).
+  import "@fontsource/material-symbols-outlined/400.css";
   import { onMount } from "svelte";
   import { Modal, RichSelect } from "@svar-ui/svelte-core";
   import { Button } from "@/components/primitives";
