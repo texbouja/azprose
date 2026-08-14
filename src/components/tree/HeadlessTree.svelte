@@ -20,6 +20,7 @@
     prependItems,
     empty,
     loading = "loading…",
+    emptyLabel = "empty",
   }: {
     /** Stable tree config. The component is meant to be keyed by the parent when the root/data changes. */
     config: TreeConfig<T>;
@@ -39,6 +40,12 @@
     /** Rendered when the tree is loaded but empty. */
     empty?: Snippet;
     loading?: string;
+    /** Repli textuel quand la liste est vide, NI en chargement NI couverte
+     *  par `empty` — un caller qui omet `empty` ne doit jamais voir le texte
+     *  `loading` réutilisé pour un état qui ne charge plus (bug constaté :
+     *  virtual-tree.svelte, sans `empty`, affichait « loading… » à l'infini
+     *  pour un dossier journal réellement vide). */
+    emptyLabel?: string;
   } = $props();
 
   let version = $state(0);
@@ -141,7 +148,7 @@
     {:else if empty}
       {@render empty()}
     {:else}
-      <div class="mdv-tree__empty">{loading}</div>
+      <div class="mdv-tree__empty">{emptyLabel}</div>
     {/if}
   {:else}
     {#key version}

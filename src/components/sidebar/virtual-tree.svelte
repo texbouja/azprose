@@ -246,6 +246,13 @@
         label={rootPath ?? ""}
         className="mdv-tree mdv-vtree__tree"
       >
+        {#snippet empty()}
+          <!-- Sans ce snippet, HeadlessTree retombe sur son texte "loading…"
+               même une fois le scan terminé (bug de repli, cf. son propre
+               {:else}) — un dossier journal SANS note datée restait figé sur
+               « loading… » indéfiniment. -->
+          <div class="mdv-tree__empty">no notes yet</div>
+        {/snippet}
         {#snippet children(item: ItemInstance<VNode>)}
           {#if item.isFolder()}
             <div
