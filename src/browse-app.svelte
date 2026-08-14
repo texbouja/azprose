@@ -314,10 +314,14 @@ $effect(() => {
   }
 });
 
-function setWindowTitle(): void {
-  const tab = navState.panel.activeTab;
-  void getCurrentWindow().setTitle(windowTitle(tab && tab.path ? basename(tab.path) : t("browse.emptyTab")));
-}
+// Titre de fenêtre — "AZprose — <projet>", règle COMMUNE avec PROJET (cf.
+// window-title.ts). Posé UNE fois : le projet d'une fenêtre NAV est fixé par
+// son `?root=` et ne change jamais. Avant, le titre suivait le fichier actif
+// et devait donc être rejoué à chaque navigation (5 sites d'appel) — c'est
+// tout ce mécanisme qui disparaît.
+$effect(() => {
+  void getCurrentWindow().setTitle(windowTitle(root ? basename(root) : null));
+});
 
 /** Onglet VIDE (R6, D4) — état de première classe, pas de page d'accueil.
  *  `PanelState.open` exige un chemin RÉEL (`isOpenablePath`) : un onglet vide
@@ -328,7 +332,6 @@ function openEmptyTab(): void {
   navState.panel.tabs = [...navState.panel.tabs, { id, title: t("browse.emptyTab"), path: "", source: "", savedContent: "" }];
   navState.panel.activeTabId = id;
   navState.bumpPanel();
-  setWindowTitle();
 }
 
 /** Charge `path` DANS l'onglet `tabId` (navigation « sur place », R4). Sur
@@ -342,7 +345,6 @@ async function loadInPlace(tabId: string, path: string, heading?: string | null)
   }
   contentRev++;
   if (heading) setScrollTarget(heading);
-  setWindowTitle();
   return true;
 }
 
@@ -365,7 +367,6 @@ async function loadNewTab(path: string, heading?: string | null): Promise<boolea
   }
   contentRev++;
   if (heading) setScrollTarget(heading);
-  setWindowTitle();
   return true;
 }
 
@@ -419,7 +420,6 @@ function selectTab(id: string): void {
   // `wake: false` : les onglets NAV ne sont jamais dormants (aucun restore de
   // session) — `select` par défaut appellerait `wake()` pour rien à chaque clic.
   navState.panel.select(id, { wake: false });
-  setWindowTitle();
 }
 
 function closeTab(id: string): void {
@@ -427,7 +427,6 @@ function closeTab(id: string): void {
   // Jamais zéro onglet (R6) : fermer le dernier onglet rouvre un onglet vide,
   // l'équivalent NAV d'une page « nouvel onglet ».
   if (navState.panel.tabs.length === 0) openEmptyTab();
-  else setWindowTitle();
 }
 
 /** Résout la cible d'un wikilink : chemin complet si le rendu l'a déjà résolu,

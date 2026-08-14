@@ -196,11 +196,9 @@ $effect(() => { setSessionScope(rootPath); });
 // Keep the rootPath store in sync for preview components (wikilink resolution).
 $effect(() => { setRootPath(rootPath); });
 
-// Titre de fenêtre — "AZprose" seul ou "AZprose — <projet>" (correction
-// 2026-08-14) : le titre OS restait figé sur "AZprose" (tauri.conf.json,
-// jamais mis à jour) tandis que la barre de titre custom (TitleBar.svelte)
-// n'affichait que le nom du projet — divergence irréconciliable. Les deux
-// affichent désormais EXACTEMENT la même chaîne (window-title.ts).
+// Titre de fenêtre — "AZprose — <projet>" (règle COMMUNE avec NAV, cf.
+// window-title.ts). Seule chose qu'AZprose communique à l'OS depuis la
+// suppression des décorations de l'app.
 $effect(() => {
   void getCurrentWindow().setTitle(windowTitle(rootPath ? basename(rootPath) : null));
 });
