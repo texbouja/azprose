@@ -4,7 +4,6 @@ import mark from "markdown-it-mark";
 import taskLists from "markdown-it-task-lists";
 import callouts from "markdown-it-obsidian-callouts";
 import footnote from "markdown-it-footnote";
-import { createHighlighter, type Highlighter } from "shiki";
 import { readFile } from "@tauri-apps/plugin-fs";
 import type { Theme } from "@/lib/theme";
 import { wikilinkPlugin } from "./wikilinks";
@@ -17,157 +16,29 @@ import { DOC_FIELD_LABELS, DOC_TYPE_HINTS, DOC_TYPE_LABELS, parseMetaFence, type
 import { parseFrontMatter } from "@/lib/front-matter";
 import { renderBodyTemplates, templateDocSource } from "@/lib/doc-template";
 import { imgMime, uint8ToBase64 } from "@/lib/image-uri";
+// Infrastructure Shiki + échappement HTML : EXTRAITE dans highlight.ts
+// (partagée avec le pipeline chat sans les imports lourds d'ici). Le plugin
+// math vit dans math-plugin.ts, même motif.
+import {
+  escapeAttr,
+  escapeHtml,
+  getHighlighter,
+  prepareShiki,
+  shikiFence,
+} from "./highlight";
+import { mathPlugin } from "./math-plugin";
 
-// ── HTML escape utilities ────────────────────────────────
-export function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-export function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+export { escapeAttr, escapeHtml };
 
 const CHEVRON_ICON = `<path d="m9 18 6-6-6-6"/>`;
 const DIAMOND_ICON = `<path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"/>`;
-
-const THEMES: Record<string, string> = {
-  latte: "catppuccin-latte",
-  frappe: "catppuccin-frappe",
-  macchiato: "catppuccin-macchiato",
-  mocha: "catppuccin-mocha",
-  "skarline-fleet-dark":   "github-dark",
-  "skarline-fleet-purple": "github-dark",
-  "skarline-fleet-light":  "github-light",
-  "skarline-xcode-dark":   "github-dark",
-  "skarline-xcode-light":  "github-light",
-};
-
-
-// Python first — primary language for professors.
-const LANGS = [
-  "python",
-  "markdown", "ts", "tsx", "js", "jsx", "json",
-  "bash", "shellscript",
-  "css", "html",
-  "rust", "c", "cpp", "csharp",
-  "java", "kotlin",
-  "r",
-  "sql", "yaml", "toml", "xml",
-  "dockerfile", "diff",
-] as const;
-
-let highlighter: Highlighter | null = null;
-let highlighterPromise: Promise<Highlighter> | null = null;
-const loadedLangs = new Set<string>();
-const loadedThemes = new Set<string>();
-let activeShikiTheme = THEMES.latte;
-
-function getHighlighter(): Promise<Highlighter> {
-  if (!highlighterPromise) {
-    highlighterPromise = createHighlighter({ themes: [], langs: [] })
-      .then((h) => { highlighter = h; return h; })
-      .catch((err) => {
-        console.error("azprose: shiki init failed", err);
-        highlighterPromise = null;
-        throw err;
-      });
-  }
-  return highlighterPromise;
-}
-
-const FENCE_RE = /^[ \t]*```([a-zA-Z0-9_+\-]+)/gm;
-function extractLangs(src: string): string[] {
-  const found = new Set<string>();
-  FENCE_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = FENCE_RE.exec(src)) !== null) {
-    const lang = m[1];
-    if ((LANGS as readonly string[]).includes(lang)) found.add(lang);
-  }
-  return [...found];
-}
-
-async function ensureThemeLoaded(h: Highlighter, shikiTheme: string): Promise<void> {
-  if (loadedThemes.has(shikiTheme)) return;
-  await h.loadTheme(shikiTheme as Parameters<Highlighter["loadTheme"]>[0]);
-  loadedThemes.add(shikiTheme);
-}
-
-async function ensureLangsLoaded(h: Highlighter, langs: string[]): Promise<void> {
-  const toLoad = langs.filter((l) => !loadedLangs.has(l));
-  if (toLoad.length === 0) return;
-  await Promise.all(
-    toLoad.map((l) => h.loadLanguage(l as Parameters<Highlighter["loadLanguage"]>[0])),
-  );
-  toLoad.forEach((l) => loadedLangs.add(l));
-}
-
-// escapeHtml, escapeAttr defined inline above
-
-// Math plugin — must run before markdown-it's inline rules (emphasis, escape, etc.)
-// to prevent corruption of LaTeX content containing _, *, ^, etc.
-// Outputs \(...\) for inline math and \[...\] for display math — MathJax's default delimiters.
-function mathPlugin(md: MarkdownIt): void {
-  md.inline.ruler.before("backticks", "math", (state, silent) => {
-    const src = state.src;
-    const pos = state.pos;
-    if (src.charCodeAt(pos) !== 0x24 /* $ */) return false;
-
-    // $$...$$ — display math (inline or multi-line within a paragraph)
-    if (src.charCodeAt(pos + 1) === 0x24) {
-      const end = src.indexOf("$$", pos + 2);
-      if (end === -1) return false;
-      if (!silent) {
-        const t = state.push("math_display", "", 0);
-        t.content = src.slice(pos + 2, end).trim();
-      }
-      state.pos = end + 2;
-      return true;
-    }
-
-    // $...$ — inline math
-    let end = pos + 1;
-    while (end <= state.posMax && src.charCodeAt(end) !== 0x24) {
-      if (src.charCodeAt(end) === 0x5c /* \ */) end++; // skip escaped char
-      end++;
-    }
-    if (end > state.posMax) return false;
-    const content = src.slice(pos + 1, end);
-    if (!content.trim()) return false;
-    if (!silent) {
-      const t = state.push("math_inline", "", 0);
-      t.content = content;
-    }
-    state.pos = end + 1;
-    return true;
-  });
-
-  md.renderer.rules["math_inline"] = (tokens, idx) => {
-    const src = escapeAttr(tokens[idx].content);
-    return `<span class="math-inline" data-math-source="${src}">\\(${escapeHtml(tokens[idx].content)}\\)</span>`;
-  };
-
-  md.renderer.rules["math_display"] = (tokens, idx) => {
-    const src = escapeAttr(tokens[idx].content);
-    return `<p class="math-block" data-math-source="${src}">\\[${escapeHtml(tokens[idx].content)}\\]</p>`;
-  };
-}
-
 // html: true — pass raw HTML blocks through, consistent with ProseMark's htmlBlockExtension.
 const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
   breaks: false,
-  highlight: (code, lang) => {
-    if (!highlighter) return `<pre><code>${escapeHtml(code)}</code></pre>`;
-    const loaded = highlighter.getLoadedLanguages() as readonly string[];
-    const language = loaded.includes(lang) ? lang : "text";
-    try {
-      return highlighter.codeToHtml(code, { lang: language, theme: activeShikiTheme });
-    } catch {
-      return `<pre><code>${escapeHtml(code)}</code></pre>`;
-    }
-  },
+  highlight: (code, lang) => shikiFence(code, lang),
 });
 
 md.use(taskLists, { enabled: false, label: true });
@@ -230,14 +101,7 @@ md.renderer.rules.fence = ((tokens, idx, _options, env, _self) => {
     return renderMetaPlaceholder(pIndex, fence.type, fence.meta);
   }
 
-  if (!highlighter) return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
-  const loaded = highlighter.getLoadedLanguages() as readonly string[];
-  const language = loaded.includes(lang) ? lang : "text";
-  try {
-    return highlighter.codeToHtml(token.content, { lang: language, theme: activeShikiTheme });
-  } catch {
-    return `<pre><code>${escapeHtml(token.content)}</code></pre>`;
-  }
+  return shikiFence(token.content, lang);
 }) as RenderRule;
 
 // Stamp block tokens with source line range for potential editor↔preview sync.
@@ -330,22 +194,17 @@ export async function renderMarkdown(
   // Align them so markTranscludedBlocks can compare and unshift correctly.
   shiftRangesToSource(ranges, fmLineCount);
 
-  const h = await getHighlighter();
-  const shikiTheme = THEMES[theme] ?? theme;
-  try {
-    await ensureThemeLoaded(h, shikiTheme);
-    activeShikiTheme = shikiTheme;
-  } catch {
-    await ensureThemeLoaded(h, "github-light");
-    activeShikiTheme = "github-light";
-  }
-  await ensureLangsLoaded(h, extractLangs(content));
+  await prepareShiki(content, theme);
   // Les `---` structurels des colles (annonce de section + séparateurs de
   // planches) ne doivent pas devenir des `<hr>` dans le rendu HTML.
   const rendered = stripColleSeparators(content);
   const html = renderFrontMatterHeader(meta) + md.render(rendered, { fmOffset: fmLineCount });
   return { html, ranges };
 }
+
+// Le pipeline « chat » (panneau agent) vit dans chat-render.ts — même
+// infrastructure (highlight.ts, math-plugin.ts), sans les imports lourds
+// d'ici, pour rester testable sous bun.
 
 // ── Post-render DOM helpers ────────────────────────────────────────────────
 // `imgMime`/`uint8ToBase64` vivent dans src/lib/image-uri.ts (PUR partagé

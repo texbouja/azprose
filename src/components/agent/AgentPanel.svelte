@@ -25,6 +25,16 @@ import { getProjectRoot } from "@/lib/session";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { getT, language } from "@/lib/i18n";
+// Pipeline « chat » : même processus que la preview (renderChatMarkdown dans
+// markdown/render.ts), classe .mdv-prose pour la même typographie.
+import { renderChatMarkdown } from "@/markdown/chat-render";
+import { resolveWikilinkPaths } from "@/markdown/wikilinks";
+import { typesetMath } from "@/lib/typeset-math";
+import { theme } from "@/stores/theme.svelte";
+import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { calloutSettings } from "@/stores/callout-settings.svelte";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import "@/styles/markdown/preview.css";
 
 let t = $derived(getT($language));
 
@@ -33,8 +43,10 @@ let t = $derived(getT($language));
 // servent à l'AGRÉGATION, pas au rendu.
 type FeedItem =
   | { id: number; kind: "user"; text: string }
-  | { id: number; kind: "agent"; text: string }
-  | { id: number; kind: "thought"; text: string; open: boolean }
+  // `html` : rendu markdown du texte (pipeline chat), rempli en asynchrone —
+  // repli sur le texte brut tant que le premier rendu n'est pas prêt.
+  | { id: number; kind: "agent"; text: string; html?: string }
+  | { id: number; kind: "thought"; text: string; html?: string; open: boolean }
   | { id: number; kind: "tool"; toolCallId: string; title: string; toolKind: string; status: string; detail: string; diff?: ToolDiff; open: boolean }
   // Permission DANS LE FIL (jamais en modale — règle 3 de l'anatomie) :
   // `resolve` renvoie l'optionId choisi au handler suspendu, null = annulé.
@@ -100,6 +112,32 @@ function pushItem(item: FeedItemDraft): number {
   return id;
 }
 
+/** Re-rend le markdown d'un item (agent/thought) — appelé à CHAQUE chunk du
+ *  stream. Le rendu est asynchrone (chargement Shiki à la demande) : le texte
+ *  brut sert de repli visible entre-temps. */
+function renderItem(item: FeedItem | undefined) {
+  if (!item || (item.kind !== "agent" && item.kind !== "thought")) return;
+  const text = item.text;
+  void renderChatMarkdown(text, theme.resolved).then((html) => {
+    // Le texte a pu muter pendant le rendu (chunk suivant) : ne pas écraser
+    // avec un HTML périmé — le prochain chunk relancera un rendu.
+    if (item.text === text) item.html = html;
+  });
+}
+
+/** Finitions de fin de tour (streaming terminé) : maths MathJax et
+ *  résolution des wikilinks. Pendant le stream elles restent en repli
+ *  (spans \(…\) lisibles, liens stylés non câblés) — re-traiter à chaque
+ *  chunk serait du gaspillage, et les maths déjà composées ne sont pas
+ *  re-traitées par MathJax (plus de délimiteur textuel après conversion). */
+async function finishTurnRendering() {
+  await tick();
+  if (!feedEl) return;
+  await typesetMath(feedEl);
+  const root = getProjectRoot();
+  if (root) await resolveWikilinkPaths(feedEl, root);
+}
+
 function applyUpdate(u: SessionUpdate) {
   switch (u.sessionUpdate) {
     case "agent_message_chunk":
@@ -109,9 +147,14 @@ function applyUpdate(u: SessionUpdate) {
       const text = u.content?.text ?? "";
       if (existing !== undefined) {
         const item = items.find((i) => i.id === existing);
-        if (item && item.kind === "agent") item.text += text;
+        if (item && item.kind === "agent") {
+          item.text += text;
+          renderItem(item);
+        }
       } else {
-        messageItems.set(key, pushItem({ kind: "agent", text }));
+        const id = pushItem({ kind: "agent", text });
+        messageItems.set(key, id);
+        renderItem(items.find((i) => i.id === id));
       }
       break;
     }
@@ -121,11 +164,16 @@ function applyUpdate(u: SessionUpdate) {
       const text = u.content?.text ?? "";
       if (existing !== undefined) {
         const item = items.find((i) => i.id === existing);
-        if (item && item.kind === "thought") item.text += text;
+        if (item && item.kind === "thought") {
+          item.text += text;
+          renderItem(item);
+        }
       } else {
         // Repliée par défaut (anatomie arrêtée) : la réflexion est un
         // contexte, pas le contenu.
-        messageItems.set(`thought:${key}`, pushItem({ kind: "thought", text, open: false }));
+        const id = pushItem({ kind: "thought", text, open: false });
+        messageItems.set(`thought:${key}`, id);
+        renderItem(items.find((i) => i.id === id));
       }
       break;
     }
@@ -214,10 +262,15 @@ async function startSession() {
 
 /** Écrit le fichier d'instructions dans le répertoire applicatif ($APPDATA,
  *  HORS du vault — l'utilisateur final ne peut pas le casser par accident)
- *  et renvoie son chemin absolu pour la config inline. */
+ *  et renvoie son chemin absolu pour la config inline. Le préambule MathJax
+ *  et les callouts du vault y sont injectés à l'état courant (l'agent peut
+ *  utiliser les macros et la syntaxe custom sans lecture préalable). */
 async function ensureAgentInstructions(rootPath: string): Promise<string> {
   const path = await join(await appDataDir(), AGENT_INSTRUCTIONS_FILENAME);
-  await writeTextFile(path, buildAgentInstructions(rootPath));
+  await writeTextFile(path, buildAgentInstructions(rootPath, {
+    mathPreamble: mathJaxPreamble.current,
+    callouts: calloutSettings.current,
+  }));
   return path;
 }
 
@@ -234,12 +287,41 @@ async function send() {
     pushItem({ kind: "agent", text: t("agent.errorDetail", { message: String(e) }) });
   } finally {
     status = "ready";
+    void finishTurnRendering();
   }
 }
 
 async function cancel() {
   if (client && sessionId) await client.cancel(sessionId);
   status = "ready";
+  void finishTurnRendering();
+}
+
+/** Clics dans le fil : même mécanisme que la preview — wikilinks dispatchés
+ *  en `azprose:wikilink-navigate` (app.svelte résout et ouvre), liens externes
+ *  dans le navigateur système. Aucun couplage nouveau avec le panel store. */
+function onFeedClick(e: MouseEvent) {
+  const a = (e.target as HTMLElement).closest("a");
+  if (!a) return;
+  const href = a.getAttribute("href");
+  if (!href) return;
+  if (a.classList.contains("wikilink")) {
+    e.preventDefault();
+    const fullpath = a.getAttribute("data-wikilink-fullpath");
+    const heading = a.getAttribute("data-wikilink-heading");
+    const target = a.getAttribute("data-wikilink-target");
+    const ctrlKey = e.ctrlKey || e.metaKey;
+    if (fullpath) {
+      window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { path: fullpath, heading, ctrlKey } }));
+    } else if (target) {
+      window.dispatchEvent(new CustomEvent("azprose:wikilink-navigate", { detail: { target, heading, ctrlKey } }));
+    }
+    return;
+  }
+  if (/^https?:\/\//.test(href)) {
+    e.preventDefault();
+    void openUrl(href);
+  }
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -283,7 +365,8 @@ onDestroy(() => {
     </button>
   </div>
 
-  <div class="agent__feed" bind:this={feedEl}>
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions — clic délégué sur les <a> du rendu markdown, même motif que la preview -->
+  <div class="agent__feed" bind:this={feedEl} onclick={onFeedClick}>
     {#if status === "not-installed"}
       <div class="agent__notice">{t("agent.notInstalled")}</div>
     {:else if status === "error"}
@@ -301,7 +384,9 @@ onDestroy(() => {
       {:else if item.kind === "thought"}
         <details class="agent__thought" bind:open={item.open}>
           <summary>{t("agent.thinking")}</summary>
-          <div class="agent__thought-body">{item.text}</div>
+          <div class="agent__thought-body mdv-prose" class:agent__msg--html={!!item.html}>
+            {#if item.html}{@html item.html}{:else}{item.text}{/if}
+          </div>
         </details>
       {:else if item.kind === "tool"}
         <details class="agent__tool" bind:open={item.open} data-status={item.status}>
@@ -344,7 +429,11 @@ onDestroy(() => {
           {/if}
         </div>
       {:else if item.kind === "agent"}
-        {#if item.text}<div class="agent__msg agent__msg--agent">{item.text}</div>{/if}
+        {#if item.text}
+          <div class="agent__msg agent__msg--agent mdv-prose" class:agent__msg--html={!!item.html}>
+            {#if item.html}{@html item.html}{:else}{item.text}{/if}
+          </div>
+        {/if}
       {/if}
     {/each}
   </div>
@@ -421,6 +510,13 @@ onDestroy(() => {
     border-radius: 6px;
   }
   .agent__msg { font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  /* Une fois le HTML rendu, ce sont les blocs (<p>, <ul>…) qui portent la
+     mise en forme — pre-wrap doublerait les sauts de ligne. */
+  .agent__msg--html { white-space: normal; }
+  /* Contenu {@html} : les enfants ne portent pas l'attribut de scope —
+     :global obligatoire (preview.css porte le reste de la typographie). */
+  .agent__msg--html > :global(*:first-child) { margin-top: 0; }
+  .agent__msg--html > :global(*:last-child) { margin-bottom: 0; }
   .agent__msg--user .agent__who {
     font-size: 11px;
     color: var(--accent);

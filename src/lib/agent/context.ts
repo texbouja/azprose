@@ -15,10 +15,31 @@ import type { AgentRequest } from "./types";
 /** Nom du fichier d'instructions dans le répertoire applicatif. */
 export const AGENT_INSTRUCTIONS_FILENAME = "agent-instructions.md";
 
-/** Texte d'instructions. Regénéré à chaque session : le rootPath est
- *  interpolé, et les évolutions du format `.azprose/` suivent l'app. */
-export function buildAgentInstructions(rootPath: string): string {
-  return `# Environnement AZprose
+/** Callout tel que déclaré dans la config du vault (forme de CalloutDef,
+ *  reprise ici pour ne pas importer le store à runes — module PUR testable). */
+export interface AgentCalloutInfo {
+  name: string;
+  label: string;
+  builtin: boolean;
+}
+
+export interface AgentInstructionOptions {
+  /** Préambule MathJax courant (`.azprose/config.json`, section math) — ses
+   *  macros sont utilisables par l'agent ; il doit les CONNAÎTRE avant
+   *  d'écrire des formules, sans lecture préalable. */
+  mathPreamble?: string;
+  /** Callouts du vault (builtins pédagogiques + personnalisés). */
+  callouts?: AgentCalloutInfo[];
+}
+
+/** Texte d'instructions. Regénéré à chaque session : rootPath, préambule et
+ *  callouts sont interpolés depuis l'état COURANT du vault — une modification
+ *  de la config est prise en compte à la prochaine session.
+ *  ⚠️ Construit par concaténation, PAS un unique template literal : le
+ *  préambule LaTeX peut contenir backslashes et backticks. */
+export function buildAgentInstructions(rootPath: string, opts: AgentInstructionOptions = {}): string {
+  const parts: string[] = [
+    `# Environnement AZprose
 
 Tu es intégré à **AZprose**, un éditeur de bureau Markdown/LaTeX compatible
 Obsidian. Le dossier courant (\`${rootPath}\`) est un **vault** : le projet de
@@ -50,12 +71,53 @@ données, ajuster une configuration) :
 
 ## Conventions du vault
 
-- Markdown Obsidian : \`[[wikilinks]]\`, \`> [!callout]\`, \`#tags\`,
-  \`![[transclusion]]\`, front matter YAML (\`type:\`, \`sommaire:\`,
-  \`parent:\`…).
+- Markdown Obsidian : \`[[wikilinks]]\`, \`#tags\`, \`![[transclusion]]\`,
+  front matter YAML (\`type:\`, \`sommaire:\`, \`parent:\`…).
 - Les CSV n'ont PAS de ligne d'en-tête (colonnes étiquetées A, B, C…).
-- Régions PDF : \`![[fichier.pdf#page=N&rect=x,y,w,h]]\`.
-`;
+- Régions PDF : \`![[fichier.pdf#page=N&rect=x,y,w,h]]\`.`,
+  ];
+
+  // ── Markdown enrichi : maths + callouts ─────────────────────────────────
+  const md: string[] = [
+    `## Markdown enrichi — disponible dans TES réponses et dans les fichiers
+
+Le moteur de rendu d'AZprose compose bien plus que le Markdown de base. Tu
+peux — et dois — l'utiliser dans tes réponses (elles sont rendues) comme dans
+les documents que tu rédiges.
+
+### Maths (MathJax)
+
+- \`$…$\` en ligne, \`$$…$$\` en bloc. Composées par MathJax.
+- Un **préambule de macros** est défini dans \`.azprose/config.json\` (section
+  \`math.preamble\`) : il est chargé AVANT chaque composition — ses macros
+  sont utilisables DIRECTEMENT dans tes formules. Ne réinvente pas une
+  notation qui y existe déjà ; si tu doutes, lis ce fichier.`,
+  ];
+  if (opts.mathPreamble?.trim()) {
+    md.push("Préambule actuellement en vigueur dans ce vault :\n\n~~~latex\n" + opts.mathPreamble.trim() + "\n~~~");
+  }
+  md.push(`### Callouts
+
+Syntaxe : \`> [!type]\` en tête d'un bloc de citation ; suffixe \`+\` = pliable
+déplié, \`-\` = pliable replié ; titre explicite possible après le type
+(\`> [!type] Titre libre\`).`);
+  const builtins = (opts.callouts ?? []).filter((c) => c.builtin);
+  const customs = (opts.callouts ?? []).filter((c) => !c.builtin);
+  if (builtins.length > 0) {
+    md.push(
+      "Callouts pédagogiques de ce vault :\n" +
+        builtins.map((c) => `- \`> [!${c.name}]\` — ${c.label}`).join("\n"),
+    );
+  }
+  if (customs.length > 0) {
+    md.push(
+      "Callouts **personnalisés** définis par l'utilisateur (nom exact, en minuscules) :\n" +
+        customs.map((c) => `- \`> [!${c.name}]\` — ${c.label}`).join("\n"),
+    );
+  }
+  parts.push(md.join("\n\n"));
+
+  return parts.join("\n\n") + "\n";
 }
 
 /** Configuration inline injectée au spawn. `external_directory: "ask"` est le

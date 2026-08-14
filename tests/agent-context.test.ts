@@ -32,6 +32,34 @@ test("les instructions expliquent le rôle de .azprose (maintenance, pas interdi
   expect(text).toContain("sqlite3");
 });
 
+test("instructions : section markdown enrichi (maths + callouts) toujours présente", () => {
+  const text = buildAgentInstructions(ROOT);
+  expect(text).toContain("MathJax");
+  expect(text).toContain("math.preamble");
+  expect(text).toContain("> [!type]");
+});
+
+test("instructions : le préambule courant est injecté (pas de lecture préalable requise)", () => {
+  const withPreamble = buildAgentInstructions(ROOT, { mathPreamble: "\\newcommand{\\R}{\\mathbb{R}}\n\\newcommand{\\e}{\\mathrm{e}}" });
+  expect(withPreamble).toContain("\\newcommand{\\R}{\\mathbb{R}}");
+  expect(withPreamble).toContain("~~~latex");
+  // Sans préambule : pas de bloc vide.
+  expect(buildAgentInstructions(ROOT)).not.toContain("~~~latex");
+});
+
+test("instructions : callouts builtins listés, customs distingués par leur nom exact", () => {
+  const text = buildAgentInstructions(ROOT, {
+    callouts: [
+      { name: "theorem", label: "Théorème", builtin: true },
+      { name: "exercise", label: "Exercice", builtin: true },
+      { name: "methode", label: "Méthode", builtin: false },
+    ],
+  });
+  expect(text).toContain("`> [!theorem]` — Théorème");
+  expect(text).toContain("`> [!methode]` — Méthode");
+  expect(text).toContain("personnalisés");
+});
+
 test("la config déclare les instructions et external_directory: ask", () => {
   const cfg = buildAgentConfig("/appdata/agent-instructions.md") as any;
   expect(cfg.instructions).toEqual(["/appdata/agent-instructions.md"]);
