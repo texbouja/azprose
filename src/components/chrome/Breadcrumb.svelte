@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button } from "@/components/primitives";
   import { language, getT } from "@/lib/i18n";
-  import { shortcutLabel } from "@/lib";
+  import { shortcutLabel, basename } from "@/lib";
   import type { TypographySettings } from "@/lib/typography";
   import FileTree from "@/components/files/file-tree.svelte";
   import ThemeButton from "./ThemeButton.svelte";
@@ -66,6 +66,14 @@
   };
 
   let path = $derived(activePath ?? rootPath);
+
+  /** Nom du PROJET (dossier conteneur) — indication PERMANENTE de ce que la
+   *  fenêtre a ouvert, en tête de cascade (2026-08-14). Volontairement HORS
+   *  de `segmentData` : ce dernier est relatif à la racine et disparaît quand
+   *  aucun fichier n'est ouvert, alors que le projet doit rester affiché. Le
+   *  garder à part évite aussi que la troncature `…` (MAX_SEGMENTS) puisse
+   *  l'avaler, et qu'il hérite du rendu interactif des autres segments. */
+  let projectName = $derived(rootPath ? basename(rootPath) : null);
 
   let segmentData = $derived.by((): SegmentInfo[] => {
     if (!path) return [];
@@ -152,12 +160,18 @@
 
 <div class="mdv-breadcrumb" data-tauri-drag-region>
   <nav class="mdv-breadcrumb__path" aria-label={t("breadcrumb.path")} data-tauri-drag-region>
-    {#if segmentData.length === 0}
+    {#if projectName}
+      <!-- Racine de la cascade : le PROJET ouvert dans cette fenêtre. Rendu
+           en <span> et non en <button> — purement indicatif, contrairement
+           aux segments suivants qui ouvrent la liste de leur dossier. -->
+      <span class="mdv-breadcrumb__project" title={rootPath}>{projectName}</span>
+    {:else if segmentData.length === 0}
       <span class="mdv-breadcrumb__placeholder">{t("breadcrumb.noFile")}</span>
-    {:else}
+    {/if}
+    {#if segmentData.length > 0}
       {#each segmentData as seg, i (seg.label + i)}
         <span class="mdv-breadcrumb__seg-row">
-          {#if i > 0}
+          {#if i > 0 || projectName}
             <i class="wxi-chevron-right" style="font-size:11px" title={t("breadcrumb.separator")}></i>
           {/if}
           <button

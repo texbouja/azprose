@@ -61,6 +61,21 @@
   font-style: italic;
 }
 
+/* Racine de la cascade : le PROJET ouvert dans cette fenêtre (2026-08-14).
+   Mise en évidence par la couleur d'ACCENT — donc dépendante du thème, aucune
+   couleur en dur. Ni `cursor: pointer` ni effet de survol : ce segment est
+   purement indicatif, il ne doit pas se donner l'air cliquable comme les
+   segments de chemin qui le suivent. */
+.mdv-breadcrumb__project {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  color: var(--accent);
+  font-weight: 600;
+  user-select: none;
+}
+
 .mdv-breadcrumb__status {
   display: inline-flex;
   align-items: center;
