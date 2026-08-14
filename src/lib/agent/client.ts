@@ -30,6 +30,9 @@ export interface AgentClientOptions {
   capabilities?: ClientCapabilities;
   /** Chemin explicite du binaire (surcharge le réglage persisté/PATH). */
   binaryPath?: string;
+  /** Variables d'environnement du sous-processus (ex. `OPENCODE_CONFIG_CONTENT`
+   *  — voir context.ts : instructions + permissions, config inline MERGÉE). */
+  env?: Record<string, string>;
   /** Injection de dépendances pour les tests (P6 : jamais mock.module). */
   transport?: AcpTransport;
   /** Requêtes agent→client (fs/*, permissions…). Non traitée → -32601. */
@@ -72,7 +75,7 @@ export function resolveAgentBinary(override?: string): string {
 export function createAgentClient(options: AgentClientOptions): AgentClient {
   const command = resolveAgentBinary(options.binaryPath);
   const transport =
-    options.transport ?? createAcpTransport(AGENT_PROCESS_ID, command, ["acp"]);
+    options.transport ?? createAcpTransport(AGENT_PROCESS_ID, command, ["acp"], options.env);
 
   if (options.onServerRequest) transport.onServerRequest(options.onServerRequest);
 

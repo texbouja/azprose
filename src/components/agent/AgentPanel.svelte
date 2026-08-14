@@ -14,7 +14,16 @@ import {
   type PermissionOption,
   type PermissionRequest,
 } from "@/lib/agent/handlers";
+import {
+  AGENT_INSTRUCTIONS_FILENAME,
+  buildAgentEnv,
+  buildAgentInstructions,
+  extractToolDiff,
+  type ToolDiff,
+} from "@/lib/agent/context";
 import { getProjectRoot } from "@/lib/session";
+import { appDataDir, join } from "@tauri-apps/api/path";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { getT, language } from "@/lib/i18n";
 
 let t = $derived(getT($language));
@@ -26,10 +35,10 @@ type FeedItem =
   | { id: number; kind: "user"; text: string }
   | { id: number; kind: "agent"; text: string }
   | { id: number; kind: "thought"; text: string; open: boolean }
-  | { id: number; kind: "tool"; toolCallId: string; title: string; toolKind: string; status: string; detail: string; open: boolean }
+  | { id: number; kind: "tool"; toolCallId: string; title: string; toolKind: string; status: string; detail: string; diff?: ToolDiff; open: boolean }
   // Permission DANS LE FIL (jamais en modale — règle 3 de l'anatomie) :
   // `resolve` renvoie l'optionId choisi au handler suspendu, null = annulé.
-  | { id: number; kind: "permission"; title: string; location?: string; options: PermissionOption[]; resolved: boolean; resolve: (optionId: string | null) => void };
+  | { id: number; kind: "permission"; title: string; location?: string; diff?: ToolDiff; options: PermissionOption[]; resolved: boolean; resolve: (optionId: string | null) => void };
 
 type Status = "starting" | "ready" | "busy" | "not-installed" | "error";
 
@@ -59,6 +68,7 @@ function askPermission(req: PermissionRequest): Promise<string | null> {
       kind: "permission",
       title: req.title,
       location: req.location,
+      diff: req.diff,
       options: req.options,
       resolved: false,
       resolve,
@@ -141,6 +151,10 @@ function applyUpdate(u: SessionUpdate) {
       if (u.title) item.title = u.title;
       const loc = u.locations?.[0]?.path;
       if (loc) item.detail = loc;
+      // Diff de la modification (D14 : relu DANS le panneau, jamais appliqué
+      // à l'éditeur) — fourni par OpenCode dans `content` (phase 0c).
+      const diff = extractToolDiff(u);
+      if (diff) item.diff = diff;
       // Déplié seulement s'il échoue (règle de rendu 2).
       if (u.status === "failed") item.open = true;
       break;
@@ -172,17 +186,21 @@ async function startSession() {
   toolItems.clear();
   sessionId = null;
   try {
+    const root = getProjectRoot() ?? "/";
     handlers = createAgentHandlers(undefined, askPermission);
     client ??= createAgentClient({
-      cwd: getProjectRoot() ?? "/",
+      cwd: root,
       // Phase 4 : les capacités fs sont déclarées MAINTENANT qu'elles sont
       // implémentées (P3 — jamais avant). Servies depuis le disque (D9).
       capabilities: { fs: { readTextFile: true, writeTextFile: true } },
+      // Contexte d'environnement : instructions (fichier $APPDATA, hors
+      // vault) + config inline (external_directory: ask) — voir context.ts.
+      env: buildAgentEnv(await ensureAgentInstructions(root)),
       onServerRequest: (req) => handlers!.handle(req),
     });
     await client.start();
     offUpdate ??= client.onUpdate(applyUpdate);
-    sessionId = await client.newSession(getProjectRoot() ?? "/");
+    sessionId = await client.newSession(root);
     status = "ready";
   } catch (e) {
     if (e instanceof Error && e.name === "AgentNotInstalledError") {
@@ -192,6 +210,15 @@ async function startSession() {
       errorMessage = String(e);
     }
   }
+}
+
+/** Écrit le fichier d'instructions dans le répertoire applicatif ($APPDATA,
+ *  HORS du vault — l'utilisateur final ne peut pas le casser par accident)
+ *  et renvoie son chemin absolu pour la config inline. */
+async function ensureAgentInstructions(rootPath: string): Promise<string> {
+  const path = await join(await appDataDir(), AGENT_INSTRUCTIONS_FILENAME);
+  await writeTextFile(path, buildAgentInstructions(rootPath));
+  return path;
 }
 
 async function send() {
@@ -231,6 +258,18 @@ onDestroy(() => {
 </script>
 
 <div class="agent">
+  {#snippet diffBlock(diff: ToolDiff)}
+    <!-- Relu DANS le panneau (D14) : oldText en retrait (rouge), newText en
+         ajout (vert) ; `unified` en repli si l'agent ne fournit que ça. -->
+    {#if diff.unified}
+      <pre class="agent__diff">{diff.unified}</pre>
+    {:else}
+      <pre class="agent__diff">{#each (diff.oldText ?? "").split("\n") as line}<span class="agent__diff-del">- {line}
+</span>{/each}{#each (diff.newText ?? "").split("\n") as line}<span class="agent__diff-add">+ {line}
+</span>{/each}</pre>
+    {/if}
+  {/snippet}
+
   <div class="agent__header">
     <span class="agent__title">{t("agent.title")}</span>
     <button
@@ -272,6 +311,7 @@ onDestroy(() => {
             {#if item.detail}<span class="agent__tool-detail">{item.detail}</span>{/if}
             <span class="agent__tool-status">{item.status}</span>
           </summary>
+          {#if item.diff}{@render diffBlock(item.diff)}{/if}
         </details>
       {:else if item.kind === "permission"}
         <div class="agent__perm" class:agent__perm--resolved={item.resolved}>
@@ -280,6 +320,8 @@ onDestroy(() => {
             {t("agent.permission", { action: item.title })}
             {#if item.location}<span class="agent__perm-loc">{item.location}</span>{/if}
           </div>
+          <!-- Le diff est l'objet de la décision : visible d'emblée. -->
+          {#if item.diff}{@render diffBlock(item.diff)}{/if}
           {#if !item.resolved}
             <div class="agent__perm-btns">
               {#if optionOfKind(item, "allow_once")}
@@ -432,6 +474,20 @@ onDestroy(() => {
   }
   .agent__perm-btns { display: flex; gap: 6px; margin-top: 8px; }
   .agent__btn--deny { color: var(--danger, #d33); }
+
+  .agent__diff {
+    margin: 6px 0 0;
+    padding: 6px 8px;
+    background: var(--bg-soft, var(--border));
+    border-radius: 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .agent__diff-add { color: var(--success, #2a9d54); display: block; }
+  .agent__diff-del { color: var(--danger, #d33); display: block; }
 
   .agent__composer {
     flex: none;

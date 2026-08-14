@@ -13,6 +13,7 @@
 
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { AgentRequest } from "./types";
+import { extractToolDiff, type ToolDiff } from "./context";
 
 /** Dépendances fs injectables (tests — P6 : jamais mock.module). */
 export interface AgentFsDeps {
@@ -34,8 +35,15 @@ export interface PermissionOption {
 export interface PermissionRequest {
   toolCallId: string;
   title: string;
+  /** Famille d'outil ("edit", "bash"…) — la clé du « toujours » (D12) :
+   *  OpenCode met le CHEMIN dans `title` (phase 0c), ce qui rendrait le
+   *  « toujours » inréutilisable ; `kind` est la granularité stable. */
+  kind?: string;
   location?: string;
   options: PermissionOption[];
+  /** Diff de la modification quand l'agent le fournit (phase 0c) :
+   *  c'est l'objet de la décision, il doit être visible dans la demande. */
+  diff?: ToolDiff;
 }
 
 /** L'UI rend la demande dans le fil et renvoie l'optionId choisi,
@@ -79,15 +87,16 @@ export function createAgentHandlers(
         }
         case "session/request_permission": {
           const p = (req.params ?? {}) as {
-            toolCall?: { toolCallId?: string; title?: string; locations?: Array<{ path: string }> };
+            toolCall?: { toolCallId?: string; title?: string; kind?: string; locations?: Array<{ path: string }> };
             options?: PermissionOption[];
           };
           const options = p.options ?? [];
           const title = p.toolCall?.title ?? "?";
+          const key = p.toolCall?.kind ?? title;
 
-          // « Toujours » déjà donné pour cet outil : réponse immédiate, sans
-          // repasser par l'utilisateur.
-          if (alwaysAllowed.has(title)) {
+          // « Toujours » déjà donné pour cette famille d'outil : réponse
+          // immédiate, sans repasser par l'utilisateur.
+          if (alwaysAllowed.has(key)) {
             const allow = bestAllowOption(options);
             if (allow) return { outcome: { outcome: "selected", optionId: allow.optionId } };
           }
@@ -96,8 +105,10 @@ export function createAgentHandlers(
             ? await onPermission({
                 toolCallId: p.toolCall?.toolCallId ?? "",
                 title,
+                kind: p.toolCall?.kind,
                 location: p.toolCall?.locations?.[0]?.path,
                 options,
+                diff: extractToolDiff(req.params),
               })
             : null;
 
@@ -107,7 +118,7 @@ export function createAgentHandlers(
             return { outcome: { outcome: "cancelled" } };
           }
           const opt = options.find((o) => o.optionId === chosen);
-          if (opt?.kind === "allow_always") alwaysAllowed.add(title);
+          if (opt?.kind === "allow_always") alwaysAllowed.add(key);
           return { outcome: { outcome: "selected", optionId: chosen } };
         }
         default:
