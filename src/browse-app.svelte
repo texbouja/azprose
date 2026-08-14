@@ -144,6 +144,21 @@ let addressEl: HTMLInputElement | undefined = $state();
 let vaultSuggestions = $state<{ base: string; path: string }[]>([]);
 let helpSuggestions = $state<{ path: string; title: string }[]>([]);
 
+/** Index de la suggestion sélectionnée au clavier dans la liste APLATIE
+ *  (vault puis aide, dans l'ordre d'affichage) — -1 = aucune, le texte saisi
+ *  fait foi. ↓/↑ déplacent (avec bouclage), Entrée valide la ligne
+ *  sélectionnée au lieu de la résolution plein texte (2026-08-14). */
+let activeSuggestionIndex = $state(-1);
+
+type FlatSuggestion =
+  | { kind: "vault"; base: string; path: string }
+  | { kind: "help"; path: string; title: string };
+
+let flatSuggestions = $derived<FlatSuggestion[]>([
+  ...vaultSuggestions.map((s) => ({ kind: "vault" as const, ...s })),
+  ...helpSuggestions.map((a) => ({ kind: "help" as const, ...a })),
+]);
+
 // D4 (round 1) : l'onglet vide donne le focus à la barre d'adresse — dès
 // qu'il devient actif (ouverture, sélection), pas seulement à sa création.
 $effect(() => {
@@ -151,6 +166,9 @@ $effect(() => {
 });
 
 async function updateSuggestions(): Promise<void> {
+  // Toute frappe invalide la sélection clavier en cours — la liste sous-
+  // jacente change, l'index n'a plus de sens garanti.
+  activeSuggestionIndex = -1;
   const { kind, query } = parseAddress(addressValue);
   if (!query) {
     vaultSuggestions = [];
@@ -183,6 +201,7 @@ function clearAddress(): void {
   addressValue = "";
   vaultSuggestions = [];
   helpSuggestions = [];
+  activeSuggestionIndex = -1;
 }
 
 /** Résolution PLEINE (Entrée sans suggestion choisie) : préfixe `aide:`/`help:`
@@ -236,13 +255,42 @@ async function chooseSuggestion(path: string): Promise<void> {
   await openAddressTarget(path);
 }
 
+async function chooseFlatSuggestion(s: FlatSuggestion): Promise<void> {
+  await chooseSuggestion(s.kind === "vault" ? s.path : helpFilePath(root ?? "", s.path));
+}
+
+/** Fait défiler la ligne sélectionnée dans la vue si ↓/↑ l'a sortie de la
+ *  zone visible (liste bornée à 260px, `overflow-y:auto`) — un id stable par
+ *  ligne (gabarit ci-dessous) suffit, une seule barre d'adresse existe dans
+ *  ce document. */
+function scrollActiveSuggestionIntoView(): void {
+  document.getElementById(`browse-suggestion-${activeSuggestionIndex}`)
+    ?.scrollIntoView({ block: "nearest" });
+}
+
 function onAddressKeydown(e: KeyboardEvent): void {
-  if (e.key === "Enter") {
+  if (e.key === "ArrowDown") {
+    if (flatSuggestions.length === 0) return;
     e.preventDefault();
-    void submitAddress();
+    activeSuggestionIndex = (activeSuggestionIndex + 1) % flatSuggestions.length;
+    scrollActiveSuggestionIntoView();
+  } else if (e.key === "ArrowUp") {
+    if (flatSuggestions.length === 0) return;
+    e.preventDefault();
+    activeSuggestionIndex =
+      (activeSuggestionIndex - 1 + flatSuggestions.length) % flatSuggestions.length;
+    scrollActiveSuggestionIntoView();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    // Une ligne sélectionnée au clavier prime sur la résolution plein texte —
+    // Entrée valide ce qui est SOUS LES YEUX, pas une devinette recalculée.
+    const selected = activeSuggestionIndex >= 0 ? flatSuggestions[activeSuggestionIndex] : null;
+    if (selected) void chooseFlatSuggestion(selected);
+    else void submitAddress();
   } else if (e.key === "Escape") {
     vaultSuggestions = [];
     helpSuggestions = [];
+    activeSuggestionIndex = -1;
   }
 }
 
@@ -656,19 +704,22 @@ onMount(() => {
         class="browse__address"
         placeholder={t("browse.emptyHint")}
         aria-label={t("browse.emptyHint")}
+        role="combobox"
+        aria-expanded={flatSuggestions.length > 0}
+        aria-controls="browse-suggestions"
+        aria-activedescendant={activeSuggestionIndex >= 0 ? `browse-suggestion-${activeSuggestionIndex}` : undefined}
         oninput={() => void updateSuggestions()}
         onkeydown={onAddressKeydown}
       />
-      {#if vaultSuggestions.length > 0 || helpSuggestions.length > 0}
-        <ul class="browse__suggestions" role="listbox">
-          {#each vaultSuggestions as s (s.path)}
-            <li role="option" aria-selected="false">
-              <button type="button" onclick={() => void chooseSuggestion(s.path)}>{s.base}</button>
-            </li>
-          {/each}
-          {#each helpSuggestions as a (a.path)}
-            <li role="option" aria-selected="false">
-              <button type="button" onclick={() => void chooseSuggestion(helpFilePath(root ?? "", a.path))}>{a.title}</button>
+      {#if flatSuggestions.length > 0}
+        <ul class="browse__suggestions" id="browse-suggestions" role="listbox">
+          {#each flatSuggestions as s, i (s.kind === "vault" ? s.path : `help:${s.path}`)}
+            <li id="browse-suggestion-{i}" role="option" aria-selected={i === activeSuggestionIndex}>
+              <button
+                type="button"
+                onclick={() => void chooseFlatSuggestion(s)}
+                onmouseenter={() => { activeSuggestionIndex = i; }}
+              >{s.kind === "vault" ? s.base : s.title}</button>
             </li>
           {/each}
         </ul>
@@ -847,6 +898,11 @@ onMount(() => {
   cursor: pointer;
 }
 .browse__suggestions button:hover {
+  background: var(--surface-hover);
+}
+/* Sélection clavier (↓/↑) — même fond que le survol souris : les deux
+   moyens de désigner une ligne doivent se lire de façon identique. */
+.browse__suggestions li[aria-selected="true"] button {
   background: var(--surface-hover);
 }
 .browse__newtab {
