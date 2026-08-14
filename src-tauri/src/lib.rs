@@ -199,90 +199,6 @@ struct ProjectEntry {
     path: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct CustomThemeEntry {
-    name: String,
-    css: String,
-}
-
-fn custom_themes_dir(app: &tauri::AppHandle) -> PathBuf {
-    let mut dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
-    dir.push("themes");
-    dir
-}
-
-// Crafted themes are per-project (vault model): <project>/.azprose/themes/<name>.css,
-// hand-editable. The legacy global app-data dir (custom_themes_dir) is only read once,
-// for the one-time migration into a project the first time its themes dir is created.
-fn project_themes_dir(root: &str) -> PathBuf {
-    Path::new(root).join(".azprose/themes")
-}
-
-fn read_themes_dir(dir: &Path) -> Vec<CustomThemeEntry> {
-    let mut entries = Vec::new();
-    if let Ok(read_dir) = fs::read_dir(dir) {
-        for entry in read_dir.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("css") {
-                if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                    if let Ok(css) = fs::read_to_string(&path) {
-                        entries.push(CustomThemeEntry {
-                            name: name.to_string(),
-                            css,
-                        });
-                    }
-                }
-            }
-        }
-    }
-    entries
-}
-
-#[tauri::command]
-fn install_project_theme(root: String, name: String, css: String) -> Result<(), String> {
-    let path = project_themes_dir(&root).join(format!("{name}.css"));
-    atomic_write(&path, &css)
-}
-
-#[tauri::command]
-fn remove_project_theme(root: String, name: String) -> Result<(), String> {
-    let path = project_themes_dir(&root).join(format!("{name}.css"));
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| e.to_string())
-    } else {
-        Ok(())
-    }
-}
-
-#[tauri::command]
-fn list_project_themes(app: tauri::AppHandle, root: String) -> Vec<CustomThemeEntry> {
-    let dir = project_themes_dir(&root);
-    // First access for this project: create the dir and migrate legacy global themes
-    // into it (one-time, non-destructive copy). Gated on the dir not existing yet, so
-    // trashing a theme later never resurrects the legacy ones.
-    if !dir.exists() {
-        let _ = fs::create_dir_all(&dir);
-        if let Some(parent) = dir.parent() {
-            set_hidden(parent);
-        }
-        let global = custom_themes_dir(&app);
-        if let Ok(read_dir) = fs::read_dir(&global) {
-            for entry in read_dir.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("css") {
-                    if let Some(file_name) = path.file_name() {
-                        let _ = fs::copy(&path, dir.join(file_name));
-                    }
-                }
-            }
-        }
-    }
-    read_themes_dir(&dir)
-}
-
 fn projects_list_path(app: &tauri::AppHandle) -> PathBuf {
     let mut dir = app
         .path()
@@ -514,9 +430,6 @@ pub fn run() {
             get_projects_list,
             add_project,
             remove_project,
-            list_project_themes,
-            install_project_theme,
-            remove_project_theme,
             terminal::terminal_spawn,
             terminal::terminal_write,
             terminal::terminal_resize,
