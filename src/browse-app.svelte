@@ -17,6 +17,7 @@ import LazyDocPreview from "@/components/markdown/LazyDocPreview.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import TabsBar from "@/components/editor/TabsBar.svelte";
+import NavTitleBar from "@/components/nav/NavTitleBar.svelte";
 import BrowseToolbar from "@/components/nav/BrowseToolbar.svelte";
 import BrowseSidebar from "@/components/nav/BrowseSidebar.svelte";
 import { basename, isPdfPath } from "@/lib";
@@ -574,7 +575,7 @@ onMount(() => {
 </script>
 
 <div class="browse">
-  <div class="browse__tabbar">
+  <NavTitleBar>
     <div class="browse__tabs">
       <TabsBar
         {tabs}
@@ -585,41 +586,45 @@ onMount(() => {
         onReorder={(from, to) => navState.panel.reorder(from, to)}
       />
     </div>
-    <div class="browse__address-wrap">
-      <input
-        bind:this={addressEl}
-        bind:value={addressValue}
-        type="text"
-        class="browse__address"
-        placeholder={t("browse.emptyHint")}
-        aria-label={t("browse.emptyHint")}
-        oninput={() => void updateSuggestions()}
-        onkeydown={onAddressKeydown}
-      />
-      {#if vaultSuggestions.length > 0 || helpSuggestions.length > 0}
-        <ul class="browse__suggestions" role="listbox">
-          {#each vaultSuggestions as s (s.path)}
-            <li role="option" aria-selected="false">
-              <button type="button" onclick={() => void chooseSuggestion(s.path)}>{s.base}</button>
-            </li>
-          {/each}
-          {#each helpSuggestions as a (a.path)}
-            <li role="option" aria-selected="false">
-              <button type="button" onclick={() => void chooseSuggestion(helpFilePath(root ?? "", a.path))}>{a.title}</button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
     <button
       type="button"
       class="browse__newtab"
       title={t("browse.newTab")}
       aria-label={t("browse.newTab")}
       onclick={openEmptyTab}
+      data-tauri-drag-region="false"
     >
       <i class="wxi-plus" aria-hidden="true"></i>
     </button>
+  </NavTitleBar>
+
+  <!-- Barre d'adresse : reste ICI pour l'instant (phase B2) — elle déménage
+       dans la toolbar permanente en phase B3, avec le toggle sidebar. -->
+  <div class="browse__address-wrap">
+    <input
+      bind:this={addressEl}
+      bind:value={addressValue}
+      type="text"
+      class="browse__address"
+      placeholder={t("browse.emptyHint")}
+      aria-label={t("browse.emptyHint")}
+      oninput={() => void updateSuggestions()}
+      onkeydown={onAddressKeydown}
+    />
+    {#if vaultSuggestions.length > 0 || helpSuggestions.length > 0}
+      <ul class="browse__suggestions" role="listbox">
+        {#each vaultSuggestions as s (s.path)}
+          <li role="option" aria-selected="false">
+            <button type="button" onclick={() => void chooseSuggestion(s.path)}>{s.base}</button>
+          </li>
+        {/each}
+        {#each helpSuggestions as a (a.path)}
+          <li role="option" aria-selected="false">
+            <button type="button" onclick={() => void chooseSuggestion(helpFilePath(root ?? "", a.path))}>{a.title}</button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </div>
 
   {#if notice}
@@ -699,7 +704,15 @@ onMount(() => {
   background: var(--surface);
 }
 .browse__tabs {
-  flex: 1;
+  /* flex:0 (pas flex:1 hérité de l'ex-tabbar) : dans NavTitleBar, ce bloc
+     doit se limiter au contenu réel des onglets (comme sur la maquette du
+     plan, "[onglet][onglet][+]" collés à gauche) — sinon .mdv-tabs (racine
+     de TabsBar, sans largeur propre) s'étire jusqu'à occuper la moitié de la
+     barre au profit de .nav-titlebar__spacer, avec une COULEUR DE FOND
+     différente de ce dernier (var(--bg) vs var(--surface)) : une rupture
+     visible en plein milieu de la barre. Règle amenée à disparaître avec
+     .browse__tabbar (orphelines, nettoyées en phase B3). */
+  flex: 0 1 auto;
   min-width: 0;
 }
 .browse__address-wrap {
