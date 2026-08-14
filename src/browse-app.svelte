@@ -120,6 +120,14 @@ function say(message: string): void {
  *  effet de rendu à chaque navigation aboutie. */
 let contentRev = $state(0);
 
+/** Formats que NAV sait réellement RENDRE (2026-08-14) — borne les suggestions
+ *  de la barre d'adresse. Miroir exact du routage de `renderView` : markdown
+ *  (MarkdownPreview/DocPreview) et PDF (LazyPdfViewer). Tout le reste (`.tex`,
+ *  `.csv`, `.html`, images…) donnerait un onglet incapable d'afficher quoi que
+ *  ce soit. `.html` est un candidat CONNU mais hors périmètre : il demanderait
+ *  un serveur HTTP en boucle locale pour le JS/CSS embarqué — chantier à part. */
+const NAV_RENDERABLE_EXTS = new Set(["md", "markdown", "pdf"]);
+
 // ── Barre d'adresse (phase 2 — R5) ──────────────────────────────────────
 // Zone de RECHERCHE, pas un affichage de l'emplacement courant (D9/C : « au
 // plus one onglet vide, focus dans la barre d'adresse ») : elle se vide après
@@ -153,7 +161,15 @@ async function updateSuggestions(): Promise<void> {
     return;
   }
   const index = await getFileIndex(root);
-  vaultSuggestions = filterIndexEntries(index, query).map((base) => ({ base, path: index.get(base)! }));
+  vaultSuggestions = filterIndexEntries(index, query)
+    .map((base) => ({ base, path: index.get(base)! }))
+    // NAV ne sait afficher que du markdown et du PDF : proposer un `.tex`, un
+    // `.csv` ou une image mène à un onglet qui ne peut RIEN rendre. Le filtre
+    // vit ICI, jamais dans `getFileIndex` : cet index est massivement PARTAGÉ
+    // (wikilinks, transclusion, toc-forest, toc-declared, pdf-rect-embed) — le
+    // restreindre casserait la résolution des liens et des transclusions, qui
+    // doivent continuer de voir TOUS les fichiers du vault.
+    .filter(({ path }) => NAV_RENDERABLE_EXTS.has(extFromPath(path)));
 }
 
 function clearAddress(): void {
@@ -377,7 +393,21 @@ async function navigateTo(path: string, heading: string | null, newTab: boolean)
   if (!path) return;
   const current = activeTab;
   if (!newTab && current && current.path && normPath(current.path) === normPath(path)) {
-    if (heading) setScrollTarget(heading);
+    // Cible DÉJÀ affichée — cas dominant d'un clic dans la TOC (ses titres sont
+    // ceux du document courant). Il n'y a donc AUCUN re-rendu à venir, et c'est
+    // précisément ce qui cassait les liens de la TOC : `setScrollTarget` pose
+    // une cible que `MarkdownPreview` ne consomme QUE dans son effet de rendu
+    // (`consumeScrollTarget`) — sans re-rendu, elle n'était jamais lue et rien
+    // ne défilait. On passe donc par `azprose:preview-jump-line`, le mécanisme
+    // de saut HORS rendu déjà utilisé pour la synchronisation éditeur→preview :
+    // il localise le titre par son id et nettoie lui-même la cible en attente.
+    // `path` est OBLIGATOIRE dans le détail : le récepteur ignore l'événement
+    // s'il ne correspond pas au fichier qu'il affiche (garde anti-diaphonie
+    // entre previews). L'omettre rendrait le saut silencieusement inopérant.
+    if (heading) {
+      setScrollTarget(heading);
+      window.dispatchEvent(new CustomEvent("azprose:preview-jump-line", { detail: { path, heading } }));
+    }
     return;
   }
   if (newTab || !current) {
