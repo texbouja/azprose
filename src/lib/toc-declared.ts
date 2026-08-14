@@ -62,6 +62,13 @@ export interface DeclaredToc {
   /** Hash djb2 (même convention que toc-forest/toc-cache) de la forme
    *  affichée — permet à l'appelant de mémoïser sans reconstruire l'arbre. */
   structuralHash: string;
+  /** `root.label` vient-il d'un VRAI H1, ou du repli nom-de-fichier de
+   *  `labelOf` ? Posé UNIQUEMENT en mode "single" (2026-08-14) — un appelant
+   *  qui veut afficher `root.label` comme titre doit pouvoir distinguer les
+   *  deux cas (le nom de fichier n'est pas un titre présentable partout).
+   *  `undefined` en mode "declared" : sans objet, `root.label` y vient
+   *  toujours de `sommaire:`/H1 de la racine résolue. */
+  hasH1Title?: boolean;
 }
 
 const DEFAULT_MAX_DEPTH = 8;
@@ -290,6 +297,12 @@ function hashTree(root: TocFileNode | null): string {
 /** Repli (origin: "single") : TOC du seul document MONTÉ — ses propres
  *  titres, aucune remontée. Cas nominal d'un document isolé (§3.2, point 4). */
 function buildSingleToc(documentPath: string, source: string): DeclaredToc {
+  // `labelOf` retombe sur le NOM DE FICHIER en l'absence de H1 — un repli
+  // valable pour une ÉTIQUETTE d'arbre, mais que le header de la sidebar NAV
+  // ne veut PAS reprendre tel quel (2026-08-14) : sans H1, il affiche un mot
+  // générique ("Summary"/"Résumé"), pas le nom de fichier. `hasH1Title`
+  // permet à l'appelant de distinguer les deux cas sans reparser la source.
+  const hasH1Title = parseMarkdownToc(source).some((e) => e.level === 1);
   const children = buildHeadingChildren(source, documentPath);
   const root: TocFileNode = { kind: "file", path: documentPath, label: labelOf(documentPath, source, undefined), root: true, children };
   return {
@@ -298,6 +311,7 @@ function buildSingleToc(documentPath: string, source: string): DeclaredToc {
     rootPath: documentPath,
     origin: "single",
     structuralHash: hashTree(root),
+    hasH1Title,
   };
 }
 

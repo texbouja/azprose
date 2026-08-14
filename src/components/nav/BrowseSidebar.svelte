@@ -19,6 +19,7 @@
 import "@/styles/files/sidebar-shell.css";
 import "@/styles/files/sidebar-header.css";
 import TocPanel from "@/components/links/TocPanel.svelte";
+import { Button } from "@/components/primitives";
 import { getT, language } from "@/lib/i18n";
 import type { DeclaredToc } from "@/lib/toc-declared";
 import { persistedState } from "@/stores/persisted.svelte";
@@ -42,6 +43,25 @@ let {
 } = $props();
 
 let t = $derived(getT($language));
+
+// Bouton « plan condensé » du header (repli H3+) — MÊME pattern que
+// LinksView.svelte (PROJET) : bind:this + méthode exportée `toggleOutline`,
+// plutôt qu'une prop, pour ne pas faire remonter l'état à chaque frappe
+// (TocPanel gère lui-même le repli, ce composant ne fait qu'afficher l'état
+// et déclencher la bascule). Ajouté au passage de la clarification titre
+// H1/"Résumé" (2026-08-14) : même bouton que PROJET, absent de NAV jusqu'ici.
+let tocPanel: TocPanel;
+let tocOutlineActive = $state(false);
+
+function handleTocOutline() {
+  tocOutlineActive = tocPanel?.toggleOutline() ?? false;
+}
+
+/** TocPanel désactive lui-même le mode condensé au changement de fichier —
+ *  ce callback resynchronise l'état du bouton (même mécanisme que PROJET). */
+function handleTocOutlineChange(active: boolean) {
+  tocOutlineActive = active;
+}
 
 const sidebarWidth = persistedState<number>(STORAGE_KEYS.navSidebarWidth, DEFAULT_WIDTH);
 let dragging = $state(false);
@@ -95,12 +115,39 @@ $effect(() => {
             {t("browse.tocOriginDeclared")}
           </span>
         {:else if toc?.origin === "single"}
-          <span class="mdv-sidebar__title is-empty" title={t("browse.tocOriginSingle")}>
+          <!-- Titre H1 du document si disponible (2026-08-14) — `labelOf`
+               (toc-declared.ts) retombe sur le NOM DE FICHIER en son absence,
+               un repli valable pour une étiquette d'arbre mais pas pour ce
+               header : `hasH1Title` distingue les deux cas (cf. son
+               commentaire), le mot générique "Résumé"/"Summary" couvre
+               l'absence de H1. Tooltip conservé séparément (clé *Hint) :
+               il explique la PROVENANCE (§3 du plan, exigence d'ergonomie —
+               « un arbre qui apparaît sans dire d'où il vient… »), un titre
+               de document seul ne le dirait plus une fois affiché ici. -->
+          <span class="mdv-sidebar__title is-empty" title={t("browse.tocOriginSingleHint")}>
             <i class="wxi-file-text" aria-hidden="true"></i>
-            {t("browse.tocOriginSingle")}
+            {toc.hasH1Title ? toc.root?.label : t("browse.tocOriginSingle")}
           </span>
         {:else}
           <span class="mdv-sidebar__title is-empty">{t("browse.emptyTab")}</span>
+        {/if}
+        {#if toc?.root}
+          <div class="mdv-sidebar__header-actions">
+            {#snippet tocOutlineIcon()}
+              <i
+                class="wxi {tocOutlineActive ? 'wxi-chevrons-down-up' : 'wxi-chevrons-up-down'}"
+                style="font-size:13px"
+                aria-hidden="true"
+              ></i>
+            {/snippet}
+            <Button
+              data-tooltip={t("toc.collapseBelowH2")}
+              aria-label={t("toc.collapseBelowH2")}
+              aria-pressed={tocOutlineActive}
+              onclick={handleTocOutline}
+              icon={tocOutlineIcon}
+            />
+          </div>
         {/if}
       </div>
       <div class="mdv-sidebar__body">
@@ -109,6 +156,8 @@ $effect(() => {
           filePath={toc?.displayPath ?? null}
           helpActivePath={toc?.displayPath ?? null}
           declaredForest={toc}
+          onOutlineChange={handleTocOutlineChange}
+          bind:this={tocPanel}
         />
       </div>
     </div>
