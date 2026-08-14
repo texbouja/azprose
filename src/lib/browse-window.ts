@@ -102,9 +102,13 @@ export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<Webvi
     width,
     height,
     center: true,
-    // Aucune option `decorations` : la fenêtre est décorée par le WM, comme
-    // toute fenêtre AZprose (défaut Tauri). Le mode « décorations de l'app »
-    // a été supprimé le 2026-08-14 — il n'y a plus rien à propager du parent.
+    // NAV dessine son PROPRE chrome (titlebar à onglets + toolbar permanente) :
+    // la barre de titre GTK est anormalement haute — comportement OS assumé —
+    // et cette bande est du gâchis d'espace dans une fenêtre de consultation.
+    // Posé À LA CRÉATION, une fois pour toutes : aucun `setDecorations` runtime,
+    // donc pas de retour du bug « boutons WM inopérants après aller-retour ».
+    // PROJET reste décorée par le WM.
+    decorations: false,
     // PAS de `parent` (2026-08-14) : NAV est une fenêtre AUTONOME — clic =
     // focus + premier plan comme n'importe quelle fenêtre, minimisation et
     // taskbar indépendantes. Sa fermeture avec la fenêtre de projet reste
