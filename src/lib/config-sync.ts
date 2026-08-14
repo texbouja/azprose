@@ -31,7 +31,6 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   if (ctx.vimOn) app.vim = true;
   if (theme.mode !== "system") app.theme = theme.mode;
   if (JSON.stringify(ctx.typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) app.typography = ctx.typo;
-  if (!generalSettings.nativeDecorations) app.nativeDecorations = false;
   if (generalSettings.uiScale !== 1.0) app.uiScale = generalSettings.uiScale;
   if (Object.keys(app).length) cfg.application = app;
 
@@ -120,7 +119,6 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   if (app?.defaultMode != null) generalSettings.defaultEditorMode = app.defaultMode;
   if (app?.vim != null) deps.vimOn.current = app.vim;
   if (app?.typography != null) deps.typography.current = { ...DEFAULT_TYPOGRAPHY, ...app.typography };
-  if (app?.nativeDecorations != null) generalSettings.nativeDecorations = app.nativeDecorations;
   if (app?.uiScale != null) generalSettings.uiScale = app.uiScale as import("@/stores/general-settings.svelte").UiScale;
   if (app?.theme != null) {
     theme.setMode(app.theme);

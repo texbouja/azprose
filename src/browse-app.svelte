@@ -20,7 +20,6 @@ import TabsBar from "@/components/editor/TabsBar.svelte";
 import BrowseToolbar from "@/components/nav/BrowseToolbar.svelte";
 import BrowseSidebar from "@/components/nav/BrowseSidebar.svelte";
 import TitleBar from "@/components/chrome/TitleBar.svelte";
-import { generalSettings } from "@/stores/general-settings.svelte";
 import { basename, isPdfPath } from "@/lib";
 import { readText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
@@ -78,17 +77,27 @@ const params = new URLSearchParams(location.search);
 const root = params.get("root");
 setRootPath(root);
 
-// NAV hérite du réglage de décorations natives de PROJET (correction
-// 2026-08-14). Le réglage est GLOBAL (pas par projet) : NAV le LIT, ne
-// l'écrit jamais.
-// Cet effet ne sert PAS à l'application initiale — elle a lieu à la CRÉATION
-// de la fenêtre (`decorations` dans browse-window.ts), seule façon d'éviter
-// le flash « chrome WM → chrome app ». Il sert à la propagation À CHAUD :
-// l'utilisateur bascule le réglage dans PROJET, l'événement `storage`
-// (phase 1.3) met à jour le store ici, et cet effet re-décore la fenêtre
-// sans rechargement. Nécessite core:window:allow-set-decorations.
+// État de FENÊTRE (vague 4, phase 4.2) : la fenêtre native est la source de
+// vérité, AUCUN stockage — « PROJET instaure, NAV suit », jamais l'inverse
+// (cette fenêtre n'a pas de bouton de bascule). Miroir $state initialisé
+// depuis le paramètre d'URL `decorated` (posé par browse-window.ts à la
+// création, valeur déjà appliquée à CETTE fenêtre — lire isDecorated() ici
+// reproduirait le flash que la pose à la création évite : l'appel est
+// asynchrone, IPC Tauri). La propagation À CHAUD passe par l'événement Tauri
+// `azprose:decorations` (émis par PROJET, broadcastDecorationsToChildren) —
+// plus par le canal `storage` de la phase 1.3, qui n'a plus rien à lire.
+let nativeDecorations = $state(params.get("decorated") !== "0");
 $effect(() => {
-  void getCurrentWindow().setDecorations(generalSettings.nativeDecorations).catch(() => {});
+  let cancelled = false;
+  let un: (() => void) | null = null;
+  listen<boolean>("azprose:decorations", (event) => {
+    nativeDecorations = event.payload;
+    void getCurrentWindow().setDecorations(event.payload).catch(() => {});
+  }).then((fn) => {
+    if (cancelled) { fn(); return; }
+    un = fn;
+  });
+  return () => { cancelled = true; un?.(); };
 });
 
 // Panel, piles back/forward et pages PDF cibles : état de FENÊTRE, à la portée
@@ -561,12 +570,12 @@ onMount(() => {
 </script>
 
 <div class="browse">
-  {#if !generalSettings.nativeDecorations}
+  {#if !nativeDecorations}
     <!-- Décorations natives = la barre custom serait redondante avec le
          chrome WM (même logique que app.svelte .has-hidden-titlebar). -->
     <TitleBar
       rootName={navTitleName}
-      nativeDecorations={generalSettings.nativeDecorations}
+      {nativeDecorations}
     />
   {/if}
 

@@ -28,21 +28,6 @@ import { WebviewWindow, getAllWebviewWindows } from "@tauri-apps/api/webviewWind
 import { emitTo } from "@tauri-apps/api/event";
 import { basename } from "@/lib";
 import { windowTitle } from "@/lib/window-title";
-import { STORAGE_KEYS } from "@/lib/storage";
-
-/** Lecture PURE du réglage de décorations, sans passer par
- *  `generalSettings` : ce module est pur (aucune rune) et testé unitairement
- *  — importer un store `.svelte.ts` y ferait entrer `$state`, absent du
- *  runtime bun, et casserait `browse-window.test.ts` à l'import même.
- *  Même lecture que `persistedState` (valeur JSON, défaut `true`). */
-function readNativeDecorations(): boolean {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.nativeDecorations);
-    return raw == null ? true : (JSON.parse(raw) as boolean);
-  } catch {
-    return true;
-  }
-}
 
 /** Préfixe de label d'une fenêtre fille ; le label du PARENT y est encodé
  *  (séparateur `__`) pour retrouver la descendance d'une fenêtre de projet. */
@@ -104,13 +89,23 @@ export interface BrowseWindowOptions {
 /** Ouvre une fenêtre fille de navigation sur `path`. */
 export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<WebviewWindow> {
   const launcher = getCurrentWindow();
-  const [monitor, fullscreen] = await Promise.all([
+  const [monitor, fullscreen, decorated] = await Promise.all([
     currentMonitor().catch(() => null),
     launcher.isFullscreen().catch(() => false),
+    // État de FENÊTRE (vague 4, phase 4.2) : la fenêtre native de LANCEMENT
+    // est la source de vérité, aucun stockage — on l'interroge directement
+    // au lieu de lire un réglage. Repli `true` (décorations WM) si l'appel
+    // échoue : c'est aussi l'état de démarrage par défaut de toute fenêtre.
+    launcher.isDecorated().catch(() => true),
   ]);
   const { width, height } = browseWindowSize(monitor);
   const params = new URLSearchParams({ browse: opts.path });
   if (opts.root) params.set("root", opts.root);
+  // Transporté en paramètre d'URL (comme `root`/`browse`) plutôt que lu par
+  // NAV via isDecorated() à son propre montage : cette lecture est ASYNCHRONE
+  // (IPC Tauri) et la fenêtre a déjà l'ANIMATION long JS à charger — l'écart,
+  // même bref, reproduirait le flash que la pose à la création évite déjà ici.
+  params.set("decorated", decorated ? "1" : "0");
   return new WebviewWindow(browseWindowLabel(launcher.label, ++browseSeq), {
     url: `nav.html?${params.toString()}`,
     title: windowTitle(basename(opts.path)),
@@ -124,7 +119,7 @@ export async function openBrowseWindow(opts: BrowseWindowOptions): Promise<Webvi
     // aucune raison d'attendre son propre bundle. (La fenêtre PROJET, elle,
     // est créée par Rust avant tout JS : son flash relève de la séquence de
     // boot, traité en vague 4 du plan.)
-    decorations: readNativeDecorations(),
+    decorations: decorated,
     // PAS de `parent` (2026-08-14) : NAV est une fenêtre AUTONOME — clic =
     // focus + premier plan comme n'importe quelle fenêtre, minimisation et
     // taskbar indépendantes. Sa fermeture avec la fenêtre de projet reste
@@ -168,4 +163,13 @@ export async function openOrFocusBrowseWindow(opts: BrowseWindowOptions): Promis
 export async function closeBrowseChildren(parentLabel: string): Promise<void> {
   const windows = await findBrowseChildren(parentLabel);
   await Promise.all(windows.map((w) => w.destroy().catch(() => {})));
+}
+
+/** Propage la bascule de décorations à chaud vers toutes les fenêtres NAV de
+ *  ce projet (vague 4, phase 4.2 — « PROJET instaure, NAV suit », jamais
+ *  l'inverse : NAV n'a pas de bouton de bascule). Symétrique de
+ *  `closeBrowseChildren` ; sans effet si aucune fenêtre NAV n'est ouverte. */
+export async function broadcastDecorationsToChildren(parentLabel: string, decorated: boolean): Promise<void> {
+  const windows = await findBrowseChildren(parentLabel);
+  await Promise.all(windows.map((w) => emitTo(w.label, "azprose:decorations", decorated).catch(() => {})));
 }

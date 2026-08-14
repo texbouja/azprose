@@ -1711,13 +1711,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               </div>
             </div>
 
-            <!-- Native decorations -->
-            <p class="mdv-settings__section-title">{t("settings.nativeDecorations")}</p>
-            <div class="mdv-settings__toggle-row">
-              <Switch value={generalSettings.nativeDecorations} onchange={(ev) => { generalSettings.nativeDecorations = ev.value; }} />
-              <span>{t("settings.nativeDecorationsHint")}</span>
-            </div>
-
             <!-- Font Hinting -->
             <p class="mdv-settings__section-title">{t("settings.fontHinting")}</p>
             <div class="mdv-settings__row">

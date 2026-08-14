@@ -36,10 +36,9 @@
     saveStatus: "idle" | "dirty" | "saving" | "saved";
     /** true = décorations WM natives (barre de titre custom masquée) ; false =
      *  décorations custom de l'app (TitleBar.svelte visible avec ses propres
-     *  boutons). Source unique de vérité : generalSettings.nativeDecorations
-     *  (correction 2026-08-14 — ce bouton pilotait avant un état CSS
-     *  indépendant, `titlebarVisible`, sans rapport avec les décorations
-     *  réellement appliquées à la fenêtre). */
+     *  boutons). Source unique de vérité : la fenêtre native elle-même
+     *  (isDecorated(), vague 4 phase 4.2) — AUCUN stockage, ce prop reflète
+     *  le miroir $state tenu par app.svelte, sur le modèle d'isMaximized. */
     nativeDecorations: boolean;
     onToggleDecorations: () => void;
     vimOn?: boolean;

@@ -554,8 +554,6 @@
   "settings.editorLineNumbersShow": "Afficher les numéros de ligne",
   "settings.editorLineWrapping": "Retour à la ligne",
   "settings.editorLineWrappingShow": "Retourner les lignes",
-  "settings.nativeDecorations": "Décorations natives de la fenêtre",
-  "settings.nativeDecorationsHint": "Utiliser le cadre de fenêtre de l'OS (désactiver pour barre titre custom)",
   "settings.module.appearance": "Apparence",
   "settings.appearanceTheme": "Thème",
   "settings.appearanceZoom": "Zoom de l'interface",

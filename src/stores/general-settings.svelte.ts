@@ -134,9 +134,6 @@ export const UI_SIDEBAR_FONT_PRESETS: UiFontPreset[] = [
 
 function createGeneralSettings() {
   const mode = persistedState<DefaultEditorMode>(STORAGE_KEYS.defaultEditorMode, "prose");
-  // nativeDecorations : pas d'onExternal — aucun effet de bord dans le setter
-  // (appliqué par un $effect d'app.svelte, PROJET seul, cf. phase 1.3 §1.3.c).
-  const nativeDeco = persistedState<boolean>(STORAGE_KEYS.nativeDecorations, true);
   const uiZoom = persistedState<number>(STORAGE_KEYS.uiScale, 1.0, undefined, applyZoom);
   const uiFont = persistedState<string>(STORAGE_KEYS.uiFontFamily, "", undefined, applyUiFont);
   const uiMono = persistedState<string>(STORAGE_KEYS.uiMonoFamily, "", undefined, applyUiMonoFont);
@@ -161,9 +158,6 @@ function createGeneralSettings() {
   return {
     get defaultEditorMode() { return mode.current; },
     set defaultEditorMode(v: DefaultEditorMode) { mode.current = v; },
-
-    get nativeDecorations() { return nativeDeco.current; },
-    set nativeDecorations(v: boolean) { nativeDeco.current = v; },
 
     get uiScale() { return uiZoom.current as number; },
     set uiScale(v: number) { uiZoom.current = v; applyZoom(v); },
@@ -191,7 +185,6 @@ function createGeneralSettings() {
 
     reset() {
       mode.current = "prose";
-      nativeDeco.current = true;
       uiZoom.current = 1.0;
       applyZoom(1.0);
       uiFont.current = "";

@@ -570,8 +570,6 @@
   "settings.editorLineNumbersShow": "Show line numbers",
   "settings.editorLineWrapping": "Line wrapping",
   "settings.editorLineWrappingShow": "Wrap lines",
-  "settings.nativeDecorations": "Native window decorations",
-  "settings.nativeDecorationsHint": "Use OS window frame (disable for custom titlebar)",
   "settings.module.appearance": "Appearance",
   "settings.appearanceTheme": "Theme",
   "settings.appearanceZoom": "UI zoom",

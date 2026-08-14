@@ -52,7 +52,7 @@ import ContextMenu from "@/components/files/context-menu.svelte";
 import { TooltipRoot } from "@/components/primitives";
 import { PanelManager } from "@/lib/panel-manager";
 import { tabPinFormat, tabSpace } from "@/lib/panel-store";
-import { openOrFocusBrowseWindow } from "@/lib/browse-window";
+import { openOrFocusBrowseWindow, broadcastDecorationsToChildren } from "@/lib/browse-window";
 import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
@@ -1196,13 +1196,17 @@ $effect(() => {
   return () => window.removeEventListener("keydown", onKey);
 });
 
-// Apply native decorations setting at startup and when toggled — nécessite
-// core:window:allow-set-decorations (manquant jusqu'au 2026-08-14 : l'appel
-// échouait TOUJOURS, silencieusement avalé par le .catch, d'où la titlebar
-// OS qui ne disparaissait jamais quel que soit le réglage).
+// État de FENÊTRE (vague 4, phase 4.2) : la fenêtre native est la source de
+// vérité — AUCUN stockage, comme isMaximized dans TitleBar.svelte (même
+// motif : $state miroir, rafraîchi une fois au montage). L'app démarre
+// TOUJOURS en décorations WM (Tauri, tauri.conf.json ne porte aucune clé
+// `decorations`) : le défaut `true` ci-dessous ne fait que refléter ce que
+// isDecorated() confirmera de toute façon, aucun flash possible pour PROJET.
+let nativeDecorations = $state(true);
 $effect(() => {
-  const native = generalSettings.nativeDecorations;
-  getCurrentWindow().setDecorations(native).catch(() => {});
+  let cancelled = false;
+  void getCurrentWindow().isDecorated().then((v) => { if (!cancelled) nativeDecorations = v; }).catch(() => {});
+  return () => { cancelled = true; };
 });
 
 // Apply UI zoom override
@@ -1225,16 +1229,17 @@ const handleToggleVim = () => {
 };
 
 // Bascule décorations natives (WM) ↔ décorations custom de l'app — un SEUL
-// commutateur (correction 2026-08-14) : avant, ce bouton masquait/affichait la
-// barre de titre custom en CSS SEULE (titlebarVisible), indépendamment du
-// réglage nativeDecorations qui, lui, tentait (en vain — permission
-// manquante) de retirer les décorations WM. Résultat : les deux chrome
-// pouvaient coexister ou, à l'inverse, aucun des deux n'être visible.
-// nativeDecorations est désormais la SEULE source de vérité : true → chrome
-// WM, barre custom masquée ; false → chrome WM retiré, barre custom visible
-// avec ses propres boutons (TitleBar.svelte, {#if !nativeDecorations}).
-const handleToggleDecorations = () => {
-  generalSettings.nativeDecorations = !generalSettings.nativeDecorations;
+// commutateur : true → chrome WM, barre custom masquée ; false → chrome WM
+// retiré, barre custom visible avec ses propres boutons (TitleBar.svelte,
+// {#if !nativeDecorations}). Aucun stockage (vague 4, phase 4.2) : on
+// applique directement à la fenêtre, le miroir $state suit ; « PROJET
+// instaure, NAV suit » — la bascule se propage à chaud aux fenêtres NAV de
+// ce projet (broadcastDecorationsToChildren), jamais l'inverse.
+const handleToggleDecorations = async () => {
+  const next = !nativeDecorations;
+  await getCurrentWindow().setDecorations(next).catch(() => {});
+  nativeDecorations = next;
+  void broadcastDecorationsToChildren(getCurrentWindow().label, next);
 };
 
 const editorMode = $derived<EditorMode>(
@@ -1576,7 +1581,7 @@ let cmds = $derived(
     recentFiles: [],
     hasActivePath: activePath != null,
     sidebarOpen: sidebarOpen.current,
-    nativeDecorations: generalSettings.nativeDecorations,
+    nativeDecorations,
     toggleFavorite: () => { if (activePath) fo.toggleFavorite(activePath); },
     currentFilePath: activePath,
     // oxide: daily note commands
@@ -1655,7 +1660,7 @@ let cmds = $derived(
 </script>
 
 <div
-  class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}{generalSettings.nativeDecorations ? " has-hidden-titlebar" : ""}"
+  class="mdv-app{sidebarOpen.current ? " has-sidebar" : ""}{nativeDecorations ? " has-hidden-titlebar" : ""}"
   style={Object.entries(typographyStyle).map(([k, v]) => `${k}:${v}`).join(";")}
 >
   {#if !rootPath && !overlays.welcomeOpen}
@@ -1670,14 +1675,14 @@ let cmds = $derived(
   {/if}
   <TitleBar
     rootName={rootPath ? basename(rootPath) : undefined}
-    nativeDecorations={generalSettings.nativeDecorations}
+    {nativeDecorations}
   />
 
   <Breadcrumb
     {rootPath}
     {activePath}
     {saveStatus}
-    nativeDecorations={generalSettings.nativeDecorations}
+    {nativeDecorations}
     onToggleDecorations={handleToggleDecorations}
     {vimOn}
     onToggleVim={handleToggleVim}
