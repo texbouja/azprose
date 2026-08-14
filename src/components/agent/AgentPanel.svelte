@@ -30,6 +30,7 @@ import { getT, language } from "@/lib/i18n";
 import { renderChatMarkdown } from "@/markdown/chat-render";
 import { resolveWikilinkPaths } from "@/markdown/wikilinks";
 import { typesetMath } from "@/lib/typeset-math";
+import { createMathCache } from "@/lib/math-cache";
 import { theme } from "@/stores/theme.svelte";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { calloutSettings } from "@/stores/callout-settings.svelte";
@@ -112,24 +113,47 @@ function pushItem(item: FeedItemDraft): number {
   return id;
 }
 
+// Cache des formules déjà composées (même mécanisme que la preview) : clé
+// `data-math-source` → outerHTML du <mjx-container>. Grâce à lui, le typeset
+// peut tourner PENDANT le stream : une formule complète est composée une
+// seule fois, puis réinjectée à chaque chunk — rendu « live », zéro recomposition.
+const mathCache = createMathCache();
+
+// Typeset lissé pendant le stream : les chunks arrivent à ~50/s, on compose
+// au plus toutes les ~120 ms (trailing) — les maths déjà composées sortent du
+// cache, MathJax ne traite que les nouvelles.
+let liveTypesetTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleLiveTypeset() {
+  if (liveTypesetTimer) return;
+  liveTypesetTimer = setTimeout(() => {
+    liveTypesetTimer = null;
+    if (feedEl) void typesetMath(feedEl);
+  }, 120);
+}
+
 /** Re-rend le markdown d'un item (agent/thought) — appelé à CHAQUE chunk du
  *  stream. Le rendu est asynchrone (chargement Shiki à la demande) : le texte
  *  brut sert de repli visible entre-temps. */
 function renderItem(item: FeedItem | undefined) {
   if (!item || (item.kind !== "agent" && item.kind !== "thought")) return;
   const text = item.text;
+  // Mémoriser les formules composées AVANT que Svelte ne remplace le DOM.
+  if (feedEl) mathCache.extractFrom(feedEl);
   void renderChatMarkdown(text, theme.resolved).then((html) => {
     // Le texte a pu muter pendant le rendu (chunk suivant) : ne pas écraser
     // avec un HTML périmé — le prochain chunk relancera un rendu.
-    if (item.text === text) item.html = html;
+    if (item.text !== text) return;
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    mathCache.injectInto(tmp);
+    item.html = tmp.innerHTML;
+    scheduleLiveTypeset();
   });
 }
 
-/** Finitions de fin de tour (streaming terminé) : maths MathJax et
- *  résolution des wikilinks. Pendant le stream elles restent en repli
- *  (spans \(…\) lisibles, liens stylés non câblés) — re-traiter à chaque
- *  chunk serait du gaspillage, et les maths déjà composées ne sont pas
- *  re-traitées par MathJax (plus de délimiteur textuel après conversion). */
+/** Finitions de fin de tour (streaming terminé) : un DERNIER typeset immédiat
+ *  (couvre les maths arrivées dans les tout derniers chunks, avant que le
+ *  debounce live n'ait tiré) et résolution des wikilinks. */
 async function finishTurnRendering() {
   await tick();
   if (!feedEl) return;
@@ -332,7 +356,9 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-onMount(startSession);
+onMount(() => {
+  void startSession();
+});
 onDestroy(() => {
   offUpdate?.();
   void client?.stop();

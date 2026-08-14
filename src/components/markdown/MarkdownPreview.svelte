@@ -25,6 +25,7 @@ import {
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { typesetMath } from "@/lib/typeset-math";
+import { createMathCache } from "@/lib/math-cache";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { previewSettings } from "@/stores/markdown-settings.svelte";
 import { buildPreviewProseCss } from "@/lib/prose-style-css";
@@ -128,27 +129,10 @@ $effect(() => {
 });
 
 // ── Math cache: preserve MathJax SVGs across re-renders ──────────────────
-// Maps data-math-source → outerHTML (MathJax-rendered <mjx-container>)
-const mathCache = new Map<string, string>();
+// Maps data-math-source → outerHTML (MathJax-rendered <mjx-container>).
+// Partagé avec le panneau agent via src/lib/math-cache.ts.
+const mathCache = createMathCache();
 let lastPreamble = "";
-
-function extractMathFromDom(el: HTMLElement): void {
-  for (const node of el.querySelectorAll<HTMLElement>("[data-math-source]")) {
-    const source = node.getAttribute("data-math-source");
-    if (source && node.innerHTML.includes("mjx-container")) {
-      mathCache.set(source, node.outerHTML);
-    }
-  }
-}
-
-function injectCachedMath(dom: HTMLElement): void {
-  for (const node of dom.querySelectorAll<HTMLElement>("[data-math-source]")) {
-    const source = node.getAttribute("data-math-source");
-    if (!source) continue;
-    const cached = mathCache.get(source);
-    if (cached) node.outerHTML = cached;
-  }
-}
 
 // ── Callout state cache: preserve open/closed across re-renders ───────────
 const calloutStateCache = new Map<string, boolean>();
@@ -201,7 +185,7 @@ $effect(() => {
   // Cache old math SVGs, callout state, and scroll position before re-rendering
   let scrollPct = 0;
   if (articleEl) {
-    extractMathFromDom(articleEl);
+    mathCache.extractFrom(articleEl);
     extractCalloutState(articleEl);
     const scroller = articleEl.closest<HTMLElement>(".mdv-preview");
     if (scroller && scroller.scrollHeight > scroller.clientHeight) {
@@ -222,7 +206,7 @@ $effect(() => {
     makeCalloutsCollapsible(tmp);
 
     // Re-inject cached MathJax SVGs for unchanged formulas
-    injectCachedMath(tmp);
+    mathCache.injectInto(tmp);
 
     articleEl.innerHTML = tmp.innerHTML;
     restoreCalloutState(articleEl);
