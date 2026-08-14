@@ -49,8 +49,8 @@ import { persistedState } from "@/stores/persisted.svelte";
 import { STORAGE_KEYS } from "@/lib/storage";
 import { windowTitle } from "@/lib/window-title";
 import { removeBootSplash } from "@/shell/boot";
-// Fin du piège #1 du plan (vague 3, phase 3.1) : TabsBar, TitleBar/
-// ThemeButton, BrowseSidebar (shell + en-tête) et MarkdownPreview/DocPreview
+// Fin du piège #1 du plan (vague 3, phase 3.1) : TabsBar, BrowseSidebar
+// (shell + en-tête) et MarkdownPreview/DocPreview
 // (preview.css) portent désormais chacun son propre contrat CSS — plus un
 // seul import de feuille de composant dans cette fenêtre (prose.css, lui,
 // ne servait même à rien ici : `.cm-html-widget` est l'éditeur ProseMark,
