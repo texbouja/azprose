@@ -55,6 +55,9 @@ export const STORAGE_KEYS = {
   journalSettings: "mdview.journal",
   collesSettings: "mdview.colles",
   userProfile: "mdview.user.profile",
+  // Chemin explicite vers le binaire de l'agent (surcharge du PATH) —
+  // sert à la veille : pointer une version candidate avant de l'adopter.
+  agentBinaryPath: "mdview.agent.binaryPath",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
