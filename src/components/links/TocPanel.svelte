@@ -437,7 +437,7 @@
   </li>
 {/snippet}
 
-<div class="toc">
+<div class="toc" class:toc--flat={flatFileMode}>
   {#if error}
     <div class="toc__state">
       <p>{t("toc.error")}</p>
@@ -574,6 +574,22 @@
   }
   .toc__branch-label:hover {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  /* NAV (arbre déclaré, `flatFileMode`) : le nœud fichier redevient une rangée
+     de contenu ordinaire — ni capitales, ni gras, ni couleur d'accent
+     (2026-08-14). Ce marquage typographique servait à signaler « ceci est un
+     AUTRE fichier » dans les branches TRANSCLUSES de PROJET, où la distinction
+     est vitale (le texte vient d'ailleurs que la note lue). Dans NAV l'arbre
+     est une hiérarchie de fichiers ASSUMÉE : tout y est un fichier, le signaler
+     à chaque rangée est du bruit, et la fenêtre est orientée contenu. L'icône
+     `wxi-file-text` et la surbrillance `is-current` suffisent à situer.
+     PROJET n'est PAS touchée : la règle d'origine reste sa valeur par défaut. */
+  .toc--flat .toc__branch-label {
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--fg);
   }
   /* Article de la doc intégrée actuellement affiché dans le lecteur. */
   .toc__branch-label.is-current {

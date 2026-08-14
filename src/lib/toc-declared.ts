@@ -223,6 +223,25 @@ interface BuildCtx {
   maxDepth: number;
 }
 
+/**
+ * Retire le H1 de TÊTE et remonte ses enfants à sa place.
+ *
+ * Le nœud FICHIER porte déjà ce titre (`labelOf` prend le premier H1) :
+ * l'afficher une seconde fois comme première ligne de ses propres enfants
+ * donnait un « double titre » dans la sidebar NAV (constat utilisateur,
+ * 2026-08-14). Règle retenue : **un fichier = une rangée, et cette rangée EST
+ * son titre.**
+ *
+ * Seul le PREMIER nœud est absorbé, et seulement s'il est de niveau 1 : un
+ * second H1 plus bas dans le document est une vraie section sœur, jamais le
+ * titre du document. Les enfants promus gardent leur ordre, avant ces sœurs.
+ */
+function absorbLeadingH1(roots: TocNode[]): TocNode[] {
+  const [first] = roots;
+  if (!first || first.kind !== "heading" || first.entry.level !== 1) return roots;
+  return [...first.children, ...roots.slice(1)];
+}
+
 /** Construit l'arbre des titres PROPRES d'un fichier (pas de transclusion —
  *  ce n'est pas le sujet de la TOC déclarative). */
 function buildHeadingChildren(source: string, path: string): TocNode[] {
@@ -254,7 +273,7 @@ async function buildDeclaredNode(
   visited: Set<string>,
   ctx: BuildCtx,
 ): Promise<TocFileNode> {
-  const children = buildHeadingChildren(source, path);
+  const children = absorbLeadingH1(buildHeadingChildren(source, path));
 
   if (depth < ctx.maxDepth) {
     const fm = parseFrontMatter(source);
@@ -303,7 +322,7 @@ function buildSingleToc(documentPath: string, source: string): DeclaredToc {
   // générique ("Summary"/"Résumé"), pas le nom de fichier. `hasH1Title`
   // permet à l'appelant de distinguer les deux cas sans reparser la source.
   const hasH1Title = parseMarkdownToc(source).some((e) => e.level === 1);
-  const children = buildHeadingChildren(source, documentPath);
+  const children = absorbLeadingH1(buildHeadingChildren(source, documentPath));
   const root: TocFileNode = { kind: "file", path: documentPath, label: labelOf(documentPath, source, undefined), root: true, children };
   return {
     root,

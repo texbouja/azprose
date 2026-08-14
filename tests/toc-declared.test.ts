@@ -226,9 +226,12 @@ describe("buildDeclaredToc — parent: (montant)", () => {
     expect(toc.displayPath).toBe("/vault/isole.md");
     expect(toc.rootPath).toBe("/vault/isole.md");
     expect(collectPaths(toc.root!)).toEqual(["/vault/isole.md"]);
-    const h1 = toc.root!.children[0];
-    expect(h1.kind === "heading" && h1.entry.text).toBe("Isolé");
-    expect(h1.kind === "heading" && h1.children[0]?.kind === "heading" && h1.children[0].entry.text).toBe("Une section");
+    // Le H1 « Isolé » n'est PAS répété parmi les enfants : il EST le libellé du
+    // nœud fichier (fin du « double titre », 2026-08-14) — ses sections sont
+    // remontées d'un cran, directement sous le fichier.
+    expect(toc.root!.label).toBe("Isolé");
+    const first = toc.root!.children[0];
+    expect(first.kind === "heading" && first.entry.text).toBe("Une section");
   });
 
   test("racine remontée sans sommaire: → repli sur le document MONTÉ (pas la racine)", async () => {
@@ -254,7 +257,10 @@ describe("buildDeclaredToc — robustesse", () => {
   test("documentSource (buffer live) évite la lecture disque du document monté", async () => {
     const toc = await build("/vault/x.md", {}, {}, { documentSource: "# Live\n" });
     expect(toc.origin).toBe("single");
-    expect(toc.root?.children[0]).toMatchObject({ kind: "heading", entry: { text: "Live" } });
+    // « Live » est le H1 du buffer : absorbé par le nœud fichier (son libellé),
+    // il ne laisse aucun enfant derrière lui.
+    expect(toc.root?.label).toBe("Live");
+    expect(toc.root?.children).toEqual([]);
   });
 
   test("structuralHash stable pour un même arbre, différent si la forme change", async () => {
