@@ -412,6 +412,27 @@ fn write_project_session(root: String, content: String) -> Result<(), String> {
     atomic_write(&path, &content)
 }
 
+// Préférences d'INTERFACE du projet (thème pour l'instant — vague 4, phase
+// 4.2). Distinct de config.json (configuration DU DOCUMENT — LaTeX, styles
+// d'impression, callouts) et de session.json (travail de l'utilisateur —
+// onglets ouverts) : une préférence de présentation n'a ni la même nature ni
+// la même durée de vie. Même forme que la session (fichier optionnel, pas de
+// validation de schéma — ce n'est pas destiné à être édité à la main).
+#[tauri::command]
+fn read_project_ui(root: String) -> Result<Option<String>, String> {
+    let path = Path::new(&root).join(".azprose/ui.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_project_ui(root: String, content: String) -> Result<(), String> {
+    let path = Path::new(&root).join(".azprose/ui.json");
+    atomic_write(&path, &content)
+}
+
 /// Open a directory in the system file manager (bypasses opener plugin scope).
 #[tauri::command]
 fn open_folder(path: String) -> Result<(), String> {
@@ -488,6 +509,8 @@ pub fn run() {
             write_project_config,
             read_project_session,
             write_project_session,
+            read_project_ui,
+            write_project_ui,
             get_projects_list,
             add_project,
             remove_project,

@@ -21,8 +21,6 @@ import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svel
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import { generalSettings, UI_SCALE_OPTIONS, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT_PRESETS, PREVIEW_FONT_PRESETS, PREVIEW_MONO_FONT_PRESETS, FONT_HINTING_OPTIONS } from "@/stores/general-settings.svelte";
-import { theme } from "@/stores/theme.svelte";
-import { THEME_GROUPS, type ThemeMode } from "@/lib";
 import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
 import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
@@ -1623,17 +1621,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           {/if}
 
           {#if activeModule === "appearance"}
-            <!-- Theme — simple dropdown with builtin themes -->
-            <p class="mdv-settings__section-title">{t("settings.appearanceTheme")}</p>
-            <div class="mdv-settings__row">
-              <Combo
-                value={theme.mode}
-                options={THEME_GROUPS
-                  .flatMap(g => g.choices)
-                  .map(c => ({ id: c.value, label: c.label }))}
-                onchange={(ev) => { theme.setMode(ev.value as ThemeMode); }}
-              />
-            </div>
+            <!-- Thème : plus de sélecteur ici (vague 4, phase 4.2) — commande
+                 unique désormais le ThemeButton du breadcrumb. -->
 
             <!-- UI Scale -->
             <p class="mdv-settings__section-title">{t("settings.appearanceZoom")}</p>

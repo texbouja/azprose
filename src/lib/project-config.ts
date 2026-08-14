@@ -4,7 +4,6 @@ import type { ProseMarkStyle, PreviewStyle, PrintStyle, PresentationStyle } from
 import type { SlideMode } from "@/stores/slide-settings.svelte";
 import type { DefaultEditorMode } from "@/stores/general-settings.svelte";
 import type { TypographySettings } from "./typography";
-import type { ThemeMode } from "./theme";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import type { LatexSettings } from "@/stores/latex-settings.svelte";
 import type { EditorFontFamily } from "@/stores/editor-settings.svelte";
@@ -15,7 +14,6 @@ import type { CollesSettings } from "@/stores/colles-settings.svelte";
 export interface ApplicationConfig {
   defaultMode?: DefaultEditorMode | null;
   vim?: boolean | null;
-  theme?: ThemeMode | null;
   typography?: TypographySettings | null;
   uiScale?: number | null;
   uiFontFamily?: string | null;
@@ -70,7 +68,7 @@ export interface ProjectConfig {
 // ── Schema — validates nested sections ──────────────────────────────────────
 
 const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
-  application: { defaultMode: "string", vim: "boolean", theme: "string", typography: "object", uiScale: "number", uiFontFamily: "string", uiMonoFamily: "string" },
+  application: { defaultMode: "string", vim: "boolean", typography: "object", uiScale: "number", uiFontFamily: "string", uiMonoFamily: "string" },
   editor: { fontFamily: "string", customFontName: "string", fontSize: "number", tabSize: "number", lineNumbers: "boolean", lineWrapping: "boolean" },
   proseMark: { style: "object" },
   preview: { style: "object" },

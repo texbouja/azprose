@@ -1,4 +1,5 @@
 import { saveProjectConfig, loadProjectConfig, type ProjectConfig } from "@/lib/project-config"
+import { saveProjectUi, loadProjectUi, type ProjectUi } from "@/lib/project-ui"
 import { generalSettings } from "@/stores/general-settings.svelte"
 import { proseMarkSettings, previewSettings, printSettings, presentationSettings, DEFAULT_PROSE_MARK_STYLE, DEFAULT_PREVIEW_STYLE, DEFAULT_PRINT_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte"
 import { slideSettings } from "@/stores/slide-settings.svelte"
@@ -29,7 +30,6 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   const app: import("@/lib/project-config").ApplicationConfig = {};
   if (generalSettings.defaultEditorMode !== "prose") app.defaultMode = generalSettings.defaultEditorMode;
   if (ctx.vimOn) app.vim = true;
-  if (theme.mode !== "system") app.theme = theme.mode;
   if (JSON.stringify(ctx.typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) app.typography = ctx.typo;
   if (generalSettings.uiScale !== 1.0) app.uiScale = generalSettings.uiScale;
   if (Object.keys(app).length) cfg.application = app;
@@ -85,7 +85,15 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   const cs = collesSettings.current;
   if (JSON.stringify(cs) !== JSON.stringify(DEFAULT_COLLES_SETTINGS)) cfg.colles = cs;
 
-  await saveProjectConfig(ctx.configRoot, cfg);
+  // Thème : préférence d'INTERFACE, PAS de document — vit dans ui.json
+  // (`.azprose/ui.json`), pas dans config.json (vague 4, phase 4.2, R6).
+  const ui: ProjectUi = {};
+  if (theme.mode !== "system") ui.theme = theme.mode;
+
+  await Promise.all([
+    saveProjectConfig(ctx.configRoot, cfg),
+    saveProjectUi(ctx.configRoot, ui),
+  ]);
 }
 
 export function scheduleConfigSync(ctx: ConfigSyncContext) {
@@ -113,15 +121,20 @@ export interface LoadConfigDeps {
 }
 
 export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<string> {
-  const { config: cfg, warnings } = await loadProjectConfig(root);
+  const [{ config: cfg, warnings }, ui] = await Promise.all([
+    loadProjectConfig(root),
+    loadProjectUi(root),
+  ]);
 
   const app = cfg.application;
   if (app?.defaultMode != null) generalSettings.defaultEditorMode = app.defaultMode;
   if (app?.vim != null) deps.vimOn.current = app.vim;
   if (app?.typography != null) deps.typography.current = { ...DEFAULT_TYPOGRAPHY, ...app.typography };
   if (app?.uiScale != null) generalSettings.uiScale = app.uiScale as import("@/stores/general-settings.svelte").UiScale;
-  if (app?.theme != null) {
-    theme.setMode(app.theme);
+
+  // Thème : lu depuis ui.json, pas config.json (vague 4, phase 4.2, R6).
+  if (ui?.theme != null) {
+    theme.setMode(ui.theme);
   } else {
     const m = theme.mode;
     const ok = m === "system" || (BUILTIN_THEMES as readonly string[]).includes(m);
