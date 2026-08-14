@@ -20,7 +20,7 @@ import {
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
-import { generalSettings, UI_SCALE_OPTIONS, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT_PRESETS, PREVIEW_FONT_PRESETS, PREVIEW_MONO_FONT_PRESETS, FONT_HINTING_OPTIONS } from "@/stores/general-settings.svelte";
+import { generalSettings, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT_PRESETS, PREVIEW_FONT_PRESETS, PREVIEW_MONO_FONT_PRESETS, FONT_HINTING_OPTIONS } from "@/stores/general-settings.svelte";
 import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
 import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
@@ -1624,18 +1624,9 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <!-- Thème : plus de sélecteur ici (vague 4, phase 4.2) — commande
                  unique désormais le ThemeButton du breadcrumb. -->
 
-            <!-- UI Scale -->
-            <p class="mdv-settings__section-title">{t("settings.appearanceZoom")}</p>
-            <div class="mdv-settings__row">
-              <Slider
-                min={0}
-                max={UI_SCALE_OPTIONS.length - 1}
-                step={1}
-                value={UI_SCALE_OPTIONS.indexOf(generalSettings.uiScale as (typeof UI_SCALE_OPTIONS)[number])}
-                onchange={(ev) => { generalSettings.uiScale = UI_SCALE_OPTIONS[ev.value as number]; }}
-              />
-              <span class="mdv-settings__range-value">{Math.round(generalSettings.uiScale * 100)}%</span>
-            </div>
+            <!-- Réglage d'échelle UI SUPPRIMÉ (vague 4, phase 4.3) : un
+                 remplaçant (zoom matériel, multiples de pixels) viendra dans
+                 un chantier distinct — pas anticipé ici. -->
 
             <!-- UI Fonts -->
             <p class="mdv-settings__section-title">{t("settings.appearanceUiFont")}</p>

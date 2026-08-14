@@ -15,7 +15,6 @@ export interface ApplicationConfig {
   defaultMode?: DefaultEditorMode | null;
   vim?: boolean | null;
   typography?: TypographySettings | null;
-  uiScale?: number | null;
   uiFontFamily?: string | null;
   uiMonoFamily?: string | null;
 }
@@ -68,7 +67,7 @@ export interface ProjectConfig {
 // ── Schema — validates nested sections ──────────────────────────────────────
 
 const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
-  application: { defaultMode: "string", vim: "boolean", typography: "object", uiScale: "number", uiFontFamily: "string", uiMonoFamily: "string" },
+  application: { defaultMode: "string", vim: "boolean", typography: "object", uiFontFamily: "string", uiMonoFamily: "string" },
   editor: { fontFamily: "string", customFontName: "string", fontSize: "number", tabSize: "number", lineNumbers: "boolean", lineWrapping: "boolean" },
   proseMark: { style: "object" },
   preview: { style: "object" },

@@ -31,7 +31,6 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   if (generalSettings.defaultEditorMode !== "prose") app.defaultMode = generalSettings.defaultEditorMode;
   if (ctx.vimOn) app.vim = true;
   if (JSON.stringify(ctx.typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) app.typography = ctx.typo;
-  if (generalSettings.uiScale !== 1.0) app.uiScale = generalSettings.uiScale;
   if (Object.keys(app).length) cfg.application = app;
 
   const es = editorSettings.current;
@@ -130,7 +129,6 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   if (app?.defaultMode != null) generalSettings.defaultEditorMode = app.defaultMode;
   if (app?.vim != null) deps.vimOn.current = app.vim;
   if (app?.typography != null) deps.typography.current = { ...DEFAULT_TYPOGRAPHY, ...app.typography };
-  if (app?.uiScale != null) generalSettings.uiScale = app.uiScale as import("@/stores/general-settings.svelte").UiScale;
 
   // Thème : lu depuis ui.json, pas config.json (vague 4, phase 4.2, R6).
   if (ui?.theme != null) {

@@ -11,13 +11,10 @@
  * `createGeneralSettings()`) et appeler `initTheme()` (qui, lui, branche son
  * propre listener `storage` explicitement, cf. theme.ts).
  *
- * L'échelle UI (`uiScale`/`applyZoom`) n'est PAS incluse ici : elle cible
- * `.mdv-app`, un sélecteur PROPRE à PROJET (NAV utilise `.browse`), et son
- * application initiale dépend du MONTAGE du composant (l'élément n'existe pas
- * encore à l'appel de `initPresentation()`, « avant tout rendu ») — app.svelte
- * garde son propre `$effect` post-montage. Le réglage est de toute façon
- * PLANIFIÉ POUR SUPPRESSION (phase 4.3, remplacé par un zoom matériel) :
- * migrer sa mécanique de boot maintenant serait un travail jeté.
+ * L'échelle UI (`uiScale`/`applyZoom`) a été SUPPRIMÉE (vague 4, phase 4.3) —
+ * ce paragraphe n'a plus d'objet, remplacé par le futur zoom matériel
+ * (multiples de pixels), qui aura sa propre mécanique de boot le jour où il
+ * existera.
  */
 import { initTheme } from "@/lib/theme";
 import {

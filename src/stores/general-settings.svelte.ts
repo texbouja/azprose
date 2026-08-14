@@ -4,20 +4,6 @@ import { resolveFontFamily, resolveMonoFont, type BodyFont, type MonoFont } from
 
 export type DefaultEditorMode = "prose" | "raw";
 
-export const UI_SCALE_OPTIONS = [0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.4, 1.5] as const;
-export type UiScale = (typeof UI_SCALE_OPTIONS)[number];
-
-/** Immediately sync zoom to the DOM. */
-export function applyZoom(scale: number) {
-  const appEl =
-    typeof document !== "undefined"
-      ? (document.querySelector(".mdv-app") as HTMLElement | null)
-      : null;
-  if (!appEl) return;
-  if (scale === 1.0) appEl.style.removeProperty("zoom");
-  else appEl.style.setProperty("zoom", String(scale));
-}
-
 /** Apply a UI font-family value via --font-ui-temp (cascade from tokens.css).
  *  Preset ids (see UI_FONT_PRESETS) are resolved to their full stacks. */
 export function applyUiFont(value: string) {
@@ -134,7 +120,6 @@ export const UI_SIDEBAR_FONT_PRESETS: UiFontPreset[] = [
 
 function createGeneralSettings() {
   const mode = persistedState<DefaultEditorMode>(STORAGE_KEYS.defaultEditorMode, "prose");
-  const uiZoom = persistedState<number>(STORAGE_KEYS.uiScale, 1.0, undefined, applyZoom);
   const uiFont = persistedState<string>(STORAGE_KEYS.uiFontFamily, "", undefined, applyUiFont);
   const uiMono = persistedState<string>(STORAGE_KEYS.uiMonoFamily, "", undefined, applyUiMonoFont);
   const uiSidebar = persistedState<string>(STORAGE_KEYS.sidebarFontFamily, "", undefined, applyUiSidebarFont);
@@ -159,9 +144,6 @@ function createGeneralSettings() {
     get defaultEditorMode() { return mode.current; },
     set defaultEditorMode(v: DefaultEditorMode) { mode.current = v; },
 
-    get uiScale() { return uiZoom.current as number; },
-    set uiScale(v: number) { uiZoom.current = v; applyZoom(v); },
-
     get uiFontFamily() { return uiFont.current; },
     set uiFontFamily(v: string) { uiFont.current = v; applyUiFont(v); },
 
@@ -185,8 +167,6 @@ function createGeneralSettings() {
 
     reset() {
       mode.current = "prose";
-      uiZoom.current = 1.0;
-      applyZoom(1.0);
       uiFont.current = "";
       uiMono.current = "";
       uiSidebar.current = "";

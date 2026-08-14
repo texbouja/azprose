@@ -41,7 +41,6 @@ export const STORAGE_KEYS = {
   mathJaxPackages: "mdview.mathjax.packages",
   slideMode:  "mdview.slides.mode",
   defaultEditorMode: "mdview.default.editor.mode",
-  uiScale: "mdview.ui.scale",
   uiFontFamily: "mdview.ui.font",
   uiMonoFamily: "mdview.ui.mono.font",
   sidebarFontFamily: "mdview.ui.sidebar.font",

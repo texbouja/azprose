@@ -1209,15 +1209,6 @@ $effect(() => {
   return () => { cancelled = true; };
 });
 
-// Apply UI zoom override
-$effect(() => {
-  const scale = generalSettings.uiScale;
-  const appEl = document.querySelector(".mdv-app") as HTMLElement | null;
-  if (!appEl) return;
-  if (scale === 1.0) appEl.style.removeProperty("zoom");
-  else appEl.style.setProperty("zoom", String(scale));
-});
-
 // Apply font hinting override
 $effect(() => {
   const h = generalSettings.fontHinting;

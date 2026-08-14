@@ -439,9 +439,10 @@
         gotoPreview(previewIndex + dir);
       } else if (e.ctrlKey || e.metaKey) {
         // Raccourcis zoom du preview (aucun conflit dans l'app : shortcuts
-        // n'a pas de Ctrl+±/0). Capture totale comme les flèches — le
-        // zoom UI global (applyZoom/uiScale) est réglé via les réglages, pas
-        // au clavier.
+        // n'a pas de Ctrl+±/0). Capture totale comme les flèches — zoom LOCAL
+        // à ce dialogue (le réglage d'échelle UI global a été supprimé,
+        // vague 4 phase 4.3 ; son remplaçant, un zoom matériel, viendra plus
+        // tard dans un chantier distinct).
         const code = e.code;
         if (code === "Equal" || code === "NumpadAdd") {
           e.stopPropagation();
