@@ -65,6 +65,9 @@ let errorMessage = $state("");
 let draft = $state("");
 let feedEl = $state<HTMLElement | null>(null);
 let nextId = 0;
+// « L'agent écrit… » : armé à l'envoi, désarmé au premier contenu RÉEL
+// (réflexion, message, outil) — jamais sur les notifications techniques.
+let awaiting = $state(false);
 
 let client: AgentClient | null = null;
 let sessionId = $state<string | null>(null);
@@ -220,6 +223,7 @@ function applyUpdate(u: SessionUpdate) {
   switch (u.sessionUpdate) {
     case "agent_message_chunk":
     case "user_message_chunk": {
+      awaiting = false;
       const key = u.messageId ?? "?";
       const existing = messageItems.get(key);
       const text = u.content?.text ?? "";
@@ -238,6 +242,7 @@ function applyUpdate(u: SessionUpdate) {
       break;
     }
     case "agent_thought_chunk": {
+      awaiting = false;
       const key = u.messageId ?? "?";
       const existing = messageItems.get(`thought:${key}`);
       const text = u.content?.text ?? "";
@@ -258,6 +263,7 @@ function applyUpdate(u: SessionUpdate) {
       break;
     }
     case "tool_call": {
+      awaiting = false;
       if (!u.toolCallId) break;
       toolItems.set(u.toolCallId, pushItem({
         kind: "tool",
@@ -360,6 +366,7 @@ async function send() {
   pushItem({ kind: "user", text });
   draft = "";
   status = "busy";
+  awaiting = true;
   scrollToBottom();
   try {
     await client.prompt(sessionId, text);
@@ -367,6 +374,7 @@ async function send() {
     pushItem({ kind: "agent", text: t("agent.errorDetail", { message: String(e) }) });
   } finally {
     status = "ready";
+    awaiting = false;
     void finishTurnRendering();
   }
 }
@@ -532,6 +540,14 @@ onDestroy(() => {
         {/if}
       {/if}
     {/each}
+
+    {#if awaiting}
+      <!-- Indicateur d'attente (convention chat/VSCode) : affiché entre
+           l'envoi et le premier contenu réel, jamais après. -->
+      <div class="agent__typing" aria-label={t("agent.thinking")} role="status">
+        <span></span><span></span><span></span>
+      </div>
+    {/if}
   </div>
 
   <div class="agent__composer">
@@ -646,6 +662,27 @@ onDestroy(() => {
 
   /* Réponse agent : à nu, pleine largeur (c'est du contenu, pas une bulle). */
   .agent__msg--agent { padding: 0 2px; }
+
+  /* ── Indicateur d'attente : trois points en cascade ───────── */
+  .agent__typing {
+    display: flex;
+    gap: 5px;
+    padding: 6px 2px;
+    align-items: center;
+  }
+  .agent__typing span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: agent-typing 1.2s infinite ease-in-out;
+  }
+  .agent__typing span:nth-child(2) { animation-delay: 0.15s; }
+  .agent__typing span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes agent-typing {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+    30% { transform: translateY(-3px); opacity: 1; }
+  }
 
   /* ── Réflexion : discrète, repliée ────────────────────────── */
   .agent__thought summary {
