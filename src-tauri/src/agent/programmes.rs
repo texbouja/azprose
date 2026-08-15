@@ -398,6 +398,21 @@ pub fn verifier_perimetre(
     Verdict { statut, citations, raison: None }
 }
 
+// ── Commande Tauri (réglages) ───────────────────────────────────────────────
+
+/// Programmes visibles, pour le panneau de réglages.
+///
+/// Doublon assumé du chemin MCP : l'UI ne passe pas par l'agent pour se
+/// remplir — elle doit fonctionner que l'assistant soit démarré ou non.
+/// L'analyse, elle, n'est pas dupliquée : les deux appellent `decouvrir`.
+#[tauri::command]
+pub fn programmes_lister(corpus_dir: Option<String>, root: Option<String>) -> Vec<Programme> {
+    decouvrir(
+        corpus_dir.as_deref().map(Path::new),
+        root.as_deref().map(Path::new),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -59,6 +59,9 @@ export interface ProjectConfig {
   presentation?: PresentationConfig;
   math?: MathConfig;
   callouts?: CalloutDef[] | null;
+  /** Identifiants des programmes officiels concernant ce projet ; l'ORDRE
+   *  compte, la première entrée est le défaut (rectificatif §4.4). */
+  programmes?: string[] | null;
   favorites?: string[] | null;
   latex?: LatexSettings | null;
   colles?: CollesSettings | null;
@@ -86,6 +89,7 @@ const CONFIG_SCHEMA: Record<string, string> = {
   presentation: "object",
   math: "object",
   callouts: "object",
+  programmes: "object",
   favorites: "object",
   latex: "object",
   colles: "object",

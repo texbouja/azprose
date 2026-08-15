@@ -6,6 +6,7 @@ import { slideSettings } from "@/stores/slide-settings.svelte"
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte"
 import { latexSettings } from "@/stores/latex-settings.svelte"
 import { calloutSettings } from "@/stores/callout-settings.svelte"
+import { programmesSelection } from "@/stores/programmes-selection.svelte"
 import { DEFAULT_TYPOGRAPHY, type TypographySettings } from "@/lib/typography"
 import { theme } from "@/stores/theme.svelte"
 import { BUILTIN_THEMES } from "@/lib/theme"
@@ -78,6 +79,8 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   }
 
   cfg.callouts = calloutSettings.current;
+
+  if (programmesSelection.current.length) cfg.programmes = programmesSelection.current;
 
   if (ctx.fo.favorites.current.length) cfg.favorites = ctx.fo.favorites.current;
 
@@ -160,6 +163,7 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   if (cfg.math?.packages != null) mathJaxPackages.current = cfg.math.packages;
   if (cfg.latex != null) latexSettings.patch(cfg.latex);
   if (cfg.callouts != null) calloutSettings.load(cfg.callouts);
+  if (cfg.programmes != null) programmesSelection.load(cfg.programmes);
   if (cfg.favorites != null) deps.fo.favorites.current = cfg.favorites;
   if (cfg.colles != null) collesSettings.current = cfg.colles;
 

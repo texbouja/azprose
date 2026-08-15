@@ -23,6 +23,8 @@ import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import { generalSettings, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT_PRESETS, PREVIEW_FONT_PRESETS, PREVIEW_MONO_FONT_PRESETS, FONT_HINTING_OPTIONS } from "@/stores/general-settings.svelte";
 import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
+import { programmesSelection } from "@/stores/programmes-selection.svelte";
+import { getProjectRoot } from "@/lib/session";
 import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
 import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
@@ -51,7 +53,7 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques";
+type ModuleId = "general" | "prose-writing" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques" | "programmes";
 type SectionId = "markdown" | "general" | "latex" | "colles" | "printing";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
@@ -76,6 +78,7 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "presentation",  labelKey: "settings.module.presentation" },
       { id: "mathjax",       labelKey: "settings.module.mathjax" },
       { id: "callouts",      labelKey: "settings.module.callouts" },
+      { id: "programmes",    labelKey: "settings.module.programmes" },
     ],
   },
   {
@@ -105,6 +108,31 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
 ];
 
 let activeModule = $state<ModuleId>("editor");
+
+// ── Programmes officiels (R4) ───────────────────────────────────────────────
+// Chargés à l'ouverture du module, pas au montage du panneau : inutile de lire
+// le disque tant que l'utilisateur ne consulte pas cette section.
+type ProgrammeDispo = {
+  id: string; filiere: string[]; matiere?: string; niveau?: string;
+  source?: string; statut?: string; couverture?: string[]; origine: string;
+};
+let programmesDispo = $state<ProgrammeDispo[]>([]);
+
+$effect(() => {
+  if (activeModule !== "programmes") return;
+  void (async () => {
+    try {
+      const { corpusDir } = await import("@/programmes");
+      programmesDispo = await invoke<ProgrammeDispo[]>("programmes_lister", {
+        corpusDir: await corpusDir(),
+        root: getProjectRoot() ?? null,
+      });
+    } catch (e) {
+      console.warn("[settings] programmes illisibles :", e);
+      programmesDispo = [];
+    }
+  })();
+});
 let expandedSections = $state(new Set<SectionId>(["general", "markdown", "latex", "colles", "printing"]));
 
 // ── Réglages des colles (Dates + Rubriques) ────────────────────────────────
@@ -1413,6 +1441,44 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             </div>
 
             <p class="mdv-settings__hint">{t("settings.calloutsHint")}</p>
+          {/if}
+
+          {#if activeModule === "programmes"}
+            <p class="mdv-settings__section-title">{t("settings.programmesTitle")}</p>
+            <p class="mdv-settings__hint">{t("settings.programmesHint")}</p>
+
+            {#if programmesDispo.length === 0}
+              <p class="mdv-settings__hint">{t("settings.programmesVide")}</p>
+            {:else}
+              {#each programmesDispo as p (p.id)}
+                {@const choisi = programmesSelection.current.includes(p.id)}
+                {@const defaut = programmesSelection.current[0] === p.id}
+                <div class="mdv-settings__row">
+                  <Checkbox
+                    label={`${p.filiere.join(" / ")}${p.matiere ? ` — ${p.matiere}` : ""}${p.niveau ? ` (${t("settings.programmesNiveau")} ${p.niveau})` : ""}`}
+                    value={choisi}
+                    onchange={() => programmesSelection.toggle(p.id)}
+                  />
+                  {#if choisi && !defaut}
+                    <button
+                      type="button"
+                      class="mdv-btn mdv-btn--ghost"
+                      onclick={() => programmesSelection.promouvoir(p.id)}
+                    >{t("settings.programmesPromouvoir")}</button>
+                  {/if}
+                  {#if defaut}
+                    <span class="mdv-settings__hint">{t("settings.programmesDefaut")}</span>
+                  {/if}
+                </div>
+                <p class="mdv-settings__hint">
+                  {p.origine === "vault" ? t("settings.programmesOrigineVault") : t("settings.programmesOrigineLivre")}
+                  {#if p.statut === "specimen"}
+                    · {t("settings.programmesPartiel", { n: String(p.couverture?.length ?? 0) })}
+                  {/if}
+                  {#if p.source}· {p.source}{/if}
+                </p>
+              {/each}
+            {/if}
           {/if}
 
           {#if activeModule === "csv-general"}

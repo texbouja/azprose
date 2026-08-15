@@ -447,6 +447,7 @@ pub fn run() {
             agent::bridge::acp_kill,
             agent::mcp::mcp_start,
             agent::mcp::mcp_stop,
+            agent::programmes::programmes_lister,
             open_folder,
             latex_engine::latex_build,
             latex_engine::latex_find_root,

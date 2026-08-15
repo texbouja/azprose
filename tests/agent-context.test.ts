@@ -66,6 +66,34 @@ test("la config déclare les instructions et external_directory: ask", () => {
   expect(cfg.permission.external_directory).toBe("ask");
 });
 
+test("instructions : le programme par défaut est NOMMÉ, jamais recopié", () => {
+  const text = buildAgentInstructions(ROOT, {
+    programmeDefaut: { filiere: "MP", matiere: "mathematiques" },
+  });
+  expect(text).toContain("MP");
+  expect(text).toContain("programme_charger");
+  expect(text).toContain("verifier_perimetre");
+  // La consigne « en entier » est ce qui empêche un travail sur extrait, où
+  // les mentions limitatives se perdent.
+  expect(text).toContain("en entier");
+});
+
+test("instructions : aucune sélection → aucune mention d'un programme", () => {
+  // Ne jamais désigner un document inexistant : sans sélection, la section
+  // disparaît entièrement.
+  const text = buildAgentInstructions(ROOT);
+  expect(text).not.toContain("Programme officiel");
+  expect(text).not.toContain("programme par défaut");
+});
+
+test("la config injecte la commande /ajouter (aucun dossier .opencode/ requis)", () => {
+  const cfg = buildAgentConfig("/appdata/agent-instructions.md") as any;
+  expect(cfg.command.ajouter.template).toContain("$1");
+  expect(cfg.command.ajouter.template).toContain("programme_charger");
+  // Repli explicite quand rien ne correspond — sinon l'agent invente.
+  expect(cfg.command.ajouter.template).toContain("programme_lister");
+});
+
 test("la config INTERDIT l'accès texte à data.db (règle, pas supplique)", () => {
   const cfg = buildAgentConfig("/appdata/agent-instructions.md") as any;
   // Lecture ET écriture : ouvrir un fichier SQLite avec un outil texte le

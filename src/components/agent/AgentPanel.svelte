@@ -9,7 +9,8 @@
 import { onMount, onDestroy, tick } from "svelte";
 import { createAgentClient, type AgentClient, type McpServerDecl } from "@/lib/agent/client";
 import { invoke } from "@tauri-apps/api/core";
-import { installerProgrammesEmbarques } from "@/programmes";
+import { installerProgrammesEmbarques, corpusDir } from "@/programmes";
+import { programmesSelection } from "@/stores/programmes-selection.svelte";
 import type { SessionUpdate } from "@/lib/agent/types";
 import {
   createAgentHandlers,
@@ -402,8 +403,29 @@ async function ensureAgentInstructions(rootPath: string): Promise<string> {
   // Plus aucune donnée passée ici (R2) : le préambule et les callouts
   // voyagent désormais par l'instantané du serveur MCP (`mcpServers`), pas
   // par le texte des instructions.
-  await writeTextFile(path, buildAgentInstructions(rootPath));
+  await writeTextFile(path, buildAgentInstructions(rootPath, {
+    programmeDefaut: await programmeDefaut(rootPath),
+  }));
   return path;
+}
+
+/** Programme par défaut : PREMIÈRE entrée de la sélection (§4.4), résolue en
+ *  filière/matière. `undefined` si rien n'est sélectionné ou si l'entrée
+ *  désigne un programme absent — l'instruction ne doit jamais nommer un
+ *  document inexistant. */
+async function programmeDefaut(rootPath: string) {
+  const [id] = programmesSelection.current;
+  if (!id) return undefined;
+  try {
+    const dispo = await invoke<{ id: string; filiere: string[]; matiere?: string }[]>(
+      "programmes_lister",
+      { corpusDir: await corpusDir(), root: rootPath },
+    );
+    const p = dispo.find((x) => x.id === id);
+    return p?.filiere[0] ? { filiere: p.filiere[0], matiere: p.matiere } : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function send() {

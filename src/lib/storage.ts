@@ -49,6 +49,7 @@ export const STORAGE_KEYS = {
   previewMonoFamily: "mdview.preview.mono.font",
   fontHinting: "mdview.font.hinting",
   callouts:   "mdview.callouts",
+  programmesSelection: "mdview.programmes.selection",
   csvStyle: "mdview.csv.style",
   latexSettings: "mdview.latex.settings",
   shortcuts: "mdview.shortcuts",

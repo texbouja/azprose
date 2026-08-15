@@ -23,6 +23,17 @@ export interface AgentCalloutInfo {
   builtin: boolean;
 }
 
+/** Programme par défaut de ce vault — **un nom, pas un contenu** (R4).
+ *
+ *  L'instruction ne porte qu'un COMPORTEMENT (« charge-le quand la question
+ *  est pédagogique ») ; la donnée continue de passer par `programme_charger`.
+ *  C'est la première entrée de la sélection (§4.4) : aucune clé de
+ *  configuration supplémentaire. */
+export interface AgentProgrammeDefaut {
+  filiere: string;
+  matiere?: string;
+}
+
 /** Plus aucune option de DONNÉES (R2, 2026-08-15).
  *
  *  Le préambule mathématique et la liste des callouts étaient auparavant
@@ -34,7 +45,10 @@ export interface AgentCalloutInfo {
  *
  *  Cette interface reste — vide — pour que la signature de
  *  `buildAgentInstructions` ne change pas au gré des phases. */
-export interface AgentInstructionOptions {}
+export interface AgentInstructionOptions {
+  /** Programme par défaut à signaler (nom seul — cf. `AgentProgrammeDefaut`). */
+  programmeDefaut?: AgentProgrammeDefaut;
+}
 
 /**
  * Texte d'instructions — **comportement uniquement** (R2, 2026-08-15).
@@ -47,7 +61,7 @@ export interface AgentInstructionOptions {}
  * ⚠️ Construit par concaténation, PAS un unique template literal : le texte
  * contient des backticks et des antislashes.
  */
-export function buildAgentInstructions(rootPath: string, _opts: AgentInstructionOptions = {}): string {
+export function buildAgentInstructions(rootPath: string, opts: AgentInstructionOptions = {}): string {
   const parts: string[] = [
     `# Environnement AZprose
 
@@ -89,6 +103,24 @@ Ces conventions valent dans tes réponses — elles sont rendues — comme dans 
 documents que tu rédiges.`,
   ];
 
+  // Programme par défaut : un NOM et une consigne, jamais le contenu — celui-ci
+  // reste servi par `programme_charger`. Omis quand aucun programme n'est
+  // sélectionné : l'instruction ne doit jamais désigner un document inexistant.
+  const pd = opts.programmeDefaut;
+  if (pd?.filiere) {
+    const cible = pd.matiere ? `${pd.filiere} (${pd.matiere})` : pd.filiere;
+    parts.push(`## Programme officiel
+
+Le programme par défaut de ce vault est **${cible}**. Dès qu'une question
+touche au contenu pédagogique — rédiger un cours, un exercice, un sujet —
+charge-le avec \`programme_charger\`, et vérifie les notions douteuses avec
+\`verifier_perimetre\`.
+
+Un programme se lit **en entier** : ne travaille jamais sur un extrait, les
+mentions limitatives (« hors programme », « non exigible ») sont dispersées.
+\`programme_lister\` donne les autres programmes disponibles.`);
+  }
+
   return parts.join("\n\n") + "\n";
 }
 
@@ -111,6 +143,20 @@ export function buildAgentConfig(instructionsPath: string): Record<string, unkno
       // moteurs de glob ne font pas correspondre `**/` à une profondeur nulle.
       read: { ".azprose/data.db": "deny", "**/.azprose/data.db": "deny" },
       edit: { ".azprose/data.db": "deny", "**/.azprose/data.db": "deny" },
+    },
+    // Commandes personnalisées injectées PAR LA CONFIG (R0 : la clé `command`
+    // est supportée) — donc aucun dossier `.opencode/` à créer dans le vault
+    // de l'utilisateur. `$1`/`$2` sont les arguments positionnels.
+    command: {
+      ajouter: {
+        description: "Charger un programme officiel dans la conversation",
+        template:
+          "Charge le programme officiel de la filière $1" +
+          " (matière : $2, vide = toutes) avec l'outil `programme_charger`," +
+          " puis résume en trois lignes son périmètre et ses limites" +
+          " principales. Si aucun programme ne correspond, dis-le et liste" +
+          " ce qui est disponible avec `programme_lister`.",
+      },
     },
   };
 }
