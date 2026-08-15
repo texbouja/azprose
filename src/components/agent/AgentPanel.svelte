@@ -116,48 +116,102 @@ function pushItem(item: FeedItemDraft): number {
 // Cache des formules déjà composées (même mécanisme que la preview) : clé
 // `data-math-source` → outerHTML du <mjx-container>. Grâce à lui, le typeset
 // peut tourner PENDANT le stream : une formule complète est composée une
-// seule fois, puis réinjectée à chaque chunk — rendu « live », zéro recomposition.
+// seule fois, puis réinjectée à chaque rendu — zéro recomposition.
 const mathCache = createMathCache();
 
-// Typeset lissé pendant le stream : les chunks arrivent à ~50/s, on compose
-// au plus toutes les ~120 ms (trailing) — les maths déjà composées sortent du
-// cache, MathJax ne traite que les nouvelles.
+// ── Throttle du rendu + verrou du typeset (correctif gel UI) ──────────────
+// Les chunks arrivent à ~50/s. Sans lissage, CHACUN déclenchait un rendu
+// markdown COMPLET du texte accumulé + une réinjection innerHTML incluant les
+// SVG MathJax du cache (très verbeux) : travail QUADRATIQUE permanent qui
+// sature le main thread sur une réponse longue — le « gel » constaté. Et sans
+// verrou, un typeset plus long que le délai empilait des typesetPromise
+// CONCURRENTS (MathJax n'est pas réentrant).
+const pendingRender = new Set<number>();
+let renderTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Planifie un rendu markdown de l'item — au plus un passage par ~80 ms,
+ *  tous les items modifiés rendus en un seul batch. */
+function scheduleRender(item: FeedItem) {
+  pendingRender.add(item.id);
+  if (renderTimer) return;
+  renderTimer = setTimeout(flushRenders, 80);
+}
+
+function flushRenders() {
+  renderTimer = null;
+  const ids = [...pendingRender];
+  pendingRender.clear();
+  if (ids.length === 0) return;
+  // Mémoriser les formules composées AVANT que Svelte ne remplace le DOM.
+  if (feedEl) mathCache.extractFrom(feedEl);
+  for (const id of ids) {
+    const item = items.find((i) => i.id === id);
+    if (!item || (item.kind !== "agent" && item.kind !== "thought")) continue;
+    const text = item.text;
+    void renderChatMarkdown(text, theme.resolved).then((html) => {
+      // Le texte a pu muter pendant le rendu : ne pas écraser avec un HTML
+      // périmé — le batch suivant relancera un rendu si l'item a encore bougé.
+      if (item.text !== text) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      mathCache.injectInto(tmp);
+      item.html = tmp.innerHTML;
+    });
+  }
+  scheduleLiveTypeset();
+}
+
+// Typeset lissé ET verrouillé : un seul typesetPromise en vol ; une demande
+// pendant l'exécution arme `dirty` et enchaîne UN rattrapage à la fin.
 let liveTypesetTimer: ReturnType<typeof setTimeout> | null = null;
+let typesetting = false;
+let typesetDirty = false;
+
 function scheduleLiveTypeset() {
   if (liveTypesetTimer) return;
   liveTypesetTimer = setTimeout(() => {
     liveTypesetTimer = null;
-    if (feedEl) void typesetMath(feedEl);
-  }, 120);
+    void runLiveTypeset();
+  }, 150);
 }
 
-/** Re-rend le markdown d'un item (agent/thought) — appelé à CHAQUE chunk du
- *  stream. Le rendu est asynchrone (chargement Shiki à la demande) : le texte
- *  brut sert de repli visible entre-temps. */
-function renderItem(item: FeedItem | undefined) {
-  if (!item || (item.kind !== "agent" && item.kind !== "thought")) return;
-  const text = item.text;
-  // Mémoriser les formules composées AVANT que Svelte ne remplace le DOM.
-  if (feedEl) mathCache.extractFrom(feedEl);
-  void renderChatMarkdown(text, theme.resolved).then((html) => {
-    // Le texte a pu muter pendant le rendu (chunk suivant) : ne pas écraser
-    // avec un HTML périmé — le prochain chunk relancera un rendu.
-    if (item.text !== text) return;
-    const tmp = document.createElement("div");
-    tmp.innerHTML = html;
-    mathCache.injectInto(tmp);
-    item.html = tmp.innerHTML;
+async function runLiveTypeset(): Promise<void> {
+  if (!feedEl) return;
+  // Rien à faire sans formule — évite la re-composition du préambule et le
+  // scan MathJax sur les réponses sans maths.
+  if (!feedEl.querySelector("[data-math-source]")) return;
+  if (typesetting) { typesetDirty = true; return; }
+  typesetting = true;
+  try {
+    await typesetMath(feedEl);
+  } catch {
+    // Formule transitoire malformée en cours de frappe : sans objet, le
+    // prochain passage (ou le typeset de fin de tour) la reprendra.
+  }
+  typesetting = false;
+  if (typesetDirty) {
+    typesetDirty = false;
     scheduleLiveTypeset();
-  });
+  }
 }
 
-/** Finitions de fin de tour (streaming terminé) : un DERNIER typeset immédiat
- *  (couvre les maths arrivées dans les tout derniers chunks, avant que le
- *  debounce live n'ait tiré) et résolution des wikilinks. */
+/** Finitions de fin de tour (streaming terminé) : rendu final immédiat des
+ *  items encore en attente (le throttle laisserait le dernier texte brut
+ *  visible ~80 ms), puis DERNIER typeset (verrou partagé avec le live) et
+ *  résolution des wikilinks. */
 async function finishTurnRendering() {
+  if (renderTimer) {
+    clearTimeout(renderTimer);
+    renderTimer = null;
+    flushRenders();
+  }
+  if (liveTypesetTimer) {
+    clearTimeout(liveTypesetTimer);
+    liveTypesetTimer = null;
+  }
   await tick();
   if (!feedEl) return;
-  await typesetMath(feedEl);
+  await runLiveTypeset();
   const root = getProjectRoot();
   if (root) await resolveWikilinkPaths(feedEl, root);
 }
@@ -173,12 +227,13 @@ function applyUpdate(u: SessionUpdate) {
         const item = items.find((i) => i.id === existing);
         if (item && item.kind === "agent") {
           item.text += text;
-          renderItem(item);
+          scheduleRender(item);
         }
       } else {
         const id = pushItem({ kind: "agent", text });
         messageItems.set(key, id);
-        renderItem(items.find((i) => i.id === id));
+        const item = items.find((i) => i.id === id);
+        if (item) scheduleRender(item);
       }
       break;
     }
@@ -190,14 +245,15 @@ function applyUpdate(u: SessionUpdate) {
         const item = items.find((i) => i.id === existing);
         if (item && item.kind === "thought") {
           item.text += text;
-          renderItem(item);
+          scheduleRender(item);
         }
       } else {
         // Repliée par défaut (anatomie arrêtée) : la réflexion est un
         // contexte, pas le contenu.
         const id = pushItem({ kind: "thought", text, open: false });
         messageItems.set(`thought:${key}`, id);
-        renderItem(items.find((i) => i.id === id));
+        const item = items.find((i) => i.id === id);
+        if (item) scheduleRender(item);
       }
       break;
     }
