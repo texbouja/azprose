@@ -39,11 +39,21 @@ export interface AgentClientOptions {
   onServerRequest?: (req: AgentRequest) => Promise<unknown> | unknown;
 }
 
+/** Serveur MCP déclaré à la session — **forme mesurée en R0** contre OpenCode
+ *  1.18.11 : `type` et `headers` sont OBLIGATOIRES, une déclaration réduite à
+ *  `{name, url}` est rejetée en `-32602 Invalid params`. */
+export interface McpServerDecl {
+  name: string;
+  type: "http";
+  url: string;
+  headers: { name: string; value: string }[];
+}
+
 export interface AgentClient {
   /** Spawn + initialize. Rejette avec `agent.notInstalled` si le binaire
    *  est absent (ENOENT) — l'UI affiche un message clair, jamais d'échec muet. */
   start(): Promise<InitializeResult>;
-  newSession(cwd: string): Promise<string>;
+  newSession(cwd: string, mcpServers?: McpServerDecl[]): Promise<string>;
   prompt(sessionId: string, text: string): Promise<PromptResult>;
   cancel(sessionId: string): Promise<void>;
   onUpdate(cb: (u: SessionUpdate) => void): () => void;
@@ -101,11 +111,11 @@ export function createAgentClient(options: AgentClientOptions): AgentClient {
       }
     },
 
-    async newSession(cwd: string): Promise<string> {
+    async newSession(cwd: string, mcpServers: McpServerDecl[] = []): Promise<string> {
       if (!started) throw new Error("agent non démarré (start() requis)");
       const result = (await transport.sendRequest("session/new", {
         cwd,
-        mcpServers: [],
+        mcpServers,
       })) as { sessionId: string };
       return result.sessionId;
     },

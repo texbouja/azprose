@@ -6,5 +6,7 @@
 //! réécriture (décision D3 du chantier).
 
 pub mod bridge;
+pub mod mcp;
 
 pub use bridge::AcpBridgeState;
+pub use mcp::McpState;

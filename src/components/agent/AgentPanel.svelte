@@ -7,7 +7,8 @@
 // Permissions (phase 4) : affichées DANS LE FIL, jamais en modale — un side
 // panel est étroit, une modale y couperait le contexte au pire moment.
 import { onMount, onDestroy, tick } from "svelte";
-import { createAgentClient, type AgentClient } from "@/lib/agent/client";
+import { createAgentClient, type AgentClient, type McpServerDecl } from "@/lib/agent/client";
+import { invoke } from "@tauri-apps/api/core";
 import type { SessionUpdate } from "@/lib/agent/types";
 import {
   createAgentHandlers,
@@ -334,7 +335,7 @@ async function startSession() {
     });
     await client.start();
     offUpdate ??= client.onUpdate(applyUpdate);
-    sessionId = await client.newSession(root);
+    sessionId = await client.newSession(root, await mcpServers(root));
     status = "ready";
   } catch (e) {
     if (e instanceof Error && e.name === "AgentNotInstalledError") {
@@ -343,6 +344,32 @@ async function startSession() {
       status = "error";
       errorMessage = String(e);
     }
+  }
+}
+
+/** Serveur MCP d'AZprose, démarré et déclaré à la session (R1).
+ *
+ *  C'est par LUI que passent désormais les données du vault — préambule
+ *  mathématique, callouts… — au lieu d'être recopiées dans les instructions
+ *  (doctrine du rectificatif : « une donnée ne s'écrit jamais dans les
+ *  instructions »). L'agent l'interroge quand il en a besoin, et la réponse
+ *  fait foi.
+ *
+ *  Dégradation VOLONTAIRE : si le serveur ne démarre pas, la session s'ouvre
+ *  quand même, sans outils. Perdre l'assistant entier parce qu'un port n'a pas
+ *  pu être ouvert serait hors de proportion. */
+async function mcpServers(root: string): Promise<McpServerDecl[]> {
+  try {
+    const ep = await invoke<{ url: string; token: string }>("mcp_start", { root });
+    return [{
+      name: "azprose",
+      type: "http",
+      url: ep.url,
+      headers: [{ name: "Authorization", value: `Bearer ${ep.token}` }],
+    }];
+  } catch (e) {
+    console.warn("[agent] serveur MCP indisponible, session sans outils :", e);
+    return [];
   }
 }
 
