@@ -21,6 +21,7 @@ import {
   AGENT_INSTRUCTIONS_FILENAME,
   buildAgentEnv,
   buildAgentInstructions,
+  extractToolBody,
   extractToolDiff,
   type ToolDiff,
 } from "@/lib/agent/context";
@@ -51,7 +52,7 @@ type FeedItem =
   // repli sur le texte brut tant que le premier rendu n'est pas prêt.
   | { id: number; kind: "agent"; text: string; html?: string }
   | { id: number; kind: "thought"; text: string; html?: string; open: boolean }
-  | { id: number; kind: "tool"; toolCallId: string; title: string; toolKind: string; status: string; detail: string; diff?: ToolDiff; open: boolean }
+  | { id: number; kind: "tool"; toolCallId: string; title: string; toolKind: string; status: string; detail: string; body?: string; diff?: ToolDiff; open: boolean }
   // Permission DANS LE FIL (jamais en modale — règle 3 de l'anatomie) :
   // `resolve` renvoie l'optionId choisi au handler suspendu, null = annulé.
   | { id: number; kind: "permission"; title: string; location?: string; diff?: ToolDiff; options: PermissionOption[]; resolved: boolean; resolve: (optionId: string | null) => void };
@@ -290,6 +291,8 @@ function applyUpdate(u: SessionUpdate) {
       if (loc) item.detail = loc;
       // Diff de la modification (D14 : relu DANS le panneau, jamais appliqué
       // à l'éditeur) — fourni par OpenCode dans `content` (phase 0c).
+      const corps = extractToolBody(u);
+      if (corps) item.body = corps;
       const diff = extractToolDiff(u);
       if (diff) item.diff = diff;
       // Déplié seulement s'il échoue (règle de rendu 2).
@@ -560,16 +563,32 @@ onDestroy(() => {
           </div>
         </details>
       {:else if item.kind === "tool"}
-        <details class="agent__tool" bind:open={item.open} data-status={item.status}>
-          <summary>
-            <i class="wxi-chevron-right agent__chevron"></i>
-            <i class={toolIcon(item.toolKind)}></i>
-            <span class="agent__tool-title">{item.title}</span>
-            {#if item.detail}<span class="agent__tool-detail">{item.detail}</span>{/if}
-            <span class="agent__tool-status">{item.status}</span>
-          </summary>
-          {#if item.diff}{@render diffBlock(item.diff)}{/if}
-        </details>
+        <!-- Le chevron n'apparaît QUE s'il y a un corps à déplier : une
+             affordance qui ouvre sur le vide (cas des tâches de sous-agent,
+             sans diff) est pire que pas d'affordance du tout. -->
+        {@const depliable = !!item.diff || !!item.body}
+        {#if depliable}
+          <details class="agent__tool" bind:open={item.open} data-status={item.status}>
+            <summary>
+              <i class="wxi-chevron-right agent__chevron"></i>
+              <i class={toolIcon(item.toolKind)}></i>
+              <span class="agent__tool-title">{item.title}</span>
+              {#if item.detail}<span class="agent__tool-detail">{item.detail}</span>{/if}
+              <span class="agent__tool-status">{item.status}</span>
+            </summary>
+            {#if item.diff}{@render diffBlock(item.diff)}{/if}
+            {#if item.body}<pre class="agent__tool-body">{item.body}</pre>{/if}
+          </details>
+        {:else}
+          <div class="agent__tool agent__tool--plat" data-status={item.status}>
+            <div class="agent__tool-row">
+              <i class={toolIcon(item.toolKind)}></i>
+              <span class="agent__tool-title">{item.title}</span>
+              {#if item.detail}<span class="agent__tool-detail">{item.detail}</span>{/if}
+              <span class="agent__tool-status">{item.status}</span>
+            </div>
+          </div>
+        {/if}
       {:else if item.kind === "permission"}
         <div class="agent__perm" class:agent__perm--resolved={item.resolved}>
           <div class="agent__perm-q">
@@ -685,11 +704,27 @@ onDestroy(() => {
   .agent__feed {
     flex: 1;
     overflow-y: auto;
+    /* Aucun défilement HORIZONTAL : un enfant trop large serait rogné et ses
+       bordures apparaîtraient coupées. C'est la contrainte de largeur des
+       enfants ci-dessous qui règle le problème à la source. */
+    overflow-x: hidden;
     padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 10px;
     min-height: 0;
+  }
+  /* Largeur de LECTURE conventionnelle : le panneau latéral peut être élargi
+     bien au-delà du confort de lecture. Le fil se cale au centre plutôt que de
+     s'étirer sur toute la largeur disponible.
+     `min-width: 0` : sans lui, un enfant flex refuse de rétrécir sous la
+     largeur de son contenu — une longue description de tâche ou un chemin de
+     fichier débordait alors du panneau, d'où les décorations tronquées. */
+  .agent__feed > :global(*) {
+    width: 100%;
+    max-width: 68ch;
+    margin-inline: auto;
+    min-width: 0;
   }
   .agent__notice {
     color: var(--muted);
@@ -701,7 +736,10 @@ onDestroy(() => {
   }
 
   /* ── Messages ─────────────────────────────────────────────── */
-  .agent__msg { font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  /* `overflow-wrap: anywhere` plutôt que `word-break` : un chemin ou une URL
+     sans espace doit pouvoir se couper, sinon il élargit son encadré au-delà
+     du panneau et la bordure se retrouve tronquée. */
+  .agent__msg { font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
   /* Une fois le HTML rendu, ce sont les blocs (<p>, <ul>…) qui portent la
      mise en forme — pre-wrap doublerait les sauts de ligne. */
   .agent__msg--html { white-space: normal; }
@@ -780,6 +818,7 @@ onDestroy(() => {
     padding: 3px 8px;
   }
   .agent__tool summary {
+    min-width: 0;
     cursor: pointer;
     font-size: 12px;
     color: var(--fg);
@@ -795,7 +834,41 @@ onDestroy(() => {
     transition: transform var(--dur-fast) var(--easing);
   }
   .agent__tool[open] .agent__chevron { transform: rotate(90deg); }
-  .agent__tool-title { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+  /* Rangée d'un outil NON dépliable : même géométrie que le <summary>, sans
+     chevron — l'alignement du fil reste identique. */
+  .agent__tool-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 22px;
+    min-width: 0;
+  }
+  /* Le titre peut être une phrase entière (tâche de sous-agent) : il doit
+     pouvoir rétrécir, sinon il pousse la rangée hors du panneau. */
+  .agent__tool-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Corps déplié : sortie de l'outil, souvent longue et déjà mise en forme. */
+  .agent__tool-body {
+    margin: 6px 0 2px;
+    padding: 7px 9px;
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--fg);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 320px;
+    overflow-y: auto;
+  }
   .agent__tool-detail {
     font-family: var(--font-mono);
     font-size: 11px;

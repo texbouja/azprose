@@ -198,5 +198,50 @@ export function extractToolDiff(params: unknown): ToolDiff | undefined {
   };
 }
 
+/**
+ * Texte détaillé d'un appel d'outil, pour le corps du bloc dépliable.
+ *
+ * Sans lui, une tâche de sous-agent — qui ne produit aucun diff — affichait un
+ * chevron ouvrant sur le VIDE. Une affordance qui ne tient pas sa promesse est
+ * pire que pas d'affordance : le panneau n'affiche désormais le chevron que
+ * s'il y a quelque chose à montrer.
+ *
+ * Ordre de préférence : le contenu textuel rendu, puis la sortie brute, puis
+ * l'entrée brute — du plus lisible au plus technique.
+ */
+export function extractToolBody(params: unknown): string | undefined {
+  const p = (params ?? {}) as {
+    toolCall?: { content?: unknown; rawOutput?: unknown; rawInput?: unknown };
+    content?: unknown;
+    rawOutput?: unknown;
+    rawInput?: unknown;
+  };
+  const blocs = p.toolCall?.content ?? p.content;
+
+  if (Array.isArray(blocs)) {
+    const morceaux: string[] = [];
+    for (const b of blocs) {
+      if (!b || typeof b !== "object") continue;
+      const bloc = b as { type?: string; text?: string; content?: { text?: string } };
+      // Le diff a son propre rendu (D14) — ne pas le dupliquer en texte.
+      if (bloc.type === "diff") continue;
+      const texte = bloc.text ?? bloc.content?.text;
+      if (typeof texte === "string" && texte.trim()) morceaux.push(texte.trim());
+    }
+    if (morceaux.length > 0) return morceaux.join("\n\n");
+  }
+
+  for (const brut of [p.toolCall?.rawOutput ?? p.rawOutput, p.toolCall?.rawInput ?? p.rawInput]) {
+    if (brut == null) continue;
+    if (typeof brut === "string" && brut.trim()) return brut.trim();
+    try {
+      const s = JSON.stringify(brut, null, 2);
+      // Un objet vide n'apprend rien : ne pas ouvrir un bloc pour « {} ».
+      if (s && s !== "{}" && s !== "[]") return s;
+    } catch { /* non sérialisable : rien à montrer */ }
+  }
+  return undefined;
+}
+
 /** Ré-export pratique pour le panneau (évite un second import). */
 export type { AgentRequest };

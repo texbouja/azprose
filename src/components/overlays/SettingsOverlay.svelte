@@ -54,7 +54,7 @@ let {
 } = $props();
 
 type ModuleId = "general" | "prose-writing" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques" | "programmes";
-type SectionId = "markdown" | "general" | "latex" | "colles" | "printing";
+type SectionId = "markdown" | "general" | "latex" | "colles" | "printing" | "assistant";
 
 const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
   {
@@ -78,7 +78,6 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
       { id: "presentation",  labelKey: "settings.module.presentation" },
       { id: "mathjax",       labelKey: "settings.module.mathjax" },
       { id: "callouts",      labelKey: "settings.module.callouts" },
-      { id: "programmes",    labelKey: "settings.module.programmes" },
     ],
   },
   {
@@ -98,6 +97,15 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
     ],
   },
   {
+    // Section À PART, pas un module de « Markdown » : les programmes ne sont
+    // pas un réglage de rendu, ce sont les données de référence de l'assistant.
+    id: "assistant",
+    labelKey: "settings.section.assistant",
+    modules: [
+      { id: "programmes", labelKey: "settings.module.programmes" },
+    ],
+  },
+  {
     id: "printing",
     labelKey: "settings.section.printing",
     modules: [
@@ -114,25 +122,97 @@ let activeModule = $state<ModuleId>("editor");
 // le disque tant que l'utilisateur ne consulte pas cette section.
 type ProgrammeDispo = {
   id: string; filiere: string[]; matiere?: string; niveau?: string;
-  source?: string; statut?: string; couverture?: string[]; origine: string;
+  source?: string; statut?: string; couverture?: string[]; origine: string; chemin: string;
 };
 let programmesDispo = $state<ProgrammeDispo[]>([]);
 
+async function rechargerProgrammes() {
+  try {
+    const { corpusDir } = await import("@/programmes");
+    const liste = await invoke<ProgrammeDispo[]>("programmes_lister", {
+      corpusDir: await corpusDir(),
+      root: getProjectRoot() ?? null,
+    });
+    // Affichage dans l'ordre de la SÉLECTION (le premier est le défaut), puis
+    // le reste : réordonner devient ainsi une action lisible et utile.
+    const sel = programmesSelection.current;
+    programmesDispo = [...liste].sort((a, b) => {
+      const ia = sel.indexOf(a.id), ib = sel.indexOf(b.id);
+      if (ia === -1 && ib === -1) return a.id.localeCompare(b.id);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+  } catch (e) {
+    console.warn("[settings] programmes illisibles :", e);
+    programmesDispo = [];
+  }
+}
+
 $effect(() => {
   if (activeModule !== "programmes") return;
-  void (async () => {
-    try {
-      const { corpusDir } = await import("@/programmes");
-      programmesDispo = await invoke<ProgrammeDispo[]>("programmes_lister", {
-        corpusDir: await corpusDir(),
-        root: getProjectRoot() ?? null,
-      });
-    } catch (e) {
-      console.warn("[settings] programmes illisibles :", e);
-      programmesDispo = [];
-    }
-  })();
+  void rechargerProgrammes();
 });
+
+/** Ajoute un fichier de programme DÉJÀ INDEXÉ, obtenu par un moyen
+ *  quelconque. Le fichier est COPIÉ dans le corpus applicatif : l'original
+ *  reste où il est, et le programme devient disponible pour tous les projets. */
+async function ajouterProgramme() {
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const choix = await open({
+      multiple: false,
+      filters: [{ name: "Programme indexé", extensions: ["md"] }],
+    });
+    if (typeof choix !== "string") return;
+
+    const { readTextFile, writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
+    const { corpusDir } = await import("@/programmes");
+    const { join, basename } = await import("@tauri-apps/api/path");
+    const dir = await corpusDir();
+    await mkdir(dir, { recursive: true });
+    await writeTextFile(await join(dir, await basename(choix)), await readTextFile(choix));
+    await rechargerProgrammes();
+  } catch (e) {
+    console.warn("[settings] ajout impossible :", e);
+  }
+}
+
+/** Ouvre le fichier dans l'application système associée au markdown.
+ *  PAS dans AZprose : ces fichiers vivent hors du dossier de projet, qu'AZprose
+ *  n'a pas vocation à quitter. */
+async function editerProgramme(p: ProgrammeDispo) {
+  try {
+    const { openPath } = await import("@tauri-apps/plugin-opener");
+    await openPath(p.chemin);
+  } catch (e) {
+    console.warn("[settings] ouverture impossible :", e);
+  }
+}
+
+async function supprimerProgramme(p: ProgrammeDispo) {
+  try {
+    const { remove } = await import("@tauri-apps/plugin-fs");
+    await remove(p.chemin);
+    // Retirer aussi de la sélection : garder un identifiant orphelin ferait
+    // désigner un défaut inexistant.
+    programmesSelection.current = programmesSelection.current.filter((x) => x !== p.id);
+    await rechargerProgrammes();
+  } catch (e) {
+    console.warn("[settings] suppression impossible :", e);
+  }
+}
+
+/** Déplace une entrée SÉLECTIONNÉE dans l'ordre — le premier est le défaut. */
+function deplacerProgramme(id: string, delta: number) {
+  const liste = [...programmesSelection.current];
+  const i = liste.indexOf(id);
+  const j = i + delta;
+  if (i === -1 || j < 0 || j >= liste.length) return;
+  [liste[i], liste[j]] = [liste[j], liste[i]];
+  programmesSelection.current = liste;
+  void rechargerProgrammes();
+}
 let expandedSections = $state(new Set<SectionId>(["general", "markdown", "latex", "colles", "printing"]));
 
 // ── Réglages des colles (Dates + Rubriques) ────────────────────────────────
@@ -1452,33 +1532,56 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             {:else}
               {#each programmesDispo as p (p.id)}
                 {@const choisi = programmesSelection.current.includes(p.id)}
-                {@const defaut = programmesSelection.current[0] === p.id}
-                <div class="mdv-settings__row">
-                  <Checkbox
-                    label={`${p.filiere.join(" / ")}${p.matiere ? ` — ${p.matiere}` : ""}${p.niveau ? ` (${t("settings.programmesNiveau")} ${p.niveau})` : ""}`}
-                    value={choisi}
-                    onchange={() => programmesSelection.toggle(p.id)}
-                  />
-                  {#if choisi && !defaut}
-                    <button
-                      type="button"
-                      class="mdv-btn mdv-btn--ghost"
-                      onclick={() => programmesSelection.promouvoir(p.id)}
-                    >{t("settings.programmesPromouvoir")}</button>
-                  {/if}
-                  {#if defaut}
-                    <span class="mdv-settings__hint">{t("settings.programmesDefaut")}</span>
-                  {/if}
+                {@const rang = programmesSelection.current.indexOf(p.id)}
+                <div class="mdv-prog">
+                  <div class="mdv-prog__main">
+                    <Checkbox
+                      label={`${p.filiere.join(" / ")}${p.matiere ? ` — ${p.matiere}` : ""}${p.niveau ? ` (${t("settings.programmesNiveau")} ${p.niveau})` : ""}`}
+                      value={choisi}
+                      onchange={() => { programmesSelection.toggle(p.id); void rechargerProgrammes(); }}
+                    />
+                    <p class="mdv-prog__meta">
+                      {#if rang === 0}<strong>{t("settings.programmesDefaut")}</strong> · {/if}
+                      {p.origine === "vault" ? t("settings.programmesOrigineVault") : t("settings.programmesOrigineLivre")}
+                      {#if p.statut === "specimen"}
+                        · {t("settings.programmesPartiel", { n: String(p.couverture?.length ?? 0) })}
+                      {/if}
+                      {#if p.source}· {p.source}{/if}
+                    </p>
+                  </div>
+                  <!-- Actions à l'extrémité droite. Réordonner n'a de sens que
+                       sur une entrée sélectionnée : c'est l'ordre de la
+                       sélection qui désigne le programme par défaut. -->
+                  <div class="mdv-prog__actions">
+                    <button type="button" class="mdv-prog__btn" title={t("settings.programmesMonter")}
+                      disabled={!choisi || rang <= 0}
+                      onclick={() => deplacerProgramme(p.id, -1)}>
+                      <i class="wxi-arrow-up"></i>
+                    </button>
+                    <button type="button" class="mdv-prog__btn" title={t("settings.programmesDescendre")}
+                      disabled={!choisi || rang === -1 || rang >= programmesSelection.current.length - 1}
+                      onclick={() => deplacerProgramme(p.id, 1)}>
+                      <i class="wxi-arrow-down"></i>
+                    </button>
+                    <button type="button" class="mdv-prog__btn" title={t("settings.programmesEditer")}
+                      onclick={() => editerProgramme(p)}>
+                      <i class="wxi-external"></i>
+                    </button>
+                    <button type="button" class="mdv-prog__btn mdv-prog__btn--danger" title={t("settings.programmesSupprimer")}
+                      onclick={() => supprimerProgramme(p)}>
+                      <i class="wxi-trash"></i>
+                    </button>
+                  </div>
                 </div>
-                <p class="mdv-settings__hint">
-                  {p.origine === "vault" ? t("settings.programmesOrigineVault") : t("settings.programmesOrigineLivre")}
-                  {#if p.statut === "specimen"}
-                    · {t("settings.programmesPartiel", { n: String(p.couverture?.length ?? 0) })}
-                  {/if}
-                  {#if p.source}· {p.source}{/if}
-                </p>
               {/each}
             {/if}
+
+            <div class="mdv-settings__row" style="margin-top:10px">
+              <button type="button" class="mdv-btn" onclick={ajouterProgramme}>
+                {t("settings.programmesAjouter")}
+              </button>
+            </div>
+            <p class="mdv-settings__hint">{t("settings.programmesAjouterHint")}</p>
           {/if}
 
           {#if activeModule === "csv-general"}

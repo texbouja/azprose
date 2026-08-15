@@ -857,3 +857,36 @@ body:has(.mdv-overlay--settings) {
   opacity: 0.5;
   cursor: default;
 }
+
+/* ── Programmes officiels (section « Assistant IA ») ───────────────────────
+   Rangée : libellé et métadonnées à gauche, actions calées à l'extrémité
+   DROITE — elles restent alignées quelle que soit la longueur du libellé. */
+.mdv-prog {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mdv-prog__main { flex: 1; min-width: 0; }
+.mdv-prog__meta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  /* Un chemin de source n'a pas d'espace : sans ceci il élargirait la rangée. */
+  overflow-wrap: anywhere;
+}
+.mdv-prog__actions { display: flex; gap: 2px; flex: none; }
+.mdv-prog__btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 5px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1;
+}
+.mdv-prog__btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--fg); }
+.mdv-prog__btn:disabled { opacity: 0.3; cursor: default; }
+.mdv-prog__btn--danger:hover:not(:disabled) { color: var(--color-error); }

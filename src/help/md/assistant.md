@@ -2,7 +2,7 @@
 parent: index
 ---
 
-# L'assistant
+# L'assistant IA
 
 AZprose peut accueillir un **assistant conversationnel** dans un onglet du
 panneau latéral : vous lui parlez en français, il lit et rédige vos notes, et il
@@ -45,7 +45,7 @@ bouton **stop** interrompt la réponse en cours.
 
 ## Vous gardez la main sur les fichiers
 
-L'assistant peut lire et modifier les fichiers de votre coffre, mais **il vous
+L'assistant IA peut lire et modifier les fichiers de votre coffre, mais **il vous
 demande l'autorisation** avant chaque écriture. La demande apparaît dans le fil
 de la conversation, avec l'aperçu des modifications proposées.
 
@@ -93,10 +93,26 @@ de rédiger.
 
 ### Choisir vos programmes
 
-Ouvrez **Réglages** (`⌘,`) → **Markdown** → **Programmes**, et cochez les
-filières qui vous concernent. Le premier programme coché devient celui que
-l'assistant charge par défaut ; le bouton *définir par défaut* permet d'en
-promouvoir un autre.
+Ouvrez **Réglages** (`⌘,`) → **Assistant IA** → **Programmes**, et cochez les
+filières qui vous concernent.
+
+Chaque entrée porte quatre boutons à sa droite :
+
+| Bouton | Effet |
+|---|---|
+| **↑ / ↓** | change l'ordre — **le premier de la liste est le programme chargé par défaut** |
+| **↗** | ouvre le fichier dans votre application markdown habituelle |
+| **🗑** | retire le programme d'AZprose |
+
+Le bouton **Ajouter un programme…** installe un fichier de programme déjà
+indexé, obtenu par un moyen quelconque. Il est **copié** dans AZprose : votre
+fichier d'origine reste où il est, et le programme devient disponible pour tous
+vos projets.
+
+> [!note] L'ouverture se fait hors d'AZprose
+> Ces fichiers ne vivent pas dans votre coffre mais dans les données de
+> l'application. AZprose n'ouvre que les documents de votre projet : l'édition
+> passe donc par l'application que votre système associe au markdown.
 
 Les changements prennent effet à la **prochaine session** : le bouton *nouvelle
 session* du panneau suffit, inutile de redémarrer l'application.

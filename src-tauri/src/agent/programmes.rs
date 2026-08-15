@@ -74,6 +74,10 @@ fn severite(statut: &str) -> u8 {
 
 // ── Modèle ──────────────────────────────────────────────────────────────────
 
+fn chemin_en_texte<S: serde::Serializer>(p: &PathBuf, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&p.to_string_lossy())
+}
+
 #[derive(Clone, Serialize)]
 pub struct Programme {
     pub id: String,
@@ -85,7 +89,9 @@ pub struct Programme {
     pub couverture: Vec<String>,
     /// `"livre"` (corpus installé) ou `"vault"` (échappatoire de l'utilisateur).
     pub origine: String,
-    #[serde(skip)]
+    /// Chemin absolu — exposé au front pour les actions « éditer » et
+    /// « supprimer » du panneau de réglages.
+    #[serde(serialize_with = "chemin_en_texte")]
     pub chemin: PathBuf,
     #[serde(skip)]
     pub contenu: String,

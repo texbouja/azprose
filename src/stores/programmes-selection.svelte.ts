@@ -27,11 +27,6 @@ export const programmesSelection = {
     const liste = stored.current;
     stored.current = liste.includes(id) ? liste.filter((x) => x !== id) : [...liste, id];
   },
-  /** Promeut un programme au rang de défaut (première position). */
-  promouvoir(id: string) {
-    const reste = stored.current.filter((x) => x !== id);
-    stored.current = [id, ...reste];
-  },
   /** Chargement depuis `config.json`. */
   load(ids: string[]) {
     stored.current = ids;
