@@ -412,6 +412,19 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+/** Icône par famille d'outil ACP (read/edit/execute/search/fetch/think) —
+ *  lecture instantanée du fil, convention des UI de chat d'agents. */
+function toolIcon(kind: string): string {
+  switch (kind) {
+    case "read": return "wxi-eye";
+    case "edit": return "wxi-pencil";
+    case "execute": return "wxi-terminal";
+    case "search": return "wxi-search";
+    case "fetch": return "wxi-globe";
+    default: return "wxi-wrench";
+  }
+}
+
 onMount(() => {
   void startSession();
 });
@@ -473,7 +486,8 @@ onDestroy(() => {
       {:else if item.kind === "tool"}
         <details class="agent__tool" bind:open={item.open} data-status={item.status}>
           <summary>
-            <i class="wxi-wrench"></i>
+            <i class="wxi-chevron-right agent__chevron"></i>
+            <i class={toolIcon(item.toolKind)}></i>
             <span class="agent__tool-title">{item.title}</span>
             {#if item.detail}<span class="agent__tool-detail">{item.detail}</span>{/if}
             <span class="agent__tool-status">{item.status}</span>
@@ -547,6 +561,11 @@ onDestroy(() => {
 </div>
 
 <style>
+  /* Langage visuel inspiré des UI de chat d'agents (TUI OpenCode, Claude) :
+     l'utilisateur est ENCADRÉ (son écrit), la réponse de l'agent est À NU
+     (pleine largeur, c'est du contenu), les outils sont des CHIPS compactes
+     repliables, les permissions des encadrés d'avertissement. Tokens du thème
+     courant uniquement — jamais de couleur en dur hors diffs. */
   .agent {
     display: flex;
     flex-direction: column;
@@ -554,6 +573,9 @@ onDestroy(() => {
     min-height: 0;
     color: var(--fg);
     background: var(--bg);
+    /* Couleurs de diff (pas de token sémantique add/del dans le thème). */
+    --agent-add: #2ea043;
+    --agent-del: #f85149;
   }
   .agent__header {
     display: flex;
@@ -563,35 +585,39 @@ onDestroy(() => {
     border-bottom: 1px solid var(--border);
     flex: none;
   }
-  .agent__title { font-weight: 600; font-size: 12px; }
+  .agent__title { font-weight: 600; font-size: 12px; letter-spacing: 0.02em; }
   .agent__reset {
     border: none;
     background: transparent;
-    color: var(--fg-muted);
+    color: var(--muted);
     cursor: pointer;
     padding: 4px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
+    transition: background var(--dur-fast) var(--easing), color var(--dur-fast) var(--easing);
   }
-  .agent__reset:hover { background: var(--bg-hover, var(--border)); color: var(--fg); }
+  .agent__reset:hover { background: var(--surface-hover); color: var(--fg); }
   .agent__reset:disabled { opacity: 0.4; cursor: default; }
 
   .agent__feed {
     flex: 1;
     overflow-y: auto;
-    padding: 10px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     min-height: 0;
   }
   .agent__notice {
-    color: var(--fg-muted);
+    color: var(--muted);
     font-size: 12px;
-    padding: 8px;
+    padding: 8px 10px;
     border: 1px dashed var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
+    text-align: center;
   }
-  .agent__msg { font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+
+  /* ── Messages ─────────────────────────────────────────────── */
+  .agent__msg { font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
   /* Une fois le HTML rendu, ce sont les blocs (<p>, <ul>…) qui portent la
      mise en forme — pre-wrap doublerait les sauts de ligne. */
   .agent__msg--html { white-space: normal; }
@@ -599,74 +625,148 @@ onDestroy(() => {
      :global obligatoire (preview.css porte le reste de la typographie). */
   .agent__msg--html > :global(*:first-child) { margin-top: 0; }
   .agent__msg--html > :global(*:last-child) { margin-bottom: 0; }
+
+  /* Utilisateur : encadré accentué (son écrit). */
+  .agent__msg--user {
+    align-self: stretch;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-radius: var(--radius-md);
+    padding: 7px 10px;
+  }
   .agent__msg--user .agent__who {
-    font-size: 11px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--accent);
-    margin-bottom: 2px;
+    margin-bottom: 3px;
     font-weight: 600;
   }
-  .agent__bubble {
-    background: var(--bg-soft, var(--border));
-    border-radius: 8px;
-    padding: 6px 10px;
-  }
-  .agent__thought summary,
-  .agent__tool summary {
+  .agent__bubble { padding: 0; }
+
+  /* Réponse agent : à nu, pleine largeur (c'est du contenu, pas une bulle). */
+  .agent__msg--agent { padding: 0 2px; }
+
+  /* ── Réflexion : discrète, repliée ────────────────────────── */
+  .agent__thought summary {
     cursor: pointer;
-    font-size: 12px;
-    color: var(--fg-muted);
+    font-size: 11px;
+    font-style: italic;
+    color: var(--muted);
     list-style: none;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
   }
   .agent__thought-body {
     font-size: 12px;
-    color: var(--fg-muted);
+    color: var(--muted);
     white-space: pre-wrap;
-    padding: 4px 0 4px 14px;
+    margin-top: 4px;
+    padding: 2px 0 2px 12px;
+    border-left: 2px dotted var(--border);
   }
-  .agent__tool[data-status="failed"] summary { color: var(--danger, #d33); }
-  .agent__tool-status { margin-left: auto; font-size: 11px; opacity: 0.7; }
+
+  /* ── Outils : chips compactes repliables ──────────────────── */
+  .agent__tool {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 3px 8px;
+  }
+  .agent__tool summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--fg);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 22px;
+  }
+  .agent__chevron {
+    font-size: 10px;
+    color: var(--muted);
+    transition: transform var(--dur-fast) var(--easing);
+  }
+  .agent__tool[open] .agent__chevron { transform: rotate(90deg); }
+  .agent__tool-title { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
   .agent__tool-detail {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 40%;
+    min-width: 0;
+    flex: 1;
   }
+  .agent__tool-status {
+    margin-left: auto;
+    flex: none;
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--surface-hover);
+    color: var(--muted);
+  }
+  .agent__tool[data-status="in_progress"] .agent__tool-status {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+  }
+  .agent__tool[data-status="failed"] { border-color: color-mix(in srgb, var(--color-error) 40%, transparent); }
+  .agent__tool[data-status="failed"] .agent__tool-status {
+    background: color-mix(in srgb, var(--color-error) 15%, transparent);
+    color: var(--color-error);
+  }
+  .agent__tool[data-status="failed"] summary { color: var(--color-error); }
 
+  /* ── Permission : encadré d'avertissement ─────────────────── */
   .agent__perm {
-    border: 1px solid var(--accent);
-    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--color-warning) 55%, transparent);
+    background: color-mix(in srgb, var(--color-warning) 7%, transparent);
+    border-radius: var(--radius-md);
     padding: 8px 10px;
     font-size: 12px;
   }
-  .agent__perm--resolved { opacity: 0.55; border-color: var(--border); }
+  .agent__perm--resolved { opacity: 0.55; background: transparent; border-color: var(--border); }
   .agent__perm-q { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .agent__perm-q > i { color: var(--color-warning); }
   .agent__perm-loc {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--fg-muted);
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .agent__perm-btns { display: flex; gap: 6px; margin-top: 8px; }
-  .agent__btn--deny { color: var(--danger, #d33); }
+  .agent__btn--deny { color: var(--color-error); }
 
+  /* ── Diff ─────────────────────────────────────────────────── */
   .agent__diff {
     margin: 6px 0 0;
-    padding: 6px 8px;
-    background: var(--bg-soft, var(--border));
-    border-radius: 6px;
-    font-family: var(--font-mono, monospace);
+    padding: 6px 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.45;
     overflow-x: auto;
     white-space: pre;
   }
-  .agent__diff-add { color: var(--success, #2a9d54); display: block; }
-  .agent__diff-del { color: var(--danger, #d33); display: block; }
+  .agent__diff-add,
+  .agent__diff-del { display: block; padding: 0 8px; }
+  .agent__diff-add {
+    background: color-mix(in srgb, var(--agent-add) 14%, transparent);
+    border-left: 2px solid var(--agent-add);
+  }
+  .agent__diff-del {
+    background: color-mix(in srgb, var(--agent-del) 12%, transparent);
+    border-left: 2px solid var(--agent-del);
+  }
 
+  /* ── Composeur ────────────────────────────────────────────── */
   .agent__composer {
     flex: none;
     border-top: 1px solid var(--border);
@@ -678,30 +778,38 @@ onDestroy(() => {
   .agent__composer textarea {
     width: 100%;
     resize: none;
-    background: var(--bg);
+    background: var(--surface);
     color: var(--fg);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 8px;
+    border-radius: var(--radius-md);
+    padding: 7px 10px;
     font: inherit;
     font-size: 13px;
+    line-height: 1.45;
     box-sizing: border-box;
+    transition: border-color var(--dur-fast) var(--easing);
   }
-  .agent__composer textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  .agent__composer textarea:focus { outline: none; border-color: var(--accent); }
   .agent__actions { display: flex; justify-content: flex-end; gap: 6px; }
   .agent__btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
     border: 1px solid var(--border);
-    background: transparent;
+    background: var(--surface);
     color: var(--fg);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 4px 10px;
     font-size: 12px;
     cursor: pointer;
+    transition: background var(--dur-fast) var(--easing);
   }
-  .agent__btn:hover:not(:disabled) { background: var(--bg-hover, var(--border)); }
+  .agent__btn:hover:not(:disabled) { background: var(--surface-hover); }
   .agent__btn:disabled { opacity: 0.4; cursor: default; }
-  .agent__btn--send { color: var(--accent); border-color: var(--accent); }
+  .agent__btn--send {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .agent__btn--send:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 </style>
