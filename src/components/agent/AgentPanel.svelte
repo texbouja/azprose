@@ -360,7 +360,21 @@ async function startSession() {
  *  pu être ouvert serait hors de proportion. */
 async function mcpServers(root: string): Promise<McpServerDecl[]> {
   try {
-    const ep = await invoke<{ url: string; token: string }>("mcp_start", { root });
+    // L'instantané est POUSSÉ, pas relu du disque par le serveur : les
+    // callouts builtin vivent côté TypeScript, et le préambule dans un store
+    // que `config.json` peut suivre avec un temps de retard. L'agent voit
+    // ainsi exactement ce que l'utilisateur voit.
+    const ep = await invoke<{ url: string; token: string }>("mcp_start", {
+      facts: {
+        root,
+        preambuleMath: mathJaxPreamble.current || null,
+        callouts: calloutSettings.current.map((c) => ({
+          nom: c.name,
+          libelle: c.label,
+          builtin: c.builtin,
+        })),
+      },
+    });
     return [{
       name: "azprose",
       type: "http",
@@ -375,15 +389,15 @@ async function mcpServers(root: string): Promise<McpServerDecl[]> {
 
 /** Écrit le fichier d'instructions dans le répertoire applicatif ($APPDATA,
  *  HORS du vault — l'utilisateur final ne peut pas le casser par accident)
- *  et renvoie son chemin absolu pour la config inline. Le préambule MathJax
- *  et les callouts du vault y sont injectés à l'état courant (l'agent peut
- *  utiliser les macros et la syntaxe custom sans lecture préalable). */
+ *  et renvoie son chemin absolu pour la config inline. Depuis R2 ce texte ne
+ *  porte plus que du COMPORTEMENT (conventions d'écriture, consignes d'usage
+ *  des outils) ; les données du vault passent par le serveur MCP. */
 async function ensureAgentInstructions(rootPath: string): Promise<string> {
   const path = await join(await appDataDir(), AGENT_INSTRUCTIONS_FILENAME);
-  await writeTextFile(path, buildAgentInstructions(rootPath, {
-    mathPreamble: mathJaxPreamble.current,
-    callouts: calloutSettings.current,
-  }));
+  // Plus aucune donnée passée ici (R2) : le préambule et les callouts
+  // voyagent désormais par l'instantané du serveur MCP (`mcpServers`), pas
+  // par le texte des instructions.
+  await writeTextFile(path, buildAgentInstructions(rootPath));
   return path;
 }
 

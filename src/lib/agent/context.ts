@@ -23,21 +23,31 @@ export interface AgentCalloutInfo {
   builtin: boolean;
 }
 
-export interface AgentInstructionOptions {
-  /** Préambule MathJax courant (`.azprose/config.json`, section math) — ses
-   *  macros sont utilisables par l'agent ; il doit les CONNAÎTRE avant
-   *  d'écrire des formules, sans lecture préalable. */
-  mathPreamble?: string;
-  /** Callouts du vault (builtins pédagogiques + personnalisés). */
-  callouts?: AgentCalloutInfo[];
-}
+/** Plus aucune option de DONNÉES (R2, 2026-08-15).
+ *
+ *  Le préambule mathématique et la liste des callouts étaient auparavant
+ *  interpolés dans ce texte. Ils sont désormais servis par les outils MCP
+ *  `vault_preambule_math` et `vault_callouts` — doctrine du rectificatif :
+ *  **une donnée ne s'écrit jamais dans les instructions**, elle s'expose comme
+ *  outil dont la réponse fait foi. Bénéfice second : elles ne sont plus payées
+ *  dans le contexte à chaque tour, mais seulement quand l'agent les demande.
+ *
+ *  Cette interface reste — vide — pour que la signature de
+ *  `buildAgentInstructions` ne change pas au gré des phases. */
+export interface AgentInstructionOptions {}
 
-/** Texte d'instructions. Regénéré à chaque session : rootPath, préambule et
- *  callouts sont interpolés depuis l'état COURANT du vault — une modification
- *  de la config est prise en compte à la prochaine session.
- *  ⚠️ Construit par concaténation, PAS un unique template literal : le
- *  préambule LaTeX peut contenir backslashes et backticks. */
-export function buildAgentInstructions(rootPath: string, opts: AgentInstructionOptions = {}): string {
+/**
+ * Texte d'instructions — **comportement uniquement** (R2, 2026-08-15).
+ *
+ * Ce qui y reste : ce qui vaut à CHAQUE réponse et ne peut pas faire l'objet
+ * d'un appel — conventions d'écriture, et consignes d'usage des outils.
+ * Ce qui en est parti : toute donnée (préambule, callouts, description des
+ * fichiers `.azprose/`), désormais servie par le serveur MCP.
+ *
+ * ⚠️ Construit par concaténation, PAS un unique template literal : le texte
+ * contient des backticks et des antislashes.
+ */
+export function buildAgentInstructions(rootPath: string, _opts: AgentInstructionOptions = {}): string {
   const parts: string[] = [
     `# Environnement AZprose
 
@@ -51,71 +61,33 @@ d'une application.
 - Travaille dans ce dossier. Tout accès en dehors déclenche automatiquement
   une demande d'autorisation auprès de l'utilisateur.
 
-## Le dossier \`.azprose/\`
+## Outils AZprose — à interroger plutôt qu'à deviner
 
-Il contient les DONNÉES d'AZprose pour ce vault. Tu peux y faire de la
-maintenance quand l'utilisateur le demande (vérifier l'intégrité, extraire des
-données, ajuster une configuration) :
+Un serveur d'outils te donne accès aux données de ce vault. Leur réponse fait
+foi : ne suppose pas, ne recopie pas de mémoire, appelle-les.
 
-- \`config.json\` — réglages du projet (éditeur, thème, maths, callouts,
-  favoris, latex). JSON, modifiable avec prudence.
-- \`ui.json\` — préférences d'interface du projet (thème). JSON.
-- \`session.json\` — onglets ouverts, état de session. JSON, réécrit par
-  l'application ; n'y touche que sur demande explicite.
-- \`data.db\` — base **SQLite** (calendrier, tableurs, grilles de données).
-  Fichier BINAIRE : ne JAMAIS l'ouvrir avec les outils texte (read/edit) — tu
-  le corromprais. Utilise \`sqlite3\` en ligne de commande, en lecture
-  (\`sqlite3 .azprose/data.db ".schema"\`, \`SELECT …\`) ; toute écriture
-  exige une demande explicite de l'utilisateur.
-- \`csv-cache/\`, \`pdf/rectangle/\` — caches régénérables, sans valeur.
+- \`vault_preambule_math\` — macros LaTeX en vigueur. **Appelle-le avant
+  d'écrire des formules** : ne réinvente pas une notation qui existe déjà.
+- \`vault_callouts\` — types d'encadrés disponibles, builtin et personnalisés.
+  Appelle-le avant d'employer un \`> [!type]\`.
+- \`vault_donnees_description\` — rôle et format de chaque fichier de
+  \`.azprose/\`. Appelle-le avant d'y toucher.
+- \`base_interroger\` — **seul** accès légitime à \`.azprose/data.db\`
+  (calendrier, tableurs, grilles). Lecture seule.
 
-## Conventions du vault
+## Conventions d'écriture
 
 - Markdown Obsidian : \`[[wikilinks]]\`, \`#tags\`, \`![[transclusion]]\`,
   front matter YAML (\`type:\`, \`sommaire:\`, \`parent:\`…).
+- Maths : \`$…$\` en ligne, \`$$…$$\` en bloc, composées par MathJax.
+- Callouts : \`> [!type]\` en tête d'un bloc de citation ; suffixe \`+\` =
+  pliable déplié, \`-\` = pliable replié ; titre libre possible après le type.
 - Les CSV n'ont PAS de ligne d'en-tête (colonnes étiquetées A, B, C…).
-- Régions PDF : \`![[fichier.pdf#page=N&rect=x,y,w,h]]\`.`,
+- Régions PDF : \`![[fichier.pdf#page=N&rect=x,y,w,h]]\`.
+
+Ces conventions valent dans tes réponses — elles sont rendues — comme dans les
+documents que tu rédiges.`,
   ];
-
-  // ── Markdown enrichi : maths + callouts ─────────────────────────────────
-  const md: string[] = [
-    `## Markdown enrichi — disponible dans TES réponses et dans les fichiers
-
-Le moteur de rendu d'AZprose compose bien plus que le Markdown de base. Tu
-peux — et dois — l'utiliser dans tes réponses (elles sont rendues) comme dans
-les documents que tu rédiges.
-
-### Maths (MathJax)
-
-- \`$…$\` en ligne, \`$$…$$\` en bloc. Composées par MathJax.
-- Un **préambule de macros** est défini dans \`.azprose/config.json\` (section
-  \`math.preamble\`) : il est chargé AVANT chaque composition — ses macros
-  sont utilisables DIRECTEMENT dans tes formules. Ne réinvente pas une
-  notation qui y existe déjà ; si tu doutes, lis ce fichier.`,
-  ];
-  if (opts.mathPreamble?.trim()) {
-    md.push("Préambule actuellement en vigueur dans ce vault :\n\n~~~latex\n" + opts.mathPreamble.trim() + "\n~~~");
-  }
-  md.push(`### Callouts
-
-Syntaxe : \`> [!type]\` en tête d'un bloc de citation ; suffixe \`+\` = pliable
-déplié, \`-\` = pliable replié ; titre explicite possible après le type
-(\`> [!type] Titre libre\`).`);
-  const builtins = (opts.callouts ?? []).filter((c) => c.builtin);
-  const customs = (opts.callouts ?? []).filter((c) => !c.builtin);
-  if (builtins.length > 0) {
-    md.push(
-      "Callouts pédagogiques de ce vault :\n" +
-        builtins.map((c) => `- \`> [!${c.name}]\` — ${c.label}`).join("\n"),
-    );
-  }
-  if (customs.length > 0) {
-    md.push(
-      "Callouts **personnalisés** définis par l'utilisateur (nom exact, en minuscules) :\n" +
-        customs.map((c) => `- \`> [!${c.name}]\` — ${c.label}`).join("\n"),
-    );
-  }
-  parts.push(md.join("\n\n"));
 
   return parts.join("\n\n") + "\n";
 }
@@ -129,6 +101,16 @@ export function buildAgentConfig(instructionsPath: string): Record<string, unkno
     instructions: [instructionsPath],
     permission: {
       external_directory: "ask",
+      // ── data.db : une INTERDICTION, plus une supplique (R2) ──────────────
+      // Les instructions se contentaient de demander à l'agent de ne pas
+      // ouvrir cette base avec les outils texte — un modèle peut l'ignorer, et
+      // rien ne le détecte. Le refus est appliqué par le harness lui-même :
+      // lire ou éditer ce fichier binaire le corromprait, et l'outil MCP
+      // `base_interroger` en offre l'accès légitime.
+      // Deux motifs : le fichier est à la racine du vault, mais tous les
+      // moteurs de glob ne font pas correspondre `**/` à une profondeur nulle.
+      read: { ".azprose/data.db": "deny", "**/.azprose/data.db": "deny" },
+      edit: { ".azprose/data.db": "deny", "**/.azprose/data.db": "deny" },
     },
   };
 }
