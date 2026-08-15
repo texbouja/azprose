@@ -7,6 +7,7 @@
 
 pub mod bridge;
 pub mod mcp;
+pub mod programmes;
 
 pub use bridge::AcpBridgeState;
 pub use mcp::McpState;

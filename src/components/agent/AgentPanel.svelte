@@ -9,6 +9,7 @@
 import { onMount, onDestroy, tick } from "svelte";
 import { createAgentClient, type AgentClient, type McpServerDecl } from "@/lib/agent/client";
 import { invoke } from "@tauri-apps/api/core";
+import { installerProgrammesEmbarques } from "@/programmes";
 import type { SessionUpdate } from "@/lib/agent/types";
 import {
   createAgentHandlers,
@@ -364,9 +365,13 @@ async function mcpServers(root: string): Promise<McpServerDecl[]> {
     // callouts builtin vivent côté TypeScript, et le préambule dans un store
     // que `config.json` peut suivre avec un temps de retard. L'agent voit
     // ainsi exactement ce que l'utilisateur voit.
+    // Corpus livré : installer les programmes embarqués s'ils manquent, pour
+    // que `programme_lister()` ne soit pas vide dès la première ouverture.
+    const corpus = await installerProgrammesEmbarques();
     const ep = await invoke<{ url: string; token: string }>("mcp_start", {
       facts: {
         root,
+        corpusDir: corpus,
         preambuleMath: mathJaxPreamble.current || null,
         callouts: calloutSettings.current.map((c) => ({
           nom: c.name,

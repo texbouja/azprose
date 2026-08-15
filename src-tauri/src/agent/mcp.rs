@@ -32,8 +32,10 @@ use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
 use tokio_util::sync::CancellationToken;
+
+use super::programmes;
 
 /// Callout tel que l'application le connaît (builtins + personnalisés fusionnés).
 #[derive(Clone, Serialize, Deserialize)]
@@ -59,6 +61,9 @@ pub struct CalloutInfo {
 pub struct VaultFacts {
     pub root: Option<String>,
     pub preambule_math: Option<String>,
+    /// Dossier du corpus livre (`app_data_dir()/programmes`), resolu par
+    /// `mcp_start` : les outils Rust n'ont pas d'AppHandle.
+    pub corpus_dir: Option<String>,
     #[serde(default)]
     pub callouts: Vec<CalloutInfo>,
 }
@@ -173,6 +178,104 @@ impl AzproseTools {
             Err(e) => serde_json::json!({ "erreur": e }).to_string(),
         }
     }
+
+    // ── Programmes officiels (R3) — LECTURE SEULE ───────────────────────────
+
+    /// Programmes officiels disponibles. Une liste **vide est un succès** :
+    /// elle signifie simplement qu'aucun programme n'est installé, et l'agent
+    /// travaille alors sans contrainte supplémentaire.
+    #[tool(
+        name = "programme_lister",
+        description = "Programmes officiels disponibles (filière, matière, niveau, couverture).",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn programme_lister(&self) -> String {
+        serde_json::json!({ "programmes": self.programmes() }).to_string()
+    }
+
+    /// Contenu intégral du programme d'une filière. À charger AVANT de rédiger
+    /// un contenu pédagogique, pour connaître le périmètre exact : un
+    /// programme se lit en entier, jamais par extraits.
+    #[tool(
+        name = "programme_charger",
+        description = "Contenu intégral du programme officiel d'une filière.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn programme_charger(&self, params: Parameters<CibleProgramme>) -> String {
+        let CibleProgramme { filiere, matiere, niveau } = params.0;
+        let programmes = self.programmes();
+        let trouve = programmes.iter().find(|p| {
+            p.correspond(&filiere, matiere.as_deref(), niveau.as_deref())
+        });
+        match trouve {
+            Some(p) => serde_json::json!({
+                "trouve": true, "id": p.id, "contenu": p.contenu,
+            })
+            .to_string(),
+            None => serde_json::json!({
+                "trouve": false,
+                "raison": format!("aucun programme disponible pour la filière « {filiere} »"),
+            })
+            .to_string(),
+        }
+    }
+
+    /// Situe une notion vis-à-vis du programme officiel : `dans`, `hors`,
+    /// `limitrophe` ou `indetermine`, avec les passages qui font foi.
+    ///
+    /// ⚠️ `indetermine` est un verdict de plein droit, pas un échec — et
+    /// l'absence de mention n'est **jamais** une exclusion.
+    #[tool(
+        name = "verifier_perimetre",
+        description = "Situe une notion vis-à-vis du programme officiel (dans/hors/limitrophe/indetermine) avec citations.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn verifier_perimetre(&self, params: Parameters<CibleNotion>) -> String {
+        let CibleNotion { notion, filiere, matiere, niveau } = params.0;
+        let programmes = self.programmes();
+        let verdict = programmes::verifier_perimetre(
+            &programmes,
+            &notion,
+            &filiere,
+            matiere.as_deref(),
+            niveau.as_deref(),
+        );
+        serde_json::to_string(&verdict).unwrap_or_else(|_| "{}".into())
+    }
+
+    /// Corpus visible : programmes livrés + échappatoire du vault (§4.2).
+    fn programmes(&self) -> Vec<programmes::Programme> {
+        let facts = self.root.facts();
+        programmes::decouvrir(
+            facts.corpus_dir.as_deref().map(std::path::Path::new),
+            facts.root.as_deref().map(std::path::Path::new),
+        )
+    }
+}
+
+/// Argument commun aux outils de programme : la filière est obligatoire, le
+/// reste affine.
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CibleProgramme {
+    /// Filière visée (ex. « MP », « MPSI », « PCSI »).
+    pub filiere: String,
+    /// Matière (ex. « mathematiques »). Facultatif.
+    pub matiere: Option<String>,
+    /// Niveau (« 1 » ou « 2 »). Facultatif.
+    pub niveau: Option<String>,
+}
+
+/// Argument de `verifier_perimetre`.
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CibleNotion {
+    /// Notion à situer (ex. « suites adjacentes »).
+    pub notion: String,
+    /// Filière visée.
+    pub filiere: String,
+    pub matiere: Option<String>,
+    pub niveau: Option<String>,
 }
 
 /// Argument de `base_interroger`.
@@ -347,7 +450,21 @@ async fn require_token(
 /// réutilisé, seule la racine est réactualisée — le front peut appeler à
 /// chaque session sans se soucier de l'état.
 #[tauri::command]
-pub async fn mcp_start(state: State<'_, McpState>, facts: VaultFacts) -> Result<McpEndpoint, String> {
+pub async fn mcp_start(
+    app: tauri::AppHandle,
+    state: State<'_, McpState>,
+    facts: VaultFacts,
+) -> Result<McpEndpoint, String> {
+    // Le corpus livré est résolu ICI plutôt que côté front : c'est un
+    // emplacement applicatif, `app_data_dir()` en est la seule source.
+    let mut facts = facts;
+    if facts.corpus_dir.is_none() {
+        facts.corpus_dir = app
+            .path()
+            .app_data_dir()
+            .ok()
+            .map(|d| d.join("programmes").to_string_lossy().to_string());
+    }
     // L'instantané est RÉACTUALISÉ à chaque appel, y compris quand le serveur
     // tourne déjà : le front redéclare à chaque session, l'agent voit donc
     // toujours l'état courant du vault.
