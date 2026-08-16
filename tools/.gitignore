@@ -1,0 +1,8 @@
+# Secret API — jamais commité. Copier .env.example vers .env et y coller la clé.
+.env
+*.env
+!*.env.example
+
+# Sorties OCR : fichiers de travail bruts, régénérés à la demande.
+ocr-out/
+__pycache__/
