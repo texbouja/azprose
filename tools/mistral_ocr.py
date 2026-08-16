@@ -5,11 +5,14 @@ Convertit un PDF en markdown exploitable par la chaîne corpus (charte
 `corpus/README.md`), en gardant les métadonnées utiles à la mise en
 conformité :
 
-- `include_blocks=True` : chaque page porte des blocs étiquetés
-  (`text`, `title`, `list`, `aside_text`, `table`, `equation`, `header`,
-  `footer`…) avec leurs coordonnées de boîte englobante. C'est ce qui permet
-  de reconstituer l'appariement des deux colonnes (contenus à gauche,
+- `include_blocks=True` : chaque page porte des blocs étiquetés (`type` :
+  `text`, `title`, `list`, `equation`, `header`, `footer`, `table`,
+  `aside_text`…) avec leurs coordonnées de boîte englobante
+  (`top_left_x/top_left_y` → `bottom_right_x/bottom_right_y`). C'est ce qui
+  permet de reconstituer l'appariement des deux colonnes (contenus à gauche,
   commentaires à droite) du BO — l'étape la plus délicate de la charte.
+  ⚠️ Le SDK nomme le champ `type` (et non `b_type`), les coordonnées sont en
+  pixels, origine coin supérieur gauche.
 - `extract_header/extract_footer=True` : les bandeaux répétés de pagination
   (« © Ministère … », « N/36 ») sont isolés dans des champs séparés au lieu
   de polluer le corps.
