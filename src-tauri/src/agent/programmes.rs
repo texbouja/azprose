@@ -558,6 +558,97 @@ pub fn verifier_perimetre(
     Verdict { statut, citations, raison: None }
 }
 
+// ── Diagnostic de préparation ───────────────────────────────────────────────
+
+/// Vérifie un fichier indexé et rend la liste des anomalies, de la plus grave
+/// à la plus bénigne. Sert l'outil `programme_check`, qui rend la préparation
+/// d'un corpus **vérifiable** au lieu de reposer sur la seule vigilance.
+///
+/// L'anomalie la plus dangereuse est l'**intitulé mal orthographié** : il
+/// redevient du texte ordinaire, la contrainte disparaît en silence, et le
+/// document affirme alors qu'une notion exclue est au programme. Aucun test ne
+/// l'attraperait — d'où cette détection dédiée.
+pub fn diagnostiquer(contenu: &str) -> Vec<String> {
+    let mut avis = Vec::new();
+    let (champs, _) = parse_front_matter(contenu);
+    let a = |clef: &str| champs.iter().any(|(k, v)| k == clef && !v.is_empty());
+
+    if !a("filiere") {
+        avis.push("GRAVE — `filiere:` absent : le document ne s'identifie pas, il sera IGNORÉ.".into());
+    }
+    for clef in ["id", "matiere", "niveau", "source"] {
+        if !a(clef) {
+            avis.push(format!("`{clef}:` absent du front matter."));
+        }
+    }
+
+    // Intitulés mal orthographiés : tout gras en début de ligne qui ressemble à
+    // une étiquette sans en être une.
+    let connus = ["**Commentaire.**", "**Limite.**", "**Non exigible.**", "**Hors programme.**"];
+    for (n, ligne) in contenu.lines().enumerate() {
+        let t = ligne.trim().trim_start_matches('>').trim();
+        if !t.starts_with("**") {
+            continue;
+        }
+        let Some(fin) = t[2..].find("**") else { continue };
+        let etiquette = &t[..fin + 4];
+        if connus.contains(&etiquette) {
+            continue;
+        }
+        // Un gras en début de ligne suivi d'un point est presque sûrement une
+        // étiquette ratée ; sans point, c'est probablement de la mise en forme.
+        if etiquette.trim_end_matches("**").ends_with('.') {
+            avis.push(format!(
+                "GRAVE — ligne {} : intitulé inconnu `{}`. La contrainte sera PERDUE. \
+                 Attendus : {}.",
+                n + 1,
+                etiquette,
+                connus.join(", ")
+            ));
+        }
+    }
+
+    let frags = fragments(contenu);
+    if frags.is_empty() {
+        avis.push("GRAVE — aucun contenu analysable : vérifier les titres `##` et les puces `- `.".into());
+    }
+
+    // Étiquette orpheline : hors bandeau et sans item avant elle. Le
+    // rattachement « quel résultat est visé » sera vide.
+    for f in &frags {
+        if f.etiquette != Etiquette::Aucune && !f.bandeau && f.porte_sur.is_none() {
+            avis.push(format!(
+                "Intitulé sans item de rattachement dans « {} » : « {}… »",
+                f.section,
+                f.texte.chars().take(60).collect::<String>()
+            ));
+        }
+    }
+
+    // Cohérence de la couverture déclarée avec les sections réellement écrites.
+    let declarees: Vec<String> = champs
+        .iter()
+        .find(|(k, _)| k == "couverture")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    let ecrites: Vec<&str> = frags
+        .iter()
+        .map(|f| f.section.split(" › ").next().unwrap_or(""))
+        .filter(|s| !s.is_empty())
+        .collect();
+    for d in &declarees {
+        if !ecrites.iter().any(|s| s == d) {
+            avis.push(format!("`couverture:` annonce « {d} », section absente du corps."));
+        }
+    }
+    let statut = champs.iter().find(|(k, _)| k == "statut").map(|(_, v)| v.join(""));
+    if declarees.is_empty() && statut.as_deref() == Some("specimen") {
+        avis.push("`statut: specimen` sans `couverture:` — le lecteur ne saura pas ce qui manque.".into());
+    }
+
+    avis
+}
+
 // ── Commande Tauri (réglages) ───────────────────────────────────────────────
 
 /// Programmes visibles, pour le panneau de réglages.

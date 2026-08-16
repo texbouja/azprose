@@ -19,6 +19,7 @@
     "catalog": "bun run scripts/gen-catalog.mjs",
     "sync:help": "bun run scripts/sync-help.mjs",
     "help": "bun run scripts/sync-help.mjs",
+    "corpus": "bun run scripts/build-corpus.mjs",
     "doc": "bun run scripts/sync-help.mjs",
     "build-release": "bun run tauri build"
   },
