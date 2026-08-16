@@ -29,6 +29,20 @@ sciences-industrielles-commun.md    six filières, les deux années
 La matière en tête range le corpus par discipline, ce qui est la façon dont il
 se parcourt quand il grossit.
 
+**Matières combinées** : certains programmes officiels réunissent deux
+disciplines dans un seul document — « Physique-Chimie » en MP, par exemple.
+Suivez le document : un fichier, `matiere: physique-chimie`. Ne le scindez pas.
+
+> ⚠️ **Un fichier existe déjà pour votre programme ?** Vérifiez d'abord
+> `corpus/`. S'il s'y trouve une transcription **partielle** (elle porte
+> `statut: specimen` et un champ `couverture`), **remplacez-la** — même nom,
+> même `id` — et **retirez ces deux champs** une fois le programme complet.
+> Ne créez jamais un second fichier pour le même programme : le corpus en
+> proposerait deux, et l'assistant ne saurait lequel fait foi.
+>
+> C'est le cas aujourd'hui de `mathematiques-mp-mpi.md`, transcrit sur trois
+> sections seulement pour servir de gabarit.
+
 > ⚠️ **Ces fichiers sont livrés avec l'application** et l'utilisateur ne peut
 > pas les modifier. Une transcription fausse ne planterait rien : elle
 > fausserait silencieusement son travail pédagogique, sans recours. C'est la
@@ -112,6 +126,11 @@ couverture:
 une notion absente d'une section non transcrite serait indiscernable d'une
 notion réellement hors sujet — et l'utilisateur perdrait l'information la plus
 utile : « je n'en sais rien, cette partie n'est pas transcrite ».
+
+> **Visez le programme COMPLET.** Une transcription partielle est un repli
+> honnête quand vous devez vous arrêter, pas un objectif : chaque section
+> manquante rend l'assistant muet là où l'enseignant attend une réponse. Si
+> vous livrez complet, `statut` et `couverture` sont simplement **absents**.
 
 ---
 
@@ -251,7 +270,16 @@ référentiel faux serait pire que ne rien distribuer.
 écrase, et les fichiers retirés de `corpus/` y sont purgés.
 
 Les deux dossiers se commitent **ensemble**, comme `docs/user/` et
-`src/help/md/`.
+`src/help/md/` — sans quoi le dépôt porterait une source et un miroir
+divergents.
+
+```bash
+git add corpus/<votre-fichier>.md src/programmes/
+git commit -m "corpus: programme de <matière> <filières>"
+```
+
+Avant de committer, passez la baseline du dépôt : `bun test`,
+`bunx svelte-check`, `bun run build`.
 
 ### Ce que git suit, et ce qu'il ignore
 
