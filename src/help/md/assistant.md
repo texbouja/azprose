@@ -121,6 +121,11 @@ session* du panneau suffit, inutile de redémarrer l'application.
 
 Quand une question touche au contenu pédagogique, il charge le programme **en
 entier** — jamais un extrait, car les mentions limitatives y sont dispersées.
+AZprose lui présente d'abord la **liste complète des contraintes** du programme :
+chacune indique le chapitre, le résultat officiel visé, et sa nature (exclusion,
+limite de portée, démonstration non exigible). Vous pouvez d'ailleurs la lui
+demander telle quelle — « qu'est-ce qui est hors programme en MP ? ».
+
 Il peut ensuite situer une notion précise et vous répondre :
 
 | Verdict | Signification |

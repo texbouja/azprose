@@ -209,7 +209,12 @@ impl AzproseTools {
         });
         match trouve {
             Some(p) => serde_json::json!({
-                "trouve": true, "id": p.id, "contenu": p.contenu,
+                "trouve": true,
+                "id": p.id,
+                // Synthèse des contraintes EN TÊTE : les mentions limitatives
+                // sont dispersées dans des milliers de lignes, les rassembler
+                // ici garantit qu'elles sont lues avant le contenu.
+                "contenu": format!("{}{}", programmes::synthese_contraintes(p), p.contenu),
             })
             .to_string(),
             None => serde_json::json!({
@@ -241,6 +246,34 @@ impl AzproseTools {
             niveau.as_deref(),
         );
         serde_json::to_string(&verdict).unwrap_or_else(|_| "{}".into())
+    }
+
+    /// Les seules **contraintes** d'un programme — mentions « hors programme »,
+    /// limites de portée, démonstrations non exigibles — avec le résultat
+    /// officiel que chacune vise. À préférer au chargement complet pour une
+    /// vérification rapide : c'est la partie limitative, extraite et située.
+    #[tool(
+        name = "programme_contraintes",
+        description = "Contraintes d'un programme (hors programme, limites, non exigible) avec le résultat visé.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn programme_contraintes(&self, params: Parameters<CibleProgramme>) -> String {
+        let CibleProgramme { filiere, matiere, niveau } = params.0;
+        let liste = self.programmes();
+        let trouve = liste
+            .iter()
+            .find(|p| p.correspond(&filiere, matiere.as_deref(), niveau.as_deref()));
+        match trouve {
+            Some(p) => serde_json::json!({
+                "trouve": true, "id": p.id, "contraintes": programmes::contraintes(p),
+            })
+            .to_string(),
+            None => serde_json::json!({
+                "trouve": false,
+                "raison": format!("aucun programme disponible pour la filière « {filiere} »"),
+            })
+            .to_string(),
+        }
     }
 
     /// Corpus visible : programmes livrés + échappatoire du vault (§4.2).

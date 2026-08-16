@@ -256,57 +256,211 @@ pub fn decouvrir(corpus_dir: Option<&Path>, vault_root: Option<&Path>) -> Vec<Pr
 
 // ── Verdict ─────────────────────────────────────────────────────────────────
 
-/// Fragment de texte rencontré, avec son étiquette et son chemin de section.
+/// Fragment de texte rencontré, avec son étiquette et son ancrage.
 struct Fragment {
     section: String,
     etiquette: Etiquette,
     texte: String,
+    /// Item de programme que cette étiquette qualifie — « quel résultat
+    /// officiel est sujet de la contrainte ». `None` pour un item lui-même, ou
+    /// pour un bandeau, dont la portée est la section entière.
+    porte_sur: Option<String>,
+    /// Issu d'un bandeau (citation en tête de section) : portée = la section.
+    bandeau: bool,
+}
+
+/// Titre de la section de légende du gabarit — exclue de l'analyse.
+/// Sans cette exclusion, une recherche de notion pourrait tomber sur le mode
+/// d'emploi (« Hors programme », « non exigible »…) et produire des citations
+/// qui ne viennent pas du programme.
+const SECTION_LEGENDE: &str = "Comment lire ce document";
+
+fn chemin_section(s: &str, ss: &str) -> String {
+    if ss.is_empty() { s.to_string() } else { format!("{s} › {ss}") }
+}
+
+/// Clôt le fragment en cours et mémorise l'item courant, auquel les étiquettes
+/// suivantes se rattacheront.
+fn pousser(out: &mut Vec<Fragment>, dernier_item: &mut Option<String>, f: Option<Fragment>) {
+    let Some(f) = f else { return };
+    if f.texte.trim().is_empty() {
+        return;
+    }
+    if f.etiquette == Etiquette::Aucune && !f.bandeau {
+        *dernier_item = Some(f.texte.clone());
+    }
+    out.push(f);
 }
 
 /// Découpe un document en fragments étiquetés.
 ///
 /// Le rattachement est STRUCTUREL, comme dans le gabarit : un intitulé porte
-/// sur l'item qui le précède, et une citation `>` en tête de section porte sur
-/// toute la section — c'est pourquoi son étiquette éventuelle est propagée aux
-/// fragments du bandeau.
+/// sur l'item qui le précède, une citation `>` en tête de section vaut pour
+/// toute la section.
+///
+/// Les lignes de continuation sont **agrégées** au fragment courant : un item
+/// s'étend souvent sur plusieurs lignes (formule affichée comprise), et le
+/// découper ligne à ligne empêcherait de retrouver une notion à cheval — en
+/// plus de ne rattacher qu'un bout d'item à sa contrainte.
 fn fragments(contenu: &str) -> Vec<Fragment> {
     let (_, debut) = parse_front_matter(contenu);
-    let mut out = Vec::new();
+    let mut out: Vec<Fragment> = Vec::new();
     let mut section = String::new();
     let mut sous_section = String::new();
-
-    let chemin = |s: &str, ss: &str| -> String {
-        if ss.is_empty() { s.to_string() } else { format!("{s} › {ss}") }
-    };
+    let mut dernier_item: Option<String> = None;
+    let mut courant: Option<Fragment> = None;
 
     for ligne in contenu.lines().skip(debut) {
         let t = ligne.trim();
+
         if let Some(titre) = t.strip_prefix("## ") {
+            pousser(&mut out, &mut dernier_item, courant.take());
             section = titre.trim().to_string();
             sous_section.clear();
+            dernier_item = None;
             continue;
         }
         if let Some(titre) = t.strip_prefix("### ") {
+            pousser(&mut out, &mut dernier_item, courant.take());
             sous_section = titre.trim().to_string();
+            dernier_item = None;
             continue;
         }
-        // Bandeau : le contenu d'une citation, étiquette comprise.
-        let corps = t.strip_prefix('>').map(|c| c.trim()).unwrap_or(t);
+        if t.starts_with("# ") {
+            pousser(&mut out, &mut dernier_item, courant.take());
+            continue;
+        }
+        // Légende du gabarit : mode d'emploi, pas contenu de programme.
+        if section == SECTION_LEGENDE {
+            continue;
+        }
+        // Rangées de tableau : jamais du contenu de programme dans ce format.
+        if t.starts_with('|') {
+            continue;
+        }
+
+        let bandeau = t.starts_with('>');
+        let corps = if bandeau { t.trim_start_matches('>').trim() } else { t };
+        // Ligne vide : simple séparateur — surtout PAS une fin de fragment,
+        // l'intitulé d'un item en est séparé par une ligne blanche.
         if corps.is_empty() {
             continue;
         }
-        let (etiquette, texte) = match Etiquette::depuis_ligne(corps) {
-            Some((e, reste)) => (e, reste),
-            None => (
-                Etiquette::Aucune,
-                corps.trim_start_matches("- ").trim().to_string(),
-            ),
-        };
-        if texte.is_empty() {
+
+        if let Some((etiquette, reste)) = Etiquette::depuis_ligne(corps) {
+            pousser(&mut out, &mut dernier_item, courant.take());
+            courant = Some(Fragment {
+                section: chemin_section(&section, &sous_section),
+                etiquette,
+                texte: reste,
+                porte_sur: if bandeau { None } else { dernier_item.clone() },
+                bandeau,
+            });
             continue;
         }
-        out.push(Fragment { section: chemin(&section, &sous_section), etiquette, texte });
+
+        if let Some(item) = corps.strip_prefix("- ") {
+            pousser(&mut out, &mut dernier_item, courant.take());
+            courant = Some(Fragment {
+                section: chemin_section(&section, &sous_section),
+                etiquette: Etiquette::Aucune,
+                texte: item.trim().to_string(),
+                porte_sur: None,
+                bandeau,
+            });
+            continue;
+        }
+
+        match courant.as_mut() {
+            Some(f) => {
+                f.texte.push(' ');
+                f.texte.push_str(corps);
+            }
+            None => {
+                courant = Some(Fragment {
+                    section: chemin_section(&section, &sous_section),
+                    etiquette: Etiquette::Aucune,
+                    texte: corps.to_string(),
+                    porte_sur: None,
+                    bandeau,
+                });
+            }
+        }
     }
+    pousser(&mut out, &mut dernier_item, courant.take());
+    out
+}
+
+// ── Synthèse des contraintes ────────────────────────────────────────────────
+
+/// Une contrainte du programme, extraite avec son contexte.
+#[derive(Clone, Serialize)]
+pub struct Contrainte {
+    /// `hors` · `limite` · `non_exigible`.
+    pub genre: String,
+    /// Chapitre et sous-section d'où elle provient.
+    pub section: String,
+    /// Résultat officiel visé. `None` quand la contrainte vaut pour toute la
+    /// section (bandeau).
+    pub porte_sur: Option<String>,
+    /// `item` ou `section`.
+    pub portee: String,
+    pub texte: String,
+}
+
+/// Toutes les contraintes d'un programme, dans l'ordre du document.
+///
+/// **CALCULÉE, jamais recopiée dans le fichier.** Une synthèse écrite à la main
+/// serait une seconde source de vérité : corrigée d'un côté et pas de l'autre,
+/// le document finirait par se contredire. Ici elle dérive des mêmes étiquettes
+/// que le verdict — les deux ne peuvent pas diverger.
+pub fn contraintes(p: &Programme) -> Vec<Contrainte> {
+    fragments(&p.contenu)
+        .into_iter()
+        .filter_map(|f| {
+            let genre = match f.etiquette {
+                Etiquette::HorsProgramme => "hors",
+                Etiquette::Limite => "limite",
+                Etiquette::NonExigible => "non_exigible",
+                // Un commentaire ne restreint rien : il n'est pas une contrainte.
+                Etiquette::Commentaire | Etiquette::Aucune => return None,
+            };
+            Some(Contrainte {
+                genre: genre.to_string(),
+                section: f.section,
+                portee: if f.bandeau { "section".into() } else { "item".into() },
+                porte_sur: f.porte_sur,
+                texte: f.texte,
+            })
+        })
+        .collect()
+}
+
+/// En-tête lisible, placé EN TÊTE du programme chargé.
+///
+/// Les mentions limitatives sont dispersées dans des milliers de lignes : les
+/// rassembler en tête garantit que le modèle voit le périmètre limitatif
+/// AVANT d'entrer dans le contenu, sans avoir à le parcourir.
+pub fn synthese_contraintes(p: &Programme) -> String {
+    let liste = contraintes(p);
+    if liste.is_empty() {
+        return String::new();
+    }
+    let mut out = format!(
+        "> CONTRAINTES DU PROGRAMME ({}) — synthèse calculée, à lire avant le contenu.\n\
+         > `hors` = exclu, ne peut être évalué · `limite` = portée restreinte · \
+         `non_exigible` = au programme, non exigible.\n\n",
+        liste.len()
+    );
+    for c in &liste {
+        out.push_str(&format!("- **[{}]** {}\n", c.genre, c.section));
+        match &c.porte_sur {
+            Some(item) => out.push_str(&format!("  - porte sur : {item}\n")),
+            None => out.push_str("  - portée : toute la section\n"),
+        }
+        out.push_str(&format!("  - {}\n", c.texte));
+    }
+    out.push_str("\n---\n\n");
     out
 }
 
@@ -542,6 +696,75 @@ couverture:
         // Aucune filière : le document ne s'identifie pas.
         assert!(parse_programme(Path::new("/x/y.md"), "pas de front matter", "vault").is_none());
         assert!(parse_programme(Path::new("/x/y.md"), "---\nid: seul\n---\n", "vault").is_none());
+    }
+
+    #[test]
+    fn contraintes_rattachees_au_resultat_officiel_vise() {
+        let c = contraintes(&prog()[0]);
+        // Trois contraintes : hors (bandeau), non exigible, hors, limite.
+        assert_eq!(c.len(), 4, "contraintes trouvées : {:?}", c.iter().map(|x| &x.texte).collect::<Vec<_>>());
+
+        // Le bandeau vaut pour TOUTE la section — il ne porte sur aucun item.
+        let bandeau = c.iter().find(|x| x.texte.contains("hermitien")).unwrap();
+        assert_eq!(bandeau.genre, "hors");
+        assert_eq!(bandeau.portee, "section");
+        assert!(bandeau.porte_sur.is_none());
+
+        // Une étiquette d'item nomme le résultat officiel qu'elle vise — c'est
+        // tout l'objet du rattachement.
+        let alembert = c.iter().find(|x| x.texte.contains("Alembert")).unwrap();
+        assert_eq!(alembert.genre, "hors");
+        assert_eq!(alembert.portee, "item");
+        assert_eq!(alembert.porte_sur.as_deref(), Some("Irréductibles de C[X]."));
+        assert!(alembert.section.contains("Groupes"));
+
+        // Deux contraintes de genres différents sur le MÊME résultat.
+        let limite = c.iter().find(|x| x.genre == "limite").unwrap();
+        assert_eq!(limite.porte_sur.as_deref(), Some("Irréductibles de C[X]."));
+    }
+
+    #[test]
+    fn commentaire_nest_pas_une_contrainte() {
+        let c = contraintes(&prog()[0]);
+        assert!(
+            !c.iter().any(|x| x.texte.contains("racines de l'unité")),
+            "un commentaire ne restreint rien : il n'a pas sa place dans la synthèse",
+        );
+    }
+
+    #[test]
+    fn synthese_en_tete_annonce_le_nombre_et_la_legende() {
+        let s = synthese_contraintes(&prog()[0]);
+        assert!(s.contains("CONTRAINTES DU PROGRAMME (4)"));
+        assert!(s.contains("porte sur : Irréductibles de C[X]."));
+        assert!(s.contains("portée : toute la section"));
+        // La légende des genres évite au modèle d'avoir à les deviner.
+        assert!(s.contains("`hors` = exclu"));
+    }
+
+    #[test]
+    fn item_multiligne_agrege_avant_rattachement() {
+        // Un item s'étend souvent sur plusieurs lignes : la contrainte doit
+        // viser l'item ENTIER, pas sa dernière ligne.
+        const DOC: &str = "---\nfiliere: [TEST]\n---\n\n## S\n\n- Première partie de l'item\n  et sa suite sur une autre ligne.\n\n  **Hors programme.** La démonstration.\n";
+        let p = parse_programme(Path::new("/x/m.md"), DOC, "livre").unwrap();
+        let c = contraintes(&p);
+        assert_eq!(c.len(), 1);
+        assert_eq!(
+            c[0].porte_sur.as_deref(),
+            Some("Première partie de l'item et sa suite sur une autre ligne."),
+        );
+    }
+
+    #[test]
+    fn la_legende_du_gabarit_est_exclue_de_lanalyse() {
+        // Le mode d'emploi emploie les mots des étiquettes : s'il était
+        // analysé, toute recherche y trouverait de fausses occurrences.
+        const DOC: &str = "---\nfiliere: [TEST]\n---\n\n## Comment lire ce document\n\n- `**Hors programme.**` signifie exclu.\n\n## Vraie section\n\n- Un contenu.\n";
+        let p = parse_programme(Path::new("/x/l.md"), DOC, "livre").unwrap();
+        assert!(contraintes(&p).is_empty(), "la légende ne doit produire aucune contrainte");
+        let v = verifier_perimetre(&[p], "signifie exclu", "TEST", None, None);
+        assert_eq!(v.statut, "indetermine");
     }
 
     #[test]
