@@ -279,10 +279,7 @@ impl AzproseTools {
     /// Corpus visible : programmes livrés + échappatoire du vault (§4.2).
     fn programmes(&self) -> Vec<programmes::Programme> {
         let facts = self.root.facts();
-        programmes::decouvrir(
-            facts.corpus_dir.as_deref().map(std::path::Path::new),
-            facts.root.as_deref().map(std::path::Path::new),
-        )
+        programmes::decouvrir(facts.corpus_dir.as_deref().map(std::path::Path::new))
     }
 }
 

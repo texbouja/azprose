@@ -10,14 +10,29 @@
 indexé** dans ce dossier (`corpus/`), conforme au gabarit, et qui **passe le
 vérificateur** sans anomalie grave.
 
-Un fichier par couple **(filière(s) × matière × niveau)**. Nommage :
-`<filiere(s)>-<matiere>.md`, en minuscules, sans accent —
-`mp-mpi-mathematiques.md`, `mpsi-physique.md`, `pcsi-chimie.md`.
+**Un fichier par PROGRAMME RÉEL**, jamais par classe. Nommage :
+`<matiere>-<portée>.md`, en minuscules, sans accent.
 
-> ⚠️ **Ce corpus n'est pas embarqué dans l'application.** Il est publié à part
-> (§7). Une transcription fausse ne planterait rien : elle fausserait
-> silencieusement le travail pédagogique de l'utilisateur. C'est la raison
-> d'être de toutes les règles qui suivent.
+```
+mathematiques-mpsi-mp2i.md          un même programme pour MPSI et MP2I
+mathematiques-mp-mpi.md             MP et MPI
+mathematiques-tsi1.md               TSI première année
+sciences-industrielles-commun.md    six filières, les deux années
+```
+
+> ⚠️ **Ne dupliquez JAMAIS un fichier pour couvrir plusieurs filières.** Le
+> champ `filiere:` est une **liste** : un seul document les déclare toutes. Le
+> programme de sciences industrielles vaut pour MPSI, MP, PCSI, PSI, PTSI et PT
+> — le dupliquer donnerait douze copies à corriger en parallèle, et la première
+> divergence passerait inaperçue.
+
+La matière en tête range le corpus par discipline, ce qui est la façon dont il
+se parcourt quand il grossit.
+
+> ⚠️ **Ces fichiers sont livrés avec l'application** et l'utilisateur ne peut
+> pas les modifier. Une transcription fausse ne planterait rien : elle
+> fausserait silencieusement son travail pédagogique, sans recours. C'est la
+> raison d'être de toutes les règles qui suivent.
 
 ---
 
@@ -26,7 +41,7 @@ Un fichier par couple **(filière(s) × matière × niveau)**. Nommage :
 **Le format normatif est un FICHIER, pas une description :**
 
 ```
-src/programmes/mp-mpi-mathematiques.md
+corpus/mathematiques-mp-mpi.md
 ```
 
 Lisez-le en entier. Il porte sa propre légende (« Comment lire ce document ») et
@@ -64,13 +79,25 @@ Pour le programme de mathématiques MP/MPI (2021), elle dit :
 
 ```yaml
 ---
-id: mp-mpi-mathematiques          # = nom du fichier sans .md
-filiere: [MP, MPI]                # LISTE, même à un seul élément
+id: mathematiques-mp-mpi          # = nom du fichier sans .md
+filiere: [MP, MPI]                # LISTE — toutes les classes concernées
 matiere: mathematiques            # minuscules, sans accent
 niveau: 2                         # 1 = première année, 2 = seconde
 source: "Annexe 1 — Programme de mathématiques, MESRI 2021"
 ---
 ```
+
+**`filiere`** énumère les classes **telles que les enseignants les nomment** :
+`MPSI`, `MP`, `MP2I`, `MPI`, `PCSI`, `PC`, `PSI`, `PTSI`, `PT`, `TSI`, `TPC`,
+`BCPST`. Le document du PDF indique en général lui-même les classes visées.
+
+**`niveau`** — à **OMETTRE** quand le programme couvre les deux années, ce qui
+est le cas des sciences industrielles et de l'informatique. Un `niveau` absent
+signifie « toutes les années » ; un `niveau` déclaré devient discriminant. Ne
+le renseignez donc que s'il discrimine réellement.
+
+Cas `TSI` : la première année n'a pas de nom propre. Deux fichiers,
+`filiere: [TSI]` pour les deux, `niveau: 1` et `niveau: 2`.
 
 Ajouter **uniquement si la transcription est partielle** :
 
@@ -207,33 +234,32 @@ bun run corpus --check
 
 ---
 
-## 8. Publication
+## 8. Intégration
 
-Le corpus **n'est pas embarqué dans l'application** : il est distribué à part,
-en pièce jointe de release GitHub.
-
-```bash
-bun run corpus     # vérifie, archive, produit le manifeste avec empreintes
-```
-
-Produit `corpus-dist/` (ignoré par git) :
-
-- `programmes-<version>.tar.gz`
-- `manifeste.json` — version, liste, **empreintes SHA-256**
-
-Puis :
+Le corpus est **livré avec l'application**. Une fois votre fichier vérifié :
 
 ```bash
-gh release create corpus-v<version> corpus-dist/* --title "Programmes <version>"
+bun run corpus     # vérifie TOUT le corpus, puis synchronise vers src/programmes/
 ```
+
+Jumeau de `bun run help` : `corpus/` est la source de vérité, `src/programmes/`
+en est le **miroir généré**, embarqué dans l'exécutable. La synchro est
+**refusée** si un seul fichier porte une anomalie grave — distribuer un
+référentiel faux serait pire que ne rien distribuer.
+
+⚠️ Ne modifiez **jamais** `src/programmes/*.md` à la main : la synchro les
+écrase, et les fichiers retirés de `corpus/` y sont purgés.
+
+Les deux dossiers se commitent **ensemble**, comme `docs/user/` et
+`src/help/md/`.
 
 ### Ce que git suit, et ce qu'il ignore
 
 | Chemin | Suivi ? | Pourquoi |
 |---|---|---|
 | `corpus/*.md` | ✅ | c'est le travail, il se relit et se corrige dans l'historique |
+| `src/programmes/*.md` | ✅ | miroir généré, mais embarqué dans le binaire — il doit être reproductible depuis un clone |
 | `corpus/sources/` | ❌ | les PDF officiels sont publics et retéléchargeables, plusieurs Mo chacun |
-| `corpus-dist/` | ❌ | artefact reconstructible, publié en release |
 
 Déposez les PDF sources dans `corpus/sources/` pendant votre travail : ils
 restent locaux, et la transcription garde leur référence dans `source:`.

@@ -9,7 +9,7 @@
 import { onMount, onDestroy, tick } from "svelte";
 import { createAgentClient, type AgentClient, type McpServerDecl } from "@/lib/agent/client";
 import { invoke } from "@tauri-apps/api/core";
-import { installerProgrammesEmbarques, corpusDir } from "@/programmes";
+import { synchroniserProgrammes, corpusDir } from "@/programmes";
 import { programmesSelection } from "@/stores/programmes-selection.svelte";
 import type { SessionUpdate } from "@/lib/agent/types";
 import {
@@ -369,9 +369,9 @@ async function mcpServers(root: string): Promise<McpServerDecl[]> {
     // callouts builtin vivent côté TypeScript, et le préambule dans un store
     // que `config.json` peut suivre avec un temps de retard. L'agent voit
     // ainsi exactement ce que l'utilisateur voit.
-    // Corpus livré : installer les programmes embarqués s'ils manquent, pour
-    // que `programme_lister()` ne soit pas vide dès la première ouverture.
-    const corpus = await installerProgrammesEmbarques();
+    // Corpus livré : miroir déposé au démarrage, toujours réécrit (lecture
+    // seule côté utilisateur — aucune édition à préserver).
+    const corpus = await synchroniserProgrammes();
     const ep = await invoke<{ url: string; token: string }>("mcp_start", {
       facts: {
         root,
@@ -407,27 +407,27 @@ async function ensureAgentInstructions(rootPath: string): Promise<string> {
   // voyagent désormais par l'instantané du serveur MCP (`mcpServers`), pas
   // par le texte des instructions.
   await writeTextFile(path, buildAgentInstructions(rootPath, {
-    programmeDefaut: await programmeDefaut(rootPath),
+    programmes: await programmesActifs(),
   }));
   return path;
 }
 
-/** Programme par défaut : PREMIÈRE entrée de la sélection (§4.4), résolue en
- *  filière/matière. `undefined` si rien n'est sélectionné ou si l'entrée
- *  désigne un programme absent — l'instruction ne doit jamais nommer un
- *  document inexistant. */
-async function programmeDefaut(rootPath: string) {
-  const [id] = programmesSelection.current;
-  if (!id) return undefined;
+/** Programmes retenus pour ce projet, résolus en filière/matière/niveau.
+ *  Liste vide si rien n'est sélectionné — l'instruction omet alors la section
+ *  entière, et l'assistant travaille sans contrainte de programme. */
+async function programmesActifs() {
+  const ids = programmesSelection.current;
+  if (ids.length === 0) return [];
   try {
-    const dispo = await invoke<{ id: string; filiere: string[]; matiere?: string }[]>(
-      "programmes_lister",
-      { corpusDir: await corpusDir(), root: rootPath },
-    );
-    const p = dispo.find((x) => x.id === id);
-    return p?.filiere[0] ? { filiere: p.filiere[0], matiere: p.matiere } : undefined;
+    const dispo = await invoke<
+      { id: string; filiere: string[]; matiere?: string; niveau?: string }[]
+    >("programmes_lister", { corpusDir: await corpusDir() });
+    return ids
+      .map((id) => dispo.find((x) => x.id === id))
+      .filter((p) => p?.filiere[0])
+      .map((p) => ({ filiere: p!.filiere.join(" / "), matiere: p!.matiere, niveau: p!.niveau }));
   } catch {
-    return undefined;
+    return [];
   }
 }
 

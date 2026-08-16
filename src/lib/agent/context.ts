@@ -23,15 +23,18 @@ export interface AgentCalloutInfo {
   builtin: boolean;
 }
 
-/** Programme par défaut de ce vault — **un nom, pas un contenu** (R4).
+/** Programme retenu pour ce projet — **un nom, pas un contenu**.
  *
- *  L'instruction ne porte qu'un COMPORTEMENT (« charge-le quand la question
+ *  L'instruction ne porte qu'un COMPORTEMENT (« charge-les quand la question
  *  est pédagogique ») ; la donnée continue de passer par `programme_charger`.
- *  C'est la première entrée de la sélection (§4.4) : aucune clé de
- *  configuration supplémentaire. */
-export interface AgentProgrammeDefaut {
+ *
+ *  La sélection en compte **plusieurs** : un professeur de seconde année veut
+ *  couramment aussi les limites de la première, et un polycopié commun à deux
+ *  filières doit respecter les deux. */
+export interface AgentProgramme {
   filiere: string;
   matiere?: string;
+  niveau?: string;
 }
 
 /** Plus aucune option de DONNÉES (R2, 2026-08-15).
@@ -46,8 +49,8 @@ export interface AgentProgrammeDefaut {
  *  Cette interface reste — vide — pour que la signature de
  *  `buildAgentInstructions` ne change pas au gré des phases. */
 export interface AgentInstructionOptions {
-  /** Programme par défaut à signaler (nom seul — cf. `AgentProgrammeDefaut`). */
-  programmeDefaut?: AgentProgrammeDefaut;
+  /** Programmes retenus pour ce projet (noms seuls — cf. `AgentProgramme`). */
+  programmes?: AgentProgramme[];
 }
 
 /**
@@ -103,22 +106,35 @@ Ces conventions valent dans tes réponses — elles sont rendues — comme dans 
 documents que tu rédiges.`,
   ];
 
-  // Programme par défaut : un NOM et une consigne, jamais le contenu — celui-ci
-  // reste servi par `programme_charger`. Omis quand aucun programme n'est
-  // sélectionné : l'instruction ne doit jamais désigner un document inexistant.
-  const pd = opts.programmeDefaut;
-  if (pd?.filiere) {
-    const cible = pd.matiere ? `${pd.filiere} (${pd.matiere})` : pd.filiere;
-    parts.push(`## Programme officiel
+  // Programmes retenus : des NOMS et une consigne, jamais le contenu — celui-ci
+  // reste servi par `programme_charger`. Section OMISE quand la sélection est
+  // vide : l'instruction ne doit jamais désigner un document inexistant, et
+  // sans programme l'assistant travaille sans contrainte, ce qui est un état
+  // normal et non une panne.
+  const progs = (opts.programmes ?? []).filter((p) => p.filiere);
+  if (progs.length > 0) {
+    const lignes = progs
+      .map((p) => {
+        const details = [p.matiere, p.niveau && `année ${p.niveau}`].filter(Boolean).join(", ");
+        return `- **${p.filiere}**${details ? ` — ${details}` : ""}`;
+      })
+      .join("\n");
+    parts.push(`## Programmes officiels de ce projet
 
-Le programme par défaut de ce vault est **${cible}**. Dès qu'une question
-touche au contenu pédagogique — rédiger un cours, un exercice, un sujet —
-charge-le avec \`programme_charger\`, et vérifie les notions douteuses avec
-\`verifier_perimetre\`.
+${lignes}
+
+Dès qu'une question touche au contenu pédagogique — rédiger un cours, un
+exercice, un sujet — charge-les avec \`programme_charger\` et vérifie les
+notions douteuses avec \`verifier_perimetre\`.
+
+**Quand plusieurs programmes sont retenus, ils s'appliquent TOUS** : un
+contenu destiné à ces classes doit respecter la contrainte la plus stricte
+d'entre elles. Signale-le à l'utilisateur quand les périmètres divergent.
 
 Un programme se lit **en entier** : ne travaille jamais sur un extrait, les
-mentions limitatives (« hors programme », « non exigible ») sont dispersées.
-\`programme_lister\` donne les autres programmes disponibles.`);
+mentions limitatives sont dispersées — la synthèse en tête du document les
+rassemble. \`programme_lister\` donne les autres programmes disponibles ;
+l'utilisateur peut en charger un de plus avec \`/ajouter\`.`);
   }
 
   return parts.join("\n\n") + "\n";

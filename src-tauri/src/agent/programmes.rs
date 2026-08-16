@@ -5,7 +5,7 @@
 //! (chantier distinct) et livrés. Voir `opencode-plan-rectificatif.md` §4.1.
 //!
 //! Le format normatif est un FICHIER, pas une description :
-//! `src/programmes/mp-mpi-mathematiques.md`. Il porte sa propre légende.
+//! `corpus/mathematiques-mp-mpi.md`. Il porte sa propre légende.
 //!
 //! Règle de verdict (§5.4) : on lit **l'étiquette**, jamais la tournure. Le
 //! texte officiel emploie au moins six formulations pour deux statuts — « hors
@@ -87,10 +87,7 @@ pub struct Programme {
     pub source: Option<String>,
     pub statut: Option<String>,
     pub couverture: Vec<String>,
-    /// `"livre"` (corpus installé) ou `"vault"` (échappatoire de l'utilisateur).
-    pub origine: String,
-    /// Chemin absolu — exposé au front pour les actions « éditer » et
-    /// « supprimer » du panneau de réglages.
+    /// Chemin absolu du fichier livré — informatif (diagnostic, réglages).
     #[serde(serialize_with = "chemin_en_texte")]
     pub chemin: PathBuf,
     #[serde(skip)]
@@ -98,21 +95,19 @@ pub struct Programme {
 }
 
 impl Programme {
-    /// Identité au sens de la précédence : filière + matière + niveau.
-    fn identite(&self) -> (Vec<String>, Option<String>, Option<String>) {
-        let mut f = self.filiere.clone();
-        f.sort();
-        (f, self.matiere.clone(), self.niveau.clone())
-    }
-
     pub fn correspond(&self, filiere: &str, matiere: Option<&str>, niveau: Option<&str>) -> bool {
         let f = self.filiere.iter().any(|x| x.eq_ignore_ascii_case(filiere));
         let m = matiere.is_none_or(|m| {
             self.matiere.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(m))
         });
-        let n = niveau.is_none_or(|n| {
-            self.niveau.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(n))
-        });
+        // `niveau` ABSENT = vaut pour toutes les années. Ce n'est pas une
+        // tolérance, c'est le cas réel : le programme de sciences
+        // industrielles couvre six filières ET les deux années. Exiger une
+        // correspondance stricte le rendrait introuvable.
+        let n = match (niveau, self.niveau.as_deref()) {
+            (None, _) | (Some(_), None) => true,
+            (Some(demande), Some(porte)) => porte.eq_ignore_ascii_case(demande),
+        };
         f && m && n
     }
 }
@@ -185,7 +180,7 @@ fn nettoie_scalaire(s: &str) -> String {
 /// Analyse un fichier indexé. `None` si le front matter n'identifie pas le
 /// document — un fichier malformé est **ignoré avec diagnostic**, jamais une
 /// erreur bloquante (§4.2 : le dossier du vault est ouvert à l'utilisateur).
-pub fn parse_programme(chemin: &Path, contenu: &str, origine: &str) -> Option<Programme> {
+pub fn parse_programme(chemin: &Path, contenu: &str) -> Option<Programme> {
     let (champs, _) = parse_front_matter(contenu);
     let get = |clef: &str| -> Option<Vec<String>> {
         champs.iter().find(|(k, _)| k == clef).map(|(_, v)| v.clone())
@@ -211,7 +206,6 @@ pub fn parse_programme(chemin: &Path, contenu: &str, origine: &str) -> Option<Pr
         source: premier("source"),
         statut: premier("statut"),
         couverture: get("couverture").unwrap_or_default(),
-        origine: origine.to_string(),
         chemin: chemin.to_path_buf(),
         contenu: contenu.to_string(),
     })
@@ -219,7 +213,7 @@ pub fn parse_programme(chemin: &Path, contenu: &str, origine: &str) -> Option<Pr
 
 // ── Découverte ──────────────────────────────────────────────────────────────
 
-fn lit_dossier(dir: &Path, origine: &str, out: &mut Vec<Programme>) {
+fn lit_dossier(dir: &Path, out: &mut Vec<Programme>) {
     let Ok(entrees) = std::fs::read_dir(dir) else { return };
     for entree in entrees.flatten() {
         let chemin = entree.path();
@@ -227,31 +221,27 @@ fn lit_dossier(dir: &Path, origine: &str, out: &mut Vec<Programme>) {
             continue;
         }
         let Ok(contenu) = std::fs::read_to_string(&chemin) else { continue };
-        if let Some(p) = parse_programme(&chemin, &contenu, origine) {
+        if let Some(p) = parse_programme(&chemin, &contenu) {
             out.push(p);
         }
     }
 }
 
-/// Corpus visible : programmes livrés **plus** échappatoire du vault.
+/// Corpus visible — **une seule source : les programmes livrés avec
+/// l'application**, en lecture seule.
 ///
-/// Précédence (§4.2) : à identité égale (filière + matière + niveau), le
-/// fichier du **vault l'emporte** — c'est une surcharge délibérée de
-/// l'utilisateur, pas un conflit à signaler.
-pub fn decouvrir(corpus_dir: Option<&Path>, vault_root: Option<&Path>) -> Vec<Programme> {
-    let mut livres = Vec::new();
+/// L'échappatoire `<vault>/programmes/` et la précédence qui l'accompagnait
+/// ont été retirées (2026-08-16) : un fichier déposé par l'utilisateur pouvait
+/// masquer silencieusement un programme officiel, ce qui est précisément
+/// l'aléa qu'on cherche à supprimer d'un référentiel de conformité. Lever ou
+/// ajouter une contrainte reste possible — mais **dans la conversation**, à la
+/// demande explicite et assumée de l'utilisateur.
+pub fn decouvrir(corpus_dir: Option<&Path>) -> Vec<Programme> {
+    let mut out = Vec::new();
     if let Some(d) = corpus_dir {
-        lit_dossier(d, "livre", &mut livres);
+        lit_dossier(d, &mut out);
     }
-    let mut vault = Vec::new();
-    if let Some(r) = vault_root {
-        lit_dossier(&r.join("programmes"), "vault", &mut vault);
-    }
-
-    let identites_vault: Vec<_> = vault.iter().map(|p| p.identite()).collect();
-    livres.retain(|p| !identites_vault.contains(&p.identite()));
-    livres.extend(vault);
-    livres
+    out
 }
 
 // ── Verdict ─────────────────────────────────────────────────────────────────
@@ -657,11 +647,8 @@ pub fn diagnostiquer(contenu: &str) -> Vec<String> {
 /// remplir — elle doit fonctionner que l'assistant soit démarré ou non.
 /// L'analyse, elle, n'est pas dupliquée : les deux appellent `decouvrir`.
 #[tauri::command]
-pub fn programmes_lister(corpus_dir: Option<String>, root: Option<String>) -> Vec<Programme> {
-    decouvrir(
-        corpus_dir.as_deref().map(Path::new),
-        root.as_deref().map(Path::new),
-    )
+pub fn programmes_lister(corpus_dir: Option<String>) -> Vec<Programme> {
+    decouvrir(corpus_dir.as_deref().map(Path::new))
 }
 
 #[cfg(test)]
@@ -703,7 +690,7 @@ couverture:
 "#;
 
     fn prog() -> Vec<Programme> {
-        vec![parse_programme(Path::new("/x/test-maths.md"), SPECIMEN, "livre").unwrap()]
+        vec![parse_programme(Path::new("/x/test-maths.md"), SPECIMEN).unwrap()]
     }
 
     fn verdict(notion: &str) -> Verdict {
@@ -785,8 +772,8 @@ couverture:
     #[test]
     fn fichier_malforme_est_ignore_sans_erreur() {
         // Aucune filière : le document ne s'identifie pas.
-        assert!(parse_programme(Path::new("/x/y.md"), "pas de front matter", "vault").is_none());
-        assert!(parse_programme(Path::new("/x/y.md"), "---\nid: seul\n---\n", "vault").is_none());
+        assert!(parse_programme(Path::new("/x/y.md"), "pas de front matter").is_none());
+        assert!(parse_programme(Path::new("/x/y.md"), "---\nid: seul\n---\n").is_none());
     }
 
     #[test]
@@ -838,7 +825,7 @@ couverture:
         // Un item s'étend souvent sur plusieurs lignes : la contrainte doit
         // viser l'item ENTIER, pas sa dernière ligne.
         const DOC: &str = "---\nfiliere: [TEST]\n---\n\n## S\n\n- Première partie de l'item\n  et sa suite sur une autre ligne.\n\n  **Hors programme.** La démonstration.\n";
-        let p = parse_programme(Path::new("/x/m.md"), DOC, "livre").unwrap();
+        let p = parse_programme(Path::new("/x/m.md"), DOC).unwrap();
         let c = contraintes(&p);
         assert_eq!(c.len(), 1);
         assert_eq!(
@@ -852,36 +839,42 @@ couverture:
         // Le mode d'emploi emploie les mots des étiquettes : s'il était
         // analysé, toute recherche y trouverait de fausses occurrences.
         const DOC: &str = "---\nfiliere: [TEST]\n---\n\n## Comment lire ce document\n\n- `**Hors programme.**` signifie exclu.\n\n## Vraie section\n\n- Un contenu.\n";
-        let p = parse_programme(Path::new("/x/l.md"), DOC, "livre").unwrap();
+        let p = parse_programme(Path::new("/x/l.md"), DOC).unwrap();
         assert!(contraintes(&p).is_empty(), "la légende ne doit produire aucune contrainte");
         let v = verifier_perimetre(&[p], "signifie exclu", "TEST", None, None);
         assert_eq!(v.statut, "indetermine");
     }
 
     #[test]
-    fn precedence_le_vault_lemporte_sur_le_livre() {
-        let dir = tempfile::tempdir().unwrap();
-        let corpus = dir.path().join("corpus");
-        let vault = dir.path().join("vault");
-        std::fs::create_dir_all(&corpus).unwrap();
-        std::fs::create_dir_all(vault.join("programmes")).unwrap();
+    fn un_seul_document_sert_plusieurs_filieres() {
+        // Le cas réel : un même programme de mathématiques vaut pour MPSI et
+        // MP2I. Un fichier, plusieurs filières — jamais de copies à maintenir.
+        let p = prog();
+        assert!(p[0].correspond("TEST", None, None));
+        assert!(p[0].correspond("test2", None, None), "insensible à la casse");
+        assert!(!p[0].correspond("PCSI", None, None));
+    }
 
-        std::fs::write(corpus.join("a.md"), SPECIMEN).unwrap();
-        std::fs::write(
-            vault.join("programmes/a.md"),
-            SPECIMEN.replace("id: test-maths", "id: surcharge-utilisateur"),
-        )
-        .unwrap();
+    #[test]
+    fn niveau_absent_vaut_pour_toutes_les_annees() {
+        // Le programme de sciences industrielles couvre six filières ET les
+        // deux années : exiger une correspondance stricte le rendrait
+        // introuvable dès qu'on précise l'année.
+        const SANS_NIVEAU: &str = "---\nfiliere: [MPSI, MP]\nmatiere: si\n---\n\n## S\n\n- Un contenu.\n";
+        let p = vec![parse_programme(Path::new("/x/si.md"), SANS_NIVEAU).unwrap()];
+        assert!(p[0].correspond("MPSI", None, Some("1")));
+        assert!(p[0].correspond("MP", None, Some("2")));
+        assert!(p[0].correspond("MP", None, None));
 
-        let trouves = decouvrir(Some(&corpus), Some(&vault));
-        assert_eq!(trouves.len(), 1, "la surcharge doit remplacer, pas s'ajouter");
-        assert_eq!(trouves[0].id, "surcharge-utilisateur");
-        assert_eq!(trouves[0].origine, "vault");
+        // À l'inverse, un document qui DÉCLARE son niveau reste discriminant.
+        assert!(prog()[0].correspond("TEST", None, Some("2")));
+        assert!(!prog()[0].correspond("TEST", None, Some("1")));
     }
 
     #[test]
     fn corpus_vide_est_un_succes() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(decouvrir(Some(dir.path()), Some(dir.path())).is_empty());
+        assert!(decouvrir(Some(dir.path())).is_empty());
+        assert!(decouvrir(None).is_empty());
     }
 }

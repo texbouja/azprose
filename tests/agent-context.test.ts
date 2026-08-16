@@ -66,11 +66,15 @@ test("la config déclare les instructions et external_directory: ask", () => {
   expect(cfg.permission.external_directory).toBe("ask");
 });
 
-test("instructions : le programme par défaut est NOMMÉ, jamais recopié", () => {
+test("instructions : les programmes retenus sont NOMMÉS, jamais recopiés", () => {
   const text = buildAgentInstructions(ROOT, {
-    programmeDefaut: { filiere: "MP", matiere: "mathematiques" },
+    programmes: [
+      { filiere: "MP / MPI", matiere: "mathematiques", niveau: "2" },
+      { filiere: "MPSI", matiere: "mathematiques", niveau: "1" },
+    ],
   });
-  expect(text).toContain("MP");
+  expect(text).toContain("MP / MPI");
+  expect(text).toContain("MPSI");
   expect(text).toContain("programme_charger");
   expect(text).toContain("verifier_perimetre");
   // La consigne « en entier » est ce qui empêche un travail sur extrait, où
@@ -78,12 +82,28 @@ test("instructions : le programme par défaut est NOMMÉ, jamais recopié", () =
   expect(text).toContain("en entier");
 });
 
+test("instructions : plusieurs programmes s'appliquent TOUS, au plus strict", () => {
+  // Cas courant : un professeur de seconde année qui veut aussi les limites de
+  // la première, ou un polycopié commun à deux filières.
+  const text = buildAgentInstructions(ROOT, {
+    programmes: [{ filiere: "MP" }, { filiere: "PSI" }],
+  });
+  expect(text).toContain("s'appliquent TOUS");
+  expect(text).toContain("la plus stricte");
+});
+
 test("instructions : aucune sélection → aucune mention d'un programme", () => {
   // Ne jamais désigner un document inexistant : sans sélection, la section
-  // disparaît entièrement.
+  // disparaît entièrement, et l'assistant travaille sans contrainte — état
+  // normal, pas panne.
   const text = buildAgentInstructions(ROOT);
-  expect(text).not.toContain("Programme officiel");
-  expect(text).not.toContain("programme par défaut");
+  expect(text).not.toContain("Programmes officiels");
+  expect(text).not.toContain("programme_charger");
+});
+
+test("instructions : une entrée sans filière est ignorée", () => {
+  const text = buildAgentInstructions(ROOT, { programmes: [{ filiere: "" }] });
+  expect(text).not.toContain("Programmes officiels");
 });
 
 test("la config injecte la commande /ajouter (aucun dossier .opencode/ requis)", () => {

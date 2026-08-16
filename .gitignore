@@ -48,8 +48,6 @@ marketing.md
 # corpus : les PDF officiels sont publics et retelechargeables — inutile de
 # les versionner (plusieurs Mo chacun). Seules les transcriptions .md le sont.
 corpus/sources/
-# archives produites par `bun run corpus`
-corpus-dist/
 
 # dev session files
 tmp/

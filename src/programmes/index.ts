@@ -1,50 +1,61 @@
 /**
- * Programmes officiels EMBARQUÉS — installés au premier démarrage dans le
- * corpus applicatif (`app_data_dir()/programmes/`).
+ * Programmes officiels EMBARQUÉS — livrés avec l'application.
  *
- * Même motif que l'aide intégrée (`src/help/help-bundle.ts` → `.azprose/help/`)
- * et pour la même raison : une fois installé, un spécimen devient une entrée
- * de corpus ORDINAIRE. Aucune troisième source de résolution ne s'ajoute donc
- * aux deux prévues — corpus livré et échappatoire du vault.
+ * ⚠️ **`*.md` de ce dossier sont GÉNÉRÉS** par `bun run corpus` depuis
+ * `corpus/` — ne jamais les éditer à la main, la synchro les écrase. La source
+ * de vérité est `corpus/`, avec son guide de préparation.
  *
- * Bénéfice concret : `programme_lister()` n'est jamais vide sans réseau, donc
- * le chemin nominal des outils est exerçable dès la première ouverture, pas
- * seulement le chemin dégradé.
+ * Ils sont recopiés au démarrage dans un dossier applicatif, parce que le
+ * serveur MCP est en Rust et lit des fichiers sur disque, là où le bundle vit
+ * dans le graphe JS. Même motif que l'aide intégrée.
+ *
+ * **Miroir strict, toujours réécrit** (2026-08-16) : l'utilisateur ne peut pas
+ * modifier ces fichiers, il n'y a donc aucune édition à préserver — et une
+ * correction officielle arrive sans conflit possible. Lever ou ajouter une
+ * contrainte reste faisable, mais **dans la conversation**, à la demande
+ * explicite et assumée.
  */
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { exists, mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
+import { mkdir, readDir, remove, writeTextFile } from "@tauri-apps/plugin-fs";
 
 // `eager: true` + `?raw` : le contenu est inliné dans le bundle JS, comme pour
 // l'aide. Aucun accès disque à la compilation, rien à copier au packaging.
 const modules = import.meta.glob("./*.md", { query: "?raw", import: "default", eager: true });
 
-/** Dossier du corpus livré. */
+/** Dossier applicatif où le miroir est déposé. */
 export async function corpusDir(): Promise<string> {
   return join(await appDataDir(), "programmes");
 }
 
 /**
- * Installe les programmes embarqués s'ils manquent. **Ne remplace jamais un
- * fichier existant** : l'utilisateur — ou une future archive téléchargée —
- * peut avoir posé une version plus complète, l'écraser serait une régression
- * silencieuse.
+ * Dépose le corpus embarqué dans le dossier applicatif. **Idempotent et
+ * destructif** : réécrit chaque fichier, puis retire ceux qui ne sont plus
+ * livrés — un programme retiré d'une version à l'autre ne doit pas survivre.
  *
- * Toute erreur est avalée : ne pas pouvoir installer un spécimen ne doit pas
- * empêcher l'assistant de démarrer.
+ * Toute erreur est avalée : ne pas pouvoir écrire le corpus ne doit pas
+ * empêcher l'assistant de démarrer. Il travaillera sans contrainte, ce qui est
+ * un état normal.
  */
-export async function installerProgrammesEmbarques(): Promise<string | null> {
+export async function synchroniserProgrammes(): Promise<string | null> {
   try {
     const dir = await corpusDir();
     await mkdir(dir, { recursive: true });
+
+    const livres = new Set<string>();
     for (const [clef, contenu] of Object.entries(modules)) {
       const nom = clef.replace(/^\.\//, "");
-      const cible = await join(dir, nom);
-      if (await exists(cible)) continue;
-      await writeTextFile(cible, contenu as string);
+      livres.add(nom);
+      await writeTextFile(await join(dir, nom), contenu as string);
+    }
+
+    for (const e of await readDir(dir)) {
+      if (e.isFile && e.name.toLowerCase().endsWith(".md") && !livres.has(e.name)) {
+        await remove(await join(dir, e.name));
+      }
     }
     return dir;
   } catch (e) {
-    console.warn("[programmes] installation impossible :", e);
+    console.warn("[programmes] synchronisation impossible :", e);
     return null;
   }
 }

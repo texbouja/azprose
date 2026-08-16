@@ -93,26 +93,21 @@ de rédiger.
 
 ### Choisir vos programmes
 
-Ouvrez **Réglages** (`⌘,`) → **Assistant IA** → **Programmes**, et cochez les
-filières qui vous concernent.
+Les programmes officiels sont **livrés avec AZprose** : rien à télécharger, rien
+à installer.
 
-Chaque entrée porte quatre boutons à sa droite :
+Ouvrez **Réglages** (`⌘,`) → **Assistant IA** → **Programmes**, et cochez ceux
+qui s'appliquent à ce projet. **Plusieurs sont possibles**, et c'est le cas
+courant : un professeur de seconde année veut souvent aussi les limites de la
+première, et un polycopié destiné à deux filières doit respecter les deux.
 
-| Bouton | Effet |
-|---|---|
-| **↑ / ↓** | change l'ordre — **le premier de la liste est le programme chargé par défaut** |
-| **↗** | ouvre le fichier dans votre application markdown habituelle |
-| **🗑** | retire le programme d'AZprose |
+Quand plusieurs programmes sont cochés, ils s'appliquent **tous** — l'assistant
+retient la contrainte la plus stricte, et vous signale les divergences.
 
-Le bouton **Ajouter un programme…** installe un fichier de programme déjà
-indexé, obtenu par un moyen quelconque. Il est **copié** dans AZprose : votre
-fichier d'origine reste où il est, et le programme devient disponible pour tous
-vos projets.
-
-> [!note] L'ouverture se fait hors d'AZprose
-> Ces fichiers ne vivent pas dans votre coffre mais dans les données de
-> l'application. AZprose n'ouvre que les documents de votre projet : l'édition
-> passe donc par l'application que votre système associe au markdown.
+> [!note] Sans sélection, aucune contrainte
+> Si vous ne cochez rien, l'assistant travaille normalement, sans jamais
+> invoquer de programme. C'est un état légitime, pas une configuration
+> incomplète.
 
 Les changements prennent effet à la **prochaine session** : le bouton *nouvelle
 session* du panneau suffit, inutile de redémarrer l'application.
@@ -141,31 +136,37 @@ Il peut ensuite situer une notion précise et vous répondre :
 > programme ». À vous de trancher : lui laisser conclure à votre place serait le
 > plus sûr moyen d'obtenir un refus injustifié.
 
-### Charger un autre programme en cours de route
+### Charger un autre programme le temps d'une conversation
 
-Tapez `/ajouter` suivi de la filière, et éventuellement de la matière :
+Vos réglages fixent les programmes habituels du projet. Pour en consulter un
+autre ponctuellement — préparer un sujet commun, vérifier ce qu'un élément
+suppose acquis de l'année précédente — tapez `/ajouter` suivi de la filière, et
+éventuellement de la matière :
 
 ```
-/ajouter MP mathematiques
+/ajouter MPSI mathematiques
 ```
 
-L'assistant charge ce programme et vous en résume le périmètre.
+L'assistant le charge et vous en résume le périmètre. Cela ne vaut que pour la
+conversation en cours ; vos réglages ne changent pas.
+
+> [!tip] Lever une contrainte ponctuellement
+> Vous pouvez aussi demander explicitement à l'assistant d'ignorer une limite
+> — pour un travail d'approfondissement, un TIPE, un élève en avance. Il vous
+> suivra, en le signalant. Et si vous voulez que cette exception vaille pour la
+> suite, demandez-lui de la consigner dans la mémoire du projet.
 
 ### D'où viennent les programmes
 
-AZprose est livré avec un **spécimen** de démonstration, installé
-automatiquement au premier démarrage.
+Ils sont **livrés avec l'application** et ne sont pas modifiables : c'est ce qui
+garantit qu'un référentiel de conformité reste conforme. Les corrections
+officielles vous parviennent avec les mises à jour d'AZprose.
 
-> [!warning] Le spécimen est partiel
-> Il ne couvre que trois sections du programme de mathématiques MP/MPI, sur
-> douze. C'est un exemple de format, pas un référentiel complet : une notion
-> absente de ces trois sections donnera *indéterminé*, ce qui est le
-> comportement correct mais peut surprendre.
-
-Vous pouvez ajouter vos propres programmes en déposant des fichiers dans un
-dossier nommé `programmes/` à la racine de votre coffre. Ils doivent respecter
-le format du spécimen — c'est lui qui fait référence. À filière identique, votre
-fichier remplace celui livré : la surcharge est délibérée.
+> [!warning] Couverture en cours de constitution
+> Le corpus est en cours de préparation. Un programme peut n'être transcrit que
+> partiellement : dans ce cas les réglages l'indiquent, et une notion relevant
+> d'une section non transcrite donnera *indéterminé* — ce qui est le
+> comportement correct, mais peut surprendre.
 
 ## Ce que l'assistant ne fait pas
 

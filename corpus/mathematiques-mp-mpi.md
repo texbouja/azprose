@@ -1,5 +1,5 @@
 ---
-id: mp-mpi-mathematiques
+id: mathematiques-mp-mpi
 filiere: [MP, MPI]
 matiere: mathematiques
 niveau: 2

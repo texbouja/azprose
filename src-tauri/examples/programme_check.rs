@@ -18,7 +18,7 @@ fn main() {
     let avis = diagnostiquer(&contenu);
     let graves = avis.iter().filter(|a| a.starts_with("GRAVE")).count();
 
-    match parse_programme(std::path::Path::new(&chemin), &contenu, "corpus") {
+    match parse_programme(std::path::Path::new(&chemin), &contenu) {
         Some(p) => {
             println!("── Identité ────────────────────────────────────────────");
             println!("  id       : {}", p.id);
