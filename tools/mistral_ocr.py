@@ -50,6 +50,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -59,6 +60,88 @@ DEFAULT_MODEL = "mistral-ocr-latest"
 
 # Répertoire de sortie par défaut (relatif au dépôt).
 DEFAULT_OUT = "tools/ocr-out"
+
+# ── Normalisation unicode → LaTeX ────────────────────────────────────────
+# Le modèle OCR restitue les symboles mathématiques en caractères unicode
+# (∞, Ω, ∈, λ…). La charte du corpus interdit l'unicode pour les maths
+# (« formules en LaTeX pur ») : ces caractères sont remplacés ici par leurs
+# commandes LaTeX, à la fois dans les segments délimités ($…$, \(…\)) et dans
+# le texte courant. L'ordre compte : le plus long d'abord (R⁺ avant R).
+UNICODE_MATH = [
+    # paires : (unicode, commande LaTeX)
+    ("⁺", "^+"),          # R⁺ → R^+
+    ("−", "-"),           # signe moins typographique
+    ("–", "-"),           # tiret en-dash (usage math)
+    ("×", r"\times"),
+    ("÷", r"\div"),
+    ("±", r"\pm"),
+    ("∓", r"\mp"),
+    ("≤", r"\leqslant"),
+    ("≥", r"\geqslant"),
+    ("≠", r"\neq"),
+    ("≈", r"\approx"),
+    ("≡", r"\equiv"),
+    ("≃", r"\simeq"),
+    ("∼", r"\sim"),
+    ("∝", r"\propto"),
+    ("∞", r"\infty"),
+    ("∈", r"\in"),
+    ("∉", r"\notin"),
+    ("⊂", r"\subset"),
+    ("⊆", r"\subseteq"),
+    ("⊃", r"\supset"),
+    ("⊇", r"\supseteq"),
+    ("∪", r"\cup"),
+    ("∩", r"\cap"),
+    ("∅", r"\varnothing"),
+    ("√", r"\sqrt"),
+    ("∫", r"\int"),
+    ("∑", r"\sum"),
+    ("∏", r"\prod"),
+    ("⇒", r"\Rightarrow"),
+    ("⇔", r"\Leftrightarrow"),
+    ("→", r"\rightarrow"),
+    ("↦", r"\mapsto"),
+    ("⊥", r"\perp"),
+    ("∥", r"\parallel"),
+    ("∂", r"\partial"),
+    ("∇", r"\nabla"),
+    ("∀", r"\forall"),
+    ("∃", r"\exists"),
+    # lettres grecques (hors segments : en texte courant elles restent des
+    # symboles mathématiques et doivent être en LaTeX)
+    ("α", r"\alpha"), ("β", r"\beta"), ("γ", r"\gamma"), ("δ", r"\delta"),
+    ("ε", r"\varepsilon"), ("ζ", r"\zeta"), ("η", r"\eta"), ("θ", r"\theta"),
+    ("ι", r"\iota"), ("κ", r"\kappa"), ("λ", r"\lambda"), ("μ", r"\mu"),
+    ("ν", r"\nu"), ("ξ", r"\xi"), ("π", r"\pi"), ("ρ", r"\rho"),
+    ("σ", r"\sigma"), ("τ", r"\tau"), ("υ", r"\upsilon"), ("φ", r"\varphi"),
+    ("χ", r"\chi"), ("ψ", r"\psi"), ("ω", r"\omega"),
+    ("Γ", r"\Gamma"), ("Δ", r"\Delta"), ("Θ", r"\Theta"), ("Λ", r"\Lambda"),
+    ("Ξ", r"\Xi"), ("Π", r"\Pi"), ("Σ", r"\Sigma"), ("Φ", r"\Phi"),
+    ("Ψ", r"\Psi"), ("Ω", r"\Omega"),
+    # lettres doubles (ensembles de nombres) : à conserver telles quelles si
+    # déjà en gras LaTeX ; sinon remplacer par la forme \mathbb
+    ("ℝ", r"\mathbb{R}"), ("ℕ", r"\mathbb{N}"), ("ℤ", r"\mathbb{Z}"),
+    ("ℚ", r"\mathbb{Q}"), ("ℂ", r"\mathbb{C}"),
+]
+
+
+def normaliser_unicode_math(texte: str) -> str:
+    """Remplace les symboles mathématiques unicode par leurs commandes LaTeX.
+
+    Le modèle OCR produit des symboles unicode (∞, Ω, ∈, λ…) que la charte
+    du corpus interdit pour les maths. Cette passe s'applique au markdown
+    concaténé ET au contenu des tables, pour que l'archive reste en LaTeX pur
+    — la même règle que pour les transcriptions conformes.
+    """
+    for uni, latex in UNICODE_MATH:
+        texte = texte.replace(uni, latex)
+    # Une lettre grecque collée à une lettre latine donnerait une commande
+    # ambiguë (\lambdaX) : on sépare par une espace, qui est ignorée par TeX
+    # dans les mathématiques (\lambda X ≡ \lambdaX syntaxiquement invalide).
+    texte = re.sub(r"\\(alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|varphi|chi|psi|omega)([A-Za-z])",
+                   r"\\\1 \2", texte)
+    return texte
 
 
 def lire_cle(args_cle: str | None) -> str:
@@ -119,13 +202,15 @@ def concatener_pages(donnees: dict) -> str:
     """Concatène le markdown des pages en conservant l'index source.
 
     Le séparateur `<!-- page N -->` garde la pagination du PDF : indispensable
-    pour vérifier la fidélité page par page pendant la transcription.
+    pour vérifier la fidélité page par page pendant la transcription. Le
+    markdown passe par `normaliser_unicode_math` — le modèle OCR restitue les
+    symboles en unicode, la charte les exige en LaTeX pur.
     """
     morceaux: list[str] = []
     for page in donnees.get("pages", []):
         index = page.get("index", 0) + 1
         md = (page.get("markdown") or "").strip()
-        morceaux.append(f"<!-- page {index} -->\n\n{md}\n")
+        morceaux.append(f"<!-- page {index} -->\n\n{normaliser_unicode_math(md)}\n")
     return "\n".join(morceaux)
 
 
@@ -144,8 +229,15 @@ def traiter(pdf: Path, args) -> None:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    base = out_dir / pdf.stem
     (out_dir / f"{pdf.stem}.md").write_text(concatener_pages(donnees), encoding="utf-8")
+
+    # Le JSON (matière brute) est normalisé pour ses tables : leur contenu
+    # markdown alimente l'archive (fichiers tbl-*), il doit être en LaTeX pur.
+    for page in donnees.get("pages", []):
+        for table in page.get("tables", []):
+            content = table.get("content") or ""
+            table["content"] = normaliser_unicode_math(content)
+
     (out_dir / f"{pdf.stem}.json").write_text(
         json.dumps(donnees, ensure_ascii=False, indent=1), encoding="utf-8"
     )

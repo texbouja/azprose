@@ -141,7 +141,7 @@ utile : « je n'en sais rien, cette partie n'est pas transcrite ».
 | Titre de section (« Structures algébriques usuelles ») | `## Titre` |
 | Sous-section (« a) Compléments sur les groupes ») | `### a) Compléments sur les groupes` |
 | Bandeau en italique | citation `>` en tête de section |
-| Chapeau de paragraphe (« Dans ce paragraphe, 𝕂 est… ») | citation `>` en tête de sous-section |
+| Chapeau de paragraphe (« Dans ce paragraphe, $\mathbb{K}$ est… ») | citation `>` en tête de sous-section |
 | **Colonne de gauche** — un paragraphe | une puce `- …` |
 | **Colonne de droite** — un paragraphe | un intitulé **indenté sous la puce qu'il vise** |
 
