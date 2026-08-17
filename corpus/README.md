@@ -175,10 +175,14 @@ source: "Annexe 2 — Programme de physique-chimie, MESRI 2021"
 
 **`id` = nom du fichier sans `.md`**, sans exception pour un nouveau programme.
 
-> ℹ️ Les identifiants des programmes de mathématiques (`mathematiques-mpsi-mp2i`,
-> `mathematiques-mp-mpi`) sont **historiques** : ils datent d'avant le passage
-> aux noms courts de fichiers et sont conservés tels quels — c'est l'identifiant
-> que l'application expose. Cette dérogation ne vaut que pour eux.
+> ⚠️ **Un `id` est un contrat, pas un détail interne.** L'utilisateur choisit
+> ses programmes par cet identifiant, et son choix est persisté
+> (`.azprose/config.json`). Renommer un `id` déjà livré invalide silencieusement
+> sa sélection. Choisissez-le donc bien du premier coup, et ne le changez plus
+> ensuite — c'est exactement pourquoi les identifiants des mathématiques
+> (`mathematiques-mpsi-mp2i`, `mathematiques-mp-mpi`) restent **historiques**,
+> hérités d'avant le passage aux noms courts de fichiers. Cette dérogation ne
+> vaut que pour eux.
 
 **`source`** cite le document officiel. Pour une matière combinée scindée, les
 deux fichiers citent **le même document** : c'est la vérité, et c'est lui qu'il
@@ -435,9 +439,11 @@ corpus/sources/<matiere>/<classe(s)>/
 
 **Le PDF source y va toujours**, rangé dans l'arborescence — matière en tête
 (le premier réflexe d'un professeur), classes ensuite. Un document qui couvre
-deux matières scindées (physique-chimie) se range **une seule fois**, sous la
-matière du fichier qui le cite en premier, et l'index
-`corpus/sources/README.md` signale qu'il sert aux deux.
+deux matières scindées se range **une seule fois**, sous la **première matière
+nommée dans son titre officiel** : « Physique-Chimie MP » → `phys/mp/`, quel
+que soit le fichier transcrit en premier. L'index `corpus/sources/README.md`
+signale alors qu'il sert **aussi** à l'autre matière. Déposez le PDF même si sa
+transcription n'est pas encore faite : l'archive dit ce qui est disponible.
 
 Quand une retranscription est produite par OCR (`tools/mistral_ocr.py`),
 l'extrait brut est conservé **à côté** : c'est le « bien » payé, relisible dans
