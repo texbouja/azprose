@@ -292,6 +292,32 @@ Avant de committer, passez la baseline du dépôt : `bun test`,
 Déposez les PDF sources dans `corpus/sources/` pendant votre travail : ils
 restent locaux, et la transcription garde leur référence dans `source:`.
 
+### `corpus/sources/` — structure d'archive des retranscriptions
+
+Quand une retranscription est produite par OCR (`tools/mistral_ocr.py`), son
+extrait brut est **également** conservé dans `corpus/sources/` — c'est le
+« bien » payé (API Mistral), qui reste lisible dans l'application pour la
+relecture mot à mot. Arborescence et conventions (cf. l'index local
+`corpus/sources/README.md`) :
+
+```
+corpus/sources/<classe>/<matiere>/
+    <classe>-<matiere>.md      retranscription principale (extrait OCR brut)
+    <classe>-<matiere>.pdf     document officiel source
+    <classe>-<matiere>.json    réponse brute OCR (blocs + coordonnées)
+    <classe>-<matiere>-N.md    tableaux CONTENUS/CAPACITÉS
+```
+
+- Le md principal **transclut** ses tableaux par wikilinks
+  `![[<classe>-<matiere>-N]]` ;
+- les noms des fichiers de tableaux sont **uniques dans toute l'archive**
+  (base du md principal + suffixe) — exigence LSP : markdown-oxide résout
+  les wikilinks par nom de fichier, deux `tbl-0.md` homonymes casseraient la
+  résolution ;
+- matière = **raccourci** (`math`, `phy`, `chi`, `fr`, `en`, `si`, `inf`…) ;
+- le JSON est **conservé** : il permet de vérifier une formule douteuse sans
+  relancer l'OCR payant.
+
 ---
 
 ## 9. Rappel — ce que ce corpus n'est pas
