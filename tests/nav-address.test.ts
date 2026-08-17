@@ -84,3 +84,30 @@ describe("filterHelpArticles (complétion aide, pure)", () => {
     expect(filterHelpArticles(articles, "zzz")).toEqual([]);
   });
 });
+
+describe("parseAddress — préfixe programme:", () => {
+  test("les quatre formes sont reconnues, casse et espaces compris", () => {
+    for (const brut of [
+      "programme:math", "programmes: math", "PROGRAMME : math",
+      "prog:math", "program:math", "  programs:  math  ",
+    ]) {
+      expect(parseAddress(brut)).toEqual({ kind: "programme", query: "math" });
+    }
+  });
+
+  test("préfixe seul → requête vide (la liste complète est légitime ici)", () => {
+    expect(parseAddress("programme:")).toEqual({ kind: "programme", query: "" });
+  });
+
+  test("un fichier du vault nommé « programme » n'est PAS capté", () => {
+    // Sans les deux points, c'est un nom de document, pas une adresse.
+    expect(parseAddress("programme")).toEqual({ kind: "vault", query: "programme" });
+    expect(parseAddress("programmes de colle")).toEqual({
+      kind: "vault", query: "programmes de colle",
+    });
+  });
+
+  test("aide: reste prioritaire et inchangé", () => {
+    expect(parseAddress("aide:export")).toEqual({ kind: "help", query: "export" });
+  });
+});

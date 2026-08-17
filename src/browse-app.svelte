@@ -46,6 +46,11 @@ import { parseAddress, filterIndexEntries, filterHelpArticles } from "@/nav/addr
 // `help-bundle.ts`, dont le glob `eager: true` inlinerait TOUT le contenu
 // markdown de la doc dans le chunk NAV pour la seule liste {path,title}.
 import { catalog as helpCatalog } from "@/help/catalog";
+// Même précaution que pour l'aide : `@/programmes/catalog` porte les seules
+// métadonnées, alors que le baril `@/programmes` inlinerait le corpus entier
+// (268 Ko aujourd'hui, ~2,7 Mo à trente programmes) dans le chunk NAV.
+import { catalogue as catalogueProgrammes, type EntreeProgramme } from "@/programmes/catalog";
+import { criteresProposables, filtrerProgrammes, type Critere } from "@/nav/programme-filter";
 import { helpFilePath, helpIndexPath, isHelpPath } from "@/lib/help-install";
 import { getT, language } from "@/lib/i18n";
 import { persistedState } from "@/stores/persisted.svelte";
@@ -143,6 +148,15 @@ let addressValue = $state("");
 let addressEl: HTMLInputElement | undefined = $state();
 let vaultSuggestions = $state<{ base: string; path: string }[]>([]);
 let helpSuggestions = $state<{ path: string; title: string }[]>([]);
+/** Programmes officiels retenus par les critères actifs et la saisie. */
+let programmeSuggestions = $state<EntreeProgramme[]>([]);
+/** Critères encore discriminants, proposés à la validation (jetons). */
+let critereSuggestions = $state<Critere[]>([]);
+/** Critères validés — ils réduisent le périmètre tant qu'on ne les retire pas. */
+let criteresActifs = $state<Critere[]>([]);
+/** Dossier applicatif des programmes — `null` tant que le dépôt n'a pas abouti
+ *  (ou s'il a échoué : NAV fonctionne sans, la liste reste simplement vide). */
+let programmesDir = $state<string | null>(null);
 
 /** Index de la suggestion sélectionnée au clavier dans la liste APLATIE
  *  (vault puis aide, dans l'ordre d'affichage) — -1 = aucune, le texte saisi
@@ -152,11 +166,18 @@ let activeSuggestionIndex = $state(-1);
 
 type FlatSuggestion =
   | { kind: "vault"; base: string; path: string }
-  | { kind: "help"; path: string; title: string };
+  | { kind: "help"; path: string; title: string }
+  | { kind: "critere"; critere: Critere }
+  | { kind: "programme"; entree: EntreeProgramme };
 
+// Les critères précèdent les programmes : valider un critère réduit la liste,
+// c'est donc le geste qui fait avancer la recherche — il doit tomber sous la
+// première flèche ↓.
 let flatSuggestions = $derived<FlatSuggestion[]>([
   ...vaultSuggestions.map((s) => ({ kind: "vault" as const, ...s })),
   ...helpSuggestions.map((a) => ({ kind: "help" as const, ...a })),
+  ...critereSuggestions.map((c) => ({ kind: "critere" as const, critere: c })),
+  ...programmeSuggestions.map((e) => ({ kind: "programme" as const, entree: e })),
 ]);
 
 // D4 (round 1) : l'onglet vide donne le focus à la barre d'adresse — dès
@@ -170,6 +191,18 @@ async function updateSuggestions(): Promise<void> {
   // jacente change, l'index n'a plus de sens garanti.
   activeSuggestionIndex = -1;
   const { kind, query } = parseAddress(addressValue);
+  // `programme:` seul liste TOUT : le corpus est fini et sans ordre de lecture
+  // (pas d'index à ouvrir, contrairement à l'aide). C'est la seule adresse qui
+  // rend des suggestions sur une requête vide.
+  if (kind === "programme") {
+    programmeSuggestions = filtrerProgrammes(catalogueProgrammes, criteresActifs, query);
+    critereSuggestions = criteresProposables(catalogueProgrammes, criteresActifs, query);
+    vaultSuggestions = [];
+    helpSuggestions = [];
+    return;
+  }
+  programmeSuggestions = [];
+  critereSuggestions = [];
   if (!query) {
     vaultSuggestions = [];
     helpSuggestions = [];
@@ -201,7 +234,15 @@ function clearAddress(): void {
   addressValue = "";
   vaultSuggestions = [];
   helpSuggestions = [];
+  programmeSuggestions = [];
+  critereSuggestions = [];
+  criteresActifs = [];
   activeSuggestionIndex = -1;
+}
+
+/** Chemin d'un programme dans le dépôt applicatif. */
+function programmePath(e: EntreeProgramme): string | null {
+  return programmesDir ? `${programmesDir}/${e.fichier}` : null;
 }
 
 /** Résolution PLEINE (Entrée sans suggestion choisie) : préfixe `aide:`/`help:`
@@ -210,6 +251,13 @@ function clearAddress(): void {
  *  casse, puis meilleure correspondance de la complétion — R5). */
 async function resolveAddress(raw: string): Promise<string | null> {
   const { kind, query } = parseAddress(raw);
+  if (kind === "programme") {
+    // Entrée pleine : le premier programme retenu par les critères et la
+    // saisie. Sans critère ni saisie, c'est le premier du catalogue — ouvrir
+    // quelque chose vaut mieux que ne rien faire, la liste reste sous les yeux.
+    const [premier] = filtrerProgrammes(catalogueProgrammes, criteresActifs, query);
+    return premier ? programmePath(premier) : null;
+  }
   if (kind === "help") {
     if (!root) return null;
     if (!query) return helpIndexPath(root);
@@ -256,7 +304,44 @@ async function chooseSuggestion(path: string): Promise<void> {
 }
 
 async function chooseFlatSuggestion(s: FlatSuggestion): Promise<void> {
+  // Un critère ne navigue pas : il se pose en jeton et REDUIT la liste. C'est
+  // le geste central du filtrage — la barre garde le focus et la saisie
+  // libre repart à vide, prête pour le critère suivant.
+  if (s.kind === "critere") {
+    criteresActifs = [...criteresActifs, s.critere];
+    addressValue = prefixeProgramme(addressValue);
+    activeSuggestionIndex = -1;
+    void updateSuggestions();
+    addressEl?.focus();
+    return;
+  }
+  if (s.kind === "programme") {
+    const path = programmePath(s.entree);
+    if (!path) {
+      say(t("browse.programmesUnavailable"));
+      return;
+    }
+    await chooseSuggestion(path);
+    return;
+  }
   await chooseSuggestion(s.kind === "vault" ? s.path : helpFilePath(root ?? "", s.path));
+}
+
+/** Conserve le préfixe tapé par l'utilisateur (`programme:`, `prog:`…) en
+ *  vidant la requête : poser un jeton ne doit pas le faire sortir du mode. */
+function prefixeProgramme(saisie: string): string {
+  const m = saisie.match(/^\s*(programmes?|programs?|prog)\s*:\s*/i);
+  return m ? m[0] : "programme:";
+}
+
+/** Clé stable d'une ligne de suggestion (les quatre familles cohabitent). */
+function suggestionKey(s: FlatSuggestion): string {
+  switch (s.kind) {
+    case "vault": return `v:${s.path}`;
+    case "help": return `h:${s.path}`;
+    case "critere": return `c:${s.critere.categorie}:${s.critere.valeur}`;
+    case "programme": return `p:${s.entree.id}`;
+  }
 }
 
 /** Fait défiler la ligne sélectionnée dans la vue si ↓/↑ l'a sortie de la
@@ -287,9 +372,22 @@ function onAddressKeydown(e: KeyboardEvent): void {
     const selected = activeSuggestionIndex >= 0 ? flatSuggestions[activeSuggestionIndex] : null;
     if (selected) void chooseFlatSuggestion(selected);
     else void submitAddress();
+  } else if (e.key === "Backspace") {
+    // Champ vide + jetons posés : Retour arrière retire le dernier, comme dans
+    // tout champ à jetons. Le curseur doit être au tout début pour que le geste
+    // ne mange jamais du texte en cours de saisie.
+    const { kind, query } = parseAddress(addressValue);
+    if (kind === "programme" && !query && criteresActifs.length > 0) {
+      e.preventDefault();
+      criteresActifs = criteresActifs.slice(0, -1);
+      void updateSuggestions();
+    }
   } else if (e.key === "Escape") {
     vaultSuggestions = [];
     helpSuggestions = [];
+    programmeSuggestions = [];
+    critereSuggestions = [];
+    criteresActifs = [];
     activeSuggestionIndex = -1;
   }
 }
@@ -562,7 +660,9 @@ onMount(() => {
   // embarqué, jamais une copie par projet. L'appel est idempotent (stamp de
   // version) et non bloquant : sans dépôt, la complétion `programme:` reste
   // simplement vide.
-  void import("@/programmes").then(({ synchroniserProgrammes }) => synchroniserProgrammes());
+  void import("@/programmes").then(async ({ synchroniserProgrammes }) => {
+    programmesDir = await synchroniserProgrammes();
+  });
 
   const initial = params.get("browse") ?? "";
   if (initial) {
@@ -704,6 +804,27 @@ onMount(() => {
     onToggleFullscreen={() => void toggleFullscreen()}
   >
     <div class="browse__address-wrap">
+      {#if criteresActifs.length > 0}
+        <!-- Critères validés : ils réduisent le périmètre tant qu'ils sont là.
+             Retour arrière sur champ vide retire le dernier (onAddressKeydown). -->
+        <ul class="browse__criteres" aria-label={t("browse.criteresActifs")}>
+          {#each criteresActifs as c (c.categorie + c.valeur)}
+            <li class="browse__critere">
+              <span>{c.libelle}</span>
+              <button
+                type="button"
+                title={t("browse.critereRetirer", { name: c.libelle })}
+                aria-label={t("browse.critereRetirer", { name: c.libelle })}
+                onclick={() => {
+                  criteresActifs = criteresActifs.filter((x) => x !== c);
+                  void updateSuggestions();
+                  addressEl?.focus();
+                }}
+              ><i class="wxi-close" aria-hidden="true"></i></button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
       <input
         bind:this={addressEl}
         bind:value={addressValue}
@@ -720,13 +841,26 @@ onMount(() => {
       />
       {#if flatSuggestions.length > 0}
         <ul class="browse__suggestions" id="browse-suggestions" role="listbox">
-          {#each flatSuggestions as s, i (s.kind === "vault" ? s.path : `help:${s.path}`)}
+          {#each flatSuggestions as s, i (suggestionKey(s))}
             <li id="browse-suggestion-{i}" role="option" aria-selected={i === activeSuggestionIndex}>
               <button
                 type="button"
                 onclick={() => void chooseFlatSuggestion(s)}
                 onmouseenter={() => { activeSuggestionIndex = i; }}
-              >{s.kind === "vault" ? s.base : s.title}</button>
+              >
+                {#if s.kind === "critere"}
+                  <!-- Un critère ne s'ouvre pas : il se pose. Le distinguer
+                       visuellement évite de croire à un document. -->
+                  <i class="wxi-plus" aria-hidden="true"></i>
+                  <span>{s.critere.libelle}</span>
+                  <span class="browse__suggestion-note">{t(`browse.critere.${s.critere.categorie}`)}</span>
+                {:else if s.kind === "programme"}
+                  <span>{s.entree.titre}</span>
+                  <span class="browse__suggestion-note">{s.entree.filiere.join(", ")}</span>
+                {:else}
+                  {s.kind === "vault" ? s.base : s.title}
+                {/if}
+              </button>
             </li>
           {/each}
         </ul>
@@ -893,7 +1027,9 @@ onMount(() => {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 .browse__suggestions button {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   width: 100%;
   padding: 5px 8px;
   border: none;
@@ -903,6 +1039,47 @@ onMount(() => {
   font-size: 12px;
   text-align: left;
   cursor: pointer;
+}
+/* Précision d'une ligne (catégorie d'un critère, filières d'un programme) :
+   secondaire, poussée à droite — elle situe sans disputer la lecture. */
+.browse__suggestion-note {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* Critères validés, devant le champ — la barre reste à sa largeur, les jetons
+   se replient sur plusieurs lignes plutôt que de la faire enfler. */
+.browse__criteres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 0 0 3px;
+  padding: 0;
+  list-style: none;
+}
+.browse__critere {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px 1px 6px;
+  border-radius: 10px;
+  background: var(--surface-hover);
+  color: var(--fg);
+  font-size: 11px;
+}
+.browse__critere button {
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.browse__critere button:hover {
+  color: var(--fg);
 }
 .browse__suggestions button:hover {
   background: var(--surface-hover);

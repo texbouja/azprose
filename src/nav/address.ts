@@ -10,7 +10,7 @@
  * toucher au reste de la fenêtre.
  */
 
-export type AddressKind = "help" | "vault";
+export type AddressKind = "help" | "programme" | "vault";
 
 export interface ParsedAddress {
   kind: AddressKind;
@@ -19,15 +19,21 @@ export interface ParsedAddress {
 }
 
 const HELP_PREFIX = /^\s*(aide|help)\s*:\s*/i;
+/** Programmes officiels — fr et en, plus l'abrégé courant. */
+const PROGRAMME_PREFIX = /^\s*(programmes?|programs?|prog)\s*:\s*/i;
 
 /** Parse la saisie de la barre d'adresse. Entrée vide/blanche → requête vide,
  *  jamais une erreur (c'est à l'appelant de décider quoi faire d'une requête
- *  vide — repli sur la racine de l'aide, no-op…). */
+ *  vide — repli sur la racine de l'aide, liste complète des programmes…). */
 export function parseAddress(input: string): ParsedAddress {
   const raw = input ?? "";
-  const m = raw.match(HELP_PREFIX);
-  if (m) {
-    return { kind: "help", query: raw.slice(m[0].length).trim() };
+  const aide = raw.match(HELP_PREFIX);
+  if (aide) {
+    return { kind: "help", query: raw.slice(aide[0].length).trim() };
+  }
+  const prog = raw.match(PROGRAMME_PREFIX);
+  if (prog) {
+    return { kind: "programme", query: raw.slice(prog[0].length).trim() };
   }
   return { kind: "vault", query: raw.trim() };
 }
