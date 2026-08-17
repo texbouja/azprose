@@ -12,16 +12,27 @@ vérificateur** sans anomalie grave.
 
 **Un fichier par PROGRAMME RÉEL**, jamais par classe. Nommage :
 `<matiere>-<portee>.md`, en minuscules, sans accent — la matière figure en
-tête par son **raccourci** (`math`, `phy`, `chi`, `si`, `inf`…), la même
-convention que l'archive `corpus/sources/` ; le champ `matiere:` du front
-matter porte le nom complet.
+tête par son **raccourci**, la même convention que l'archive
+`corpus/sources/` ; le champ `matiere:` du front matter porte le nom complet.
+
+**Raccourcis de matières** (à étendre si besoin, une seule forme par matière) :
+
+| Raccourci | Matière |
+|---|---|
+| `math` | mathématiques |
+| `phys` | physique |
+| `chim` | chimie |
+| `si` | sciences industrielles de l'ingénieur |
+| `inf` | informatique |
+| `fr` · `en` | français-philosophie · anglais |
 
 ```
-math-mpsi-mp2i.md                   un même programme pour MPSI et MP2I
-math-mp-mpi.md                      MP et MPI
-math-tsi1.md                        TSI première année
-si-commun.md                        sciences industrielles, six filières, les deux années
-phy-chim-mp.md                      physique-chimie, classe de MP
+math-mpsi-mp2i.md     un même programme pour MPSI et MP2I
+math-mp-mpi.md        MP et MPI
+math-tsi1.md          TSI première année
+si-commun.md          sciences industrielles, six filières, les deux années
+phys-mp.md            physique, classe de MP
+chim-mp.md            chimie, classe de MP
 ```
 
 > ⚠️ **Ne dupliquez JAMAIS un fichier pour couvrir plusieurs filières.** Le
@@ -33,9 +44,31 @@ phy-chim-mp.md                      physique-chimie, classe de MP
 La matière en tête range le corpus par discipline, ce qui est la façon dont il
 se parcourt quand il grossit.
 
-**Matières combinées** : certains programmes officiels réunissent deux
-disciplines dans un seul document — « Physique-Chimie » en MP, par exemple.
-Suivez le document : un fichier, `matiere: physique-chimie`. Ne le scindez pas.
+### Matières combinées : un fichier PAR matière
+
+Certains documents officiels réunissent deux disciplines — « Physique-Chimie »
+en MP, par exemple. **Le corpus les scinde** : `phys-mp.md` et `chim-mp.md`,
+chacun avec son front matter (`matiere: physique` / `matiere: chimie`) et sa
+propre légende.
+
+Motif : un professeur de physique qui ouvre son programme n'a rien à y faire
+d'un chapitre de chimie, et l'assistant interrogé sur une notion de physique ne
+doit pas citer un bandeau de thermodynamique chimique. **Chaque fichier ne
+contient que la matière qu'il traite** — aucune référence au programme voisin.
+
+Répartition des parties communes :
+
+| Partie du document officiel | Traitement |
+|---|---|
+| Parties disciplinaires numérotées | dans le fichier de leur matière |
+| Formation expérimentale | **scindée** : capacités de physique d'un côté, de chimie de l'autre |
+| Prévention du risque | **scindée** par matière (risque électrique/optique vs risque chimique) |
+| Annexe « matériel » | **scindée** par domaine (optique, électrique → physique ; chimie → chimie) |
+| Annexes « outils mathématiques » et « outils numériques » | **dupliquées à l'identique** dans les deux fichiers (outils communs) |
+
+Une phrase du document qui nomme le programme voisin s'adapte au strict
+minimum (« mise en œuvre du programme **de physique** de la classe de MP » →
+« du programme de la classe de MP »). C'est la seule réécriture autorisée.
 
 > ⚠️ **Un fichier existe déjà pour votre programme ?** Vérifiez d'abord
 > `corpus/`. S'il s'y trouve une transcription **partielle** (elle porte
@@ -59,39 +92,26 @@ Suivez le document : un fichier, `matiere: physique-chimie`. Ne le scindez pas.
 **Le format normatif est un FICHIER, pas une description :**
 
 ```
-corpus/math-mp-mpi.md             gabarit des programmes de mathématiques
-corpus/phys-mp.md                 gabarit des programmes de physique
-corpus/chim-mp.md                 gabarit des programmes de chimie
+corpus/math-mp-mpi.md      gabarit des programmes de mathématiques
+corpus/phys-mp.md          gabarit des programmes de physique
+corpus/chim-mp.md          gabarit des programmes de chimie
 ```
 
 Lisez le gabarit de votre matière en entier. Chacun porte sa propre légende
-(« Comment lire ce document ») et couvre tous les cas de figure : intitulés,
-bandeaux, formules affichées, transcription partielle. Ce README explique la
-*démarche* ; le gabarit fait foi sur la *forme*.
-
-> ⚠️ **Physique-chimie : deux fichiers.** Pour les matières combinées dans un
-> seul document officiel (« Physique-Chimie » en MP), le corpus la **découpe** :
-> un fichier par matière (`phys-*.md` / `chim-*.md`), chacun avec sa légende.
-> Chaque fichier ne contient que la matière qu'il traite — **jamais** de
-> référence au programme de la matière voisine (annexe 1 matériel découpée,
-> prévention du risque par matière) sauf pour les outils mathématiques et
-> numériques (annexes 2-3), communs, **dupliqués** dans chaque fichier.
+(« Comment lire ce document ») ; cette légende est **lue par l'utilisateur et
+par l'assistant**, elle doit donc décrire ce que le fichier fait réellement.
+Ce README explique la *démarche* ; le gabarit fait foi sur la *forme*.
 
 ---
 
 ## 2. Comprendre le document source
 
-Les programmes de mathématiques et de physique alternent deux dispositions :
+Les programmes alternent deux dispositions :
 
 | Disposition | Contenu | Valeur limitative |
 |---|---|---|
-| **Une colonne** (bandeau, en italique) | objectifs de la section, cadre d'étude, portée | généralement aucune — **mais parfois une exclusion** |
-| **Deux colonnes** | à gauche le programme lui-même ; à droite un commentaire synchronisé, paragraphe par paragraphe | **forte** : c'est là que vivent « hors programme », « non exigible »… |
-
-En physique-chimie, la colonne de droite contient des **capacités exigibles**
-— le socle évaluable — et les exclusions y sont plus rares : elles vivent
-presque toutes dans les **bandeaux** en tête de section. Les items en **gras**
-de la colonne de droite désignent les **thèmes d'étude des travaux pratiques**.
+| **Une colonne** (bandeau, en italique) | objectifs de la section, cadre d'étude, portée | variable — **c'est souvent là que vivent les exclusions** |
+| **Deux colonnes** | à gauche le programme lui-même ; à droite un commentaire ou une capacité, synchronisé paragraphe par paragraphe | forte en mathématiques, faible en physique-chimie |
 
 Le document **définit lui-même sa structure**, en général dans une section
 « Organisation du texte » du préambule. **Lisez-la** : elle énonce les
@@ -106,25 +126,63 @@ Pour le programme de mathématiques MP/MPI (2021), elle dit :
 - relèvent d'**activités possibles ou souhaitables, mais non exigibles** les
   illustrations et travaux proposés.
 
+### Ce que la colonne de droite contient, selon la discipline
+
+C'est la différence la plus structurante entre les matières, et elle n'est pas
+une question de style : elle tient à la nature des disciplines.
+
+**En mathématiques**, la colonne de droite **borne le terrain**. Un intitulé de
+notion ne dit pas où l'étude s'arrête : « réduction des endomorphismes » peut
+s'entendre du calcul d'un polynôme caractéristique jusqu'à la théorie des
+invariants de similitude. Sans délimitation explicite, la dérive va très loin —
+d'où des exclusions **nombreuses et ciblées**, attachées à un résultat précis.
+Le programme MP/MPI en porte plus de deux cents.
+
+**En physique-chimie**, le thème porte lui-même ses limites. « Physique du
+solide », « corrosion uniforme », « diffusion thermique » désignent des objets
+d'étude déjà balisés par la discipline : le titre borne l'attendu, et la
+colonne de droite sert alors à **énoncer ce qui est exigible** — les
+« capacités exigibles » — plutôt qu'à retrancher. Les exclusions y sont donc
+**rares**, et elles vivent presque toutes dans les **bandeaux** de tête de
+section, où elles portent sur l'ensemble du thème.
+
+> ⚠️ **N'inventez pas d'exclusions pour rapprocher un programme de physique
+> d'un programme de mathématiques.** Une contrainte absente du texte officiel
+> n'est pas un oubli à combler : c'est une information — la discipline n'a pas
+> jugé nécessaire de retrancher. En ajouter une reviendrait à interdire à un
+> professeur ce que le ministère autorise.
+
+Deux conventions propres à la physique-chimie, à repérer dans la source :
+
+- les items **en gras** de la colonne de droite désignent les **thèmes d'étude
+  des travaux pratiques** ;
+- les capacités préfixées « **Capacité numérique :** » mobilisent un langage de
+  programmation ou un tableur.
+
 ---
 
 ## 3. Front matter
 
 ```yaml
 ---
-id: physique-chimie-mp            # = nom du fichier sans .md
+id: phys-mp                       # = nom du fichier sans .md
 filiere: [MP]                     # LISTE — toutes les classes concernées
-matiere: physique-chimie          # minuscules, sans accent (nom complet, pas le raccourci)
+matiere: physique                 # minuscules, sans accent (nom complet, pas le raccourci)
 niveau: 2                         # 1 = première année, 2 = seconde
 source: "Annexe 2 — Programme de physique-chimie, MESRI 2021"
 ---
 ```
 
+**`id` = nom du fichier sans `.md`**, sans exception pour un nouveau programme.
+
 > ℹ️ Les identifiants des programmes de mathématiques (`mathematiques-mpsi-mp2i`,
 > `mathematiques-mp-mpi`) sont **historiques** : ils datent d'avant le passage
 > aux noms courts de fichiers et sont conservés tels quels — c'est l'identifiant
-> que l'application expose. Ne les alignez pas sur le nom du fichier ; un
-> **nouveau** programme reçoit `id:` = nom du fichier sans `.md`.
+> que l'application expose. Cette dérogation ne vaut que pour eux.
+
+**`source`** cite le document officiel. Pour une matière combinée scindée, les
+deux fichiers citent **le même document** : c'est la vérité, et c'est lui qu'il
+faudra rouvrir en cas de doute.
 
 **`filiere`** énumère les classes **telles que les enseignants les nomment** :
 `MPSI`, `MP`, `MP2I`, `MPI`, `PCSI`, `PC`, `PSI`, `PTSI`, `PT`, `TSI`, `TPC`,
@@ -167,16 +225,34 @@ utile : « je n'en sais rien, cette partie n'est pas transcrite ».
 | Sous-section (« a) Compléments sur les groupes ») | `### a) Compléments sur les groupes` |
 | Bandeau en italique | citation `>` en tête de section |
 | Chapeau de paragraphe (« Dans ce paragraphe, $\mathbb{K}$ est… ») | citation `>` en tête de sous-section |
-| **Colonne de gauche** — un paragraphe | une puce `- …` |
-| **Colonne de droite** — un paragraphe | un intitulé **indenté sous la puce qu'il vise** |
-| *Physique-chimie* — capacité exigible de la colonne de droite | une **sous-puce indentée** `  - …` sous la notion qu'elle accompagne |
-| *Physique-chimie* — thème d'étude des travaux pratiques (en gras dans la source) | la capacité en caractères gras `  - **…**` |
+| **Colonne de gauche** — un paragraphe | une puce de premier niveau `- …` |
+| **Colonne de droite** — un commentaire limitatif (mathématiques) | un intitulé **indenté sous la puce qu'il vise** |
+| **Colonne de droite** — une capacité exigible (physique-chimie) | une **puce indentée** `  - …` sous la notion qu'elle accompagne |
+| Thème d'étude des TP (en gras dans la source) | la puce indentée en gras `  - **…**` |
+| Énumération interne à un item (hypothèses d'un théorème, cas) | des **puces indentées** `  - …` |
 
-L'appariement est **structurel** : le commentaire — ou la capacité exigible —
-de droite s'indente sous la puce de gauche à laquelle il fait face. C'est ce
-qui permet de dire plus tard *quel résultat officiel* une contrainte vise.
+L'appariement est **structurel** : ce qui est indenté appartient à la puce de
+premier niveau qui le précède. C'est ce qui permet de dire plus tard *quel
+résultat officiel* une contrainte vise.
 
 Les formules restent en LaTeX : `$…$` en ligne, `$$…$$` en bloc.
+
+### Ce que le vérificateur lit — trois règles mécaniques
+
+Ces trois règles ne sont pas des conventions d'esthétique : le parseur
+(`src-tauri/src/agent/programmes.rs`) s'appuie dessus.
+
+1. **L'indentation porte du sens.** Une puce de premier niveau devient un
+   *item* ; une puce indentée (deux espaces au moins) est un *détail* de l'item
+   qui la précède et lui reste rattachée. Un intitulé placé après une notion
+   **et ses capacités** vise donc la **notion**, jamais la dernière capacité.
+2. **Une ligne blanche ferme un intitulé.** Le paragraphe qui suit une ligne
+   blanche n'est plus dans la contrainte. Vous pouvez donc **conserver l'ordre
+   du document** : un intitulé peut vivre au milieu d'un bandeau, suivi d'un
+   paragraphe ordinaire, sans que la contrainte l'avale.
+3. **Un item, lui, continue à travers les lignes blanches** — c'est ce qui
+   permet à une formule affichée `$$…$$` et à son intitulé d'appartenir au bon
+   fragment.
 
 ---
 
@@ -191,6 +267,7 @@ vous qui tranchez, **une fois** ; le programme n'aura plus à deviner.
 | « la démonstration n'est pas exigible » | `**Non exigible.**` |
 | « la démonstration n'est exigible que pour … » | `**Non exigible.**` |
 | « activité possible / souhaitable, non exigible » | `**Non exigible.**` |
+| « aucune connaissance … n'est exigible » | `**Non exigible.**` |
 | « n'est pas un objectif du programme » | `**Limite.**` |
 | « n'est pas un attendu du programme » | `**Limite.**` |
 | « on se limite à … », « dans les exercices pratiques… » | `**Limite.**` |
@@ -216,6 +293,11 @@ voulu :
 Ici le résultat **est au programme** ; seule sa démonstration en est exclue.
 Fusionner les deux, ou déplacer l'exclusion ailleurs, détruirait cette nuance.
 
+**Scindez une exclusion ciblée.** Quand une phrase mêle un contenu exigible et
+la part qui en est retranchée, coupez-la en deux : l'item porte le contenu,
+l'intitulé la seule exclusion. Poser `**Hors programme.**` sur l'ensemble
+interdirait du contenu exigible.
+
 Une exclusion portée par un **bandeau** vaut pour **toute la section** :
 
 ```markdown
@@ -227,6 +309,17 @@ Une exclusion portée par un **bandeau** vaut pour **toute la section** :
 > **Hors programme.** La notion de produit scalaire hermitien.
 ```
 
+### Cas de la physique-chimie
+
+Les capacités exigibles se transcrivent **sans intitulé** : ce sont des puces
+indentées ordinaires. `**Commentaire.**` ne leur est pas nécessaire — leur
+place sous la notion dit déjà ce qu'elles sont.
+
+Attendez-vous à ne poser que quelques intitulés par fichier, presque tous dans
+des bandeaux (§2). **Ce n'est pas un signe de travail incomplet** : la légende
+du fichier doit d'ailleurs le dire à l'utilisateur, faute de quoi il lirait
+l'absence d'intitulé comme un oubli de transcription.
+
 ---
 
 ## 6. Fidélité
@@ -237,12 +330,16 @@ Une exclusion portée par un **bandeau** vaut pour **toute la section** :
 - L'intitulé peut absorber la locution, la phrase gardant son sujet :
   *« La démonstration du théorème de X est hors programme »* →
   `**Hors programme.** La démonstration du théorème de X.`
-- Conserver l'ordre du document.
+- **Conserver l'ordre du document** — y compris à l'intérieur d'un bandeau. Le
+  parseur ne vous oblige plus à rejeter les intitulés en fin de citation
+  (§4, règle 2), et déplacer une phrase peut lui faire perdre son antécédent
+  (« l'établissement de **cette expression** » a besoin de la formule qui
+  précède).
 
 **À ne pas faire**
 
 - **Ne résumez pas.** Un item raccourci perd la notion qu'il fallait retrouver.
-- **N'inventez aucune section** absente du source.
+- **N'inventez aucune section** absente du source, ni aucune contrainte (§2).
 - **N'ajoutez pas de section de synthèse des contraintes** : elle est
   **calculée** par l'application. En écrire une créerait une seconde source de
   vérité, qui divergerait à la première correction.
@@ -265,7 +362,9 @@ anomalie est **GRAVE**.
 
 **Relisez la liste des contraintes** : c'est le meilleur contrôle de votre
 travail. Si une exclusion du PDF n'y figure pas, son intitulé est mal placé ou
-mal orthographié.
+mal orthographié. Vérifiez aussi la ligne `porte sur :` — elle nomme l'item
+visé ; si elle désigne une capacité au lieu de la notion, votre indentation est
+fautive.
 
 L'anomalie la plus insidieuse est l'**intitulé mal écrit** —
 `**Hors-programme.**` avec un tiret redevient du texte ordinaire, la contrainte
@@ -294,7 +393,10 @@ en est le **miroir généré**, embarqué dans l'exécutable. La synchro est
 référentiel faux serait pire que ne rien distribuer.
 
 ⚠️ Ne modifiez **jamais** `src/programmes/*.md` à la main : la synchro les
-écrase, et les fichiers retirés de `corpus/` y sont purgés.
+écrase, et les fichiers retirés de `corpus/` y sont purgés. **Relancez
+`bun run corpus` juste avant de committer** : un miroir en retard d'une seule
+retouche passe tous les contrôles de contenu et met pourtant dans le binaire un
+fichier différent de la source.
 
 Les deux dossiers se commitent **ensemble**, comme `docs/user/` et
 `src/help/md/` — sans quoi le dépôt porterait une source et un miroir
@@ -306,7 +408,8 @@ git commit -m "corpus: programme de <matière> <filières>"
 ```
 
 Avant de committer, passez la baseline du dépôt : `bun test`,
-`bunx svelte-check`, `bun run build`.
+`bunx svelte-check`, `bun run build`. Si vous avez touché `src-tauri/`,
+ajoutez `cargo test`.
 
 ### Ce que git suit, et ce qu'il ignore
 
@@ -316,33 +419,37 @@ Avant de committer, passez la baseline du dépôt : `bun test`,
 | `src/programmes/*.md` | ✅ | miroir généré, mais embarqué dans le binaire — il doit être reproductible depuis un clone |
 | `corpus/sources/` | ❌ | les PDF officiels sont publics et retéléchargeables, plusieurs Mo chacun |
 
-Déposez les PDF sources dans `corpus/sources/` pendant votre travail : ils
-restent locaux, et la transcription garde leur référence dans `source:`.
+> ⚠️ **Tout travail temporaire va dans `/tmp`**, jamais dans le dépôt : une
+> exploration de PDF (`pdftohtml`, images extraites) y déverse vite des
+> milliers de fichiers.
 
-### `corpus/sources/` — structure d'archive des retranscriptions
-
-Quand une retranscription est produite par OCR (`tools/mistral_ocr.py`), son
-extrait brut est **également** conservé dans `corpus/sources/` — c'est le
-« bien » payé (API Mistral), qui reste lisible dans l'application pour la
-relecture mot à mot. Arborescence et conventions (cf. l'index local
-`corpus/sources/README.md`) :
+### `corpus/sources/` — archive des documents et des extraits
 
 ```
 corpus/sources/<matiere>/<classe(s)>/
-    <classe>-<matiere>.md      retranscription principale (extrait OCR brut)
     <classe>-<matiere>.pdf     document officiel source
+    <classe>-<matiere>.md      extrait OCR brut, s'il y a eu OCR
     <classe>-<matiere>.json    réponse brute OCR (blocs + coordonnées)
-    <classe>-<matiere>-N.md    tableaux CONTENUS/CAPACITÉS
+    <classe>-<matiere>-N.md    tableaux CONTENUS/CAPACITÉS extraits
 ```
 
-La matière est en tête (le premier réflexe d'un professeur), les classes
-ensuite. Le md principal **transclut** ses tableaux par wikilinks
-`![[<classe>-<matiere>-N]]` ; les noms des fichiers de tableaux sont
-**uniques dans toute l'archive** (base du md principal + suffixe) — exigence
-LSP : markdown-oxide résout les wikilinks par nom de fichier, deux `tbl-0.md`
-homonymes casseraient la résolution ; matière = **raccourci** (`math`, `phy`,
-`chi`, `fr`, `en`, `si`, `inf`…) ; le JSON est **conservé** : il permet de
-vérifier une formule douteuse sans relancer l'OCR payant.
+**Le PDF source y va toujours**, rangé dans l'arborescence — matière en tête
+(le premier réflexe d'un professeur), classes ensuite. Un document qui couvre
+deux matières scindées (physique-chimie) se range **une seule fois**, sous la
+matière du fichier qui le cite en premier, et l'index
+`corpus/sources/README.md` signale qu'il sert aux deux.
+
+Quand une retranscription est produite par OCR (`tools/mistral_ocr.py`),
+l'extrait brut est conservé **à côté** : c'est le « bien » payé, relisible dans
+l'application pour la relecture mot à mot. Le md principal **transclut** ses
+tableaux par wikilinks `![[<classe>-<matiere>-N]]` ; les noms sont **uniques
+dans toute l'archive** — exigence LSP : markdown-oxide résout les wikilinks par
+nom de fichier, deux `tbl-0.md` homonymes casseraient la résolution. Le JSON
+est **conservé** : il permet de vérifier une formule douteuse sans relancer
+l'OCR payant.
+
+**Tenez l'index à jour** (`corpus/sources/README.md`) : il est la seule carte
+de ce qui a été payé et de ce qui reste à faire.
 
 ---
 

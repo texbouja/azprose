@@ -271,12 +271,19 @@ fn chemin_section(s: &str, ss: &str) -> String {
 
 /// Clôt le fragment en cours et mémorise l'item courant, auquel les étiquettes
 /// suivantes se rattacheront.
+///
+/// Seule une puce de PREMIER niveau devient l'item courant. Une puce indentée
+/// (`porte_sur` renseigné) est un détail de l'item — capacité exigible de la
+/// colonne de droite en physique-chimie, hypothèse d'un théorème en
+/// mathématiques : elle ne doit pas capter les intitulés qui suivent, sans quoi
+/// un `**Hors programme.**` posé après une notion et ses capacités viserait la
+/// dernière capacité au lieu de la notion.
 fn pousser(out: &mut Vec<Fragment>, dernier_item: &mut Option<String>, f: Option<Fragment>) {
     let Some(f) = f else { return };
     if f.texte.trim().is_empty() {
         return;
     }
-    if f.etiquette == Etiquette::Aucune && !f.bandeau {
+    if f.etiquette == Etiquette::Aucune && !f.bandeau && f.porte_sur.is_none() {
         *dernier_item = Some(f.texte.clone());
     }
     out.push(f);
@@ -302,6 +309,9 @@ fn fragments(contenu: &str) -> Vec<Fragment> {
 
     for ligne in contenu.lines().skip(debut) {
         let t = ligne.trim();
+        // Profondeur d'indentation, mesurée AVANT de rogner : elle porte du
+        // sens (une puce indentée est un détail de la puce qui la précède).
+        let indentation = ligne.len() - ligne.trim_start().len();
 
         if let Some(titre) = t.strip_prefix("## ") {
             pousser(&mut out, &mut dernier_item, courant.take());
@@ -331,9 +341,16 @@ fn fragments(contenu: &str) -> Vec<Fragment> {
 
         let bandeau = t.starts_with('>');
         let corps = if bandeau { t.trim_start_matches('>').trim() } else { t };
-        // Ligne vide : simple séparateur — surtout PAS une fin de fragment,
-        // l'intitulé d'un item en est séparé par une ligne blanche.
+        // Ligne vide : séparateur pour un item (dont l'intitulé est séparé par
+        // une ligne blanche, et dont une formule affichée peut l'être aussi),
+        // mais FIN d'un fragment étiqueté. Sans cette clôture, un intitulé
+        // avalerait le paragraphe suivant : la contrainte citerait alors du
+        // texte qu'elle ne restreint pas, et l'ordre du document devrait être
+        // tordu pour l'éviter (intitulés rejetés en fin de citation).
         if corps.is_empty() {
+            if courant.as_ref().is_some_and(|f| f.etiquette != Etiquette::Aucune) {
+                pousser(&mut out, &mut dernier_item, courant.take());
+            }
             continue;
         }
 
@@ -351,11 +368,16 @@ fn fragments(contenu: &str) -> Vec<Fragment> {
 
         if let Some(item) = corps.strip_prefix("- ") {
             pousser(&mut out, &mut dernier_item, courant.take());
+            // Puce indentée hors bandeau = détail de l'item courant : capacité
+            // exigible de la colonne de droite (physique-chimie), hypothèse ou
+            // cas d'une énumération (mathématiques). On la rattache à sa
+            // notion parente au lieu d'en faire un item de plein droit.
+            let sous_item = indentation >= 2 && !bandeau;
             courant = Some(Fragment {
                 section: chemin_section(&section, &sous_section),
                 etiquette: Etiquette::Aucune,
                 texte: item.trim().to_string(),
-                porte_sur: None,
+                porte_sur: if sous_item { dernier_item.clone() } else { None },
                 bandeau,
             });
             continue;
@@ -876,5 +898,75 @@ couverture:
         let dir = tempfile::tempdir().unwrap();
         assert!(decouvrir(Some(dir.path())).is_empty());
         assert!(decouvrir(None).is_empty());
+    }
+
+    // ── Gabarit physique-chimie ─────────────────────────────────────────────
+    // Disposition DIFFÉRENTE des mathématiques : la colonne de droite du BO
+    // porte des « capacités exigibles » transcrites en puces INDENTÉES sous la
+    // notion qu'elles accompagnent, et les contraintes vivent presque toutes
+    // dans les bandeaux. Sans ces tests, rien ne protégerait ce gabarit.
+
+    const SPECIMEN_PHYS: &str = r#"---
+id: phys-test
+filiere: [TEST]
+matiere: physique
+niveau: 2
+---
+
+# Programme de test
+
+## 1. Optique
+
+> Cadre de l'étude.
+>
+> **Limite.** On se limite au modèle scalaire.
+>
+> Ce paragraphe suit l'intitulé et ne doit pas être avalé par lui.
+
+- Interférences à deux ondes.
+  - Décrire un dispositif interférentiel.
+  - **Mettre en œuvre un dispositif de mesure.**
+
+  **Hors programme.** Le calcul du contraste.
+"#;
+
+    fn prog_phys() -> Vec<Programme> {
+        vec![parse_programme(Path::new("/x/phys-test.md"), SPECIMEN_PHYS).unwrap()]
+    }
+
+    #[test]
+    fn capacite_indentee_est_rattachee_a_sa_notion() {
+        let frags = fragments(SPECIMEN_PHYS);
+        let cap = frags
+            .iter()
+            .find(|f| f.texte.starts_with("Décrire un dispositif"))
+            .expect("capacité absente");
+        assert_eq!(cap.porte_sur.as_deref(), Some("Interférences à deux ondes."));
+    }
+
+    #[test]
+    fn intitule_apres_des_capacites_vise_la_notion_pas_la_derniere_capacite() {
+        // Le piège que l'indentation signifiante corrige : sans elle, la
+        // dernière capacité devenait l'item courant et captait la contrainte.
+        let c = contraintes(&prog_phys()[0]);
+        let hors = c.iter().find(|c| c.genre == "hors").expect("contrainte absente");
+        assert_eq!(hors.porte_sur.as_deref(), Some("Interférences à deux ondes."));
+        assert_eq!(hors.portee, "item");
+    }
+
+    #[test]
+    fn intitule_de_bandeau_ne_devore_pas_le_paragraphe_suivant() {
+        let c = contraintes(&prog_phys()[0]);
+        let limite = c.iter().find(|c| c.genre == "limite").expect("contrainte absente");
+        assert_eq!(limite.texte, "On se limite au modèle scalaire.");
+        assert_eq!(limite.portee, "section");
+    }
+
+    #[test]
+    fn capacite_en_gras_reste_trouvable() {
+        // Les thèmes de TP sont en gras dans la source ; le verdict doit rester
+        // « dans » et la citation retrouvable malgré les astérisques.
+        let v = verifier_perimetre(&prog_phys(), "dispositif de mesure", "TEST", None, None);
+        assert_eq!(v.statut, "dans");
     }
 }
