@@ -16,7 +16,9 @@
  * explicite et assumée.
  */
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { mkdir, readDir, remove, writeTextFile } from "@tauri-apps/plugin-fs";
+import { mkdir, readDir, readTextFile, remove, writeTextFile } from "@tauri-apps/plugin-fs";
+import { CORPUS_VERSION } from "./catalog";
+import { deposerCorpus } from "./deposit";
 
 // `eager: true` + `?raw` : le contenu est inliné dans le bundle JS, comme pour
 // l'aide. Aucun accès disque à la compilation, rien à copier au packaging.
@@ -28,31 +30,38 @@ export async function corpusDir(): Promise<string> {
 }
 
 /**
- * Dépose le corpus embarqué dans le dossier applicatif. **Idempotent et
- * destructif** : réécrit chaque fichier, puis retire ceux qui ne sont plus
- * livrés — un programme retiré d'une version à l'autre ne doit pas survivre.
+ * Dépose le corpus embarqué dans le dossier applicatif, **si son contenu a
+ * changé** (stamp `version.txt` — cf. `deposit.ts`, où vit toute la logique).
  *
- * Toute erreur est avalée : ne pas pouvoir écrire le corpus ne doit pas
- * empêcher l'assistant de démarrer. Il travaillera sans contrainte, ce qui est
- * un état normal.
+ * Ce module-ci n'est qu'une liaison Tauri : il résout le dossier, branche les
+ * accès disque et fournit le contenu inliné par Vite. Il n'est pas testable
+ * sous bun (`import.meta.glob`), et n'a pas à l'être.
+ *
+ * Toute erreur est avalée : ne pas pouvoir écrire le corpus ne doit empêcher ni
+ * l'assistant ni NAV de démarrer. Ils travailleront sans corpus, ce qui est un
+ * état normal (l'assistant sans contrainte, NAV sans suggestion `programme:`).
  */
 export async function synchroniserProgrammes(): Promise<string | null> {
   try {
     const dir = await corpusDir();
-    await mkdir(dir, { recursive: true });
-
-    const livres = new Set<string>();
+    const fichiers: Record<string, string> = {};
     for (const [clef, contenu] of Object.entries(modules)) {
-      const nom = clef.replace(/^\.\//, "");
-      livres.add(nom);
-      await writeTextFile(await join(dir, nom), contenu as string);
+      fichiers[clef.replace(/^\.\//, "")] = contenu as string;
     }
 
-    for (const e of await readDir(dir)) {
-      if (e.isFile && e.name.toLowerCase().endsWith(".md") && !livres.has(e.name)) {
-        await remove(await join(dir, e.name));
-      }
-    }
+    await deposerCorpus(fichiers, dir, CORPUS_VERSION, {
+      mkdir: (p) => mkdir(p, { recursive: true }),
+      lireStamp: async (p) => {
+        try { return (await readTextFile(p)).trim(); } catch { return null; }
+      },
+      ecrire: (p, c) => writeTextFile(p, c),
+      listerMd: async (d) =>
+        (await readDir(d))
+          .filter((e) => e.isFile && e.name.toLowerCase().endsWith(".md"))
+          .map((e) => e.name),
+      supprimer: (p) => remove(p),
+      joindre: (a, b) => join(a, b),
+    });
     return dir;
   } catch (e) {
     console.warn("[programmes] synchronisation impossible :", e);

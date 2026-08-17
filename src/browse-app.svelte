@@ -557,6 +557,13 @@ onMount(() => {
   // plein écran si la fenêtre de lancement l'était — browse-window.ts).
   void getCurrentWindow().isFullscreen().then((v) => { isFullscreen = v; });
 
+  // Dépôt des programmes officiels : NAV les adresse par `programme:` et les
+  // ouvre depuis le dossier applicatif — le MÊME que celui de l'assistant
+  // embarqué, jamais une copie par projet. L'appel est idempotent (stamp de
+  // version) et non bloquant : sans dépôt, la complétion `programme:` reste
+  // simplement vide.
+  void import("@/programmes").then(({ synchroniserProgrammes }) => synchroniserProgrammes());
+
   const initial = params.get("browse") ?? "";
   if (initial) {
     // Échec au boot (fichier introuvable) : jamais zéro onglet (R6) — un
