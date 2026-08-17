@@ -11,13 +11,17 @@ indexé** dans ce dossier (`corpus/`), conforme au gabarit, et qui **passe le
 vérificateur** sans anomalie grave.
 
 **Un fichier par PROGRAMME RÉEL**, jamais par classe. Nommage :
-`<matiere>-<portée>.md`, en minuscules, sans accent.
+`<matiere>-<portee>.md`, en minuscules, sans accent — la matière figure en
+tête par son **raccourci** (`math`, `phy`, `chi`, `si`, `inf`…), la même
+convention que l'archive `corpus/sources/` ; le champ `matiere:` du front
+matter porte le nom complet.
 
 ```
-mathematiques-mpsi-mp2i.md          un même programme pour MPSI et MP2I
-mathematiques-mp-mpi.md             MP et MPI
-mathematiques-tsi1.md               TSI première année
-sciences-industrielles-commun.md    six filières, les deux années
+math-mpsi-mp2i.md                   un même programme pour MPSI et MP2I
+math-mp-mpi.md                      MP et MPI
+math-tsi1.md                        TSI première année
+si-commun.md                        sciences industrielles, six filières, les deux années
+phy-chim-mp.md                      physique-chimie, classe de MP
 ```
 
 > ⚠️ **Ne dupliquez JAMAIS un fichier pour couvrir plusieurs filières.** Le
@@ -40,8 +44,8 @@ Suivez le document : un fichier, `matiere: physique-chimie`. Ne le scindez pas.
 > Ne créez jamais un second fichier pour le même programme : le corpus en
 > proposerait deux, et l'assistant ne saurait lequel fait foi.
 >
-> C'est le cas aujourd'hui de `mathematiques-mp-mpi.md`, transcrit sur trois
-> sections seulement pour servir de gabarit.
+> Aucun specimen ne figure actuellement dans le corpus : les programmes
+> présents sont complets (`statut` et `couverture` absents).
 
 > ⚠️ **Ces fichiers sont livrés avec l'application** et l'utilisateur ne peut
 > pas les modifier. Une transcription fausse ne planterait rien : elle
@@ -55,13 +59,22 @@ Suivez le document : un fichier, `matiere: physique-chimie`. Ne le scindez pas.
 **Le format normatif est un FICHIER, pas une description :**
 
 ```
-corpus/mathematiques-mp-mpi.md
+corpus/math-mp-mpi.md             gabarit des programmes de mathématiques
+corpus/physique-chimie-mp.md      gabarit des programmes de physique-chimie
 ```
 
-Lisez-le en entier. Il porte sa propre légende (« Comment lire ce document ») et
-couvre **tous** les cas de figure : intitulés, bandeaux, formules affichées,
-transcription partielle. Ce README explique la *démarche* ; le gabarit fait foi
-sur la *forme*.
+Lisez le gabarit de votre matière en entier. Chacun porte sa propre légende
+(« Comment lire ce document ») et couvre tous les cas de figure : intitulés,
+bandeaux, formules affichées, transcription partielle. Ce README explique la
+*démarche* ; le gabarit fait foi sur la *forme*.
+
+> ⚠️ **Physique-chimie** : la structure diffère des mathématiques. La colonne
+> de droite y contient des **capacités exigibles** (pas des commentaires) ;
+> elles se transcrivent en **sous-puces indentées** sous la notion qu'elles
+> accompagnent, et les items identifiés **en gras** dans le document source
+> sont des **thèmes d'étude à aborder en priorité en travaux pratiques** — ils
+> se transcrivent en caractères gras **…**. Les parties « Formation
+> expérimentale » et les annexes se transcrivent comme le reste du programme.
 
 ---
 
@@ -73,6 +86,11 @@ Les programmes de mathématiques et de physique alternent deux dispositions :
 |---|---|---|
 | **Une colonne** (bandeau, en italique) | objectifs de la section, cadre d'étude, portée | généralement aucune — **mais parfois une exclusion** |
 | **Deux colonnes** | à gauche le programme lui-même ; à droite un commentaire synchronisé, paragraphe par paragraphe | **forte** : c'est là que vivent « hors programme », « non exigible »… |
+
+En physique-chimie, la colonne de droite contient des **capacités exigibles**
+— le socle évaluable — et les exclusions y sont plus rares : elles vivent
+presque toutes dans les **bandeaux** en tête de section. Les items en **gras**
+de la colonne de droite désignent les **thèmes d'étude des travaux pratiques**.
 
 Le document **définit lui-même sa structure**, en général dans une section
 « Organisation du texte » du préambule. **Lisez-la** : elle énonce les
@@ -93,13 +111,19 @@ Pour le programme de mathématiques MP/MPI (2021), elle dit :
 
 ```yaml
 ---
-id: mathematiques-mp-mpi          # = nom du fichier sans .md
-filiere: [MP, MPI]                # LISTE — toutes les classes concernées
-matiere: mathematiques            # minuscules, sans accent
+id: physique-chimie-mp            # = nom du fichier sans .md
+filiere: [MP]                     # LISTE — toutes les classes concernées
+matiere: physique-chimie          # minuscules, sans accent (nom complet, pas le raccourci)
 niveau: 2                         # 1 = première année, 2 = seconde
-source: "Annexe 1 — Programme de mathématiques, MESRI 2021"
+source: "Annexe 2 — Programme de physique-chimie, MESRI 2021"
 ---
 ```
+
+> ℹ️ Les identifiants des programmes de mathématiques (`mathematiques-mpsi-mp2i`,
+> `mathematiques-mp-mpi`) sont **historiques** : ils datent d'avant le passage
+> aux noms courts de fichiers et sont conservés tels quels — c'est l'identifiant
+> que l'application expose. Ne les alignez pas sur le nom du fichier ; un
+> **nouveau** programme reçoit `id:` = nom du fichier sans `.md`.
 
 **`filiere`** énumère les classes **telles que les enseignants les nomment** :
 `MPSI`, `MP`, `MP2I`, `MPI`, `PCSI`, `PC`, `PSI`, `PTSI`, `PT`, `TSI`, `TPC`,
@@ -144,10 +168,12 @@ utile : « je n'en sais rien, cette partie n'est pas transcrite ».
 | Chapeau de paragraphe (« Dans ce paragraphe, $\mathbb{K}$ est… ») | citation `>` en tête de sous-section |
 | **Colonne de gauche** — un paragraphe | une puce `- …` |
 | **Colonne de droite** — un paragraphe | un intitulé **indenté sous la puce qu'il vise** |
+| *Physique-chimie* — capacité exigible de la colonne de droite | une **sous-puce indentée** `  - …` sous la notion qu'elle accompagne |
+| *Physique-chimie* — thème d'étude des travaux pratiques (en gras dans la source) | la capacité en caractères gras `  - **…**` |
 
-L'appariement est **structurel** : le commentaire de droite s'indente sous la
-puce de gauche à laquelle il fait face. C'est ce qui permet de dire plus tard
-*quel résultat officiel* une contrainte vise.
+L'appariement est **structurel** : le commentaire — ou la capacité exigible —
+de droite s'indente sous la puce de gauche à laquelle il fait face. C'est ce
+qui permet de dire plus tard *quel résultat officiel* une contrainte vise.
 
 Les formules restent en LaTeX : `$…$` en ligne, `$$…$$` en bloc.
 
