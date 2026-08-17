@@ -133,14 +133,94 @@ def normaliser_unicode_math(texte: str) -> str:
     du corpus interdit pour les maths. Cette passe s'applique au markdown
     concaténé ET au contenu des tables, pour que l'archive reste en LaTeX pur
     — la même règle que pour les transcriptions conformes.
+
+    L'espace de séparation est intégré À LA CONVERSION (λX → « \\lambda X »),
+    jamais appliqué après coup aux commandes du modèle : séparer globalement
+    scinderait \int en \in t (commande ambiguë) sans rien corriger.
     """
     for uni, latex in UNICODE_MATH:
-        texte = texte.replace(uni, latex)
-    # Une lettre grecque collée à une lettre latine donnerait une commande
-    # ambiguë (\lambdaX) : on sépare par une espace, qui est ignorée par TeX
-    # dans les mathématiques (\lambda X ≡ \lambdaX syntaxiquement invalide).
-    texte = re.sub(r"\\(alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|varphi|chi|psi|omega)([A-Za-z])",
-                   r"\\\1 \2", texte)
+        if re.match(r"^\\[a-zA-Z]+$", latex):
+            # commande simple : sépare de la lettre qui suivait l'unicode,
+            # sinon commande ambiguë (\lambdaX, \inE…). Le backslash de la
+            # commande doit être échappé pour la substitution.
+            texte = re.sub(re.escape(uni) + r"(?=[A-Za-z])",
+                           lambda _m: latex + " ", texte)
+            texte = texte.replace(uni, latex)
+        else:
+            texte = texte.replace(uni, latex)
+    return texte
+
+
+# ── Délimitation des îlots mathématiques en texte courant ─────────────────
+# Un \lambda (ou tout autre commande LaTeX) en texte courant n'est jamais
+# composé par MathJax : seul un bloc $…$, \(…\), $$…$$ ou \[…\] l'est. Le
+# modèle OCR délimite déjà la plupart des formules, mais laisse parfois des
+# symboles isolés (∞, Ω, λ…) dans le texte des phrases. Cette passe détecte
+# ces îlots et les enveloppe dans $…$.
+
+# Caractères qui peuvent appartenir à un îlot mathématique en texte courant.
+_MATH_TOKENS = set("+-*/=<>≤≥≠±×÷^_()[]{}.,\\" + "0123456789")
+
+
+def delimiter_math(texte: str) -> str:
+    """Enveloppe dans $…$ les îlots mathématiques restés en texte courant.
+
+    Les segments déjà délimités ($$…$$, [..], (..), $..$) sont protégés et
+    rendus intacts ; seul le texte des phrases est analysé. Un îlot est une
+    séquence contiguë de tokens mathématiques (au moins une commande LaTeX)
+    bornée par du texte non-math ou la ponctuation de phrase. La passe est
+    NON destructive : le texte entre les îlots est conservé à l'identique.
+    """
+    # 1. Protéger les segments déjà délimités (placeholders).
+    protégés: list[str] = []
+
+    def _garder(m: re.Match) -> str:
+        protégés.append(m.group(0))
+        return f"\x00P{len(protégés)-1}\x00"
+
+    texte = re.sub(r"\$\$.*?\$\$|\\\[.*?\\\]|\\\(.*?\\\)|\$(?!\$).*?\$",
+                   _garder, texte, flags=re.S)
+
+    def _math(c: str) -> bool:
+        """Caractère susceptible d'appartenir à un îlot mathématique."""
+        return c.isalnum() or c in "+-*/=<>,;:^_{}()[]\\"
+
+    def _remplacer(m: re.Match) -> str:
+        seg = m.group(0)
+        out: list[str] = []
+        i, n = 0, len(seg)
+        while i < n:
+            if seg[i] == "\\":
+                # début d'îlot : une commande LaTeX (ou un run la contenant)
+                j = i
+                while j < n and _math(seg[j]):
+                    j += 1
+                # extension : ne pas avaler un mot français (≥2 lettres
+                # minuscules sans chiffre/opérateur) ni la ponctuation forte
+                while j < n and (seg[j].isalpha() or seg[j] in "+-*/=<>,:;^_{}()[]"):
+                    k = j
+                    while k < n and seg[k].isalpha():
+                        k += 1
+                    if k - j >= 2 and seg[j:j+k].isalpha() and seg[j:j+k].islower() \
+                       and k < n and not seg[k].isdigit() and seg[k] not in "+-*/=<>,:;^_{}()[]":
+                        break  # mot français, on s'arrête
+                    j = k
+                # retirer ponctuation de fin de liste
+                while j > i and seg[j-1] in ".,;:":
+                    j -= 1
+                morceau = seg[i:j]
+                out.append("$" + morceau + "$")
+                i = j
+            else:
+                out.append(seg[i])
+                i += 1
+        return "".join(out)
+
+    texte = re.sub(r"[^\x00]+", _remplacer, texte)
+
+    # 3. Restaurer les segments protégés.
+    for idx, seg in enumerate(protégés):
+        texte = texte.replace(f"\x00P{idx}\x00", seg)
     return texte
 
 
@@ -203,14 +283,18 @@ def concatener_pages(donnees: dict) -> str:
 
     Le séparateur `<!-- page N -->` garde la pagination du PDF : indispensable
     pour vérifier la fidélité page par page pendant la transcription. Le
-    markdown passe par `normaliser_unicode_math` — le modèle OCR restitue les
-    symboles en unicode, la charte les exige en LaTeX pur.
+    markdown passe par `normaliser_unicode_math` puis `delimiter_math` — le
+    modèle OCR restitue les symboles en unicode (à convertir en LaTeX) et
+    laisse parfois des commandes isolées en texte courant (à délimiter, sinon
+    MathJax ne les compose jamais).
     """
     morceaux: list[str] = []
     for page in donnees.get("pages", []):
         index = page.get("index", 0) + 1
         md = (page.get("markdown") or "").strip()
-        morceaux.append(f"<!-- page {index} -->\n\n{normaliser_unicode_math(md)}\n")
+        md = normaliser_unicode_math(md)
+        md = delimiter_math(md)
+        morceaux.append(f"<!-- page {index} -->\n\n{md}\n")
     return "\n".join(morceaux)
 
 
@@ -232,11 +316,14 @@ def traiter(pdf: Path, args) -> None:
     (out_dir / f"{pdf.stem}.md").write_text(concatener_pages(donnees), encoding="utf-8")
 
     # Le JSON (matière brute) est normalisé pour ses tables : leur contenu
-    # markdown alimente l'archive (fichiers tbl-*), il doit être en LaTeX pur.
+    # markdown alimente l'archive (fichiers tbl-*), il doit être en LaTeX pur
+    # et délimité (mêmes passes que le markdown des pages).
     for page in donnees.get("pages", []):
         for table in page.get("tables", []):
             content = table.get("content") or ""
-            table["content"] = normaliser_unicode_math(content)
+            content = normaliser_unicode_math(content)
+            content = delimiter_math(content)
+            table["content"] = content
 
     (out_dir / f"{pdf.stem}.json").write_text(
         json.dumps(donnees, ensure_ascii=False, indent=1), encoding="utf-8"
