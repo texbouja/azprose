@@ -60,7 +60,8 @@ Suivez le document : un fichier, `matiere: physique-chimie`. Ne le scindez pas.
 
 ```
 corpus/math-mp-mpi.md             gabarit des programmes de mathématiques
-corpus/physique-chimie-mp.md      gabarit des programmes de physique-chimie
+corpus/phys-mp.md                 gabarit des programmes de physique
+corpus/chim-mp.md                 gabarit des programmes de chimie
 ```
 
 Lisez le gabarit de votre matière en entier. Chacun porte sa propre légende
@@ -68,13 +69,13 @@ Lisez le gabarit de votre matière en entier. Chacun porte sa propre légende
 bandeaux, formules affichées, transcription partielle. Ce README explique la
 *démarche* ; le gabarit fait foi sur la *forme*.
 
-> ⚠️ **Physique-chimie** : la structure diffère des mathématiques. La colonne
-> de droite y contient des **capacités exigibles** (pas des commentaires) ;
-> elles se transcrivent en **sous-puces indentées** sous la notion qu'elles
-> accompagnent, et les items identifiés **en gras** dans le document source
-> sont des **thèmes d'étude à aborder en priorité en travaux pratiques** — ils
-> se transcrivent en caractères gras **…**. Les parties « Formation
-> expérimentale » et les annexes se transcrivent comme le reste du programme.
+> ⚠️ **Physique-chimie : deux fichiers.** Pour les matières combinées dans un
+> seul document officiel (« Physique-Chimie » en MP), le corpus la **découpe** :
+> un fichier par matière (`phys-*.md` / `chim-*.md`), chacun avec sa légende.
+> Chaque fichier ne contient que la matière qu'il traite — **jamais** de
+> référence au programme de la matière voisine (annexe 1 matériel découpée,
+> prévention du risque par matière) sauf pour les outils mathématiques et
+> numériques (annexes 2-3), communs, **dupliqués** dans chaque fichier.
 
 ---
 

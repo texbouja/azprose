@@ -1,12 +1,12 @@
 ---
-id: physique-chimie-mp
+id: physique-mp
 filiere: [MP]
-matiere: physique-chimie
+matiere: physique
 niveau: 2
 source: "Annexe 2 — Programme de physique-chimie, MESRI 2021"
 ---
 
-# Programme de physique-chimie — MP
+# Programme de physique — MP
 
 ## Comment lire ce document
 
@@ -36,13 +36,13 @@ conserve cette structure par l'indentation :
 
   | Intitulé | Ce qu'il signifie | Portée |
   |---|---|---|
-  | `**Commentaire.**` | précision, notation — **ne restreint rien** | l'item qui précède |
-  | `**Limite.**` | restriction de portée ou d'ambition | l'item qui précède |
-  | `**Non exigible.**` | au programme, mais non exigible | l'item qui précède |
-  | `**Hors programme.**` | **exclu** — ne doit pas être traité, ne peut faire l'objet d'aucune évaluation | l'item qui précède |
+  | **Commentaire.** | précision, notation — **ne restreint rien** | l'item qui précède |
+  | **Limite.** | restriction de portée ou d'ambition | l'item qui précède |
+  | **Non exigible.** | au programme, mais non exigible | l'item qui précède |
+  | **Hors programme.** | **exclu** — ne doit pas être traité, ne peut faire l'objet d'aucune évaluation | l'item qui précède |
 
-- `**Hors programme.**` est la seule mention **prohibitive** ; `**Limite.**`
-  et `**Non exigible.**` restreignent sans exclure.
+- **Hors programme.** est la seule mention **prohibitive** ; **Limite.**
+  et **Non exigible.** restreignent sans exclure.
 - Une citation en tête de section peut elle aussi porter un intitulé : il vaut
   alors pour **toute** la section.
 - Cette transcription est **dérivée**. En cas de doute, le document cité en
@@ -141,10 +141,6 @@ conserve cette structure par l'indentation :
 > « Contenus thématiques » — à partir desquels la problématique d'une séance
 > peut être définie.
 >
-> Les activités expérimentales sur le thème de la chimie sont aussi l'occasion
-> de consolider les savoir-faire de la classe de MPSI en particulier dans le
-> domaine des solutions aqueuses.
-
 - Mesures de temps et de fréquences.
   - Analyse spectrale.
     - Mettre en évidence le phénomène de repliement du spectre provoqué par
@@ -182,39 +178,18 @@ conserve cette structure par l'indentation :
 - Thermodynamique.
   - Conduction thermique.
     - Mettre en œuvre un dispositif de mesure de conductivité thermique.
-- Thermodynamique de la transformation chimique et électrochimie.
-  - Bilans d'énergie.
-    - Mettre en œuvre une technique de calorimétrie.
-    - Déterminer la valeur en eau d'un calorimètre.
-    - Estimer les fuites thermiques lors d'expériences réalisées avec un
-      calorimètre.
-  - Mesures de grandeurs électriques : conductance-conductivité, tension
-    électrique, intensité du courant.
-    - Mettre en œuvre des mesures de grandeurs physiques pour déterminer la
-      composition d'un système chimique.
-  - Électrochimie.
-    - Mettre en œuvre un dispositif à trois électrodes pour tracer des courbes
-      courant-potentiel.
-    - Mettre en œuvre des piles et des électrolyseurs.
+### 3. Prévention du risque au laboratoire
 
-### 3. Prévention du risque au laboratoire de physique-chimie
-
-> Les étudiants doivent prendre conscience du risque lié à la manipulation et
-> au rejet des produits chimiques. L'apprentissage et le respect des règles de
-> sécurité chimique, électrique, optique et celles liées à la pression et à la
-> température leur permettent de prévenir et de minimiser ce risque. Futurs
-> ingénieurs, chercheurs, enseignants, ils doivent être sensibilisés au respect
-> de la législation et à l'impact de leur activité sur l'environnement.
+> Les étudiants doivent prendre conscience du risque lié à la manipulation du
+> matériel de laboratoire. L'apprentissage et le respect des règles de sécurité
+> électrique, optique et celles liées à la pression et à la température leur
+> permettent de prévenir et de minimiser ce risque. Futurs ingénieurs,
+> chercheurs, enseignants, ils doivent être sensibilisés au respect de la
+> législation et à l'impact de leur activité sur l'environnement.
 
 - Prévention des risques au laboratoire.
   - Adopter une attitude responsable et adaptée au travail en laboratoire.
   - Développer une attitude autonome dans la prévention des risques.
-  - Risque chimique. Règles de sécurité au laboratoire. Classes et catégories
-    de danger. Pictogrammes de sécurité pour les produits chimiques. Mentions
-    de danger (H) et conseils de prudence (P). Fiches de sécurité.
-    - Relever les indications sur le risque associé au prélèvement, au mélange
-      et au stockage des produits chimiques et adopter une attitude
-      responsable lors de leur utilisation.
   - Risque électrique.
     - Adopter une attitude responsable lors de l'utilisation d'appareils
       électriques.
@@ -224,12 +199,6 @@ conserve cette structure par l'indentation :
   - Risques liés à la pression et à la température.
     - Adopter une attitude responsable lors de manipulations de corps chauds
       ou de dispositifs engageant des hautes ou des basses pressions.
-- Prévention de l'impact environnemental.
-  - Traitement et rejet des espèces chimiques.
-    - Adapter le mode d'élimination d'une espèce chimique ou d'un mélange en
-      fonction des informations recueillies sur la toxicité ou les risques.
-    - Sélectionner, parmi plusieurs modes opératoires, celui qui minimise les
-      impacts environnementaux.
 
 ---
 
@@ -1110,278 +1079,6 @@ conserve cette structure par l'indentation :
 
 ---
 
-## 8. Transformations chimiques de la matière : aspects thermodynamiques
-
-> Les transformations chimiques de la matière ont été abordées dès le début de
-> la classe de MPSI ; le critère d'évolution spontanée d'un système chimique en
-> transformation y a été présenté sans être démontré. Ce dernier a été
-> remobilisé lors de l'étude des transformations chimiques en solution aqueuse.
->
-> Le but de cette partie est d'une part d'aborder les transferts thermiques et
-> d'autre part d'établir puis exploiter le critère d'évolution spontanée d'un
-> système engagé dans une transformation physico-chimique, ce qui nécessite
-> l'introduction de la fonction enthalpie libre $G$ et du potentiel chimique.
-
-### 8.1. Premier principe de la thermodynamique appliqué aux transformations physico-chimiques
-
-> Dans la partie « Premier principe de la thermodynamique appliqué aux
-> transformations physico-chimiques », l'étude des transferts thermiques,
-> abordée en première année dans le cadre du cours de physique relatif aux
-> transformation physiques du corps pur, est ici généralisée aux
-> transformations physico-chimiques.
->
-> **Commentaire.** Les enthalpies standard de réaction sont considérées comme
-> indépendantes de la température.
->
-> Les notions et contenus sont illustrés à travers des applications liées à la
-> vie quotidienne (contenu calorique des aliments, pouvoirs calorifiques des
-> carburants, etc.), à la recherche (apports des techniques calorimétriques
-> modernes, etc.) ou au domaine industriel.
-
-- État standard. Enthalpie standard de réaction. Loi de Hess.
-  - Déterminer l'enthalpie standard de réaction à l'aide de tables de données
-    thermodynamiques.
-  - Associer le signe de l'enthalpie standard de réaction au caractère
-    endothermique ou exothermique de la réaction.
-- Enthalpie standard de formation, état standard de référence d'un élément.
-- Effets thermiques pour une transformation monobare : transfert thermique
-  associé à la transformation chimique en réacteur monobare, isotherme ;
-  variation de température en réacteur adiabatique, monobare.
-  - Prévoir, à partir de données thermodynamiques, le sens et une estimation de
-    la valeur du transfert thermique entre un système, siège d'une
-    transformation physico-chimique et le milieu extérieur.
-  - Évaluer la température atteinte par un système siège d'une transformation
-    chimique supposée monobare et réalisée dans un réacteur adiabatique.
-  - Capacité numérique : simuler, à l'aide d'un langage de programmation,
-    l'évolution temporelle de la température pour un système siège d'une
-    transformation adiabatique modélisée par une seule réaction chimique dont
-    les caractéristiques cinétiques et l'enthalpie standard de réaction sont
-    données.
-  - **Déterminer une enthalpie standard de réaction.**
-
-### 8.2. Deuxième principe de la thermodynamique appliqué aux transformations physico-chimiques
-
-> Dans la partie « Second principe de la thermodynamique appliqué aux
-> transformations physico-chimiques », on adopte pour les potentiels chimiques
-> une expression générale :
->
-> $$\mu_i = \mu_{i,\text{réf}} + RT \ln(a_i)$$
->
-> qui fait référence aux activités $a_i$ introduites en première année.
->
-> Enfin, l'étude de l'influence de la modification d'un paramètre (pression,
-> température ou composition) sur un système chimique permet d'aborder la
-> problématique de l'optimisation des conditions opératoires d'un procédé
-> chimique.
->
-> Les illustrations et applications sont choisis dans le domaine industriel,
-> dans la vie courante et au niveau du laboratoire.
->
-> **Hors programme.** L'établissement de cette expression.
->
-> **Hors programme.** L'influence de la pression sur le potentiel chimique d'un
-> constituant en phase condensée pure.
->
-> **Limite.** On se limite aux cas d'une espèce chimique pure, d'une espèce en
-> solution aqueuse très diluée et d'une espèce en mélange de gaz parfaits avec
-> référence à l'état standard.
->
-> **Commentaire.** Pour le calcul des grandeurs standard de réaction, les
-> enthalpies et entropies standard de réaction sont supposées indépendantes de
-> la température.
->
-> **Commentaire.** Les grandeurs standard de réaction permettent la
-> détermination de la valeur, à une température donnée, de la constante
-> thermodynamique d'équilibre $K^\circ$ caractéristique d'une réaction, valeur
-> qui était systématiquement fournie en première année. C'est ainsi l'occasion
-> de revenir sur la détermination de la composition d'un système
-> physico-chimique en fin d'évolution.
->
-> **Limite.** La notion d'affinité chimique n'est pas utilisée, le sens
-> d'évolution spontanée d'un système hors d'équilibre, à température et
-> pression fixées, est déterminé par le signe de l'enthalpie libre de réaction
-> $\Delta_r G$.
-
-- Potentiel chimique ; enthalpie libre d'un système chimique. Activité.
-  - Définir le potentiel chimique à l'aide de la fonction enthalpie libre et
-    donner l'expression (admise) du potentiel chimique d'un constituant en
-    fonction de son activité.
-  - Exprimer l'enthalpie libre d'un système chimique en fonction des potentiels
-    chimiques.
-- Enthalpie de réaction, entropie de réaction, enthalpie libre de réaction et
-  grandeurs standard associées.
-  - Justifier qualitativement ou prévoir le signe de l'entropie standard de
-    réaction.
-  - Relier création d'entropie et enthalpie libre de réaction lors d'une
-    transformation d'un système physico-chimique à pression et température
-    fixées.
-  - Prévoir le sens d'évolution à pression et température fixées d'un système
-    physico-chimique dans un état donné à l'aide de l'enthalpie libre de
-    réaction.
-  - Déterminer les grandeurs standard de réaction à partir des tables de
-    données thermodynamiques et de la loi de Hess.
-  - Déterminer les grandeurs standard de réaction d'une réaction dont l'équation
-    est combinaison linéaire d'autres équations de réaction.
-- Relation entre enthalpie libre de réaction et quotient de réaction ;
-  évolution d'un système chimique.
-- Constante thermodynamique d'équilibre ; relation de Van 't Hoff.
-  - Citer et exploiter la relation de Van 't Hoff.
-  - Déterminer la valeur de la constante thermodynamique d'équilibre à une
-    température quelconque.
-  - **Déterminer l'évolution de la valeur d'une constante thermodynamique
-    d'équilibre en fonction de la température.**
-- État final d'un système : équilibre chimique ou transformation totale.
-  - Déterminer la composition chimique d'un système dans l'état final, en
-    distinguant les cas d'équilibre chimique et de transformation totale, pour
-    une transformation modélisée par une réaction chimique unique.
-- Optimisation thermodynamique d'un procédé chimique : par modification de la
-  valeur de $K^\circ$ ; par modification de la valeur du quotient de réaction.
-  - Identifier les paramètres d'influence et leur contrôle pour optimiser une
-    synthèse ou minimiser la formation d'un produit secondaire indésirable.
-
----
-
-## 9. Aspects thermodynamique et cinétique de l'électrochimie
-
-> Les aspects thermodynamiques et cinétiques des réactions d'oxydo-réduction
-> sont appliqués notamment à la corrosion d'une part et aux dispositifs
-> électrochimiques que sont les piles et les accumulateurs d'autre part.
-> L'illustration des notions gagne à s'appuyer sur des applications concrètes
-> comme par exemple la mise en œuvre de capteurs électrochimiques dans
-> l'analyse de l'eau, de l'air ou d'effluents.
->
-> L'approche de l'électrochimie proposée ici privilégie les raisonnements
-> qualitatifs et les aspects expérimentaux, plutôt que les développements
-> théoriques et formels.
-
-### 9.1. Étude thermodynamique des réactions d'oxydo-réduction
-
-> La partie « Étude thermodynamique des réactions d'oxydo-réduction » se fonde
-> sur les acquis de première année relatifs à l'étude des réactions
-> d'oxydo-réduction et des piles, ainsi que sur la partie de thermodynamique
-> chimique de seconde année pour relier les grandeurs thermodynamiques aux
-> potentiels.
-
-- Relation entre enthalpie libre de réaction et potentiels des couples mis en
-  jeu dans une réaction d'oxydo-réduction.
-  - Citer et exploiter la relation entre l'enthalpie libre de réaction et les
-    potentiels des couples mis en jeu dans une réaction d'oxydo-réduction.
-- Relation entre enthalpie libre standard de réaction et potentiels standard
-  des couples impliqués.
-  - Déterminer l'enthalpie libre standard d'une réaction d'oxydo-réduction à
-    partir des potentiels standard des couples.
-  - Déterminer la valeur du potentiel standard d'un couple d'oxydo-réduction à
-    partir de données thermodynamiques.
-
-### 9.2. Étude cinétique des réactions d'oxydo-réduction : courbe courant-potentiel
-
-> La partie « Étude cinétique des réactions d'oxydo-réduction : courbe
-> courant-potentiel » se fonde sur les acquis de cinétique chimique de
-> première année et les prolongent par le tracé et l'exploitation de courbes
-> courant-potentiel.
->
-> Les courbes courant-potentiel, dont le tracé est proposé en capacité
-> expérimentale, sont un outil essentiel dans la compréhension et la
-> modélisation des systèmes électrochimiques.
->
-> **Commentaire.** L'écart entre le potentiel d'une électrode et son potentiel
-> d'équilibre est appelé surpotentiel plutôt que surtension pour des raisons
-> pédagogiques, en cohérence avec le vocabulaire anglo-saxon correspondant.
-
-- Courbes courant-potentiel sur une électrode en régime stationnaire :
-  surpotentiel ; systèmes rapides et systèmes lents ; nature de l'électrode ;
-  courant de diffusion limite ; vagues successives ; domaine d'inertie
-  électrochimique du solvant.
-  - Décrire le montage à trois électrodes permettant de tracer des courbes
-    courant-potentiel.
-  - Relier vitesse de réaction électrochimique et intensité du courant.
-  - Identifier le caractère lent ou rapide d'un système à partir des courbes
-    courant-potentiel.
-  - Identifier les espèces électroactives pouvant donner lieu à une limitation
-    en courant par diffusion.
-  - Relier qualitativement ou quantitativement, à partir de relevés
-    expérimentaux, l'intensité du courant de diffusion limite à la
-    concentration du réactif et à la surface immergée de l'électrode.
-  - Tracer l'allure de courbes courant-potentiel de branches d'oxydation ou de
-    réduction à partir de données fournies, de potentiels standard,
-    concentrations et surpotentiels.
-  - **Tracer et exploiter des courbes courant-potentiel.**
-
-### 9.3. Stockage et conversion d'énergie chimique dans des dispositifs électrochimiques
-
-> La partie « Stockage et conversion d'énergie dans des dispositifs
-> électrochimiques » s'appuie sur les courbes courant-potentiel pour étudier
-> le fonctionnement des piles et leur recharge, ainsi que les électrolyseurs.
-> Ces courbes permettent en effet de déterminer différentes caractéristiques :
-> réactions aux électrodes, tension à vide, tension à imposer pour une
-> recharge, etc.
-
-- Conversion d'énergie chimique en énergie électrique : fonctionnement des
-  piles.
-- Transformations spontanées et réaction modélisant le fonctionnement d'une
-  pile électrochimique.
-  - Établir l'inégalité reliant la variation d'enthalpie libre et le travail
-    électrique.
-  - Relier la tension à vide d'une pile et l'enthalpie libre de la réaction
-    modélisant son fonctionnement.
-  - Déterminer la capacité électrique d'une pile.
-- Courbes courant-potentiel et fonctionnement d'une pile électrochimique.
-  - Exploiter les courbes courant-potentiel pour rendre compte du
-    fonctionnement d'une pile électrochimique et tracer sa caractéristique.
-  - Citer les paramètres influençant la résistance interne d'une pile
-    électrochimique.
-- Conversion d'énergie électrique en énergie chimique.
-- Transformations forcées lors d'une électrolyse et de la recharge d'un
-  accumulateur.
-  - Exploiter les courbes courant-potentiel pour rendre compte du
-    fonctionnement d'un électrolyseur et prévoir la valeur de la tension
-    minimale à imposer.
-  - Exploiter les courbes courant-potentiel pour justifier les contraintes
-    (purification de la solution électrolytique, choix des électrodes) dans la
-    recharge d'un accumulateur.
-  - Déterminer la masse de produit formé pour une durée et des conditions
-    données d'électrolyse.
-  - Déterminer un rendement faradique à partir d'informations fournies
-    concernant le dispositif étudié.
-- Stockage et conversion d'énergie chimique.
-  - **Étudier le fonctionnement d'une pile ou d'un électrolyseur pour
-    effectuer des bilans de matière et des bilans électriques.**
-
-### 9.4. Corrosion humide ou électrochimique
-
-> La lutte contre la corrosion est un enjeu économique et la compréhension des
-> phénomènes de corrosion et des facteurs influençant cette corrosion est
-> essentielle pour effectuer des choix de méthodes de protection. La partie
-> « Corrosion humide ou électrochimique » exploite les courbes
-> courant-potentiel pour interpréter les phénomènes de corrosion, de
-> protection et de passivation.
->
-> **Limite.** On se limite à la corrosion uniforme et à la corrosion galvanique
-> de deux métaux en contact.
->
-> **Hors programme.** Les tracés de diagrammes de Tafel ou d'Evans.
-
-- Corrosion uniforme en milieu acide ou en milieu neutre oxygéné : potentiel
-  de corrosion, courant de corrosion.
-  - Positionner un potentiel de corrosion sur un tracé de courbes
-    courant-potentiel.
-- Corrosion d'un système de deux métaux en contact.
-  - Interpréter le phénomène de corrosion uniforme d'un métal ou de deux
-    métaux en contact en utilisant des courbes courant-potentiel ou d'autres
-    données expérimentales, thermodynamiques et cinétiques.
-  - Citer des facteurs favorisant la corrosion.
-- Protection contre la corrosion : revêtement ; anode sacrificielle ; protection
-  électrochimique par courant imposé.
-  - Exploiter des tracés de courbes courant-potentiel pour expliquer
-    qualitativement la qualité de la protection par un revêtement métallique et
-    le fonctionnement d'une anode sacrificielle.
-- Passivation.
-  - Interpréter le phénomène de passivation sur une courbe courant-potentiel.
-  - **Mettre en évidence le phénomène de corrosion et de protection et des
-    facteurs l'influençant.**
-
----
-
 ## Annexe 1 : matériel
 
 > Cette liste complète celle donnée en annexe 1 du programme de physique-chimie
@@ -1400,10 +1097,6 @@ conserve cette structure par l'indentation :
   - Carte d'acquisition dont l'API est publiée.
   - Microcontrôleur.
   - Émetteur et récepteur dans le domaine des ondes centimétriques.
-- Domaine de la chimie.
-  - Calorimètre.
-  - Électrode de référence.
-  - Électrolyseur et électrodes.
 
 ---
 
