@@ -67,7 +67,7 @@ conserve cette structure par l'indentation :
 
 > Cette partie présente l'ensemble des capacités expérimentales nouvelles que
 > les étudiants doivent acquérir au cours de l'année de MP durant les séances
-> de travaux pratiques. Elles viennent prolonger la partie correspondante du
+> de travaux pratiques. Elle vient prolonger la partie correspondante du
 > programme de MPSI dont les capacités doivent être complètement acquises à
 > l'issue des deux années de préparation, et restent donc au programme de la
 > classe de MP.
@@ -76,7 +76,7 @@ conserve cette structure par l'indentation :
 > travaux pratiques qui s'articuleraient autour d'une découverte du matériel,
 > mais doivent au contraire faire l'objet d'un apprentissage progressif
 > contextualisé où chaque élément apparaît naturellement à l'occasion d'un
-> problème concret. À ce titre, elles viennent compléter la liste des thèmes
+> problème concret. À ce titre, elle vient compléter la liste des thèmes
 > d'étude — en gras dans la colonne « capacités exigibles » de la partie
 > « Contenus thématiques » — à partir desquels la problématique d'une séance
 > peut être définie.
@@ -185,14 +185,6 @@ conserve cette structure par l'indentation :
 >
 > qui fait référence aux activités $a_i$ introduites en première année.
 >
-> Enfin, l'étude de l'influence de la modification d'un paramètre (pression,
-> température ou composition) sur un système chimique permet d'aborder la
-> problématique de l'optimisation des conditions opératoires d'un procédé
-> chimique.
->
-> Les illustrations et applications sont choisis dans le domaine industriel,
-> dans la vie courante et au niveau du laboratoire.
->
 > **Hors programme.** L'établissement de cette expression.
 >
 > **Hors programme.** L'influence de la pression sur le potentiel chimique d'un
@@ -217,6 +209,14 @@ conserve cette structure par l'indentation :
 > d'évolution spontanée d'un système hors d'équilibre, à température et
 > pression fixées, est déterminé par le signe de l'enthalpie libre de réaction
 > $\Delta_r G$.
+>
+> Enfin, l'étude de l'influence de la modification d'un paramètre (pression,
+> température ou composition) sur un système chimique permet d'aborder la
+> problématique de l'optimisation des conditions opératoires d'un procédé
+> chimique.
+>
+> Les illustrations et applications sont choisis dans le domaine industriel,
+> dans la vie courante et au niveau du laboratoire.
 
 - Potentiel chimique ; enthalpie libre d'un système chimique. Activité.
   - Définir le potentiel chimique à l'aide de la fonction enthalpie libre et

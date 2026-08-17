@@ -140,7 +140,7 @@ conserve cette structure par l'indentation :
 > d'étude — en gras dans la colonne « capacités exigibles » de la partie
 > « Contenus thématiques » — à partir desquels la problématique d'une séance
 > peut être définie.
->
+
 - Mesures de temps et de fréquences.
   - Analyse spectrale.
     - Mettre en évidence le phénomène de repliement du spectre provoqué par
@@ -497,13 +497,21 @@ conserve cette structure par l'indentation :
 > sont donc centrées sur l'essentiel : distributions de charges, champ et
 > potentiel.
 >
+> **Limite.** Pour le champ électrostatique et le potentiel, on se limite aux
+> expressions dans le cas de charges ponctuelles.
+>
 > L'accent est mis sur les propriétés intégrales du champ et sur le théorème
 > de Gauss pour des situations présentant un haut degré de symétrie.
+>
+> **Non exigible.** Le théorème de Gauss est admis.
 >
 > Des capacités sur la lecture des lignes de champ et des surfaces
 > équipotentielles sont développées.
 >
 > Le condensateur plan est introduit.
+>
+> **Hors programme.** L'étude des conducteurs en équilibre électrostatique ne
+> relève pas du programme.
 >
 > Une approche énergétique est conduite dans un cas simple : une charge
 > ponctuelle placée dans un champ électrostatique extérieur.
@@ -512,14 +520,6 @@ conserve cette structure par l'indentation :
 >
 > Les analogies avec la gravitation sont centrées sur l'application du
 > théorème de Gauss.
->
-> **Limite.** Pour le champ électrostatique et le potentiel, on se limite aux
-> expressions dans le cas de charges ponctuelles.
->
-> **Non exigible.** Le théorème de Gauss est admis.
->
-> **Hors programme.** L'étude des conducteurs en équilibre électrostatique ne
-> relève pas du programme.
 
 - Loi de Coulomb. Champ électrostatique. Champ électrostatique créé par un
   ensemble de charges ponctuelles. Principe de superposition.
@@ -608,11 +608,6 @@ conserve cette structure par l'indentation :
 > et quantitatifs vus en première année de la classe de MPSI. Les étudiants
 > sont donc déjà familiarisés avec le concept de champ magnétostatique.
 >
-> L'étude des propriétés des dipôles magnétiques, déjà abordée en classe de
-> MPSI est ici complétée notamment en ce qui concerne les actions subies par
-> un dipôle magnétique placé dans un champ magnétostatique extérieur. On peut,
-> sur ce thème, souligner les analogies avec l'électrostatique.
->
 > **Hors programme.** La loi de Biot et Savart n'est pas introduite ;
 > l'utilisation de celle-ci pour calculer un champ magnétostatique est donc
 > exclue.
@@ -620,6 +615,11 @@ conserve cette structure par l'indentation :
 > **Limite.** Les distributions de courants surfaciques ne sont pas introduites
 > à ce niveau du programme, elles le sont uniquement à l'occasion de la
 > réflexion d'une onde électromagnétique sur un métal parfait.
+>
+> L'étude des propriétés des dipôles magnétiques, déjà abordée en classe de
+> MPSI est ici complétée notamment en ce qui concerne les actions subies par
+> un dipôle magnétique placé dans un champ magnétostatique extérieur. On peut,
+> sur ce thème, souligner les analogies avec l'électrostatique.
 
 - Vecteur densité de courant volumique. Intensité du courant. Distributions de
   courant volumique et linéique.
@@ -700,12 +700,14 @@ conserve cette structure par l'indentation :
 
 ### 4.4. Énergie du champ électromagnétique
 
-> Dans la partie « Énergie du champ électromagnétique », l'accent est mis sur
-> les échanges d'énergie entre la matière et le champ électromagnétique, sur
-> l'utilisation du flux du vecteur de Poynting pour évaluer une puissance
-> rayonnée à travers une surface et sur les bilans d'énergie et de puissance.
+> Dans la partie « Énergie du champ électromagnétique ».
 >
 > **Non exigible.** Aucun modèle relatif à la loi d'Ohm locale n'est exigible.
+>
+> L'accent est mis sur les échanges d'énergie entre la matière et le champ
+> électromagnétique, sur l'utilisation du flux du vecteur de Poynting pour
+> évaluer une puissance rayonnée à travers une surface et sur les bilans
+> d'énergie et de puissance.
 
 - Force électromagnétique volumique. Puissance volumique cédée par le champ
   électromagnétique aux porteurs de charge.
@@ -743,13 +745,13 @@ conserve cette structure par l'indentation :
 >
 > La notion de densité de courant surfacique est introduite.
 >
+> **Hors programme.** Le calcul de l'intensité à travers un segment ne relève
+> pas du programme.
+>
 > L'étude du rayonnement dipolaire repose sur l'analyse et l'exploitation des
 > expressions des champs, qui sont admises. Elle est l'occasion d'étudier une
 > modélisation du phénomène de diffusion d'une onde électromagnétique par un
 > atome et d'en analyser les conséquences.
->
-> **Hors programme.** Le calcul de l'intensité à travers un segment ne relève
-> pas du programme.
 
 - Onde plane dans l'espace vide de charge et de courant ; onde plane
   progressive et aspects énergétiques.
@@ -854,19 +856,19 @@ conserve cette structure par l'indentation :
 > des fluides, en affirmant la généralisation des équations obtenues dans le
 > cas des solides.
 >
-> On admet ensuite les formes générales des équations en utilisant les
-> opérateurs d'analyse vectorielle.
->
-> La loi de Newton à l'interface entre un solide et un fluide est introduite.
->
 > **Limite.** L'établissement de l'équation de la diffusion thermique est
-> limité au cas des solides.
+> limitée au cas des solides.
 >
 > **Limite.** Les mises en équations locales sont faites exclusivement sur des
 > géométries où une seule variable d'espace intervient.
 >
+> On admet ensuite les formes générales des équations en utilisant les
+> opérateurs d'analyse vectorielle.
+>
 > **Non exigible.** Aucune connaissance spécifique sur les solutions d'une
 > équation de diffusion ne figure au programme.
+>
+> La loi de Newton à l'interface entre un solide et un fluide est introduite.
 
 - Conduction, convection et rayonnement.
   - Identifier un mode de transfert thermique.
@@ -921,18 +923,20 @@ conserve cette structure par l'indentation :
 > marche de potentiel et effet tunnel, particule dans un puits de potentiel
 > infini et quantification de l'énergie d'une particule confinée.
 >
-> L'accent doit être mis sur l'interprétation et l'exploitation des résultats
-> et non pas sur les calculs. Le professeur peut au contraire, s'il le
-> souhaite, proposer des analyses de graphes, des exploitations de formules
-> analytiques fournies, des estimations numériques, des simulations… afin
-> d'aborder des modélisations plus réalistes.
->
 > **Limite.** On se limite à l'introduction heuristique de la dualité
 > onde-particule et de la densité de courant de probabilité pour une particule
 > libre sans développer la notion de paquet d'ondes.
 >
+> L'accent doit être mis sur l'interprétation et l'exploitation des résultats
+> et non pas sur les calculs.
+>
 > **Non exigible.** Les calculs pour l'exemple plus délicat de la barrière de
 > potentiel.
+>
+> Le professeur peut au contraire, s'il le souhaite, proposer des analyses de
+> graphes, des exploitations de formules analytiques fournies, des
+> estimations numériques, des simulations… afin d'aborder des modélisations
+> plus réalistes.
 
 ### 6.1. Fonction d'onde et équation de Schrödinger
 
@@ -1121,20 +1125,21 @@ conserve cette structure par l'indentation :
 > l'expression d'un signal non périodique sous forme d'une intégrale (synthèse
 > spectrale).
 >
+> **Non exigible.** Aucun résultat n'est exigible.
+>
 > On souligne en revanche la relation liant en ordre de grandeur la largeur
 > spectrale $\Delta f$ et la durée caractéristique $\Delta t$ d'un signal non
 > périodique.
 >
-> Dans le thème « équations aux dérivées partielles », l'accent est mis sur le
-> rôle des conditions aux limites.
->
-> **Non exigible.** Aucun résultat n'est exigible.
+> Dans le thème « équations aux dérivées partielles ».
 >
 > **Non exigible.** Aucune méthode générale d'étude n'est exigible.
 >
 > **Limite.** On se limite à chercher des solutions d'une forme donnée par
 > substitution, menant ainsi soit à des équations différentielles classiques,
 > soit à une relation de dispersion.
+>
+> L'accent est mis sur le rôle des conditions aux limites.
 >
 > **Limite.** Les capacités relatives à la notion de différentielle d'une
 > fonction de plusieurs variables sont limitées à l'essentiel, elles sont
