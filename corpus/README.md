@@ -301,22 +301,21 @@ relecture mot à mot. Arborescence et conventions (cf. l'index local
 `corpus/sources/README.md`) :
 
 ```
-corpus/sources/<classe>/<matiere>/
+corpus/sources/<matiere>/<classe(s)>/
     <classe>-<matiere>.md      retranscription principale (extrait OCR brut)
     <classe>-<matiere>.pdf     document officiel source
     <classe>-<matiere>.json    réponse brute OCR (blocs + coordonnées)
     <classe>-<matiere>-N.md    tableaux CONTENUS/CAPACITÉS
 ```
 
-- Le md principal **transclut** ses tableaux par wikilinks
-  `![[<classe>-<matiere>-N]]` ;
-- les noms des fichiers de tableaux sont **uniques dans toute l'archive**
-  (base du md principal + suffixe) — exigence LSP : markdown-oxide résout
-  les wikilinks par nom de fichier, deux `tbl-0.md` homonymes casseraient la
-  résolution ;
-- matière = **raccourci** (`math`, `phy`, `chi`, `fr`, `en`, `si`, `inf`…) ;
-- le JSON est **conservé** : il permet de vérifier une formule douteuse sans
-  relancer l'OCR payant.
+La matière est en tête (le premier réflexe d'un professeur), les classes
+ensuite. Le md principal **transclut** ses tableaux par wikilinks
+`![[<classe>-<matiere>-N]]` ; les noms des fichiers de tableaux sont
+**uniques dans toute l'archive** (base du md principal + suffixe) — exigence
+LSP : markdown-oxide résout les wikilinks par nom de fichier, deux `tbl-0.md`
+homonymes casseraient la résolution ; matière = **raccourci** (`math`, `phy`,
+`chi`, `fr`, `en`, `si`, `inf`…) ; le JSON est **conservé** : il permet de
+vérifier une formule douteuse sans relancer l'OCR payant.
 
 ---
 
