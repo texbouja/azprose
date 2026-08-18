@@ -193,9 +193,9 @@ describe("pont MathJax — préparation des jetons", () => {
   });
 
   test("le remplissage approche la largeur visée, jetons fixes déduits", () => {
-    // 100 px à 10 px par caractère = 10 caractères, dont 7 déjà pris par
-    // « MJX0MJX » : il en reste 3 à ajouter.
-    expect(remplissagePour(100, 10, 0)).toBe(3);
+    // 100 px + 20 % de marge à 10 px par caractère = 12 caractères, dont 7
+    // déjà pris par « MJX0MJX » : il en reste 5 à ajouter.
+    expect(remplissagePour(100, 10, 0)).toBe(5);
     // Une formule minuscule ne doit jamais donner un remplissage négatif.
     expect(remplissagePour(5, 10, 0)).toBe(0);
     // Sans mesure de police exploitable, on ne dimensionne rien.
@@ -231,5 +231,29 @@ describe("mention « pas de maths »", () => {
   test("aucune mention sans maths", () => {
     expect(avertirMaths("flowchart TD\n A --> B")).toBe(false);
     expect(avertirMaths("sequenceDiagram\n A->>B: x")).toBe(false);
+  });
+});
+
+describe("dimensionnement du jeton", () => {
+  test("la marge de 20 % évite que la formule touche les bords", () => {
+    // 100 px visés, 10 px par caractère → 12 caractères avec la marge,
+    // moins les 7 fixes de « MJX0MJX ».
+    expect(remplissagePour(100, 10, 0)).toBe(5);
+  });
+
+  test("une formule haute est entourée de sauts de ligne", () => {
+    const { source, formules } = poserJetons('A["$$x$$"]', [0], [true]);
+    expect(source).toContain(`<br/>${formules[0].jeton}<br/>`);
+  });
+
+  test("une formule d'une seule ligne n'en reçoit aucun", () => {
+    const { source } = poserJetons('A["$$x$$"]', [0], [false]);
+    expect(source).not.toContain("<br/>");
+  });
+
+  test("la substitution retrouve le jeton même entouré de sauts de ligne", () => {
+    const { source, formules } = poserJetons('A["$$x$$"]', [0], [true]);
+    const out = substituerFormules(source, formules, ["OK"]);
+    expect(out).toContain("<br/>OK<br/>");
   });
 });

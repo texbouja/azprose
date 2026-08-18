@@ -637,3 +637,22 @@
     page-break-inside: avoid;
   }
 }
+
+/* Formules MathJax DANS un diagramme (pont de la vague 2).
+   Mermaid injecte sa feuille de style À L'INTÉRIEUR de son SVG, avec des
+   sélecteurs d'identifiant (`#mermaid-3 .label path { fill: … }`) : ils
+   atteignent les glyphes composés par MathJax et les peignent de la couleur
+   des nœuds — d'où des formules présentes mais quasi invisibles. Leur
+   spécificité d'identifiant ne se bat pas autrement qu'avec `!important`,
+   seule exception assumée de cette feuille. */
+.mdv-mermaid mjx-container,
+.mdv-mermaid mjx-container svg {
+  color: var(--fg);
+}
+.mdv-mermaid mjx-container svg,
+.mdv-mermaid mjx-container svg g,
+.mdv-mermaid mjx-container svg path,
+.mdv-mermaid mjx-container svg rect,
+.mdv-mermaid mjx-container svg use {
+  fill: currentColor !important;
+}

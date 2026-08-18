@@ -252,7 +252,11 @@ async function preparerPont(source: string, a: ApparenceDiagramme): Promise<Pont
   );
   const car = largeurCaractere(`${a.fontSize} ${a.fontFamily}`);
   const largeurs = mesures.map((m, i) => remplissagePour(m?.largeur ?? 0, car, i));
-  const { source: avecJetons, formules } = poserJetons(source, largeurs);
+  // Une formule sensiblement plus haute qu'une ligne (fraction, intégrale,
+  // somme indexée) réclame de la hauteur, que Mermaid ne réserve qu'au nombre
+  // de lignes du libellé.
+  const hautes = mesures.map((m) => (m?.hauteur ?? 0) > corps * 1.4);
+  const { source: avecJetons, formules } = poserJetons(source, largeurs, hautes);
 
   // Ce qu'on SUBSTITUE est du LaTeX délimité, pas le SVG mesuré : MathJax le
   // composera ensuite SUR PLACE, dans le document, par le même chemin que les

@@ -76,13 +76,21 @@ export function indexDuJeton(jeton: string): number | null {
  * connaît la largeur réelle de la formule composée et celle d'un caractère
  * dans la police du diagramme.
  */
-export function poserJetons(source: string, largeurs: number[] = []): SourceAvecJetons {
+export function poserJetons(
+  source: string,
+  largeurs: number[] = [],
+  hautes: boolean[] = [],
+): SourceAvecJetons {
   const formules: FormuleDiagramme[] = [];
   const avecJetons = source.replace(/\$\$([\s\S]*?)\$\$/g, (_, tex: string) => {
     const index = formules.length;
     const jeton = jetonFormule(index, largeurs[index] ?? 0);
     formules.push({ tex: tex.trim(), jeton });
-    return jeton;
+    // Une formule plus haute qu'une ligne (fraction, intégrale, somme) est
+    // rognée en haut et en bas si la boîte ne compte qu'une ligne : deux sauts
+    // de ligne l'entourent alors, et Mermaid réserve la hauteur de trois
+    // lignes. C'est le pendant vertical du remplissage en largeur.
+    return (hautes[index] ?? false) ? `<br/>${jeton}<br/>` : jeton;
   });
   return { source: avecJetons, formules };
 }
@@ -128,6 +136,9 @@ export function remplissagePour(
 ): number {
   if (!(largeurCaractere > 0)) return 0;
   const fixes = `MJX${index}MJX`.length;
-  const total = Math.ceil(largeurCible / largeurCaractere);
+  // Marge de 20 % : la largeur d'un `x` sous-estime celle d'un caractère moyen,
+  // et Mermaid ajoute ses propres retraits dans la boîte. Sans elle, la formule
+  // touche les bords — voire déborde, comme constaté à l'essai (2026-08-18).
+  const total = Math.ceil((largeurCible * 1.2) / largeurCaractere);
   return Math.max(0, total - fixes);
 }
