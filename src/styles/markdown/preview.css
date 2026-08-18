@@ -656,3 +656,22 @@
 .mdv-mermaid mjx-container svg use {
   fill: currentColor !important;
 }
+
+/* Libellés de diagramme : ce sont des `<p>` et des `<span>` HTML posés dans un
+   `<foreignObject>` — donc DANS `.mdv-prose`, dont ils héritaient la marge de
+   paragraphe (`margin: 0 0 1em`). Cette marge décale le contenu à l'intérieur
+   d'une boîte que Mermaid a dimensionnée sans elle : la formule remonte et se
+   fait rogner. Un libellé n'est pas un paragraphe du document ; ses
+   espacements sont remis à plat. La spécificité suffit ici (deux éléments
+   contre un), sans `!important`. */
+.mdv-mermaid foreignObject p,
+.mdv-mermaid foreignObject div,
+.mdv-mermaid foreignObject span {
+  margin: 0;
+  padding: 0;
+}
+/* MathJax pose ses propres marges autour de son conteneur : sans objet dans un
+   libellé, où la place est comptée au pixel. */
+.mdv-mermaid foreignObject mjx-container {
+  margin: 0;
+}
