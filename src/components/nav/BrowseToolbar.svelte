@@ -62,9 +62,7 @@ let {
 
 let t = $derived(getT($language));
 
-/** GAUCHE : sidebar + toute la navigation, y compris « ouvrir dans
- *  l'éditeur » (déplacé depuis le groupe de droite le 2026-08-14 — seuls
- *  recherche/Présentation/plein écran restent à droite). */
+/** GAUCHE : sidebar et navigation — les gestes qui déplacent la lecture. */
 let leftItems = $derived.by(() => [
   { comp: "icon", icon: sidebarVisible ? "wxi-panel-left-close" : "wxi-panel-left-open",
     text: t("browse.toggleSidebar"), pinned: true,
@@ -75,14 +73,17 @@ let leftItems = $derived.by(() => [
     disabled: !canGoBack, handler: () => onBack?.() },
   { comp: "icon", icon: "wxi-arrow-right", text: t("preview.forward"), pinned: true,
     disabled: !canGoForward, handler: () => onForward?.() },
-  { comp: "icon", icon: "wxi-external", text: t("preview.openInEditor"), pinned: true,
-    disabled: !canOpenInEditor, handler: () => onOpenInEditor?.() },
 ]);
 
-/** DROITE : Présentation puis plein écran — la recherche (children) se pose
- *  AVANT ce groupe dans le gabarit, jamais comme item de cette Toolbar. */
+/** DROITE : « ouvrir dans l'éditeur », Présentation, plein écran — les actions
+ *  qui portent sur le document affiché, toutes réunies APRÈS le champ de
+ *  filtrage (demande utilisateur, 2026-08-18 ; « éditer » revient donc du
+ *  groupe de gauche où il avait été mis le 2026-08-14). */
 let rightItems = $derived.by(() => {
-  const list: any[] = [];
+  const list: any[] = [
+    { comp: "icon", icon: "wxi-external", text: t("preview.openInEditor"), pinned: true,
+      disabled: !canOpenInEditor, handler: () => onOpenInEditor?.() },
+  ];
   if (presentationAvailable) {
     list.push({
       comp: "icon", icon: "wxi-slideshow", text: "Presentation", pinned: true,
@@ -136,6 +137,11 @@ let rightItems = $derived.by(() => {
      L'overflow de secours pour les icônes est scopé à .nt-toolbar-scroll,
      qui n'enveloppe PAS .nt-search. */
 }
+/* `flex: none` + `overflow-x: auto` : les groupes d'icônes gardent leur
+   largeur naturelle et défilent en dernier recours. C'est le champ de
+   filtrage qui absorbe le manque de place (voir .nt-search), pas eux — sans
+   quoi la barre se replie sur plusieurs lignes et déborde sous la sidebar
+   (régression signalée le 2026-08-18). */
 .nt-toolbar-scroll {
   flex: none;
   min-width: 0;
@@ -147,8 +153,14 @@ let rightItems = $derived.by(() => {
   flex: 1;
   min-width: 0;
 }
+/* Le champ de filtrage est l'élément ÉLASTIQUE de la barre : il prend la place
+   disponible jusqu'à une largeur confortable, et cède le premier quand la
+   fenêtre se resserre. `min-width: 0` est indispensable — sans lui, un enfant
+   flex refuse de passer sous sa largeur de contenu et repousse les voisins. */
 .nt-search {
-  flex: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 320px;
 }
 .nt-wrap :global(.wx-toolbar) {
   background: transparent !important;

@@ -1021,25 +1021,42 @@ onMount(() => {
 }
 .browse__address-wrap {
   /* Plus de margin-left (ex-espacement après .browse__tabs dans l'ancienne
-     tabbar) : ce bloc est désormais centré par .nt-search (BrowseToolbar,
-     phase B3), un margin résiduel l'aurait décalé du centre. */
+     tabbar) : ce bloc est désormais porté par .nt-search (BrowseToolbar,
+     phase B3), un margin résiduel l'aurait décalé.
+
+     RANGÉE UNIQUE (2026-08-18) : jetons et champ vivent sur la MÊME ligne. Les
+     jetons occupaient auparavant une ligne au-dessus, ce qui faisait grandir
+     un conteneur haut de 34 px et poussait la barre à déborder sous la
+     sidebar. La hauteur est désormais indépendante du nombre de critères. */
   position: relative;
-  flex: none;
-  width: 240px;
-}
-.browse__address {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   width: 100%;
   height: 26px;
-  padding: 0 8px;
+  padding: 0 6px;
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--bg);
+  overflow: hidden;
+}
+.browse__address-wrap:focus-within {
+  border-color: var(--accent);
+}
+/* Le cadre est porté par .browse__address-wrap (rangée unique) : le champ
+   lui-même est nu et prend simplement la place restante après les jetons. */
+.browse__address {
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
   color: var(--fg);
   font-size: 12px;
 }
 .browse__address:focus {
   outline: none;
-  border-color: var(--accent);
 }
 .browse__suggestions {
   position: absolute;
@@ -1079,21 +1096,27 @@ onMount(() => {
   font-size: 11px;
   white-space: nowrap;
 }
-/* Critères validés, devant le champ — la barre reste à sa largeur, les jetons
-   se replient sur plusieurs lignes plutôt que de la faire enfler. */
+/* Critères validés, EN LIGNE devant le champ. Ils ne se replient jamais : au
+   besoin la rangée défile, mais la hauteur de la barre ne bouge pas. */
 .browse__criteres {
   display: flex;
-  flex-wrap: wrap;
+  flex: none;
+  align-items: center;
   gap: 3px;
-  margin: 0 0 3px;
+  max-width: 60%;
+  margin: 0;
   padding: 0;
   list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .browse__critere {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 3px;
   padding: 1px 4px 1px 6px;
+  white-space: nowrap;
   border-radius: 10px;
   background: var(--surface-hover);
   color: var(--fg);
