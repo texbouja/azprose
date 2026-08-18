@@ -3,7 +3,7 @@ import {
   avertirMaths, contientMaths, MERMAID_MATH_NOTICE, neutraliserMaths, renderMermaidPlaceholder,
 } from "@/markdown/mermaid-fence";
 import {
-  estFlowchart, indexDuJeton, jetonFormule, listerFormules, poserJetons,
+  avecEnroulement, estFlowchart, indexDuJeton, jetonFormule, listerFormules, poserJetons,
   remplissagePour, substituerFormules,
 } from "@/markdown/mermaid-math";
 import { paletteDepuisStyle, signatureApparence, themeMermaidDepuisScheme } from "@/lib/mermaid-render";
@@ -255,5 +255,25 @@ describe("dimensionnement du jeton", () => {
     const { source, formules } = poserJetons('A["$$x$$"]', [0], [true]);
     const out = substituerFormules(source, formules, ["OK"]);
     expect(out).toContain("<br/>OK<br/>");
+  });
+});
+
+describe("largeur d'enroulement des libellés", () => {
+  test("une formule large déclare une largeur suffisante en front matter", () => {
+    // Sans cela, Mermaid replie le libellé à 200 px et la formule deborde.
+    const out = avecEnroulement("flowchart LR\n A --> B", 480);
+    expect(out).toContain("wrappingWidth: 480");
+    expect(out.startsWith("---\n")).toBe(true);
+    expect(out).toContain("flowchart LR");
+  });
+
+  test("jamais en dessous du défaut de Mermaid, jamais au-delà du lisible", () => {
+    expect(avecEnroulement("flowchart LR\n A --> B", 50)).toContain("wrappingWidth: 200");
+    expect(avecEnroulement("flowchart LR\n A --> B", 99999)).toContain("wrappingWidth: 1200");
+  });
+
+  test("un front matter existant reste intact — l'auteur y est maître", () => {
+    const source = "---\nconfig:\n  flowchart:\n    curve: linear\n---\nflowchart LR\n A --> B";
+    expect(avecEnroulement(source, 480)).toBe(source);
   });
 });

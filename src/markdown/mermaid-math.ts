@@ -62,6 +62,34 @@ export function jetonFormule(index: number, remplissage = 0): string {
   return `MJX${index}${"x".repeat(Math.max(0, remplissage))}MJX`;
 }
 
+/** Largeur d'enroulement par défaut de Mermaid, en pixels. */
+const ENROULEMENT_DEFAUT = 200;
+/** Plafond : au-delà, un organigramme cesse d'être lisible. */
+const ENROULEMENT_MAX = 1200;
+
+/**
+ * Déclare une largeur d'enroulement suffisante pour la plus large des formules.
+ *
+ * Mermaid borne ses libellés à **200 px** et les replie au-delà
+ * (`width: 200px; white-space: break-spaces` sur le `div` du libellé — relevé
+ * dans le DOM rendu). Un jeton dimensionné pour une formule plus large est donc
+ * coupé en deux lignes, et la formule qui le remplace déborde de sa boîte.
+ * C'était la cause des libellés tronqués constatés à l'essai (2026-08-18).
+ *
+ * La configuration passe par le front matter du diagramme, qui vaut pour lui
+ * seul — jamais par la configuration globale, qui affecterait tous les autres.
+ */
+export function avecEnroulement(source: string, largeurPx: number): string {
+  // Front matter déjà présent : l'auteur y règle sa propre configuration, et
+  // un second en-tête casserait le diagramme. On le laisse maître.
+  if (/^\s*---/.test(source)) return source;
+  const largeur = Math.min(
+    ENROULEMENT_MAX,
+    Math.max(ENROULEMENT_DEFAUT, Math.ceil(largeurPx)),
+  );
+  return `---\nconfig:\n  flowchart:\n    wrappingWidth: ${largeur}\n---\n${source}`;
+}
+
 /** Retrouve l'index d'un jeton, ou `null` si la chaîne n'en est pas un. */
 export function indexDuJeton(jeton: string): number | null {
   const m = jeton.match(/^MJX(\d+)x*MJX$/);

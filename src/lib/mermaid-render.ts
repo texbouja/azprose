@@ -17,6 +17,7 @@
 import { escapeHtml } from "@/markdown/highlight";
 import { neutraliserMaths } from "@/markdown/mermaid-fence";
 import {
+  avecEnroulement,
   estFlowchart,
   listerFormules,
   poserJetons,
@@ -258,6 +259,11 @@ async function preparerPont(source: string, a: ApparenceDiagramme): Promise<Pont
   const hautes = mesures.map((m) => (m?.hauteur ?? 0) > corps * 1.4);
   const { source: avecJetons, formules } = poserJetons(source, largeurs, hautes);
 
+  // Sans cette déclaration, Mermaid replie tout libellé au-delà de 200 px : le
+  // jeton se couperait en deux lignes et la formule déborderait de sa boîte.
+  const plusLarge = Math.max(0, ...mesures.map((m) => m?.largeur ?? 0));
+  const source2 = avecEnroulement(avecJetons, plusLarge * 1.3);
+
   // Ce qu'on SUBSTITUE est du LaTeX délimité, pas le SVG mesuré : MathJax le
   // composera ensuite SUR PLACE, dans le document, par le même chemin que les
   // formules du corps de texte.
@@ -269,7 +275,7 @@ async function preparerPont(source: string, a: ApparenceDiagramme): Promise<Pont
   // profite sans code : le MathJax du document imprimé traite ce LaTeX comme
   // le reste.
   const remplacements = formules.map((f) => `\\(${escapeHtml(f.tex)}\\)`);
-  return { source: avecJetons, formules, composees: remplacements };
+  return { source: source2, formules, composees: remplacements };
 }
 
 /**
