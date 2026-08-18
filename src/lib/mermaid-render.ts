@@ -15,16 +15,7 @@
  */
 
 import { escapeHtml } from "@/markdown/highlight";
-import { neutraliserMaths } from "@/markdown/mermaid-fence";
-import {
-  avecEnroulement,
-  estFlowchart,
-  listerFormules,
-  poserJetons,
-  remplissagePour,
-  substituerFormules,
-  type FormuleDiagramme,
-} from "@/markdown/mermaid-math";
+import { listerFormules } from "@/markdown/mermaid-math";
 
 type MermaidApi = typeof import("mermaid")["default"];
 
@@ -133,6 +124,12 @@ function config(a: ApparenceDiagramme) {
     // compris quand elle vient d'ailleurs (copier-coller, assistant).
     securityLevel: "strict" as const,
     fontFamily: a.fontFamily,
+    // Sans ce drapeau, Mermaid remplace toute formule par « MathML is
+    // unsupported in this environment » dès que le moteur ne déclare pas
+    // `window.MathMLElement` — ce qui n'a rien à voir avec notre sortie, qui
+    // est du SVG. Il ne change ici qu'un mode de sortie que notre faux `katex`
+    // ignore : c'est un garde, sans effet sur le rendu.
+    legacyMathML: true,
   };
 
   // Sans palette exploitable : thèmes intégrés de Mermaid, qui gèrent
@@ -199,97 +196,44 @@ function messageErreur(err: unknown): string {
 
 let compteur = 0;
 
-/** Largeur d'un caractère `x` par police, mesurée une seule fois. Sert à
- *  dimensionner le jeton qui réserve la place d'une formule. */
-const largeursCaractere = new Map<string, number>();
-
-function largeurCaractere(font: string): number {
-  const connue = largeursCaractere.get(font);
-  if (connue !== undefined) return connue;
-  let largeur = 0;
-  try {
-    const ctx = document.createElement("canvas").getContext("2d");
-    if (ctx) {
-      ctx.font = font;
-      largeur = ctx.measureText("x").width;
-    }
-  } catch { /* pas de canvas : le jeton ne sera pas dimensionné, sans plus */ }
-  largeursCaractere.set(font, largeur);
-  return largeur;
-}
-
-interface PontMaths {
-  source: string;
-  formules: FormuleDiagramme[];
-  composees: (string | null)[];
-}
-
 /**
- * Prépare la source d'un diagramme et, s'il y a lieu, compose ses formules.
+ * Prépare les mathématiques d'un diagramme.
  *
- * DEUX passages sont nécessaires : il faut composer d'abord pour connaître la
- * LARGEUR de chaque formule, puis poser des jetons de largeur équivalente —
- * Mermaid dimensionne la boîte du libellé d'après le jeton qu'il voit, jamais
- * d'après ce qu'on y substituera. Sans ce calcul, une formule large déborderait
- * de son nœud.
+ * Mermaid compose lui-même les `$$…$$` de ses libellés, puis MESURE le
+ * résultat pour dimensionner la boîte — c'est ce qui rend les libellés justes,
+ * et c'est un travail qu'on ne peut pas refaire de l'extérieur. On se contente
+ * donc de lui fournir NOTRE moteur : l'alias de build fait pointer `katex` vers
+ * `katex-mathjax.ts`, dont le `renderToString` lit ce cache.
+ *
+ * Les formules sont composées ICI, en asynchrone, parce que le
+ * `renderToString` que Mermaid appelle est synchrone et que l'API synchrone de
+ * MathJax échoue dès qu'un composant doit être chargé.
  */
-async function preparerPont(source: string, a: ApparenceDiagramme): Promise<PontMaths> {
-  const tex = listerFormules(source);
-  // Hors flowchart, le pont ne s'applique pas (libellés `<text>` SVG, sans
-  // mise en page HTML) : la formule redevient du texte, comme avant.
-  if (tex.length === 0 || !estFlowchart(source)) {
-    return { source: neutraliserMaths(source), formules: [], composees: [] };
-  }
+async function preparerMaths(source: string): Promise<void> {
+  const formules = listerFormules(source);
+  if (formules.length === 0) return;
 
   // Import DYNAMIQUE : MathJax ne se charge que si un diagramme porte vraiment
   // une formule, et le graphe statique reste exempt de modules à runes.
   const { composerFormule } = await import("@/lib/typeset-math");
-  const corps = parseFloat(a.fontSize) || 16;
+  const { deposerFormule } = await import("@/lib/katex-mathjax");
 
-  // Composition UNIQUE : elle fournit à la fois le SVG à injecter et les
-  // dimensions qui servent à réserver la place.
-  //
-  // `display: true` + `largeurConteneur` très grande : sans les DEUX, MathJax 4
-  // coupe la formule pour la faire tenir dans son conteneur (`<mjx-break>`) —
-  // et un libellé de diagramme fait une centaine de pixels. C'est ce qui
-  // faisait arriver `\,dt` ou `= e^x` à la ligne, formule tronquée à l'écran.
-  // Mesuré en sonde headless : l'une sans l'autre ne suffit pas.
-  const mesures = await Promise.all(
-    tex.map((t) =>
-      composerFormule(t, {
-        display: true,
-        fontSizePx: corps,
-        largeurConteneur: 100000,
-      }).catch(() => null),
-    ),
-  );
-  const car = largeurCaractere(`${a.fontSize} ${a.fontFamily}`);
-  const largeurs = mesures.map((m, i) => remplissagePour(m?.largeur ?? 0, car, i));
-  // Une formule sensiblement plus haute qu'une ligne (fraction, intégrale,
-  // somme indexée) réclame de la hauteur, que Mermaid ne réserve qu'au nombre
-  // de lignes du libellé.
-  // Hauteur : Mermaid ne réserve que des LIGNES. Une formule de deux lignes et
-  // demie (fraction, somme indexée) est rognée si le libellé n'en compte
-  // qu'une — d'où des sauts de ligne ajoutés devant le jeton.
-  const interligne = corps * 1.5;
-  const lignes = mesures.map((m) => Math.max(1, Math.ceil((m?.hauteur ?? 0) / interligne)));
-  const { source: avecJetons, formules } = poserJetons(source, largeurs, lignes);
-
-  // Sans cette déclaration, Mermaid replie tout libellé au-delà de 200 px : le
-  // jeton se couperait en deux lignes et la formule déborderait de sa boîte.
-  const plusLarge = Math.max(0, ...mesures.map((m) => m?.largeur ?? 0));
-  const source2 = avecEnroulement(avecJetons, plusLarge * 1.3);
-
-  // On injecte le SVG COMPOSÉ, pas du LaTeX à composer ensuite.
-  //
-  // Composer sur place dans le libellé semblait plus sûr — c'était l'erreur du
-  // 2026-08-18 : MathJax mesure alors le conteneur réel, une centaine de
-  // pixels, et coupe la formule pour l'y faire tenir. Composé à part avec une
-  // largeur de conteneur arbitraire, le SVG est entier ; il est autonome (ses
-  // glyphes voyagent dans ses propres `<defs>`), donc l'impression n'a plus
-  // besoin d'aucun MathJax pour les formules des diagrammes.
-  const remplacements = mesures.map((m) => m?.svg ?? null);
-  return { source: source2, formules, composees: remplacements };
+  // SÉQUENTIEL, et non `Promise.all` : MathJax ne compose pas deux formules à
+  // la fois (mesuré — en parallèle, une composition sur deux rendait `null`),
+  // et le réglage `fontCache` est global le temps d'une composition : deux
+  // appels entrelacés se le retireraient l'un à l'autre.
+  for (const tex of formules) {
+    // `display` + `largeurConteneur` : sans les DEUX, MathJax 4 coupe la
+    // formule pour la faire tenir dans son conteneur (`<mjx-break>`).
+    // `tracesEnClair` : Mermaid assainit les libellés et retire les attributs
+    // XLink, dont dépendent les glyphes référencés.
+    const compose = await composerFormule(tex, {
+      display: true,
+      largeurConteneur: 100000,
+      tracesEnClair: true,
+    }).catch(() => null);
+    if (compose) deposerFormule(tex, compose.svg);
+  }
 }
 
 /**
@@ -325,19 +269,13 @@ export async function renderMermaidBlocks(
   for (const bloc of blocs) {
     const source = bloc.getAttribute("data-mermaid-source") ?? "";
     if (!source.trim()) continue;
-    const avis = bloc.querySelector(".mdv-mermaid__notice")?.outerHTML ?? "";
     try {
-      // Deux régimes pour les mathématiques (cf. `mermaid-math.ts`) :
-      // — organigramme : PONT MathJax, les formules sont composées avec le
-      //   préambule du projet, puis substituées dans le SVG rendu ;
-      // — tout autre type : délimiteurs retirés, la formule reste du texte.
-      // Dans les deux cas Mermaid ne voit jamais de `$$` — donc n'appelle
-      // jamais KaTeX, qui ignorerait le préambule.
-      const pont = await preparerPont(source, a);
-      const { svg: brut } = await mermaid.render(`mdv-mermaid-${++compteur}`, pont.source);
-      const svg = substituerFormules(brut, pont.formules, pont.composees);
-      bloc.innerHTML = svg + avis;
-
+      // Les formules sont composées AVANT le rendu et déposées dans le cache
+      // que lit le faux paquet `katex` : Mermaid les demandera lui-même, au
+      // moment où il mesure ses libellés.
+      await preparerMaths(source);
+      const { svg } = await mermaid.render(`mdv-mermaid-${++compteur}`, source);
+      bloc.innerHTML = svg;
       bloc.classList.add("is-rendered");
       rendus++;
     } catch (err) {
@@ -345,8 +283,7 @@ export async function renderMermaidBlocks(
       // corriger, et l'effacer lui retirerait son travail.
       bloc.innerHTML =
         `<p class="mdv-mermaid__error">${escapeHtml(messageErreur(err))}</p>` +
-        `<pre class="mdv-mermaid__source"><code>${escapeHtml(source)}</code></pre>` +
-        avis;
+        `<pre class="mdv-mermaid__source"><code>${escapeHtml(source)}</code></pre>`;
       bloc.classList.add("is-error");
     }
   }

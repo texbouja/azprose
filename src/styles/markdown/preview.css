@@ -619,15 +619,6 @@
   text-align: left;
 }
 
-/* Mention « pas de maths dans les diagrammes » (décision 2026-08-18). */
-.mdv-mermaid__notice {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 0.8em;
-  font-style: italic;
-  text-align: left;
-}
-
 /* Impression : un diagramme ne se coupe jamais entre deux pages. */
 @media print {
   .mdv-mermaid {
@@ -638,22 +629,24 @@
   }
 }
 
-/* Formules MathJax DANS un diagramme (pont de la vague 2).
-   Mermaid injecte sa feuille de style À L'INTÉRIEUR de son SVG, avec des
-   sélecteurs d'identifiant (`#mermaid-3 .label path { fill: … }`) : ils
+/* Formules MathJax DANS un diagramme (vague 2).
+   Le SVG de la formule est posé par Mermaid dans le `<foreignObject>` du
+   libellé — c'est le seul SVG imbriqué là, d'où le sélecteur.
+
+   Mermaid injecte sa feuille de style À L'INTÉRIEUR de son propre SVG, avec
+   des sélecteurs d'identifiant (`#mermaid-3 .label path { fill: … }`) : ils
    atteignent les glyphes composés par MathJax et les peignent de la couleur
    des nœuds — d'où des formules présentes mais quasi invisibles. Leur
    spécificité d'identifiant ne se bat pas autrement qu'avec `!important`,
    seule exception assumée de cette feuille. */
-.mdv-mermaid mjx-container,
-.mdv-mermaid mjx-container svg {
+.mdv-mermaid foreignObject svg {
   color: var(--fg);
 }
-.mdv-mermaid mjx-container svg,
-.mdv-mermaid mjx-container svg g,
-.mdv-mermaid mjx-container svg path,
-.mdv-mermaid mjx-container svg rect,
-.mdv-mermaid mjx-container svg use {
+.mdv-mermaid foreignObject svg,
+.mdv-mermaid foreignObject svg g,
+.mdv-mermaid foreignObject svg path,
+.mdv-mermaid foreignObject svg rect,
+.mdv-mermaid foreignObject svg use {
   fill: currentColor !important;
 }
 
@@ -670,9 +663,9 @@
   margin: 0;
   padding: 0;
 }
-/* MathJax pose ses propres marges autour de son conteneur : sans objet dans un
+/* MathJax pose ses propres marges autour de la formule : sans objet dans un
    libellé, où la place est comptée au pixel. */
-.mdv-mermaid foreignObject mjx-container {
+.mdv-mermaid foreignObject svg {
   margin: 0;
 }
 

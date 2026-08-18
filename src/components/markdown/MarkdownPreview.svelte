@@ -27,6 +27,7 @@ import { subscribeMode, type Theme } from "@/lib/theme";
 import { typesetMath } from "@/lib/typeset-math";
 import { createMathCache } from "@/lib/math-cache";
 import { createMermaidCache } from "@/lib/mermaid-cache";
+import { viderFormules } from "@/lib/katex-mathjax";
 import {
   apparenceDepuis,
   renderMermaidBlocks,
@@ -229,6 +230,10 @@ $effect(() => {
   if (p !== lastPreamble) {
     lastPreamble = p;
     mathCache.clear();
+    // Les diagrammes aussi : leurs formules sont composées avec le préambule,
+    // un diagramme mémorisé porterait encore les anciennes macros.
+    mermaidCache.clear();
+    viderFormules();
   }
 });
 

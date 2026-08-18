@@ -87,20 +87,25 @@ Un diagramme mal écrit **n'efface rien** : le bloc affiche le message d'erreur
 et conserve votre texte, pour que vous puissiez le corriger. Le message indique
 en général la ligne en cause.
 
-> [!warning] Les mathématiques ne sont pas prises en charge
-> Une formule écrite entre `$$` dans un diagramme **n'est pas composée** : elle
-> s'affiche telle que vous l'avez écrite, et un avertissement le rappelle sous
-> le diagramme.
->
-> La raison est simple : Mermaid utilise son propre moteur mathématique, qui
-> ignore les macros de votre préambule. Une formule qui fonctionne dans votre
-> cours échouerait donc silencieusement dans un diagramme — mieux vaut ne rien
-> composer que composer faux.
->
-> Dans le **corps du document**, en revanche, vos formules restent composées
-> normalement, préambule compris. Pour un diagramme, écrivez la formule en
-> toutes lettres (« intégrale de 0 à l'infini ») ou placez-la dans le texte qui
-> l'accompagne.
+## Des mathématiques dans un diagramme
+
+Une formule écrite entre `$$` dans un libellé est composée **avec le même
+moteur que le reste du document** — votre préambule et vos macros personnelles
+comprises :
+
+```mermaid
+flowchart LR
+    A["$$\int_0^{+\infty} e^{-t^2}\,dt$$"] --> B["$$\frac{\sqrt{\pi}}{2}$$"]
+```
+
+Trois points à connaître :
+
+- **Une formule tient sur une seule ligne.** Les deux `$$` doivent se trouver
+  sur la même ligne du bloc, sinon ils sont pris pour du texte ordinaire.
+- **La taille du libellé s'ajuste à la formule** : un nœud portant une somme
+  indexée est plus haut qu'un nœud portant un mot. C'est normal.
+- **Une formule fautive n'emporte pas le diagramme** : le libellé affiche le
+  message d'erreur du moteur mathématique, le reste est rendu normalement.
 
 ## Un second exemple, rendu
 

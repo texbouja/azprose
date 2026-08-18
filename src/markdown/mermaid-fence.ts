@@ -10,49 +10,6 @@
  */
 
 import { escapeAttr, escapeHtml } from "./highlight";
-import { estFlowchart } from "./mermaid-math";
-
-/** Mention affichée quand une source porte des maths que le pont ne couvre pas. */
-export const MERMAID_MATH_NOTICE =
-  "Les mathématiques ne sont composées que dans les organigrammes " +
-  "(`flowchart`) : ici la formule est affichée telle qu'écrite.";
-
-/** Une source contient-elle des délimiteurs mathématiques de Mermaid ? */
-export function contientMaths(source: string): boolean {
-  return /\$\$[\s\S]*?\$\$/.test(source);
-}
-
-/**
- * Faut-il avertir que les mathématiques ne seront pas composées ?
- *
- * Depuis le pont MathJax, les formules d'un **flowchart** sont composées avec
- * le préambule du projet : il n'y a plus rien à signaler. Les autres types de
- * diagrammes rendent leurs libellés en `<text>` SVG, sans mise en page HTML —
- * le pont ne s'y applique pas, et la mention garde tout son sens.
- */
-export function avertirMaths(source: string): boolean {
-  return contientMaths(source) && !estFlowchart(source);
-}
-
-/**
- * Retire les délimiteurs `$$…$$` d'une source de diagramme, en gardant leur
- * contenu tel quel.
- *
- * Mermaid appelle KaTeX **dès qu'il voit `$$`** : aucune option ne le
- * désactive. Se contenter d'afficher une mention laissait donc KaTeX composer
- * pour de bon — sans la feuille de style attendue, et surtout sans le préambule
- * MathJax du projet, si bien qu'une macro maison (`\R`, `\abs`…) échouait en
- * silence au milieu d'un rendu à moitié réussi. C'est précisément ce que la
- * décision du 2026-08-18 voulait éviter.
- *
- * En retirant les délimiteurs, la formule redevient du TEXTE : elle s'affiche
- * telle que l'auteur l'a écrite, ce qui est honnête et lisible, et le chunk
- * KaTeX (253 Ko) n'est jamais chargé. Le pont MathJax (vague 2) remplacera
- * cette neutralisation par un vrai rendu, avec le préambule.
- */
-export function neutraliserMaths(source: string): string {
-  return source.replace(/\$\$([\s\S]*?)\$\$/g, (_, contenu: string) => contenu);
-}
 
 /**
  * Porteur d'un diagramme.
@@ -61,20 +18,15 @@ export function neutraliserMaths(source: string): string {
  * composé est mémorisé par source), et c'est ce qui permet à un diagramme
  * inchangé de traverser un re-rendu sans être recomposé ni clignoter.
  *
- * Les mathématiques ne sont PAS prises en charge (décision 2026-08-18) :
- * Mermaid les rendrait avec KaTeX, qui ignore le préambule MathJax du projet et
- * ne connaît pas les macros à arguments optionnels — celles-là mêmes qui ont
- * fait conserver MathJax. Un `$$` est donc signalé, jamais rendu à moitié.
+ * Les `$$…$$` traversent tels quels : c'est Mermaid qui les compose, avec
+ * NOTRE moteur — l'alias `katex` → `katex-mathjax.ts` lui fait rendre du
+ * MathJax, préambule du projet compris.
  */
 export function renderMermaidPlaceholder(source: string): string {
   const attr = escapeAttr(source);
-  const avis = avertirMaths(source)
-    ? `<p class="mdv-mermaid__notice">${escapeHtml(MERMAID_MATH_NOTICE)}</p>`
-    : "";
   return (
     `<figure class="mdv-mermaid" data-mermaid-source="${attr}">` +
     `<pre class="mdv-mermaid__source"><code>${escapeHtml(source)}</code></pre>` +
-    avis +
     `</figure>`
   );
 }

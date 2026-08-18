@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  avertirMaths, contientMaths, MERMAID_MATH_NOTICE, neutraliserMaths, renderMermaidPlaceholder,
-} from "@/markdown/mermaid-fence";
-import {
-  avecEnroulement, estFlowchart, indexDuJeton, jetonFormule, listerFormules, poserJetons,
-  remplissagePour, substituerFormules,
-} from "@/markdown/mermaid-math";
+import { renderMermaidPlaceholder } from "@/markdown/mermaid-fence";
+import { listerFormules } from "@/markdown/mermaid-math";
 import { paletteDepuisStyle, signatureApparence, themeMermaidDepuisScheme } from "@/lib/mermaid-render";
 
 /**
@@ -24,22 +19,6 @@ describe("porteur de diagramme mermaid", () => {
     const html = renderMermaidPlaceholder("flowchart TD\n  A --> B");
     expect(html).toContain("mdv-mermaid__source");
     expect(html).toContain("flowchart TD");
-  });
-
-  test("la mention n'apparaît que là où le pont MathJax ne va pas", () => {
-    // Depuis le pont, un organigramme compose ses formules avec le préambule :
-    // la mention ne concerne plus que les types de diagrammes non couverts.
-    const sequence = renderMermaidPlaceholder("sequenceDiagram\n  A->>B: $$x^2$$");
-    expect(sequence).toContain("mdv-mermaid__notice");
-    expect(sequence).toContain(MERMAID_MATH_NOTICE.slice(0, 30));
-
-    const flowchart = renderMermaidPlaceholder('flowchart TD\n  A["$$x^2$$"] --> B');
-    expect(flowchart).not.toContain("mdv-mermaid__notice");
-  });
-
-  test("sans $$, aucune mention parasite", () => {
-    const html = renderMermaidPlaceholder("flowchart TD\n  A --> B");
-    expect(html).not.toContain("mdv-mermaid__notice");
   });
 
   test("la source est échappée — un fence ne peut pas injecter de HTML", () => {
@@ -125,158 +104,33 @@ describe("signature d'apparence", () => {
   });
 });
 
-describe("neutralisation des maths dans une source de diagramme", () => {
-  test("les délimiteurs partent, le contenu reste tel quel", () => {
-    // Mermaid appelle KaTeX dès qu'il voit `$$` : retirer les délimiteurs est
-    // le seul moyen de l'en empêcher, aucune option ne le désactive.
-    expect(neutraliserMaths('A["$$x^2$$"] --> B')).toBe('A["x^2"] --> B');
-  });
-
-  test("plusieurs formules dans une même source", () => {
-    expect(neutraliserMaths('A["$$a$$"] --> B["$$b$$"]')).toBe('A["a"] --> B["b"]');
-  });
-
-  test("une formule sur plusieurs lignes", () => {
-    expect(neutraliserMaths("A[$$\\frac{1}{2}\n+ 3$$]")).toBe("A[\\frac{1}{2}\n+ 3]");
-  });
-
-  test("une macro du préambule n'est pas altérée — elle devient du texte", () => {
-    expect(neutraliserMaths('A["$$\\R \\abs{x}$$"]')).toBe('A["\\R \\abs{x}"]');
-  });
-
-  test("une source sans maths traverse inchangée", () => {
-    const src = "flowchart TD\n  A --> B";
-    expect(neutraliserMaths(src)).toBe(src);
-  });
-
-  test("un $ isolé n'est pas un délimiteur et reste intact", () => {
-    expect(neutraliserMaths('A["prix : 12 $"]')).toBe('A["prix : 12 $"]');
-  });
-
-  test("la détection reconnaît exactement ce que la neutralisation traite", () => {
-    expect(contientMaths('A["$$x$$"]')).toBe(true);
-    expect(contientMaths('A["12 $"]')).toBe(false);
-    expect(contientMaths("flowchart TD\n A --> B")).toBe(false);
-  });
-});
-
-describe("pont MathJax — préparation des jetons", () => {
-  test("le pont ne vaut que pour les organigrammes", () => {
-    expect(estFlowchart("flowchart TD\n A --> B")).toBe(true);
-    expect(estFlowchart("graph LR\n A --> B")).toBe(true);
-    expect(estFlowchart("sequenceDiagram\n A->>B: x")).toBe(false);
-    expect(estFlowchart("stateDiagram-v2\n [*] --> A")).toBe(false);
-  });
-
-  test("le type se lit malgré un commentaire ou un front matter en tête", () => {
-    expect(estFlowchart("%% un commentaire\nflowchart TD\n A --> B")).toBe(true);
-    expect(estFlowchart("---\ntitle: x\n---\nflowchart TD\n A --> B")).toBe(true);
-  });
-
+describe("formules à préparer pour Mermaid", () => {
   test("les formules sont extraites dans l'ordre, sans les délimiteurs", () => {
     expect(listerFormules('A["$$x^2$$"] --> B["$$\\R$$"]')).toEqual(["x^2", "\\R"]);
   });
 
-  test("les jetons ne contiennent que lettres et chiffres", () => {
-    // Toute ponctuation a un sens dans la grammaire de Mermaid : un jeton qui
-    // en contiendrait casserait le diagramme au lieu de le décorer.
-    const { source } = poserJetons('A["$$x^2$$"]', [4]);
-    const jeton = source.match(/MJX[0-9x]*MJX/)?.[0] ?? "";
-    expect(jeton).toMatch(/^[A-Za-z0-9]+$/);
-    expect(source).not.toContain("$$");
+  test("la détection suit celle de Mermaid : une formule ne franchit pas la ligne", () => {
+    // `katexRegex` de Mermaid n'a pas le drapeau `s`. Élargir la nôtre ferait
+    // préparer des formules qu'il ne demandera jamais.
+    expect(listerFormules('A["$$\\frac{1}{2}\n+ 3$$"]')).toEqual([]);
   });
 
-  test("un jeton se relit et rend son index", () => {
-    expect(indexDuJeton(jetonFormule(3, 12))).toBe(3);
-    expect(indexDuJeton("MJX")).toBeNull();
-    expect(indexDuJeton("A[x]")).toBeNull();
+  test("un $ isolé n'est pas un délimiteur", () => {
+    expect(listerFormules('A["prix : 12 $"]')).toEqual([]);
+    expect(listerFormules("flowchart TD\n A --> B")).toEqual([]);
   });
 
-  test("le remplissage approche la largeur visée, jetons fixes déduits", () => {
-    // 100 px + 20 % de marge à 10 px par caractère = 12 caractères, dont 7
-    // déjà pris par « MJX0MJX » : il en reste 5 à ajouter.
-    expect(remplissagePour(100, 10, 0)).toBe(5);
-    // Une formule minuscule ne doit jamais donner un remplissage négatif.
-    expect(remplissagePour(5, 10, 0)).toBe(0);
-    // Sans mesure de police exploitable, on ne dimensionne rien.
-    expect(remplissagePour(100, 0, 0)).toBe(0);
+  test("les deux formes d'antislash sont préparées", () => {
+    // Mermaid dédouble les antislashs pour les libellés HTML (`inputForKatex`)
+    // et pas ailleurs : le cache doit répondre aux deux appels.
+    expect(listerFormules('A["$$a \\\\ b$$"]')).toEqual(["a \\\\ b", "a \\ b"]);
   });
 
-  test("la substitution remplace chaque jeton par sa formule composée", () => {
-    const { source, formules } = poserJetons('A["$$a$$"] --> B["$$b$$"]');
-    const svg = `<svg>${source}</svg>`;
-    const out = substituerFormules(svg, formules, ["<svg>A</svg>", "<svg>B</svg>"]);
-    expect(out).toContain("<svg>A</svg>");
-    expect(out).toContain("<svg>B</svg>");
-    expect(out).not.toContain("MJX");
+  test("une formule répétée n'est préparée qu'une fois", () => {
+    expect(listerFormules('A["$$x$$"] --> B["$$x$$"]')).toEqual(["x"]);
   });
 
-  test("une formule dont la composition a échoué garde son jeton", () => {
-    // La faire disparaître serait pire : l'auteur ne saurait pas ce qui manque.
-    const { source, formules } = poserJetons('A["$$a$$"]');
-    const out = substituerFormules(`<svg>${source}</svg>`, formules, [null]);
-    expect(out).toContain(formules[0].jeton);
-  });
-});
-
-describe("mention « pas de maths »", () => {
-  test("plus de mention dans un organigramme — le pont s'en charge", () => {
-    expect(avertirMaths('flowchart TD\n A["$$x$$"]')).toBe(false);
-  });
-
-  test("mention conservée là où le pont ne s'applique pas", () => {
-    expect(avertirMaths('sequenceDiagram\n A->>B: $$x$$')).toBe(true);
-  });
-
-  test("aucune mention sans maths", () => {
-    expect(avertirMaths("flowchart TD\n A --> B")).toBe(false);
-    expect(avertirMaths("sequenceDiagram\n A->>B: x")).toBe(false);
-  });
-});
-
-describe("dimensionnement du jeton", () => {
-  test("la marge de 20 % évite que la formule touche les bords", () => {
-    // 100 px visés, 10 px par caractère → 12 caractères avec la marge,
-    // moins les 7 fixes de « MJX0MJX ».
-    expect(remplissagePour(100, 10, 0)).toBe(5);
-  });
-
-  test("une formule de trois lignes reçoit deux sauts, DEVANT le jeton", () => {
-    // Devant seulement : un saut final est ignoré par la mise en page, il ne
-    // réserverait aucune hauteur.
-    const { source, formules } = poserJetons('A["$$x$$"]', [0], [3]);
-    expect(source).toContain(`<br/><br/>${formules[0].jeton}`);
-    expect(source).not.toContain(`${formules[0].jeton}<br/>`);
-  });
-
-  test("une formule d'une seule ligne n'en reçoit aucun", () => {
-    const { source } = poserJetons('A["$$x$$"]', [0], [1]);
-    expect(source).not.toContain("<br/>");
-  });
-
-  test("la substitution retrouve le jeton malgré les sauts de ligne", () => {
-    const { source, formules } = poserJetons('A["$$x$$"]', [0], [2]);
-    const out = substituerFormules(source, formules, ["OK"]);
-    expect(out).toContain("<br/>OK");
-  });
-});
-
-describe("largeur d'enroulement des libellés", () => {
-  test("une formule large déclare une largeur suffisante en front matter", () => {
-    // Sans cela, Mermaid replie le libellé à 200 px et la formule deborde.
-    const out = avecEnroulement("flowchart LR\n A --> B", 480);
-    expect(out).toContain("wrappingWidth: 480");
-    expect(out.startsWith("---\n")).toBe(true);
-    expect(out).toContain("flowchart LR");
-  });
-
-  test("jamais en dessous du défaut de Mermaid, jamais au-delà du lisible", () => {
-    expect(avecEnroulement("flowchart LR\n A --> B", 50)).toContain("wrappingWidth: 200");
-    expect(avecEnroulement("flowchart LR\n A --> B", 99999)).toContain("wrappingWidth: 1200");
-  });
-
-  test("un front matter existant reste intact — l'auteur y est maître", () => {
-    const source = "---\nconfig:\n  flowchart:\n    curve: linear\n---\nflowchart LR\n A --> B";
-    expect(avecEnroulement(source, 480)).toBe(source);
+  test("des délimiteurs vides ne demandent aucune composition", () => {
+    expect(listerFormules('A["$$$$"]')).toEqual([]);
   });
 });

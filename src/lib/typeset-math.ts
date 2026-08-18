@@ -6,7 +6,10 @@ import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 
 type MathJaxGlobal =
   | {
-      startup?: { promise?: Promise<void> };
+      startup?: {
+        promise?: Promise<void>;
+        output?: { options?: Record<string, unknown> };
+      };
       tex2svgPromise?: (
         tex: string,
         opts: { display: boolean; containerWidth?: number },
@@ -59,7 +62,14 @@ export interface FormuleComposee {
  */
 export async function composerFormule(
   tex: string,
-  options: { display?: boolean; fontSizePx?: number; largeurConteneur?: number } = {},
+  options: {
+    display?: boolean;
+    fontSizePx?: number;
+    largeurConteneur?: number;
+    /** Glyphes en tracés plutôt qu'en références — indispensable si la sortie
+     *  doit survivre à un assainissement (Mermaid). */
+    tracesEnClair?: boolean;
+  } = {},
 ): Promise<FormuleComposee | null> {
   const mj = await prepareMathJax();
   if (!mj?.tex2svgPromise) return null;
@@ -68,10 +78,26 @@ export async function composerFormule(
   // diagramme fait une centaine de pixels — la formule y arrivait en deux
   // morceaux. Les deux options ensemble suppriment toute rupture ; mesuré en
   // sonde, l'une sans l'autre ne suffit pas.
-  const noeud = (await mj.tex2svgPromise(tex, {
-    display: options.display ?? false,
-    ...(options.largeurConteneur ? { containerWidth: options.largeurConteneur } : {}),
-  })) as HTMLElement;
+  //
+  // `fontCache: "none"` pendant la composition : les glyphes sont alors écrits
+  // en TRACÉS, au lieu d'être référencés par `<use xlink:href="#…">`. Mermaid
+  // assainit les libellés (DOMPurify), ce qui retire les attributs XLink —
+  // avec le cache par défaut, les barres de fraction survivaient et les
+  // lettres disparaissaient. Le réglage est rendu juste après : il ne vaut que
+  // pour cette composition, jamais pour les formules du document.
+  const sortie = (mj as { startup?: { output?: { options?: Record<string, unknown> } } })
+    .startup?.output?.options;
+  const cacheInitial = sortie?.fontCache;
+  if (sortie && options.tracesEnClair) sortie.fontCache = "none";
+  let noeud: HTMLElement;
+  try {
+    noeud = (await mj.tex2svgPromise(tex, {
+      display: options.display ?? false,
+      ...(options.largeurConteneur ? { containerWidth: options.largeurConteneur } : {}),
+    })) as HTMLElement;
+  } finally {
+    if (sortie && options.tracesEnClair) sortie.fontCache = cacheInitial;
+  }
   const svg = noeud?.querySelector?.("svg");
   if (!svg) return null;
 

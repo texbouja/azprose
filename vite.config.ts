@@ -17,6 +17,13 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Mermaid compose les maths de ses libellés en important `katex` et en
+      // appelant `katex.renderToString`, puis il MESURE le résultat pour
+      // dimensionner la boîte. Cet alias détourne ce point d'ancrage vers
+      // MathJax : les formules d'un diagramme sont donc composées avec le
+      // préambule du projet et ses macros, et Mermaid garde la main sur les
+      // mesures. Voir `src/lib/katex-mathjax.ts`.
+      katex: path.resolve(__dirname, "./src/lib/katex-mathjax.ts"),
     },
   },
 
