@@ -28,9 +28,9 @@ import { typesetMath } from "@/lib/typeset-math";
 import { createMathCache } from "@/lib/math-cache";
 import { createMermaidCache } from "@/lib/mermaid-cache";
 import {
+  apparenceDepuis,
   renderMermaidBlocks,
-  themeMermaidCourant,
-  type MermaidTheme,
+  signatureApparence,
 } from "@/lib/mermaid-render";
 import DiagramViewer from "@/components/markdown/DiagramViewer.svelte";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
@@ -149,7 +149,7 @@ let lastPreamble = "";
 // ce qui détruirait les SVG composés. Vidé au changement de thème — un
 // diagramme composé en clair n'a rien à faire dans un document passé en sombre.
 const mermaidCache = createMermaidCache();
-let lastMermaidTheme: MermaidTheme | null = null;
+let lastMermaidSignature: string | null = null;
 
 /** Diagramme ouvert dans la visionneuse (`null` = fermée). */
 let diagramSvg = $state<string | null>(null);
@@ -273,11 +273,13 @@ $effect(() => {
     mathCache.injectInto(tmp);
 
     // Idem pour les diagrammes : un diagramme inchangé traverse le re-rendu
-    // sans être recomposé, et sans clignoter. Le cache est vidé d'abord si le
-    // thème a changé, la couleur du SVG en dépendant.
-    const mermaidTheme = themeMermaidCourant();
-    if (lastMermaidTheme !== null && lastMermaidTheme !== mermaidTheme) mermaidCache.clear();
-    lastMermaidTheme = mermaidTheme;
+    // sans être recomposé, et sans clignoter. Le cache est vidé si l'APPARENCE
+    // a changé (thème, palette, police, corps) — le SVG composé porte tout
+    // cela, un diagramme d'avant le changement serait faux.
+    const apparence = apparenceDepuis(articleEl);
+    const signature = signatureApparence(apparence);
+    if (lastMermaidSignature !== null && lastMermaidSignature !== signature) mermaidCache.clear();
+    lastMermaidSignature = signature;
     mermaidCache.injectInto(tmp);
 
     articleEl.innerHTML = tmp.innerHTML;
@@ -290,7 +292,7 @@ $effect(() => {
     // Diagrammes APRÈS les maths : Mermaid charge ~950 Ko à la première
     // occurrence, et rien n'oblige le texte et les formules à l'attendre.
     if (!cancelled) {
-      await renderMermaidBlocks(articleEl, mermaidTheme);
+      await renderMermaidBlocks(articleEl, apparence);
       if (!cancelled) marquerDiagrammesZoomables(articleEl);
     }
     if (!cancelled) onDiagnostics?.(articleEl, brokenImages);

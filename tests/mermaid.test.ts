@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderMermaidPlaceholder, MERMAID_MATH_NOTICE } from "@/markdown/mermaid-fence";
-import { themeMermaidDepuisScheme } from "@/lib/mermaid-render";
+import { paletteDepuisStyle, signatureApparence, themeMermaidDepuisScheme } from "@/lib/mermaid-render";
 
 /**
  * Ce qui est testable sans DOM : le porteur de fence et la dérivation de thème.
@@ -56,5 +56,60 @@ describe("dérivation du thème mermaid", () => {
     expect(themeMermaidDepuisScheme(undefined)).toBe("default");
     expect(themeMermaidDepuisScheme("")).toBe("default");
     expect(themeMermaidDepuisScheme("normal")).toBe("default");
+  });
+});
+
+describe("palette du document", () => {
+  /** Faux `CSSStyleDeclaration` : seul `getPropertyValue` est sollicité. */
+  const style = (tokens: Record<string, string>) =>
+    ({ getPropertyValue: (n: string) => tokens[n] ?? "" }) as unknown as CSSStyleDeclaration;
+
+  const COMPLET = {
+    "--bg": "#303446", "--fg": "#c6d0f5", "--muted": "#737994",
+    "--border": "#414559", "--accent": "#ca9ee6",
+    "--surface": "#292c3c", "--surface-hover": "#51576d",
+  };
+
+  test("tokens hexadécimaux → palette exploitable", () => {
+    expect(paletteDepuisStyle(style(COMPLET))?.accent).toBe("#ca9ee6");
+  });
+
+  test("les espaces des valeurs de tokens sont tolérés", () => {
+    const avecEspaces = Object.fromEntries(
+      Object.entries(COMPLET).map(([k, v]) => [k, ` ${v} `]),
+    );
+    expect(paletteDepuisStyle(style(avecEspaces))).not.toBeNull();
+  });
+
+  test("un seul token non hexadécimal → aucune palette (repli sur le thème natif)", () => {
+    // khroma, le moteur de couleurs de Mermaid, ne sait dériver que de l'hexa :
+    // une palette à moitié appliquée serait pire que le thème intégré.
+    expect(paletteDepuisStyle(style({ ...COMPLET, "--accent": "rgba(0,0,0,.5)" }))).toBeNull();
+    expect(paletteDepuisStyle(style({ ...COMPLET, "--bg": "var(--autre)" }))).toBeNull();
+  });
+
+  test("token manquant → aucune palette", () => {
+    const { "--muted": _, ...incomplet } = COMPLET;
+    expect(paletteDepuisStyle(style(incomplet))).toBeNull();
+  });
+});
+
+describe("signature d'apparence", () => {
+  const base = {
+    mode: "dark" as const, fontFamily: "Inter", fontSize: "16px",
+    couleurs: null,
+  };
+
+  test("deux apparences identiques ont la même signature", () => {
+    expect(signatureApparence(base)).toBe(signatureApparence({ ...base }));
+  });
+
+  test("un changement de police change la signature (donc invalide le cache)", () => {
+    expect(signatureApparence({ ...base, fontFamily: "Georgia" })).not.toBe(signatureApparence(base));
+  });
+
+  test("un changement de corps ou de mode change la signature", () => {
+    expect(signatureApparence({ ...base, fontSize: "18px" })).not.toBe(signatureApparence(base));
+    expect(signatureApparence({ ...base, mode: "default" })).not.toBe(signatureApparence(base));
   });
 });

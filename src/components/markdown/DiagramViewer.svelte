@@ -18,7 +18,17 @@ let t = $derived(getT($language));
 
 const ECHELLE_MIN = 0.25;
 const ECHELLE_MAX = 8;
-const PAS = 1.2;
+/** Pas des BOUTONS et du clavier : gestes discrets, un cran franc. */
+const PAS = 1.25;
+/**
+ * Sensibilité de la molette, par pixel de défilement.
+ *
+ * Un cran de souris vaut ~100 px et donne ici ~8 % — un geste de molette
+ * complet reste donc progressif au lieu de traverser toute la plage de zoom.
+ * Les pavés tactiles envoient beaucoup d'événements de faible amplitude : la
+ * loi exponentielle les rend continus, sans à-coups.
+ */
+const SENSIBILITE_MOLETTE = 0.0008;
 
 let echelle = $state(1);
 let dx = $state(0);
@@ -45,7 +55,12 @@ function surMolette(e: WheelEvent): void {
   // Sans `preventDefault`, la molette ferait défiler le document DERRIÈRE la
   // visionneuse — elle est en surimpression, pas dans le flux.
   e.preventDefault();
-  zoomer(e.deltaY < 0 ? PAS : 1 / PAS);
+  // `deltaMode` normalisé en pixels : selon la source (pavé tactile, molette,
+  // certains pilotes), le même geste arrive en pixels, en lignes ou en pages.
+  // Sans cette conversion, un cran de molette en mode « ligne » (deltaY = 3)
+  // zoomerait trente fois moins qu'en mode pixel.
+  const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+  echelle = borner(echelle * Math.exp(-px * SENSIBILITE_MOLETTE));
 }
 
 function surAppui(e: PointerEvent): void {
