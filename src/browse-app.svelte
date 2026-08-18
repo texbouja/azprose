@@ -41,7 +41,7 @@ import {
   navStackPush,
   navStackPushForward,
 } from "@/lib/nav-stack";
-import { parseAddress, filterIndexEntries, filterHelpArticles } from "@/nav/address";
+import { parseAddress, filterIndexEntries, filterHelpArticles, deplacerSelection } from "@/nav/address";
 // `@/help/catalog` (PAS le baril `@/help`) : le baril réexporte aussi
 // `help-bundle.ts`, dont le glob `eager: true` inlinerait TOUT le contenu
 // markdown de la doc dans le chunk NAV pour la seule liste {path,title}.
@@ -50,7 +50,10 @@ import { catalog as helpCatalog } from "@/help/catalog";
 // métadonnées, alors que le baril `@/programmes` inlinerait le corpus entier
 // (268 Ko aujourd'hui, ~2,7 Mo à trente programmes) dans le chunk NAV.
 import { catalogue as catalogueProgrammes, type EntreeProgramme } from "@/programmes/catalog";
-import { criteresProposables, filtrerProgrammes, type Critere } from "@/nav/programme-filter";
+import {
+  ajouterCritere, criteresProposables, filtrerProgrammes, retirerCritere, retirerDernierCritere,
+  type Critere,
+} from "@/nav/programme-filter";
 import { helpFilePath, helpIndexPath, isHelpPath } from "@/lib/help-install";
 import { getT, language } from "@/lib/i18n";
 import { persistedState } from "@/stores/persisted.svelte";
@@ -308,7 +311,7 @@ async function chooseFlatSuggestion(s: FlatSuggestion): Promise<void> {
   // le geste central du filtrage — la barre garde le focus et la saisie
   // libre repart à vide, prête pour le critère suivant.
   if (s.kind === "critere") {
-    criteresActifs = [...criteresActifs, s.critere];
+    criteresActifs = ajouterCritere(criteresActifs, s.critere);
     addressValue = prefixeProgramme(addressValue);
     activeSuggestionIndex = -1;
     void updateSuggestions();
@@ -357,13 +360,12 @@ function onAddressKeydown(e: KeyboardEvent): void {
   if (e.key === "ArrowDown") {
     if (flatSuggestions.length === 0) return;
     e.preventDefault();
-    activeSuggestionIndex = (activeSuggestionIndex + 1) % flatSuggestions.length;
+    activeSuggestionIndex = deplacerSelection(activeSuggestionIndex, flatSuggestions.length, 1);
     scrollActiveSuggestionIntoView();
   } else if (e.key === "ArrowUp") {
     if (flatSuggestions.length === 0) return;
     e.preventDefault();
-    activeSuggestionIndex =
-      (activeSuggestionIndex - 1 + flatSuggestions.length) % flatSuggestions.length;
+    activeSuggestionIndex = deplacerSelection(activeSuggestionIndex, flatSuggestions.length, -1);
     scrollActiveSuggestionIntoView();
   } else if (e.key === "Enter") {
     e.preventDefault();
@@ -379,14 +381,33 @@ function onAddressKeydown(e: KeyboardEvent): void {
     const { kind, query } = parseAddress(addressValue);
     if (kind === "programme" && !query && criteresActifs.length > 0) {
       e.preventDefault();
-      criteresActifs = criteresActifs.slice(0, -1);
+      criteresActifs = retirerDernierCritere(criteresActifs);
       void updateSuggestions();
     }
+  } else if (e.key === "Home" || e.key === "End") {
+    // Sauts aux extrémités — utiles dès que la liste dépasse l'écran, ce qui
+    // arrivera vite : treize lignes dès aujourd'hui pour quatre programmes.
+    if (flatSuggestions.length === 0) return;
+    e.preventDefault();
+    activeSuggestionIndex = e.key === "Home" ? 0 : flatSuggestions.length - 1;
+    scrollActiveSuggestionIntoView();
+  } else if (e.key === "Tab" && activeSuggestionIndex >= 0) {
+    // Tabulation = valider la ligne active, comme dans tout champ à jetons :
+    // on complète ce qu'on a sous les yeux au lieu de quitter le champ.
+    e.preventDefault();
+    void chooseFlatSuggestion(flatSuggestions[activeSuggestionIndex]);
   } else if (e.key === "Escape") {
-    vaultSuggestions = [];
-    helpSuggestions = [];
-    programmeSuggestions = [];
-    critereSuggestions = [];
+    // Échap en DEUX TEMPS. Une seule étape détruisait le travail de filtrage :
+    // fermer une liste et défaire ses critères sont deux intentions
+    // différentes, et la première est de loin la plus fréquente.
+    if (flatSuggestions.length > 0) {
+      vaultSuggestions = [];
+      helpSuggestions = [];
+      programmeSuggestions = [];
+      critereSuggestions = [];
+      activeSuggestionIndex = -1;
+      return;
+    }
     criteresActifs = [];
     activeSuggestionIndex = -1;
   }
@@ -816,7 +837,7 @@ onMount(() => {
                 title={t("browse.critereRetirer", { name: c.libelle })}
                 aria-label={t("browse.critereRetirer", { name: c.libelle })}
                 onclick={() => {
-                  criteresActifs = criteresActifs.filter((x) => x !== c);
+                  criteresActifs = retirerCritere(criteresActifs, c);
                   void updateSuggestions();
                   addressEl?.focus();
                 }}

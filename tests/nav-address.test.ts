@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { filterHelpArticles, filterIndexEntries, parseAddress } from "@/nav/address";
+import {
+  deplacerSelection, filterHelpArticles, filterIndexEntries, parseAddress,
+} from "@/nav/address";
 
 describe("parseAddress (barre d'adresse NAV, pure)", () => {
   test("sans préfixe → vault", () => {
@@ -109,5 +111,22 @@ describe("parseAddress — préfixe programme:", () => {
 
   test("aide: reste prioritaire et inchangé", () => {
     expect(parseAddress("aide:export")).toEqual({ kind: "help", query: "export" });
+  });
+});
+
+describe("deplacerSelection (navigation clavier de la liste)", () => {
+  test("depuis « aucune sélection », ↓ prend la première et ↑ la dernière", () => {
+    expect(deplacerSelection(-1, 5, 1)).toBe(0);
+    expect(deplacerSelection(-1, 5, -1)).toBe(4);
+  });
+
+  test("la sélection boucle aux deux extrémités", () => {
+    expect(deplacerSelection(4, 5, 1)).toBe(0);
+    expect(deplacerSelection(0, 5, -1)).toBe(4);
+  });
+
+  test("liste vide : aucune sélection possible", () => {
+    expect(deplacerSelection(-1, 0, 1)).toBe(-1);
+    expect(deplacerSelection(2, 0, -1)).toBe(-1);
   });
 });

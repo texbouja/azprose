@@ -30,6 +30,26 @@ export function memeCritere(a: Critere, b: Critere): boolean {
   return a.categorie === b.categorie && a.valeur === b.valeur;
 }
 
+// ── Manipulation des jetons ─────────────────────────────────────────────────
+// Extraites du composant pour être testables : ce sont ces trois gestes que
+// l'utilisateur enchaîne au clavier, et qu'une refonte du gabarit casserait
+// sans bruit.
+
+/** Pose un critère. Reposer le même est sans effet (jamais de doublon). */
+export function ajouterCritere(actifs: Critere[], c: Critere): Critere[] {
+  return actifs.some((a) => memeCritere(a, c)) ? actifs : [...actifs, c];
+}
+
+/** Retire le dernier critère posé (Retour arrière sur champ vide). */
+export function retirerDernierCritere(actifs: Critere[]): Critere[] {
+  return actifs.slice(0, -1);
+}
+
+/** Retire un critère désigné (croix du jeton). */
+export function retirerCritere(actifs: Critere[], c: Critere): Critere[] {
+  return actifs.filter((a) => !memeCritere(a, c));
+}
+
 function normaliser(v: string): string {
   return v.trim().toLowerCase();
 }

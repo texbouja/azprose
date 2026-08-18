@@ -38,6 +38,25 @@ export function parseAddress(input: string): ParsedAddress {
   return { kind: "vault", query: raw.trim() };
 }
 
+/**
+ * Déplacement de la sélection clavier dans une liste de suggestions, avec
+ * bouclage. `-1` = aucune sélection (le texte saisi fait foi) : une première
+ * flèche ↓ prend donc la première ligne, une première ↑ la dernière.
+ *
+ * Extrait du composant pour être testable : c'est la mécanique que l'on casse
+ * sans s'en apercevoir en touchant au gabarit.
+ */
+export function deplacerSelection(index: number, taille: number, sens: 1 | -1): number {
+  if (taille <= 0) return -1;
+  // « Aucune sélection » n'est pas la position -1 d'un anneau : c'est un état à
+  // part, d'où l'on entre par le HAUT de la liste avec ↓ et par le BAS avec ↑.
+  // Le calcul modulaire seul donnait l'avant-dernière ligne pour un ↑ initial
+  // (-1 - 1 + n) % n = n - 2 — défaut hérité de la complétion du vault, resté
+  // invisible tant que personne n'a remonté la liste sans l'avoir descendue.
+  if (index < 0) return sens === 1 ? 0 : taille - 1;
+  return (index + sens + taille) % taille;
+}
+
 /** Complétion vault (phase 2, point 4) : basenames de l'index du vault
  *  contenant `query` (insensible à la casse), triés alphabétiquement. Requête
  *  vide → aucune suggestion (pas de « tout lister » sur un champ vide). */

@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ajouterCritere,
   criteresProposables,
   filtrerProgrammes,
   memeCritere,
+  retirerCritere,
+  retirerDernierCritere,
   type Critere,
 } from "@/nav/programme-filter";
 import type { EntreeProgramme } from "@/programmes/catalog";
@@ -84,5 +87,30 @@ describe("critères proposables", () => {
     const p = criteresProposables(CATALOGUE, []);
     const clefs = p.map((x) => `${x.categorie}:${x.valeur}`);
     expect(new Set(clefs).size).toBe(clefs.length);
+  });
+});
+
+describe("manipulation des jetons (clavier)", () => {
+  const matiere = c("matiere", "physique");
+  const filiere = c("filiere", "mp");
+
+  test("poser deux fois le même critère ne crée pas de doublon", () => {
+    const a = ajouterCritere([], matiere);
+    expect(ajouterCritere(a, { ...matiere })).toEqual(a);
+  });
+
+  test("Retour arrière retire le DERNIER posé, pas un autre", () => {
+    const a = ajouterCritere(ajouterCritere([], matiere), filiere);
+    expect(retirerDernierCritere(a)).toEqual([matiere]);
+  });
+
+  test("retirer un jeton désigné laisse les autres en place", () => {
+    const a = ajouterCritere(ajouterCritere([], matiere), filiere);
+    expect(retirerCritere(a, matiere)).toEqual([filiere]);
+  });
+
+  test("retirer sur une liste vide ne casse rien", () => {
+    expect(retirerDernierCritere([])).toEqual([]);
+    expect(retirerCritere([], matiere)).toEqual([]);
   });
 });
