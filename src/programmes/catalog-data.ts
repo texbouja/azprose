@@ -4,11 +4,13 @@
 // MÉTADONNÉES SEULES — jamais le contenu des programmes (cf. le plan
 // ../agents/azprose/programmes-nav-plan.md, invariant 2).
 
-export const CORPUS_VERSION = "7af359397ab5";
+export const CORPUS_VERSION = "0841e75e6cc8";
 
 export const catalogue = [
   {"fichier":"chim-mp.md","id":"chimie-mp","titre":"Programme de chimie — MP","matiere":"chimie","filiere":["MP"],"niveau":2},
+  {"fichier":"chim-mpsi.md","id":"chim-mpsi","titre":"Programme de chimie — MPSI","matiere":"chimie","filiere":["MPSI"],"niveau":1},
   {"fichier":"math-mp-mpi.md","id":"mathematiques-mp-mpi","titre":"Programme de mathématiques — MP, MPI","matiere":"mathematiques","filiere":["MP","MPI"],"niveau":2},
   {"fichier":"math-mpsi-mp2i.md","id":"mathematiques-mpsi-mp2i","titre":"Programme de mathématiques — MPSI, MP2I","matiere":"mathematiques","filiere":["MPSI","MP2I"],"niveau":1},
   {"fichier":"phys-mp.md","id":"physique-mp","titre":"Programme de physique — MP","matiere":"physique","filiere":["MP"],"niveau":2},
+  {"fichier":"phys-mpsi.md","id":"phys-mpsi","titre":"Programme de physique — MPSI","matiere":"physique","filiere":["MPSI"],"niveau":1},
 ];

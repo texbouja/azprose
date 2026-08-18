@@ -95,6 +95,8 @@ minimum (« mise en œuvre du programme **de physique** de la classe de MP » �
 corpus/math-mp-mpi.md      gabarit des programmes de mathématiques
 corpus/phys-mp.md          gabarit des programmes de physique
 corpus/chim-mp.md          gabarit des programmes de chimie
+corpus/phys-mpsi.md        idem physique, classe de MPSI
+corpus/chim-mpsi.md        idem chimie, classe de MPSI
 ```
 
 Lisez le gabarit de votre matière en entier. Chacun porte sa propre légende
