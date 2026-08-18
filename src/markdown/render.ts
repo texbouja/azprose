@@ -27,6 +27,7 @@ import {
   shikiFence,
 } from "./highlight";
 import { mathPlugin } from "./math-plugin";
+import { renderMermaidPlaceholder } from "./mermaid-fence";
 
 export { escapeAttr, escapeHtml };
 
@@ -101,8 +102,15 @@ md.renderer.rules.fence = ((tokens, idx, _options, env, _self) => {
     return renderMetaPlaceholder(pIndex, fence.type, fence.meta);
   }
 
+  // ```mermaid — diagramme. Le rendu SVG est ASYNCHRONE (bibliothèque chargée
+  // à la demande) : on émet ici un porteur inerte, que la passe DOM
+  // `renderMermaidBlocks` composera. Tant qu'elle n'a pas tourné, le bloc
+  // affiche sa source — jamais un vide.
+  if (lang === "mermaid") return renderMermaidPlaceholder(token.content);
+
   return shikiFence(token.content, lang);
 }) as RenderRule;
+
 
 // Stamp block tokens with source line range for potential editor↔preview sync.
 // `fmOffset` (front matter line count) is injected via `state.env` by `renderMarkdown`.

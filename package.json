@@ -94,6 +94,7 @@
     "markdown-it-obsidian-callouts": "^0.3.4",
     "markdown-it-task-lists": "^2.1.1",
     "mathjax": "^4.1.2",
+    "mermaid": "^11.16.1",
     "pdfjs-dist": "6.1.200",
     "rrule": "^2.8.1",
     "shiki": "^4.3.0",

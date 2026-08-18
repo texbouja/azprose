@@ -567,3 +567,73 @@
   font-weight: 600;
   color: var(--accent);
 }
+
+/* ── Diagrammes Mermaid ─────────────────────────────────────────────────────
+   Le fence produit un porteur inerte ; la passe DOM y injecte le SVG. Les
+   trois états (source en attente, rendu, erreur) sont donc tous visibles au
+   même endroit — un diagramme ne disparaît jamais en silence. */
+.mdv-mermaid {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: center;
+}
+
+/* En attente de composition : la source reste lisible plutôt qu'un trou. */
+.mdv-mermaid__source {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  text-align: left;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.mdv-mermaid.is-rendered {
+  padding: 18px 14px;
+}
+
+.mdv-mermaid.is-rendered svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Diagramme composé et cliquable : la loupe annonce l'agrandissement. */
+.mdv-mermaid.is-zoomable {
+  cursor: zoom-in;
+}
+
+/* Échec de composition : bordure d'alerte, source conservée telle quelle —
+   c'est elle que l'utilisateur doit corriger. */
+.mdv-mermaid.is-error {
+  border-color: var(--color-error);
+}
+
+.mdv-mermaid__error {
+  margin: 0 0 8px;
+  color: var(--color-error);
+  font-size: 0.85em;
+  text-align: left;
+}
+
+/* Mention « pas de maths dans les diagrammes » (décision 2026-08-18). */
+.mdv-mermaid__notice {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.8em;
+  font-style: italic;
+  text-align: left;
+}
+
+/* Impression : un diagramme ne se coupe jamais entre deux pages. */
+@media print {
+  .mdv-mermaid {
+    border: 0;
+    background: none;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
