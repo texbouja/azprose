@@ -16,6 +16,8 @@ import {
   printSettings,
 } from "@/stores/markdown-settings.svelte";
 import { buildProseStyleCss } from "@/lib/prose-style-css";
+import { resolveFontFamily } from "@/lib/font-resolvers";
+import { renderMermaidBlocks, type ApparenceDiagramme } from "@/lib/mermaid-render";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
@@ -45,7 +47,41 @@ function buildProseCss(): string {
 }
 
 function buildPrintCss(req: PrintRequest): string {
-  return buildPrintBaseCss(req);
+  return buildPrintBaseCss(req) + "\n" + DIAGRAM_PRINT_CSS;
+}
+
+/**
+ * Style des diagrammes sur le papier.
+ *
+ * Le document imprimé ne reprend PAS `preview.css` (il se construit à partir
+ * des réglages d'impression) : le peu de style nécessaire vit donc ici. Sans
+ * cadre ni fond — un encadré à l'écran signale une zone interactive, sur le
+ * papier il n'ajoute que de l'encre — et surtout jamais coupé entre deux pages.
+ */
+const DIAGRAM_PRINT_CSS = `
+.mdv-mermaid{margin:1em 0;padding:0;border:0;background:none;text-align:center;break-inside:avoid;page-break-inside:avoid;}
+.mdv-mermaid svg{max-width:100%;height:auto;}
+.mdv-mermaid__source{margin:0;font-family:monospace;font-size:.85em;text-align:left;white-space:pre-wrap;}
+.mdv-mermaid__error{margin:0 0 .5em;font-size:.85em;text-align:left;}
+.mdv-mermaid__notice{margin:.5em 0 0;font-size:.8em;font-style:italic;text-align:left;}
+`;
+
+/**
+ * Apparence des diagrammes à l'impression.
+ *
+ * Thème INTÉGRÉ clair, jamais la palette de l'application : la sortie va sur
+ * du papier blanc, où un thème sombre donnerait des aplats d'encre illisibles.
+ * Les polices suivent en revanche les réglages d'impression, pour que les
+ * diagrammes s'accordent au texte du document.
+ */
+function apparenceImpression(): ApparenceDiagramme {
+  const s = printSettings.current;
+  return {
+    mode: "default",
+    fontFamily: resolveFontFamily(s.fontFamily, s.customFontName),
+    fontSize: `${s.fontSize}px`,
+    couleurs: null,
+  };
 }
 
 export function buildMathJaxConfig(): string {
@@ -162,6 +198,12 @@ async function assembleHtml(
   if (filePath) {
     await postRenderDom(tmp, { filePath, rootPath: rootPath ?? undefined });
   }
+
+  // 3b. Diagrammes composés ICI, en SVG inliné dans le document.
+  //     Contrairement à MathJax — chargé depuis un CDN par la coquille — le
+  //     document imprimé ne dépend d'aucun réseau pour ses diagrammes : le SVG
+  //     est déjà là. C'est ce qui permet d'imprimer hors ligne.
+  await renderMermaidBlocks(tmp, apparenceImpression());
 
   // 4. Build <base> href from file directory
   const lastSep = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
