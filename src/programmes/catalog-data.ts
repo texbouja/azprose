@@ -4,7 +4,7 @@
 // MÉTADONNÉES SEULES — jamais le contenu des programmes (cf. le plan
 // ../agents/azprose/programmes-nav-plan.md, invariant 2).
 
-export const CORPUS_VERSION = "575a5df02425";
+export const CORPUS_VERSION = "0fce2c386bd7";
 
 export const catalogue = [
   {"fichier":"chim-mp.md","id":"chimie-mp","titre":"Programme de chimie — MP","matiere":"chimie","filiere":["MP"],"niveau":2},

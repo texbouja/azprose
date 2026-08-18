@@ -307,11 +307,30 @@ fn fragments(contenu: &str) -> Vec<Fragment> {
     let mut dernier_item: Option<String> = None;
     let mut courant: Option<Fragment> = None;
 
+    let mut dans_fence = false;
+
     for ligne in contenu.lines().skip(debut) {
         let t = ligne.trim();
         // Profondeur d'indentation, mesurée AVANT de rogner : elle porte du
         // sens (une puce indentée est un détail de la puce qui la précède).
         let indentation = ligne.len() - ligne.trim_start().len();
+
+        // Blocs délimités (```mermaid, ```python…) : leur contenu n'est PAS du
+        // programme. Un diagramme y écrit des lignes qui ressemblent à des
+        // items ou à du texte de section ; les agréger polluerait les citations
+        // rendues à l'utilisateur avec du code de dessin. Le bloc est donc
+        // sauté d'un délimiteur à l'autre, et il CLÔT le fragment courant —
+        // ce qui suit lui est étranger.
+        if t.starts_with("```") {
+            if !dans_fence {
+                pousser(&mut out, &mut dernier_item, courant.take());
+            }
+            dans_fence = !dans_fence;
+            continue;
+        }
+        if dans_fence {
+            continue;
+        }
 
         if let Some(titre) = t.strip_prefix("## ") {
             pousser(&mut out, &mut dernier_item, courant.take());
@@ -960,6 +979,17 @@ niveau: 2
         let limite = c.iter().find(|c| c.genre == "limite").expect("contrainte absente");
         assert_eq!(limite.texte, "On se limite au modèle scalaire.");
         assert_eq!(limite.portee, "section");
+    }
+
+    #[test]
+    fn un_bloc_delimite_nest_pas_du_contenu_de_programme() {
+        // Un diagramme (```mermaid) ecrit des lignes qui ressemblent a des items :
+        // elles ne doivent jamais rejoindre le programme ni ses citations.
+        const AVEC_DIAGRAMME: &str = "---\nfiliere: [TEST]\nmatiere: si\n---\n\n## Demarche\n\n```mermaid\nflowchart TB\n    A[Analyser] --- K\n```\n\n- Un vrai item.\n";
+        let frags = fragments(AVEC_DIAGRAMME);
+        assert!(frags.iter().all(|f| !f.texte.contains("flowchart")));
+        assert!(frags.iter().all(|f| !f.texte.contains("Analyser]")));
+        assert!(frags.iter().any(|f| f.texte.contains("Un vrai item")));
     }
 
     #[test]

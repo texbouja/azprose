@@ -46,19 +46,74 @@ transcription conserve cette structure par l'indentation :
 
 - **Hors programme.** est la seule mention **prohibitive** ; **Limite.**
   et **Non exigible.** restreignent sans exclure.
-- Les diagrammes d'Ingénierie Système (SysML) du document source ne sont pas
-  reproduits ici : ils sont signalés par un marqueur renvoyant au document
-  officiel.
+- Les deux schémas de présentation du programme sont **reproduits** ici sous
+  forme de diagrammes. Le document source ne contient aucun autre schéma : les
+  diagrammes d'Ingénierie Système (SysML) y sont cités comme CONTENUS à
+  étudier, jamais donnés en figure.
 - Cette transcription est **dérivée**. En cas de doute, le document cité en
   `source` fait foi.
+
+---
+
+## Les compétences générales de l'ingénieur
+
+```mermaid
+flowchart TB
+    K(["Compétences MPSI-MP"])
+    A[Analyser]
+    B[Modéliser]
+    C[Résoudre]
+    D[Expérimenter]
+    E[Communiquer]
+    A --- K
+    B --- K
+    C --- K
+    D --- K
+    E --- K
+```
+
+*Les compétences générales de l'ingénieur développées en MPSI-MP.*
+
+## La démarche des enseignements
+
+> L'approche pédagogique et didactique des enseignements en MPSI-MP s'organise
+> autour de systèmes pluritechnologiques. Chaque système est défini à partir de
+> besoins fonctionnels et d'exigences, de modèles numériques et d'un système
+> matériel. Un système sera étudié dans sa globalité à partir de ces trois
+> approches imbriquées :
+>
+> - la réalité du besoin ou exigences fonctionnelles. Elle se décline dans le
+>   cahier des charges défini avec un client ;
+> - la réalité virtuelle d'un système. Elle se traduit dans l'élaboration d'un
+>   modèle permettant de simuler son comportement afin d'en prévoir et d'en
+>   évaluer les performances ;
+> - la réalité matérielle d'un système. Les performances du système matériel
+>   sont mesurées par expérimentation.
+
+```mermaid
+flowchart TB
+    BESOIN[Expression du besoin] --> CDC
+    subgraph SP["Système pluritechnologique"]
+        CDC(["Cahier des charges<br/>performances attendues"])
+        MAT(["Système matériel<br/>performances mesurées"])
+        VIR(["Système virtuel<br/>performances simulées"])
+    end
+    CDC <-->|"Écart entre performances<br/>attendues et mesurées"| MAT
+    CDC <-->|"Écart entre performances<br/>attendues et simulées"| VIR
+    MAT <-->|"Écart entre performances<br/>simulées et mesurées"| VIR
+```
+
+*La démarche pédagogique et didactique en sciences industrielles de l'ingénieur.*
+
+> Les objets et les systèmes, dans leur complexité, mobilisent plusieurs formes
+> d'énergie et sont communicants. Ils sont pluritechnologiques.
+
 
 ---
 
 ## A. Analyser
 
 ### A1. Analyser le besoin et les exigences
-
-> Diagramme d'Ingénierie Système (SysML) — voir document source, page 3.
 
 - Décrire le besoin et les exigences.
   - Ingénierie Système et diagrammes associés. Semestre S1.
