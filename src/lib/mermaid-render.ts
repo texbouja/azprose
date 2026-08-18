@@ -244,13 +244,28 @@ async function preparerPont(source: string, a: ApparenceDiagramme): Promise<Pont
   // une formule, et le graphe statique reste exempt de modules à runes.
   const { composerFormule } = await import("@/lib/typeset-math");
   const corps = parseFloat(a.fontSize) || 16;
-  const composees = await Promise.all(
+
+  // La composition ne sert qu'à MESURER : elle donne la largeur que la formule
+  // occupera, donc la taille du jeton à réserver.
+  const mesures = await Promise.all(
     tex.map((t) => composerFormule(t, { fontSizePx: corps }).catch(() => null)),
   );
   const car = largeurCaractere(`${a.fontSize} ${a.fontFamily}`);
-  const largeurs = composees.map((c, i) => remplissagePour(c?.largeur ?? 0, car, i));
+  const largeurs = mesures.map((m, i) => remplissagePour(m?.largeur ?? 0, car, i));
   const { source: avecJetons, formules } = poserJetons(source, largeurs);
-  return { source: avecJetons, formules, composees: composees.map((c) => c?.svg ?? null) };
+
+  // Ce qu'on SUBSTITUE est du LaTeX délimité, pas le SVG mesuré : MathJax le
+  // composera ensuite SUR PLACE, dans le document, par le même chemin que les
+  // formules du corps de texte.
+  //
+  // Injecter le SVG sérialisé paraissait plus direct — c'était l'erreur du
+  // premier jet (2026-08-18) : sorti de son document, il perd la résolution de
+  // ses glyphes et ses unités `ex`, et les nœuds s'affichaient VIDES. Composer
+  // en place supprime toute cette classe de problèmes, et l'impression en
+  // profite sans code : le MathJax du document imprimé traite ce LaTeX comme
+  // le reste.
+  const remplacements = formules.map((f) => `\\(${escapeHtml(f.tex)}\\)`);
+  return { source: avecJetons, formules, composees: remplacements };
 }
 
 /**
@@ -298,6 +313,15 @@ export async function renderMermaidBlocks(
       const { svg: brut } = await mermaid.render(`mdv-mermaid-${++compteur}`, pont.source);
       const svg = substituerFormules(brut, pont.formules, pont.composees);
       bloc.innerHTML = svg + avis;
+
+      // Composition SUR PLACE des formules du diagramme, une fois le SVG dans
+      // le document. `isConnected` est la condition : sur un fragment détaché
+      // (impression), MathJax n'aurait rien à mesurer — le LaTeX y reste tel
+      // quel, et c'est le MathJax du document imprimé qui le composera.
+      if (pont.formules.length > 0 && bloc.isConnected) {
+        const { typesetMath } = await import("@/lib/typeset-math");
+        await typesetMath(bloc as HTMLElement);
+      }
       bloc.classList.add("is-rendered");
       rendus++;
     } catch (err) {
