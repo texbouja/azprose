@@ -685,13 +685,23 @@ onMount(() => {
     programmesDir = await synchroniserProgrammes();
   });
 
-  const initial = params.get("browse") ?? "";
-  if (initial) {
-    // Échec au boot (fichier introuvable) : jamais zéro onglet (R6) — un
-    // onglet vide prend le relais, l'échec reste dit via `say()`.
-    void loadNewTab(initial).then((ok) => { if (!ok) openEmptyTab(); });
-  } else {
-    openEmptyTab();
+  // Amorçage IDEMPOTENT (2026-08-18). L'état de fenêtre vit à la portée module
+  // (`nav-state.svelte.ts`) et SURVIT au remontage de ce composant, alors que
+  // `onMount` rejoue : sans cette garde, chaque remontage ajoutait un onglet.
+  // Symptôme observé en développement — un onglet de plus à chaque mise à jour
+  // HMR — mais la garde ne relève PAS du confort de dev : elle vaut pour tout
+  // remontage sans rechargement de page, et un seul suffirait à empiler les
+  // onglets en production. Un rechargement complet, lui, réinitialise le module
+  // et repasse donc bien par l'amorçage.
+  if (navState.panel.tabs.length === 0) {
+    const initial = params.get("browse") ?? "";
+    if (initial) {
+      // Échec au boot (fichier introuvable) : jamais zéro onglet (R6) — un
+      // onglet vide prend le relais, l'échec reste dit via `say()`.
+      void loadNewTab(initial).then((ok) => { if (!ok) openEmptyTab(); });
+    } else {
+      openEmptyTab();
+    }
   }
 
   const onWikilink = (e: Event) => {
