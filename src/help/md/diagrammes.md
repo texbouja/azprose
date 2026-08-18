@@ -25,7 +25,15 @@ flowchart TD
 ```
 ````
 
-Le diagramme apparaît dans l'aperçu à la place du bloc.
+Le diagramme apparaît dans l'aperçu à la place du bloc — voici exactement ce
+que produit le texte ci-dessus :
+
+```mermaid
+flowchart TD
+    A[Hypothèses] --> B{Le théorème s'applique ?}
+    B -- oui --> C[Conclusion]
+    B -- non --> D[Chercher un contre-exemple]
+```
 
 > [!tip] Tant que le diagramme n'est pas dessiné
 > Le bloc affiche votre texte source. C'est normal : la bibliothèque de dessin
@@ -94,7 +102,18 @@ en général la ligne en cause.
 > toutes lettres (« intégrale de 0 à l'infini ») ou placez-la dans le texte qui
 > l'accompagne.
 
-## Un exemple complet
+## Un second exemple, rendu
+
+```mermaid
+stateDiagram-v2
+    [*] --> Solide
+    Solide --> Liquide : fusion
+    Liquide --> Gaz : vaporisation
+    Gaz --> Liquide : liquéfaction
+    Liquide --> Solide : solidification
+```
+
+Son texte source tient en six lignes :
 
 ````markdown
 ```mermaid
