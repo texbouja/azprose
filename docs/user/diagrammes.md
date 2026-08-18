@@ -1,0 +1,112 @@
+---
+parent: index
+---
+
+# Les diagrammes
+
+AZprose compose vos **diagrammes** directement dans le document : organigrammes,
+diagrammes de séquence, chronologies, cartes de notions… Vous les écrivez en
+texte, l'application les dessine.
+
+C'est la syntaxe **Mermaid**, un langage devenu courant : ce que vous écrivez ici
+s'affiche à l'identique sur GitHub, dans de nombreux wikis et dans la plupart
+des éditeurs Markdown.
+
+## Écrire un diagramme
+
+Ouvrez un bloc de code en indiquant `mermaid` comme langage :
+
+````markdown
+```mermaid
+flowchart TD
+    A[Hypothèses] --> B{Le théorème s'applique ?}
+    B -- oui --> C[Conclusion]
+    B -- non --> D[Chercher un contre-exemple]
+```
+````
+
+Le diagramme apparaît dans l'aperçu à la place du bloc.
+
+> [!tip] Tant que le diagramme n'est pas dessiné
+> Le bloc affiche votre texte source. C'est normal : la bibliothèque de dessin
+> se charge à la première utilisation, et seulement à ce moment-là — un
+> document sans diagramme n'en paie jamais le coût.
+
+## Les types disponibles
+
+Les plus utiles pour un document scientifique :
+
+| Mot-clé | Ce qu'il dessine |
+|---|---|
+| `flowchart` | organigramme, algorithme, arbre de décision |
+| `sequenceDiagram` | échanges entre acteurs dans le temps |
+| `stateDiagram-v2` | états et transitions |
+| `classDiagram` | structures et relations d'héritage |
+| `erDiagram` | entités et associations |
+| `gantt` | planning, progression d'un chapitre |
+| `mindmap` | carte de notions |
+| `timeline` | chronologie |
+| `xychart-beta` | courbes et histogrammes |
+
+La liste complète et la syntaxe de chacun sont documentées sur le site de
+Mermaid.
+
+## Agrandir un diagramme
+
+Un diagramme un peu dense devient vite illisible à la largeur du texte.
+**Cliquez dessus** pour l'ouvrir en grand :
+
+- **molette** — zoomer et dézoomer ;
+- **glisser** — déplacer ;
+- **`+`**, **`-`**, **`0`** — zoomer, dézoomer, revenir à la taille réelle ;
+- **`Échap`** — fermer.
+
+Le diagramme est aussi atteignable au clavier : `Tab` jusqu'à lui, puis
+`Entrée`.
+
+## Ils suivent votre document
+
+Les diagrammes reprennent **la police et les couleurs de votre thème**. Changez
+de thème, changez la police du document : ils se redessinent en accord. Rien à
+régler.
+
+À l'impression, ils passent en couleurs claires — le papier est blanc — et ne
+sont jamais coupés entre deux pages.
+
+## Quand la syntaxe est fautive
+
+Un diagramme mal écrit **n'efface rien** : le bloc affiche le message d'erreur
+et conserve votre texte, pour que vous puissiez le corriger. Le message indique
+en général la ligne en cause.
+
+> [!warning] Les mathématiques ne sont pas prises en charge
+> Une formule écrite entre `$$` dans un diagramme **n'est pas composée** : elle
+> s'affiche telle que vous l'avez écrite, et un avertissement le rappelle sous
+> le diagramme.
+>
+> La raison est simple : Mermaid utilise son propre moteur mathématique, qui
+> ignore les macros de votre préambule. Une formule qui fonctionne dans votre
+> cours échouerait donc silencieusement dans un diagramme — mieux vaut ne rien
+> composer que composer faux.
+>
+> Dans le **corps du document**, en revanche, vos formules restent composées
+> normalement, préambule compris. Pour un diagramme, écrivez la formule en
+> toutes lettres (« intégrale de 0 à l'infini ») ou placez-la dans le texte qui
+> l'accompagne.
+
+## Un exemple complet
+
+````markdown
+```mermaid
+stateDiagram-v2
+    [*] --> Solide
+    Solide --> Liquide : fusion
+    Liquide --> Gaz : vaporisation
+    Gaz --> Liquide : liquéfaction
+    Liquide --> Solide : solidification
+```
+````
+
+Un diagramme reste du **texte** dans votre fichier : il se cherche, se
+copie-colle, se compare d'une version à l'autre, et ne dépend d'aucun logiciel
+de dessin.

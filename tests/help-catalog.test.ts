@@ -26,9 +26,9 @@ describe("catalog (doc intégrée, générée par scripts/sync-help.mjs)", () =>
   // dans le `sommaire:` d'index.md, plus dans les noms de fichiers — un
   // chapitre inséré ne renomme plus rien. Ce catalogue-ci reste un index de
   // RECHERCHE (complétion `aide:`), d'où le tri alphabétique du test voisin.
-  it("le guide complet est au catalogue (12 chapitres), les exemples exclus du footer", () => {
+  it("le guide complet est au catalogue (13 chapitres), les exemples exclus du footer", () => {
     const paths = catalog.map((a) => a.path);
-    expect(paths).toHaveLength(13); // index.md + 12 chapitres
+    expect(paths).toHaveLength(14); // index.md + 13 chapitres
     for (const p of [
       "index.md",
       "assistant.md",
@@ -43,6 +43,7 @@ describe("catalog (doc intégrée, générée par scripts/sync-help.mjs)", () =>
       "impression.md",
       "colles.md",
       "programmes.md",
+      "diagrammes.md",
     ]) {
       expect(paths).toContain(p);
     }

@@ -5,6 +5,7 @@ sommaire:
   - wikilinks
   - transclusions
   - callouts
+  - diagrammes
   - vue-liens
   - front-matter
   - journal
@@ -28,13 +29,14 @@ Bienvenue dans le guide d'AZprose ! Ce guide vous accompagne pas à pas dans la 
 3. **[[wikilinks|Les liens entre notes]]** — relier vos notes entre elles avec les *wikilinks*.
 4. **[[transclusions|Embarquer une note]]** — intégrer le contenu d'une note dans une autre avec les *transclusions*.
 5. **[[callouts|Les encadrés]]** — mettre un passage en valeur avec les *callouts*, y compris personnalisés.
-6. **[[vue-liens|La vue Liens]]** — le sommaire de la note, les *backlinks* et les *tags*.
-7. **[[front-matter|Les métadonnées]]** — les données structurées en tête de note (le *front matter* YAML), réutilisables dans votre texte avec `{{champ}}`.
-8. **[[journal|Les notes quotidiennes]]** — le journal de bord daté (les *daily notes*).
-9. **[[assistant|L'assistant]]** — l'assistant conversationnel : autorisations, connaissance de votre coffre, respect du programme officiel.
-10. **[[programmes|Les programmes officiels]]** — consulter les programmes livrés avec l'application, et les filtrer par matière, filière et année.
-11. **[[impression|Imprimer en PDF]]** — exporter vos notes en PDF : principe, dialogue, gabarits et réglages.
-12. **[[colles|Les colles]]** — le cas d'usage complet : préparer, suivre et envoyer les colles.
+6. **[[diagrammes|Les diagrammes]]** — dessiner un organigramme, une chronologie ou une carte de notions en texte.
+7. **[[vue-liens|La vue Liens]]** — le sommaire de la note, les *backlinks* et les *tags*.
+8. **[[front-matter|Les métadonnées]]** — les données structurées en tête de note (le *front matter* YAML), réutilisables dans votre texte avec `{{champ}}`.
+9. **[[journal|Les notes quotidiennes]]** — le journal de bord daté (les *daily notes*).
+10. **[[assistant|L'assistant]]** — l'assistant conversationnel : autorisations, connaissance de votre coffre, respect du programme officiel.
+11. **[[programmes|Les programmes officiels]]** — consulter les programmes livrés avec l'application, et les filtrer par matière, filière et année.
+12. **[[impression|Imprimer en PDF]]** — exporter vos notes en PDF : principe, dialogue, gabarits et réglages.
+13. **[[colles|Les colles]]** — le cas d'usage complet : préparer, suivre et envoyer les colles.
 
 > [!tip] Par où commencer ?
 > Si vous ne savez pas par où commencer, suivez [[prise-en-main|Prise en main]]. La lecture complète du guide prend une vingtaine de minutes, mais vous pouvez aussi l'utiliser comme référence à la demande — le sommaire ci-dessus, ou le plan latéral, vous mènent directement au chapitre voulu.
