@@ -99,6 +99,8 @@ corpus/phys-mpsi.md        idem physique, classe de MPSI
 corpus/chim-mpsi.md        idem chimie, classe de MPSI
 corpus/si-mp.md            gabarit des programmes de sciences industrielles (niveau 2)
 corpus/si-mpsi.md          idem sciences industrielles (niveau 1)
+corpus/inf-2.md            gabarit du programme d'informatique commune (niveau 2)
+corpus/inf-1.md            idem informatique commune (niveau 1)
 ```
 
 Lisez le gabarit de votre matière en entier. Chacun porte sa propre légende
@@ -113,6 +115,13 @@ Ce README explique la *démarche* ; le gabarit fait foi sur la *forme*.
 > en fin de puce (« Semestre Sx. »), le symbole « ⇆ I » marque un lien avec
 > l'enseignement d'informatique, « (*) » une compétence réservée aux MPSI
 > option Sciences de l'Ingénieur.
+>
+> ⚠️ **Informatique commune** : le programme du tronc commun couvre les deux
+> années (7 filières). Le corpus le **scinde par année** — `inf-1.md`
+> (semestres 1-2, filières MPSI, PCSI, PTSI) et `inf-2.md` (semestre 3,
+> filières MP, PC, PSI, PT, avec l'annexe « Langage Python » commune). Les
+> **mots clés de code** (Python, SQL) sont transcrits entre backticks ; les
+> exemples d'activité du premier semestre sont marqués `**Non exigible.**`.
 
 ---
 
