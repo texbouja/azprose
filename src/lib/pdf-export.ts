@@ -63,7 +63,13 @@ const DIAGRAM_PRINT_CSS = `
 .mdv-mermaid svg{max-width:100%;height:auto;}
 .mdv-mermaid__source{margin:0;font-family:monospace;font-size:.85em;text-align:left;white-space:pre-wrap;}
 .mdv-mermaid__error{margin:0 0 .5em;font-size:.85em;text-align:left;}
-.mdv-mermaid__notice{margin:.5em 0 0;font-size:.8em;font-style:italic;text-align:left;}
+/* Libellés : du HTML dans un \`<foreignObject>\`, donc soumis aux marges de
+   paragraphe de \`.mdv-prose\` — elles décalent le contenu dans une boîte que
+   Mermaid a dimensionnée sans elles. Miroir de \`preview.css\`, qui n'est pas
+   repris ici. */
+.mdv-mermaid foreignObject p,.mdv-mermaid foreignObject div,.mdv-mermaid foreignObject span{margin:0;padding:0;}
+.mdv-mermaid foreignObject svg{margin:0;}
+.mdv-mermaid foreignObject{overflow:visible;}
 `;
 
 /**

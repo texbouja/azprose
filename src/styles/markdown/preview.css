@@ -630,27 +630,13 @@
 }
 
 /* Formules MathJax DANS un diagramme (vague 2).
-   Le SVG de la formule est posé par Mermaid dans le `<foreignObject>` du
-   libellé — c'est le seul SVG imbriqué là, d'où le sélecteur.
+   Rien à peindre ici : Mermaid injecte sa feuille de style à l'intérieur de
+   son SVG et ses règles atteignent les tracés de la formule, mais la peinture
+   est figée EN LIGNE à la composition (`figerPeinture`, typeset-math.ts) —
+   un style en ligne l'emporte, et il voyage avec la formule jusque dans les
+   documents imprimés, qui ne reprennent pas cette feuille.
 
-   Mermaid injecte sa feuille de style À L'INTÉRIEUR de son propre SVG, avec
-   des sélecteurs d'identifiant (`#mermaid-3 .label path { fill: … }`) : ils
-   atteignent les glyphes composés par MathJax et les peignent de la couleur
-   des nœuds — d'où des formules présentes mais quasi invisibles. Leur
-   spécificité d'identifiant ne se bat pas autrement qu'avec `!important`,
-   seule exception assumée de cette feuille. */
-.mdv-mermaid foreignObject svg {
-  color: var(--fg);
-}
-.mdv-mermaid foreignObject svg,
-.mdv-mermaid foreignObject svg g,
-.mdv-mermaid foreignObject svg path,
-.mdv-mermaid foreignObject svg rect,
-.mdv-mermaid foreignObject svg use {
-  fill: currentColor !important;
-}
-
-/* Libellés de diagramme : ce sont des `<p>` et des `<span>` HTML posés dans un
+   Libellés de diagramme : ce sont des `<p>` et des `<span>` HTML posés dans un
    `<foreignObject>` — donc DANS `.mdv-prose`, dont ils héritaient la marge de
    paragraphe (`margin: 0 0 1em`). Cette marge décale le contenu à l'intérieur
    d'une boîte que Mermaid a dimensionnée sans elle : la formule remonte et se

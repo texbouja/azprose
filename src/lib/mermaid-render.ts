@@ -225,12 +225,13 @@ async function preparerMaths(source: string): Promise<void> {
   for (const tex of formules) {
     // `display` + `largeurConteneur` : sans les DEUX, MathJax 4 coupe la
     // formule pour la faire tenir dans son conteneur (`<mjx-break>`).
-    // `tracesEnClair` : Mermaid assainit les libellés et retire les attributs
-    // XLink, dont dépendent les glyphes référencés.
+    // `pourDiagramme` : glyphes en tracés (Mermaid assainit et retire les
+    // attributs XLink) et peinture figée en style en ligne (sa feuille de
+    // style, injectée dans son SVG, atteint sinon les tracés de la formule).
     const compose = await composerFormule(tex, {
       display: true,
       largeurConteneur: 100000,
-      tracesEnClair: true,
+      pourDiagramme: true,
     }).catch(() => null);
     if (compose) deposerFormule(tex, compose.svg);
   }
