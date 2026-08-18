@@ -107,18 +107,20 @@ export function indexDuJeton(jeton: string): number | null {
 export function poserJetons(
   source: string,
   largeurs: number[] = [],
-  hautes: boolean[] = [],
+  lignes: number[] = [],
 ): SourceAvecJetons {
   const formules: FormuleDiagramme[] = [];
   const avecJetons = source.replace(/\$\$([\s\S]*?)\$\$/g, (_, tex: string) => {
     const index = formules.length;
     const jeton = jetonFormule(index, largeurs[index] ?? 0);
     formules.push({ tex: tex.trim(), jeton });
-    // Une formule plus haute qu'une ligne (fraction, intégrale, somme) est
-    // rognée en haut et en bas si la boîte ne compte qu'une ligne : deux sauts
-    // de ligne l'entourent alors, et Mermaid réserve la hauteur de trois
-    // lignes. C'est le pendant vertical du remplissage en largeur.
-    return (hautes[index] ?? false) ? `<br/>${jeton}<br/>` : jeton;
+    // Mermaid ne réserve de la hauteur qu'à la LIGNE : une formule qui en
+    // occupe deux ou trois est rognée si le libellé n'en compte qu'une. Les
+    // sauts de ligne se posent DEVANT le jeton — un saut final est ignoré par
+    // la mise en page, il ne servirait à rien. C'est le pendant vertical du
+    // remplissage en largeur.
+    const sauts = Math.max(0, (lignes[index] ?? 1) - 1);
+    return "<br/>".repeat(sauts) + jeton;
   });
   return { source: avecJetons, formules };
 }

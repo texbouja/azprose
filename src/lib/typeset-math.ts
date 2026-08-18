@@ -7,7 +7,10 @@ import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 type MathJaxGlobal =
   | {
       startup?: { promise?: Promise<void> };
-      tex2svgPromise?: (tex: string, opts: { display: boolean }) => Promise<unknown>;
+      tex2svgPromise?: (
+        tex: string,
+        opts: { display: boolean; containerWidth?: number },
+      ) => Promise<unknown>;
       typesetPromise?: (els: HTMLElement[]) => Promise<void>;
     }
   | undefined;
@@ -56,11 +59,19 @@ export interface FormuleComposee {
  */
 export async function composerFormule(
   tex: string,
-  options: { display?: boolean; fontSizePx?: number } = {},
+  options: { display?: boolean; fontSizePx?: number; largeurConteneur?: number } = {},
 ): Promise<FormuleComposee | null> {
   const mj = await prepareMathJax();
   if (!mj?.tex2svgPromise) return null;
-  const noeud = (await mj.tex2svgPromise(tex, { display: options.display ?? false })) as HTMLElement;
+  // `containerWidth` très grand + `display` : MathJax 4 coupe les formules pour
+  // les faire tenir dans leur conteneur (`<mjx-break>`), et un libellé de
+  // diagramme fait une centaine de pixels — la formule y arrivait en deux
+  // morceaux. Les deux options ensemble suppriment toute rupture ; mesuré en
+  // sonde, l'une sans l'autre ne suffit pas.
+  const noeud = (await mj.tex2svgPromise(tex, {
+    display: options.display ?? false,
+    ...(options.largeurConteneur ? { containerWidth: options.largeurConteneur } : {}),
+  })) as HTMLElement;
   const svg = noeud?.querySelector?.("svg");
   if (!svg) return null;
 

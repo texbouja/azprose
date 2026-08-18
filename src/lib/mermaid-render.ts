@@ -246,35 +246,49 @@ async function preparerPont(source: string, a: ApparenceDiagramme): Promise<Pont
   const { composerFormule } = await import("@/lib/typeset-math");
   const corps = parseFloat(a.fontSize) || 16;
 
-  // La composition ne sert qu'à MESURER : elle donne la largeur que la formule
-  // occupera, donc la taille du jeton à réserver.
+  // Composition UNIQUE : elle fournit à la fois le SVG à injecter et les
+  // dimensions qui servent à réserver la place.
+  //
+  // `display: true` + `largeurConteneur` très grande : sans les DEUX, MathJax 4
+  // coupe la formule pour la faire tenir dans son conteneur (`<mjx-break>`) —
+  // et un libellé de diagramme fait une centaine de pixels. C'est ce qui
+  // faisait arriver `\,dt` ou `= e^x` à la ligne, formule tronquée à l'écran.
+  // Mesuré en sonde headless : l'une sans l'autre ne suffit pas.
   const mesures = await Promise.all(
-    tex.map((t) => composerFormule(t, { fontSizePx: corps }).catch(() => null)),
+    tex.map((t) =>
+      composerFormule(t, {
+        display: true,
+        fontSizePx: corps,
+        largeurConteneur: 100000,
+      }).catch(() => null),
+    ),
   );
   const car = largeurCaractere(`${a.fontSize} ${a.fontFamily}`);
   const largeurs = mesures.map((m, i) => remplissagePour(m?.largeur ?? 0, car, i));
   // Une formule sensiblement plus haute qu'une ligne (fraction, intégrale,
   // somme indexée) réclame de la hauteur, que Mermaid ne réserve qu'au nombre
   // de lignes du libellé.
-  const hautes = mesures.map((m) => (m?.hauteur ?? 0) > corps * 1.4);
-  const { source: avecJetons, formules } = poserJetons(source, largeurs, hautes);
+  // Hauteur : Mermaid ne réserve que des LIGNES. Une formule de deux lignes et
+  // demie (fraction, somme indexée) est rognée si le libellé n'en compte
+  // qu'une — d'où des sauts de ligne ajoutés devant le jeton.
+  const interligne = corps * 1.5;
+  const lignes = mesures.map((m) => Math.max(1, Math.ceil((m?.hauteur ?? 0) / interligne)));
+  const { source: avecJetons, formules } = poserJetons(source, largeurs, lignes);
 
   // Sans cette déclaration, Mermaid replie tout libellé au-delà de 200 px : le
   // jeton se couperait en deux lignes et la formule déborderait de sa boîte.
   const plusLarge = Math.max(0, ...mesures.map((m) => m?.largeur ?? 0));
   const source2 = avecEnroulement(avecJetons, plusLarge * 1.3);
 
-  // Ce qu'on SUBSTITUE est du LaTeX délimité, pas le SVG mesuré : MathJax le
-  // composera ensuite SUR PLACE, dans le document, par le même chemin que les
-  // formules du corps de texte.
+  // On injecte le SVG COMPOSÉ, pas du LaTeX à composer ensuite.
   //
-  // Injecter le SVG sérialisé paraissait plus direct — c'était l'erreur du
-  // premier jet (2026-08-18) : sorti de son document, il perd la résolution de
-  // ses glyphes et ses unités `ex`, et les nœuds s'affichaient VIDES. Composer
-  // en place supprime toute cette classe de problèmes, et l'impression en
-  // profite sans code : le MathJax du document imprimé traite ce LaTeX comme
-  // le reste.
-  const remplacements = formules.map((f) => `\\(${escapeHtml(f.tex)}\\)`);
+  // Composer sur place dans le libellé semblait plus sûr — c'était l'erreur du
+  // 2026-08-18 : MathJax mesure alors le conteneur réel, une centaine de
+  // pixels, et coupe la formule pour l'y faire tenir. Composé à part avec une
+  // largeur de conteneur arbitraire, le SVG est entier ; il est autonome (ses
+  // glyphes voyagent dans ses propres `<defs>`), donc l'impression n'a plus
+  // besoin d'aucun MathJax pour les formules des diagrammes.
+  const remplacements = mesures.map((m) => m?.svg ?? null);
   return { source: source2, formules, composees: remplacements };
 }
 
@@ -324,14 +338,6 @@ export async function renderMermaidBlocks(
       const svg = substituerFormules(brut, pont.formules, pont.composees);
       bloc.innerHTML = svg + avis;
 
-      // Composition SUR PLACE des formules du diagramme, une fois le SVG dans
-      // le document. `isConnected` est la condition : sur un fragment détaché
-      // (impression), MathJax n'aurait rien à mesurer — le LaTeX y reste tel
-      // quel, et c'est le MathJax du document imprimé qui le composera.
-      if (pont.formules.length > 0 && bloc.isConnected) {
-        const { typesetMath } = await import("@/lib/typeset-math");
-        await typesetMath(bloc as HTMLElement);
-      }
       bloc.classList.add("is-rendered");
       rendus++;
     } catch (err) {

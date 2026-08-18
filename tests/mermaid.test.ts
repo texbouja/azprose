@@ -241,20 +241,23 @@ describe("dimensionnement du jeton", () => {
     expect(remplissagePour(100, 10, 0)).toBe(5);
   });
 
-  test("une formule haute est entourée de sauts de ligne", () => {
-    const { source, formules } = poserJetons('A["$$x$$"]', [0], [true]);
-    expect(source).toContain(`<br/>${formules[0].jeton}<br/>`);
+  test("une formule de trois lignes reçoit deux sauts, DEVANT le jeton", () => {
+    // Devant seulement : un saut final est ignoré par la mise en page, il ne
+    // réserverait aucune hauteur.
+    const { source, formules } = poserJetons('A["$$x$$"]', [0], [3]);
+    expect(source).toContain(`<br/><br/>${formules[0].jeton}`);
+    expect(source).not.toContain(`${formules[0].jeton}<br/>`);
   });
 
   test("une formule d'une seule ligne n'en reçoit aucun", () => {
-    const { source } = poserJetons('A["$$x$$"]', [0], [false]);
+    const { source } = poserJetons('A["$$x$$"]', [0], [1]);
     expect(source).not.toContain("<br/>");
   });
 
-  test("la substitution retrouve le jeton même entouré de sauts de ligne", () => {
-    const { source, formules } = poserJetons('A["$$x$$"]', [0], [true]);
+  test("la substitution retrouve le jeton malgré les sauts de ligne", () => {
+    const { source, formules } = poserJetons('A["$$x$$"]', [0], [2]);
     const out = substituerFormules(source, formules, ["OK"]);
-    expect(out).toContain("<br/>OK<br/>");
+    expect(out).toContain("<br/>OK");
   });
 });
 

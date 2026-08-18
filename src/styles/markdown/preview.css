@@ -675,3 +675,12 @@
 .mdv-mermaid foreignObject mjx-container {
   margin: 0;
 }
+
+/* Le libellé d'un nœud est plus petit que le nœud lui-même (48 px de libellé
+   pour 78 px de rectangle, mesuré) : laisser une formule un peu plus haute
+   déborder de sa boîte de libellé la garde ENTIÈRE, et elle reste dans le
+   rectangle. Sans cela, `foreignObject` la rogne — c'est ce qui coupait le bas
+   des fractions et des sommes indexées. */
+.mdv-mermaid foreignObject {
+  overflow: visible;
+}
