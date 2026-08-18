@@ -16,6 +16,14 @@
 
 import { escapeHtml } from "@/markdown/highlight";
 import { neutraliserMaths } from "@/markdown/mermaid-fence";
+import {
+  estFlowchart,
+  listerFormules,
+  poserJetons,
+  remplissagePour,
+  substituerFormules,
+  type FormuleDiagramme,
+} from "@/markdown/mermaid-math";
 
 type MermaidApi = typeof import("mermaid")["default"];
 
@@ -190,6 +198,61 @@ function messageErreur(err: unknown): string {
 
 let compteur = 0;
 
+/** Largeur d'un caractère `x` par police, mesurée une seule fois. Sert à
+ *  dimensionner le jeton qui réserve la place d'une formule. */
+const largeursCaractere = new Map<string, number>();
+
+function largeurCaractere(font: string): number {
+  const connue = largeursCaractere.get(font);
+  if (connue !== undefined) return connue;
+  let largeur = 0;
+  try {
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (ctx) {
+      ctx.font = font;
+      largeur = ctx.measureText("x").width;
+    }
+  } catch { /* pas de canvas : le jeton ne sera pas dimensionné, sans plus */ }
+  largeursCaractere.set(font, largeur);
+  return largeur;
+}
+
+interface PontMaths {
+  source: string;
+  formules: FormuleDiagramme[];
+  composees: (string | null)[];
+}
+
+/**
+ * Prépare la source d'un diagramme et, s'il y a lieu, compose ses formules.
+ *
+ * DEUX passages sont nécessaires : il faut composer d'abord pour connaître la
+ * LARGEUR de chaque formule, puis poser des jetons de largeur équivalente —
+ * Mermaid dimensionne la boîte du libellé d'après le jeton qu'il voit, jamais
+ * d'après ce qu'on y substituera. Sans ce calcul, une formule large déborderait
+ * de son nœud.
+ */
+async function preparerPont(source: string, a: ApparenceDiagramme): Promise<PontMaths> {
+  const tex = listerFormules(source);
+  // Hors flowchart, le pont ne s'applique pas (libellés `<text>` SVG, sans
+  // mise en page HTML) : la formule redevient du texte, comme avant.
+  if (tex.length === 0 || !estFlowchart(source)) {
+    return { source: neutraliserMaths(source), formules: [], composees: [] };
+  }
+
+  // Import DYNAMIQUE : MathJax ne se charge que si un diagramme porte vraiment
+  // une formule, et le graphe statique reste exempt de modules à runes.
+  const { composerFormule } = await import("@/lib/typeset-math");
+  const corps = parseFloat(a.fontSize) || 16;
+  const composees = await Promise.all(
+    tex.map((t) => composerFormule(t, { fontSizePx: corps }).catch(() => null)),
+  );
+  const car = largeurCaractere(`${a.fontSize} ${a.fontFamily}`);
+  const largeurs = composees.map((c, i) => remplissagePour(c?.largeur ?? 0, car, i));
+  const { source: avecJetons, formules } = poserJetons(source, largeurs);
+  return { source: avecJetons, formules, composees: composees.map((c) => c?.svg ?? null) };
+}
+
 /**
  * Compose tous les porteurs Mermaid non encore rendus de `root`.
  *
@@ -225,10 +288,15 @@ export async function renderMermaidBlocks(
     if (!source.trim()) continue;
     const avis = bloc.querySelector(".mdv-mermaid__notice")?.outerHTML ?? "";
     try {
-      // Délimiteurs `$$` retirés AVANT de confier la source à Mermaid : c'est
-      // le seul moyen de l'empêcher d'appeler KaTeX, qui composerait sans le
-      // préambule du projet (cf. `neutraliserMaths`).
-      const { svg } = await mermaid.render(`mdv-mermaid-${++compteur}`, neutraliserMaths(source));
+      // Deux régimes pour les mathématiques (cf. `mermaid-math.ts`) :
+      // — organigramme : PONT MathJax, les formules sont composées avec le
+      //   préambule du projet, puis substituées dans le SVG rendu ;
+      // — tout autre type : délimiteurs retirés, la formule reste du texte.
+      // Dans les deux cas Mermaid ne voit jamais de `$$` — donc n'appelle
+      // jamais KaTeX, qui ignorerait le préambule.
+      const pont = await preparerPont(source, a);
+      const { svg: brut } = await mermaid.render(`mdv-mermaid-${++compteur}`, pont.source);
+      const svg = substituerFormules(brut, pont.formules, pont.composees);
       bloc.innerHTML = svg + avis;
       bloc.classList.add("is-rendered");
       rendus++;

@@ -10,15 +10,28 @@
  */
 
 import { escapeAttr, escapeHtml } from "./highlight";
+import { estFlowchart } from "./mermaid-math";
 
-/** Mention affichée quand une source de diagramme contient `$$`. */
+/** Mention affichée quand une source porte des maths que le pont ne couvre pas. */
 export const MERMAID_MATH_NOTICE =
-  "Les mathématiques ne sont pas prises en charge dans les diagrammes : " +
-  "la formule est affichée telle qu'écrite, sans les macros du préambule.";
+  "Les mathématiques ne sont composées que dans les organigrammes " +
+  "(`flowchart`) : ici la formule est affichée telle qu'écrite.";
 
 /** Une source contient-elle des délimiteurs mathématiques de Mermaid ? */
 export function contientMaths(source: string): boolean {
   return /\$\$[\s\S]*?\$\$/.test(source);
+}
+
+/**
+ * Faut-il avertir que les mathématiques ne seront pas composées ?
+ *
+ * Depuis le pont MathJax, les formules d'un **flowchart** sont composées avec
+ * le préambule du projet : il n'y a plus rien à signaler. Les autres types de
+ * diagrammes rendent leurs libellés en `<text>` SVG, sans mise en page HTML —
+ * le pont ne s'y applique pas, et la mention garde tout son sens.
+ */
+export function avertirMaths(source: string): boolean {
+  return contientMaths(source) && !estFlowchart(source);
 }
 
 /**
@@ -55,7 +68,7 @@ export function neutraliserMaths(source: string): string {
  */
 export function renderMermaidPlaceholder(source: string): string {
   const attr = escapeAttr(source);
-  const avis = contientMaths(source)
+  const avis = avertirMaths(source)
     ? `<p class="mdv-mermaid__notice">${escapeHtml(MERMAID_MATH_NOTICE)}</p>`
     : "";
   return (
