@@ -26,12 +26,20 @@ import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.s
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { typesetMath } from "@/lib/typeset-math";
 import { createMathCache } from "@/lib/math-cache";
+import { createMermaidCache } from "@/lib/mermaid-cache";
+import {
+  renderMermaidBlocks,
+  themeMermaidCourant,
+  type MermaidTheme,
+} from "@/lib/mermaid-render";
+import DiagramViewer from "@/components/markdown/DiagramViewer.svelte";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { previewSettings } from "@/stores/markdown-settings.svelte";
 import { buildPreviewProseCss } from "@/lib/prose-style-css";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { clearScrollTarget, consumeScrollTarget } from "@/stores/scroll-target.svelte";
 import { getPreviewFocusStore } from "@/stores/preview-focus.svelte";
+import { getT, language } from "@/lib/i18n";
 
 let {
   value = "",
@@ -75,6 +83,8 @@ let {
    *  (azprose:preview-jump-line) — pendant de setSyncLine(null). */
   onClearSyncLine?: () => void;
 } = $props();
+
+let t = $derived(getT($language));
 
 let articleEl: HTMLElement | undefined = $state();
 let ready = $state(false);
@@ -134,6 +144,59 @@ $effect(() => {
 const mathCache = createMathCache();
 let lastPreamble = "";
 
+// ── Cache des diagrammes Mermaid ─────────────────────────────────────────
+// Même motif que le cache math : l'aperçu réécrit `innerHTML` à chaque rendu,
+// ce qui détruirait les SVG composés. Vidé au changement de thème — un
+// diagramme composé en clair n'a rien à faire dans un document passé en sombre.
+const mermaidCache = createMermaidCache();
+let lastMermaidTheme: MermaidTheme | null = null;
+
+/** Diagramme ouvert dans la visionneuse (`null` = fermée). */
+let diagramSvg = $state<string | null>(null);
+
+/**
+ * Rend cliquables les diagrammes composés (jamais ceux en erreur : il n'y a
+ * rien à agrandir). Un seul écouteur sur le conteneur — pas un par diagramme :
+ * le DOM est reconstruit à chaque rendu, des écouteurs par nœud fuiraient.
+ */
+function marquerDiagrammesZoomables(el: HTMLElement): void {
+  for (const bloc of el.querySelectorAll<HTMLElement>(".mdv-mermaid.is-rendered:not(.is-error)")) {
+    if (!bloc.querySelector("svg")) continue;
+    bloc.classList.add("is-zoomable");
+    // Accessible au clavier, pas seulement à la souris : un diagramme
+    // agrandissable est une commande, il doit s'atteindre par tabulation.
+    bloc.setAttribute("role", "button");
+    bloc.setAttribute("tabindex", "0");
+    bloc.setAttribute("aria-label", t("diagram.open"));
+  }
+}
+
+function ouvrirDiagrammeDepuis(cible: EventTarget | null): boolean {
+  const bloc = (cible as HTMLElement | null)?.closest<HTMLElement>(".mdv-mermaid.is-zoomable");
+  const svg = bloc?.querySelector("svg");
+  if (!svg) return false;
+  diagramSvg = svg.outerHTML;
+  return true;
+}
+
+// Écouteurs DÉLÉGUÉS, posés une fois sur le conteneur : le DOM interne est
+// reconstruit à chaque rendu, des écouteurs par diagramme fuiraient.
+$effect(() => {
+  const el = articleEl;
+  if (!el) return;
+  const surClic = (e: MouseEvent) => { ouvrirDiagrammeDepuis(e.target); };
+  const surTouche = (e: KeyboardEvent) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (ouvrirDiagrammeDepuis(e.target)) e.preventDefault();
+  };
+  el.addEventListener("click", surClic);
+  el.addEventListener("keydown", surTouche);
+  return () => {
+    el.removeEventListener("click", surClic);
+    el.removeEventListener("keydown", surTouche);
+  };
+});
+
 // ── Callout state cache: preserve open/closed across re-renders ───────────
 const calloutStateCache = new Map<string, boolean>();
 
@@ -186,6 +249,7 @@ $effect(() => {
   let scrollPct = 0;
   if (articleEl) {
     mathCache.extractFrom(articleEl);
+    mermaidCache.extractFrom(articleEl);
     extractCalloutState(articleEl);
     const scroller = articleEl.closest<HTMLElement>(".mdv-preview");
     if (scroller && scroller.scrollHeight > scroller.clientHeight) {
@@ -208,6 +272,14 @@ $effect(() => {
     // Re-inject cached MathJax SVGs for unchanged formulas
     mathCache.injectInto(tmp);
 
+    // Idem pour les diagrammes : un diagramme inchangé traverse le re-rendu
+    // sans être recomposé, et sans clignoter. Le cache est vidé d'abord si le
+    // thème a changé, la couleur du SVG en dépendant.
+    const mermaidTheme = themeMermaidCourant();
+    if (lastMermaidTheme !== null && lastMermaidTheme !== mermaidTheme) mermaidCache.clear();
+    lastMermaidTheme = mermaidTheme;
+    mermaidCache.injectInto(tmp);
+
     articleEl.innerHTML = tmp.innerHTML;
     restoreCalloutState(articleEl);
 
@@ -215,6 +287,12 @@ $effect(() => {
     cleanupCode = decorateCodeBlocks(articleEl);
     const { brokenImages } = await postRenderDom(articleEl, { filePath, rootPath: getRootPath() ?? undefined });
     await typesetMath(articleEl);
+    // Diagrammes APRÈS les maths : Mermaid charge ~950 Ko à la première
+    // occurrence, et rien n'oblige le texte et les formules à l'attendre.
+    if (!cancelled) {
+      await renderMermaidBlocks(articleEl, mermaidTheme);
+      if (!cancelled) marquerDiagrammesZoomables(articleEl);
+    }
     if (!cancelled) onDiagnostics?.(articleEl, brokenImages);
 
     // Mark transcluded blocks so double-click opens the original source file
@@ -454,6 +532,10 @@ $effect(() => {
   ></article>
   {/if}
 </div>
+
+{#if diagramSvg}
+  <DiagramViewer svg={diagramSvg} onClose={() => { diagramSvg = null; }} />
+{/if}
 
 <style>
   .mdv-preview {

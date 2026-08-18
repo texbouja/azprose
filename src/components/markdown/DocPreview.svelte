@@ -19,6 +19,7 @@ import {
 import { calloutSettings } from "@/stores/callout-settings.svelte";
 import { subscribeMode, type Theme } from "@/lib/theme";
 import { typesetMath } from "@/lib/typeset-math";
+import { renderMermaidBlocks } from "@/lib/mermaid-render";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
 import { collectRenderDiagnostics, clearRenderDiagnostics } from "@/lib/render-diagnostics";
 import { getRootPath } from "@/stores/root-path.svelte";
@@ -245,6 +246,10 @@ $effect(() => {
     const rp = getRootPath();
     if (rp && filePath) resolveDocWikilinks(articleEl, rp, filePath);
     await typesetMath(articleEl);
+    // Diagrammes : après les maths, pour que le texte n'attende pas le
+    // chargement de Mermaid. Pas de cache ici — contrairement à l'aperçu, la
+    // doc ne se re-rend pas à la frappe.
+    if (!cancelled) await renderMermaidBlocks(articleEl);
     if (!cancelled) collectRenderDiagnostics(articleEl, brokenImages);
 
     markTranscludedBlocks(articleEl, result.ranges);

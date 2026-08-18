@@ -15,6 +15,7 @@ import { subscribeMode, type Theme } from "@/lib/theme";
 
 let t = $derived(getT($language));
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { renderMermaidBlocks } from "@/lib/mermaid-render";
 import { slideSession } from "@/stores/slide-session.svelte";
 import { presentationSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PresentationStyle } from "@/stores/markdown-settings.svelte";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
@@ -202,6 +203,9 @@ async function hydrate(stage: HTMLElement): Promise<void> {
     if (preamble) await mj.tex2svgPromise?.(preamble, { display: true });
     await mj.typesetPromise?.(sections);
   }
+  // Diagrammes : après les maths, comme dans l'aperçu. Une présentation ne se
+  // re-rend pas à la frappe — pas de cache nécessaire ici.
+  await renderMermaidBlocks(stage);
   collectRenderDiagnostics(stage, broken);
 }
 
