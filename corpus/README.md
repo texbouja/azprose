@@ -97,12 +97,22 @@ corpus/phys-mp.md          gabarit des programmes de physique
 corpus/chim-mp.md          gabarit des programmes de chimie
 corpus/phys-mpsi.md        idem physique, classe de MPSI
 corpus/chim-mpsi.md        idem chimie, classe de MPSI
+corpus/si-mp.md            gabarit des programmes de sciences industrielles (niveau 2)
+corpus/si-mpsi.md          idem sciences industrielles (niveau 1)
 ```
 
 Lisez le gabarit de votre matière en entier. Chacun porte sa propre légende
 (« Comment lire ce document ») ; cette légende est **lue par l'utilisateur et
 par l'assistant**, elle doit donc décrire ce que le fichier fait réellement.
 Ce README explique la *démarche* ; le gabarit fait foi sur la *forme*.
+
+> ⚠️ **Sciences industrielles** : le programme de la filière MPSI-MP couvre les
+> deux années dans un même document. Le corpus le **scinde par niveau** —
+> `si-mpsi.md` (semestres S1-S2) et `si-mp.md` (semestres S3-S4) — en utilisant
+> la colonne « semestre » du document. Chaque connaissance porte son semestre
+> en fin de puce (« Semestre Sx. »), le symbole « ⇆ I » marque un lien avec
+> l'enseignement d'informatique, « (*) » une compétence réservée aux MPSI
+> option Sciences de l'Ingénieur.
 
 ---
 

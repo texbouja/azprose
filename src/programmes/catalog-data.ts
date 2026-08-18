@@ -4,7 +4,7 @@
 // MÉTADONNÉES SEULES — jamais le contenu des programmes (cf. le plan
 // ../agents/azprose/programmes-nav-plan.md, invariant 2).
 
-export const CORPUS_VERSION = "0841e75e6cc8";
+export const CORPUS_VERSION = "fed46ae69ccd";
 
 export const catalogue = [
   {"fichier":"chim-mp.md","id":"chimie-mp","titre":"Programme de chimie — MP","matiere":"chimie","filiere":["MP"],"niveau":2},
@@ -13,4 +13,6 @@ export const catalogue = [
   {"fichier":"math-mpsi-mp2i.md","id":"mathematiques-mpsi-mp2i","titre":"Programme de mathématiques — MPSI, MP2I","matiere":"mathematiques","filiere":["MPSI","MP2I"],"niveau":1},
   {"fichier":"phys-mp.md","id":"physique-mp","titre":"Programme de physique — MP","matiere":"physique","filiere":["MP"],"niveau":2},
   {"fichier":"phys-mpsi.md","id":"phys-mpsi","titre":"Programme de physique — MPSI","matiere":"physique","filiere":["MPSI"],"niveau":1},
+  {"fichier":"si-mp.md","id":"si-mp","titre":"Programme de sciences industrielles de l'ingénieur — MP","matiere":"sciences industrielles","filiere":["MP"],"niveau":2},
+  {"fichier":"si-mpsi.md","id":"si-mpsi","titre":"Programme de sciences industrielles de l'ingénieur — MPSI","matiere":"sciences industrielles","filiere":["MPSI"],"niveau":1},
 ];
