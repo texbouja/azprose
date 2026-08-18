@@ -78,26 +78,25 @@ let leftItems = $derived.by(() => [
 /** DROITE : « ouvrir dans l'éditeur », Présentation, plein écran — les actions
  *  qui portent sur le document affiché, toutes réunies APRÈS le champ de
  *  filtrage (demande utilisateur, 2026-08-18 ; « éditer » revient donc du
- *  groupe de gauche où il avait été mis le 2026-08-14). */
-let rightItems = $derived.by(() => {
-  const list: any[] = [
-    { comp: "icon", icon: "wxi-external", text: t("preview.openInEditor"), pinned: true,
-      disabled: !canOpenInEditor, handler: () => onOpenInEditor?.() },
-  ];
-  if (presentationAvailable) {
-    list.push({
-      comp: "icon", icon: "wxi-slideshow", text: "Presentation", pinned: true,
-      type: presentationActive ? "pressed" : "",
-      handler: () => onTogglePresentation?.(),
-    });
-  }
-  list.push({
-    comp: "icon", icon: "wxi-fullscreen", text: "Fullscreen", pinned: true,
+ *  groupe de gauche où il avait été mis le 2026-08-14).
+ *
+ *  Les trois boutons sont PERMANENTS et se désactivent quand ils ne
+ *  s'appliquent pas (2026-08-18) : « Présentation » disparaissait alors
+ *  qu'« éditer » restait grisé — deux logiques pour deux boutons voisins, et
+ *  surtout des icônes qui se déplacent sous le curseur au gré de l'onglet
+ *  actif. Une barre dont les commandes changent de place se réapprend à chaque
+ *  navigation. */
+let rightItems = $derived.by(() => [
+  { comp: "icon", icon: "wxi-external", text: t("preview.openInEditor"), pinned: true,
+    disabled: !canOpenInEditor, handler: () => onOpenInEditor?.() },
+  { comp: "icon", icon: "wxi-slideshow", text: t("browse.presentation"), pinned: true,
+    disabled: !presentationAvailable,
+    type: presentationActive ? "pressed" : "",
+    handler: () => onTogglePresentation?.() },
+  { comp: "icon", icon: "wxi-fullscreen", text: t("browse.fullscreen"), pinned: true,
     type: fullscreenActive ? "pressed" : "",
-    handler: () => onToggleFullscreen?.(),
-  });
-  return list;
-});
+    handler: () => onToggleFullscreen?.() },
+]);
 </script>
 
 <div class="nt-wrap">

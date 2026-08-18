@@ -435,6 +435,8 @@
   "diagram.zoomOut": "Réduire",
   "diagram.reset": "Taille réelle",
   "diagram.close": "Fermer",
+  "browse.presentation": "Présentation",
+  "browse.fullscreen": "Plein écran",
   "browse.criteresActifs": "Critères de filtrage actifs",
   "browse.critereRetirer": "Retirer le critère {name}",
   "browse.critere.matiere": "matière",
