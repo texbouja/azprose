@@ -15,6 +15,7 @@
  */
 
 import { escapeHtml } from "@/markdown/highlight";
+import { neutraliserMaths } from "@/markdown/mermaid-fence";
 
 type MermaidApi = typeof import("mermaid")["default"];
 
@@ -224,7 +225,10 @@ export async function renderMermaidBlocks(
     if (!source.trim()) continue;
     const avis = bloc.querySelector(".mdv-mermaid__notice")?.outerHTML ?? "";
     try {
-      const { svg } = await mermaid.render(`mdv-mermaid-${++compteur}`, source);
+      // Délimiteurs `$$` retirés AVANT de confier la source à Mermaid : c'est
+      // le seul moyen de l'empêcher d'appeler KaTeX, qui composerait sans le
+      // préambule du projet (cf. `neutraliserMaths`).
+      const { svg } = await mermaid.render(`mdv-mermaid-${++compteur}`, neutraliserMaths(source));
       bloc.innerHTML = svg + avis;
       bloc.classList.add("is-rendered");
       rendus++;

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { renderMermaidPlaceholder, MERMAID_MATH_NOTICE } from "@/markdown/mermaid-fence";
+import {
+  contientMaths, MERMAID_MATH_NOTICE, neutraliserMaths, renderMermaidPlaceholder,
+} from "@/markdown/mermaid-fence";
 import { paletteDepuisStyle, signatureApparence, themeMermaidDepuisScheme } from "@/lib/mermaid-render";
 
 /**
@@ -111,5 +113,40 @@ describe("signature d'apparence", () => {
   test("un changement de corps ou de mode change la signature", () => {
     expect(signatureApparence({ ...base, fontSize: "18px" })).not.toBe(signatureApparence(base));
     expect(signatureApparence({ ...base, mode: "default" })).not.toBe(signatureApparence(base));
+  });
+});
+
+describe("neutralisation des maths dans une source de diagramme", () => {
+  test("les délimiteurs partent, le contenu reste tel quel", () => {
+    // Mermaid appelle KaTeX dès qu'il voit `$$` : retirer les délimiteurs est
+    // le seul moyen de l'en empêcher, aucune option ne le désactive.
+    expect(neutraliserMaths('A["$$x^2$$"] --> B')).toBe('A["x^2"] --> B');
+  });
+
+  test("plusieurs formules dans une même source", () => {
+    expect(neutraliserMaths('A["$$a$$"] --> B["$$b$$"]')).toBe('A["a"] --> B["b"]');
+  });
+
+  test("une formule sur plusieurs lignes", () => {
+    expect(neutraliserMaths("A[$$\\frac{1}{2}\n+ 3$$]")).toBe("A[\\frac{1}{2}\n+ 3]");
+  });
+
+  test("une macro du préambule n'est pas altérée — elle devient du texte", () => {
+    expect(neutraliserMaths('A["$$\\R \\abs{x}$$"]')).toBe('A["\\R \\abs{x}"]');
+  });
+
+  test("une source sans maths traverse inchangée", () => {
+    const src = "flowchart TD\n  A --> B";
+    expect(neutraliserMaths(src)).toBe(src);
+  });
+
+  test("un $ isolé n'est pas un délimiteur et reste intact", () => {
+    expect(neutraliserMaths('A["prix : 12 $"]')).toBe('A["prix : 12 $"]');
+  });
+
+  test("la détection reconnaît exactement ce que la neutralisation traite", () => {
+    expect(contientMaths('A["$$x$$"]')).toBe(true);
+    expect(contientMaths('A["12 $"]')).toBe(false);
+    expect(contientMaths("flowchart TD\n A --> B")).toBe(false);
   });
 });

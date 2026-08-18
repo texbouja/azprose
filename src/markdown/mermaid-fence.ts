@@ -14,7 +14,32 @@ import { escapeAttr, escapeHtml } from "./highlight";
 /** Mention affichée quand une source de diagramme contient `$$`. */
 export const MERMAID_MATH_NOTICE =
   "Les mathématiques ne sont pas prises en charge dans les diagrammes : " +
-  "les macros du préambule n'y sont pas disponibles.";
+  "la formule est affichée telle qu'écrite, sans les macros du préambule.";
+
+/** Une source contient-elle des délimiteurs mathématiques de Mermaid ? */
+export function contientMaths(source: string): boolean {
+  return /\$\$[\s\S]*?\$\$/.test(source);
+}
+
+/**
+ * Retire les délimiteurs `$$…$$` d'une source de diagramme, en gardant leur
+ * contenu tel quel.
+ *
+ * Mermaid appelle KaTeX **dès qu'il voit `$$`** : aucune option ne le
+ * désactive. Se contenter d'afficher une mention laissait donc KaTeX composer
+ * pour de bon — sans la feuille de style attendue, et surtout sans le préambule
+ * MathJax du projet, si bien qu'une macro maison (`\R`, `\abs`…) échouait en
+ * silence au milieu d'un rendu à moitié réussi. C'est précisément ce que la
+ * décision du 2026-08-18 voulait éviter.
+ *
+ * En retirant les délimiteurs, la formule redevient du TEXTE : elle s'affiche
+ * telle que l'auteur l'a écrite, ce qui est honnête et lisible, et le chunk
+ * KaTeX (253 Ko) n'est jamais chargé. Le pont MathJax (vague 2) remplacera
+ * cette neutralisation par un vrai rendu, avec le préambule.
+ */
+export function neutraliserMaths(source: string): string {
+  return source.replace(/\$\$([\s\S]*?)\$\$/g, (_, contenu: string) => contenu);
+}
 
 /**
  * Porteur d'un diagramme.
@@ -30,7 +55,7 @@ export const MERMAID_MATH_NOTICE =
  */
 export function renderMermaidPlaceholder(source: string): string {
   const attr = escapeAttr(source);
-  const avis = source.includes("$$")
+  const avis = contientMaths(source)
     ? `<p class="mdv-mermaid__notice">${escapeHtml(MERMAID_MATH_NOTICE)}</p>`
     : "";
   return (
