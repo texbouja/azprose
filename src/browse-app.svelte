@@ -1038,7 +1038,13 @@ onMount(() => {
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--bg);
-  overflow: hidden;
+  /* ⚠️ JAMAIS d'`overflow` ici. `.browse__suggestions` est en
+     `position: absolute` sous ce conteneur : un overflow le ROGNE, et la liste
+     devient invisible alors qu'elle est bien calculée — le filtrage semble
+     alors « ne plus fonctionner ». Ce piège a déjà été payé une fois un niveau
+     au-dessus (`.nt-wrap`, cb97cfd), et réintroduit ici le 2026-08-18. Le
+     débordement des jetons est borné par `.browse__criteres` lui-même
+     (max-width + overflow-x), jamais par ce conteneur. */
 }
 .browse__address-wrap:focus-within {
   border-color: var(--accent);
