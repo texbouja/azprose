@@ -18,6 +18,9 @@
  * les deux points d'entrée JS (main.ts, nav-main.ts).
  */
 
+import { MATHJAX_FONT_PATH } from "@/lib/mathjax-font";
+import { policeDemandee } from "@/lib/mathjax-charger";
+
 /* `applyPlatformClass()` (is-mac / is-windows / is-linux sur <html>) a été
  * SUPPRIMÉ le 2026-08-14 avec les décorations de l'app : son UNIQUE
  * consommateur était `html.is-mac .mdv-titlebar` (espace réservé aux traffic
@@ -120,6 +123,7 @@ export function removeBootSplash(): void {
  * deux points d'entrée JS.
  */
 function initMathJaxConfig(): void {
+  const police = policeDemandee();
   const mjPkgs: string[] = JSON.parse(
     localStorage.getItem("mdview.mathjax.packages") ?? "[]"
   );
@@ -133,6 +137,18 @@ function initMathJaxConfig(): void {
     // ProseMark drives its own render cycle — MathJax must not scan the DOM
     // on startup (V4 default is typeset: true, conflicts with widgets).
     startup: { typeset: false },
+    // Données de glyphes servies par l'application — POUR FIRA SEULEMENT.
+    //
+    // Fira charge six plages à l'exécution (`\mathbb`, `\mathcal`, `\mathscr`,
+    // `\mathfrak`, `\mathsf`, `\mathtt`) et leur échec est DUR : la formule ne
+    // s'affiche pas du tout. D'où les données déposées dans
+    // `public/mathjax-fonts/` et ce chemin.
+    //
+    // ⚠️ Ne JAMAIS le poser pour New Computer Modern : elle résout ses plages
+    // toute seule depuis son propre paquet, et lui imposer ce chemin la casse
+    // exactement comme son absence casse Fira — mesuré en sonde, `\mathbb{R}`
+    // disparaissait des deux côtés selon le réglage.
+    ...(police === "fira" ? { output: { fontPath: MATHJAX_FONT_PATH } } : {}),
     ...(mjPkgs.length > 0 && { tex: { packages: { "[+]": mjPkgs } } }),
     // V4 activates a11y extensions by default (unlike V3). SRE crashes under
     // WebKitGTK — disable the full enrichment pipeline (speech/braille/

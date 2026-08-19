@@ -17,6 +17,12 @@
  * par ici SANS changer le rendu.
  */
 
+import {
+  configNommePolice,
+  SCRIPT_CDN_EMBARQUE,
+  SCRIPT_CDN_SANS_POLICE,
+} from "@/lib/mathjax-font";
+
 /** Marqueur de fin de rendu des documents IMPRIMÉS (md→PDF, planches PDF). */
 export const PRINT_READY_TITLE = "azprose-print-ready";
 
@@ -38,6 +44,10 @@ export interface PrintDocumentParts {
   /** Charger le CDN MathJax (les documents md/planches le chargent TOUJOURS ;
    *  le rapport image seulement si une config est fournie). */
   mathjaxCdn?: boolean;
+  /** URL du script MathJax. Défaut : la variante `-nofont`, où la police est
+   *  nommée dans la configuration (`output.font`) — c'est ce qui accorde le
+   *  papier au réglage de l'écran. Voir `lib/mathjax-font.ts`. */
+  mathjaxScript?: string;
   /** Attributs du `<body>` (rapport image : fond fixe). */
   bodyAttrs?: string;
   /** Préambule mathématique (macros LaTeX) — injecté caché, jamais visible. */
@@ -77,8 +87,16 @@ export function assemblePrintDocument(parts: PrintDocumentParts): string {
   const mathjaxConfig = hasConfig
     ? `<script>\n${parts.mathjaxConfig}\n</script>\n`
     : "";
+  // Le script SUIT la configuration : `-nofont` (la police est un réglage de
+  // l'application, jusque sur le papier) dès qu'une police est nommée, sinon le
+  // moteur qui embarque New Computer Modern. Un document dont la configuration
+  // ignore les polices — un appelant tiers, un repli — compose donc toujours,
+  // au lieu de sortir vide.
+  const src =
+    parts.mathjaxScript ??
+    (configNommePolice(parts.mathjaxConfig) ? SCRIPT_CDN_SANS_POLICE : SCRIPT_CDN_EMBARQUE);
   const cdn = parts.mathjaxCdn || hasConfig
-    ? `<script src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-svg.js" async><\/script>\n`
+    ? `<script src="${src}" async><\/script>\n`
     : "";
   const preamble = parts.preamble?.trim()
     ? `<div style="position:absolute;left:-9999px" aria-hidden="true">$$${parts.preamble.trim()}$$</div>\n`

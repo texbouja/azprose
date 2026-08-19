@@ -48,6 +48,9 @@ export interface PresentationConfig {
 export interface MathConfig {
   preamble?: string | null;
   packages?: string[] | null;
+  /** Police mathématique : `newcm` (défaut) ou `fira`. Le moteur la lit à son
+   *  chargement — un changement ne prend effet qu'au redémarrage. */
+  font?: string | null;
 }
 
 export interface ProjectConfig {

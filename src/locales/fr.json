@@ -317,6 +317,8 @@
   "settings.defaultTheme": "Thème par défaut",
   "settings.defaultMode": "Mode par défaut",
   "settings.presHint": "Les réglages ci-dessous sont prioritaires sur le thème, y compris lors d'un changement à chaud.",
+  "settings.mathFont": "Police mathématique",
+  "settings.mathFontHint": "New Computer Modern est la police classique de TeX. Fira Math est sans sérif : elle s'accorde à un texte en Fira Sans. Le changement prend effet au redémarrage.",
   "settings.packages": "Packages",
   "settings.globalMacros": "Macros LaTeX globales",
   "settings.mathjaxPlaceholder": "\\newcommand{\\vect}[1]{\\boldsymbol{#1}}\n\\DeclareMathOperator{\\sh}{sh}",

@@ -3,6 +3,7 @@
  * Shared by MarkdownPreview and ColleCard (async import, startup promise, preamble).
  */
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { chargerMathJax } from "@/lib/mathjax-charger";
 
 type MathJaxGlobal =
   | {
@@ -30,7 +31,7 @@ export async function typesetMath(el: HTMLElement): Promise<void> {
  * ici, sans quoi une macro maison échouerait.
  */
 async function prepareMathJax(): Promise<Exclude<MathJaxGlobal, undefined> | null> {
-  await import("mathjax/tex-svg.js");
+  await chargerMathJax();
   const mj = window.MathJax as MathJaxGlobal;
   if (!mj?.startup?.promise) return null;
   await mj.startup.promise;

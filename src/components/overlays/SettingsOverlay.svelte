@@ -17,7 +17,8 @@ import {
   type HeadingFont,
   type OlType,
 } from "@/stores/markdown-settings.svelte";
-import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
+import { mathJaxPreamble, mathJaxPackages, mathJaxFont } from "@/stores/mathjax-preamble.svelte";
+import { MATHJAX_FONTS, policeValide } from "@/lib/mathjax-font";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import { generalSettings, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT_PRESETS, PREVIEW_FONT_PRESETS, PREVIEW_MONO_FONT_PRESETS, FONT_HINTING_OPTIONS } from "@/stores/general-settings.svelte";
@@ -1367,6 +1368,14 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
           {/if}
 
           {#if activeModule === "mathjax"}
+            <p class="mdv-settings__section-title">{t("settings.mathFont")}</p>
+            <Segmented
+              value={mathJaxFont.current}
+              options={MATHJAX_FONTS.map((f) => ({ id: f.id, label: f.label }))}
+              onchange={(ev) => (mathJaxFont.current = policeValide(ev.value))}
+            />
+            <p class="mdv-settings__hint">{t("settings.mathFontHint")}</p>
+
             <p class="mdv-settings__section-title">{t("settings.packages")}</p>
             <div class="mdv-settings__pkg-grid">
               {#each MATHJAX_PACKAGES as pkg (pkg.id)}

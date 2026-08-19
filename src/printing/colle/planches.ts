@@ -136,6 +136,10 @@ const DEFAULT_MATHJAX_CONFIG = `
         tags: 'ams',
       },
       svg: { fontCache: 'global' },
+      // Le squelette charge la variante \`-nofont\` : sans cette ligne, le
+      // document n'aurait AUCUNE police. Repli seulement — l'application passe
+      // sa vraie configuration, qui suit le réglage de l'utilisateur.
+      output: { font: 'mathjax-newcm' },
       startup: { typeset: true },
       // V4 active les extensions a11y par défaut — désactivées pour les
       // documents autonomes (même bloc que buildMathJaxConfig de pdf-export.ts

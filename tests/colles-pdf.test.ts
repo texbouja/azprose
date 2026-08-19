@@ -204,7 +204,11 @@ describe("assemblePrintHtml", () => {
   test("MathJax : config + CDN + cycle de vie (signal prêt pour le backend headless)", () => {
     const html = assemblePrintHtml([data()], false);
     expect(html).toContain("window.MathJax = {");
-    expect(html).toContain("mathjax@4/tex-svg.js");
+    // Variante `-nofont` : la configuration des planches NOMME sa police
+    // (`output.font`), donc le moteur est chargé sans police embarquée — c'est
+    // ce qui permet au réglage de l'application de suivre jusqu'au papier.
+    expect(html).toContain("mathjax@4/tex-svg-nofont.js");
+    expect(html).toContain("output: { font: 'mathjax-newcm' }");
     expect(html).toContain("window.MathJax.startup.promise.then");
     // Le backend Rust (mdprinter.rs) poll document.title jusqu'à ce marqueur
     // avant de lancer print_to_pdf — plus de window.print() ni de dialogue.

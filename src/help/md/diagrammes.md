@@ -98,6 +98,11 @@ flowchart LR
     A["$$\int_0^{+\infty} e^{-t^2}\,dt$$"] --> B["$$\frac{\sqrt{\pi}}{2}$$"]
 ```
 
+La **police mathématique** se choisit dans les réglages, module *MathJax* : *New
+Computer Modern* (la police classique de TeX, celle par défaut) ou *Fira Math*,
+sans sérif, qui s'accorde à un texte composé en Fira Sans. Le choix vaut pour
+tout — texte, diagrammes, impression — et prend effet au redémarrage.
+
 Trois points à connaître :
 
 - **Une formule tient sur une seule ligne.** Les deux `$$` doivent se trouver

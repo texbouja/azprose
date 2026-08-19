@@ -15,6 +15,7 @@ import { subscribeMode, type Theme } from "@/lib/theme";
 
 let t = $derived(getT($language));
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { chargerMathJax } from "@/lib/mathjax-charger";
 import { renderMermaidBlocks } from "@/lib/mermaid-render";
 import { slideSession } from "@/stores/slide-session.svelte";
 import { presentationSettings, resolveFontFamily, resolveMonoFont, resolveHeadingFont, type PresentationStyle } from "@/stores/markdown-settings.svelte";
@@ -193,7 +194,7 @@ async function hydrate(stage: HTMLElement): Promise<void> {
     const results = await Promise.all(sections.map((s) => postRenderDom(s, { filePath, rootPath: getRootPath() ?? undefined })));
     broken = results.flatMap(r => r.brokenImages);
   }
-  await import("mathjax/tex-svg.js");
+  await chargerMathJax();
   const mj = window.MathJax as
     | { startup?: { promise?: Promise<void> }; tex2svgPromise?: (tex: string, opts: { display: boolean }) => Promise<unknown>; typesetPromise?: (els: HTMLElement[]) => Promise<void> }
     | undefined;

@@ -115,7 +115,7 @@ Le bouton **Exporter** :
 3. affiche une notification avec le **chemin du fichier** écrit.
 
 > [!note] Les formules mathématiques
-> Le rendu des formules utilise le **CDN MathJax** : l'export **hors ligne** produit un PDF sans les formules (le reste du document est intact). Le préambule mathématique de vos réglages (macros personnalisées) est pris en compte à l'export.
+> Le rendu des formules utilise le **CDN MathJax** : l'export **hors ligne** produit un PDF sans les formules (le reste du document est intact). Le préambule mathématique de vos réglages (macros personnalisées) est pris en compte à l'export, ainsi que la **police mathématique** que vous y avez choisie — l'imprimé suit l'écran.
 
 > [!note] Rien n'est perdu si vous annulez
 > Annuler le dialogue d'enregistrement (ou fermer le dialogue d'impression) ne fait rien : pas de fichier écrit, vos réglages restent tels quels jusqu'au prochain export réussi.

@@ -39,6 +39,10 @@ export default defineConfig(async () => ({
       output: {
         manualChunks(id) {
           if (id.includes("/node_modules/mathjax/")) return "mathjax";
+          // Les polices mathématiques vivent dans leurs propres paquets
+          // (`@mathjax/mathjax-<nom>-font`) : sans cette règle, celle de Fira
+          // atterrirait dans un chunk quelconque au lieu du sien.
+          if (id.includes("/node_modules/@mathjax/")) return "mathjax-font";
         },
       },
     },

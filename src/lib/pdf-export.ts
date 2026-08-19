@@ -19,7 +19,8 @@ import { buildProseStyleCss } from "@/lib/prose-style-css";
 import { resolveFontFamily } from "@/lib/font-resolvers";
 import { renderMermaidBlocks, type ApparenceDiagramme } from "@/lib/mermaid-render";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
-import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
+import { mathJaxPreamble, mathJaxPackages, mathJaxFont } from "@/stores/mathjax-preamble.svelte";
+import { nomInterne } from "@/lib/mathjax-font";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { expandWikilinksForPrint } from "@/markdown/print-expand";
 import type { Theme } from "./theme";
@@ -109,6 +110,11 @@ export function buildMathJaxConfig(): string {
         ${packagesBlock}
       },
       svg: { fontCache: 'global' },
+      // Police mathématique : le script chargé est la variante \`-nofont\`, donc
+      // cette ligne n'est PAS facultative — sans elle le document n'a aucune
+      // police. Elle suit le réglage de l'application, ce qui accorde le papier
+      // à l'écran.
+      output: { font: '${nomInterne(mathJaxFont.current)}' },
       startup: { typeset: true },
       // V4 active les extensions a11y par défaut (contrairement à V3) : chaque
       // expression serait enrichie sémantiquement + dotée de speech/braille

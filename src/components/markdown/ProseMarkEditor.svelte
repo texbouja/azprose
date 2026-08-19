@@ -3,7 +3,11 @@
 // (vague 3, phase 3.1) : seul consommateur de prose.css, plus d'import
 // fenêtre pour lui (app.css).
 import "@/styles/markdown/prose.css";
-import "mathjax/tex-svg.js";
+// Le moteur passe par le chargeur : depuis que la police est un réglage, le
+// fichier à charger n'est plus toujours le même (cf. `mathjax-charger.ts`).
+// Déclenché à l'évaluation du module, comme l'import statique qu'il remplace.
+import { chargerMathJax } from "@/lib/mathjax-charger";
+void chargerMathJax();
 // Fira Sans + Fira Code — imported here so they only ship with the ProseMark
 // chunk (lazy-loaded), not the main app bundle.
 import "@fontsource/fira-sans/400.css";

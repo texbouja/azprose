@@ -1,5 +1,6 @@
 import { persistedState } from "./persisted.svelte";
 import { STORAGE_KEYS } from "@/lib";
+import { policeValide, MATHJAX_FONT_DEFAUT, type MathJaxFont } from "@/lib/mathjax-font";
 
 const _preamble = persistedState<string>(STORAGE_KEYS.mathJaxPreamble, "");
 
@@ -21,4 +22,21 @@ export const mathJaxPackages = {
       : [...list, id];
   },
   reset() { _packages.current = []; },
+};
+
+/**
+ * Police mathématique. Le moteur la lit AU CHARGEMENT : changer ce réglage
+ * n'a d'effet qu'après redémarrage — d'où le bouton déjà présent dans le
+ * module « MathJax » des réglages.
+ */
+const _font = persistedState<MathJaxFont>(
+  STORAGE_KEYS.mathJaxFont,
+  MATHJAX_FONT_DEFAUT,
+  policeValide,
+);
+
+export const mathJaxFont = {
+  get current(): MathJaxFont { return _font.current; },
+  set current(v: MathJaxFont) { _font.current = v; },
+  reset() { _font.current = MATHJAX_FONT_DEFAUT; },
 };
