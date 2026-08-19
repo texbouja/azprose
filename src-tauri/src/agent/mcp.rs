@@ -202,57 +202,20 @@ impl AzproseTools {
         annotations(read_only_hint = true)
     )]
     pub async fn programme_charger(&self, params: Parameters<CibleProgramme>) -> String {
-        let CibleProgramme { id, filiere, matiere, niveau } = params.0;
-        let programmes = self.programmes();
-        // Vocabulaire FERMÉ : un code hors liste est refusé, avec la
-        // correction la plus plausible. Le modèle la propose à l'utilisateur
-        // au lieu de deviner — c'est lui qui sait ce qu'il voulait.
-        let matiere = match code_matiere(matiere.as_deref()) {
-            Ok(m) => m,
+        let liste = self.programmes();
+        let p = match choisir(&liste, params.0) {
+            Ok(p) => p,
             Err(refus) => return refus,
         };
-        match programmes::selectionner(
-            &programmes,
-            id.as_deref(),
-            filiere.as_deref(),
-            matiere,
-            niveau.as_deref(),
-        ) {
-            programmes::Selection::Unique(p) => serde_json::json!({
-                "trouve": true,
-                "id": p.id,
-                // Synthèse des contraintes EN TÊTE : les mentions limitatives
-                // sont dispersées dans des milliers de lignes, les rassembler
-                // ici garantit qu'elles sont lues avant le contenu.
-                "contenu": format!("{}{}", programmes::synthese_contraintes(p), p.contenu),
-            })
-            .to_string(),
-            // AMBIGU : on ne choisit PAS à la place du demandeur. Rendre le
-            // premier de la liste donnait le programme d'informatique à qui
-            // demandait les mathématiques — avec `trouve: true`.
-            programmes::Selection::Plusieurs(candidats) => serde_json::json!({
-                "trouve": false,
-                "raison": "demande ambiguë : plusieurs programmes correspondent. Rappelle cet outil avec le champ `id` d'un des candidats ci-dessous.",
-                "candidats": candidats.iter().map(|p| serde_json::json!({
-                    "id": p.id,
-                    "matiere": p.matiere,
-                    "filiere": p.filiere,
-                    "niveau": p.niveau,
-                })).collect::<Vec<_>>(),
-            })
-            .to_string(),
-            programmes::Selection::Aucun => serde_json::json!({
-                "trouve": false,
-                "raison": "aucun programme ne correspond. Appelle `azprose_programme_lister` et rappelle cet outil avec le champ `id` voulu.",
-                "disponibles": programmes.iter().map(|p| serde_json::json!({
-                    "id": p.id,
-                    "matiere": p.matiere,
-                    "filiere": p.filiere,
-                    "niveau": p.niveau,
-                })).collect::<Vec<_>>(),
-            })
-            .to_string(),
-        }
+        serde_json::json!({
+            "trouve": true,
+            "id": p.id,
+            // Synthèse des contraintes EN TÊTE : les mentions limitatives sont
+            // dispersées dans des milliers de lignes, les rassembler ici
+            // garantit qu'elles sont lues avant le contenu.
+            "contenu": format!("{}{}", programmes::synthese_contraintes(p), p.contenu),
+        })
+        .to_string()
     }
 
     /// Situe une notion vis-à-vis du programme officiel : `dans`, `hors`,
@@ -288,39 +251,164 @@ impl AzproseTools {
         annotations(read_only_hint = true)
     )]
     pub async fn programme_contraintes(&self, params: Parameters<CibleProgramme>) -> String {
-        let CibleProgramme { id, filiere, matiere, niveau } = params.0;
+        let liste = self.programmes();
+        let p = match choisir(&liste, params.0) {
+            Ok(p) => p,
+            Err(refus) => return refus,
+        };
+        serde_json::json!({
+            "trouve": true, "id": p.id, "contraintes": programmes::contraintes(p),
+        })
+        .to_string()
+    }
+
+    /// Sections d'un ou plusieurs programmes qui traitent d'un sujet, avec
+    /// leur texte et les contraintes qui les visent.
+    ///
+    /// **Porte d'entrée normale.** Un programme se lit désormais par la section
+    /// qui traite du sujet, pas en entier : le programme de mathématiques MPSI
+    /// pèse 94 Ko pour 140 sous-sections de 0,5 Ko de médiane, et un résultat
+    /// d'outil est renvoyé au modèle à CHAQUE tour de la conversation.
+    #[tool(
+        name = "programme_chercher",
+        description = "Sections des programmes officiels qui traitent d'un sujet, avec leur texte et leurs contraintes.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn programme_chercher(&self, params: Parameters<CibleRecherche>) -> String {
+        let CibleRecherche { requete, max, id, filiere, matiere, niveau } = params.0;
         let liste = self.programmes();
         let matiere = match code_matiere(matiere.as_deref()) {
             Ok(m) => m,
             Err(refus) => return refus,
         };
-        // Même sélection que `programme_charger` : un seul comportement à
-        // comprendre pour le modèle, et jamais de choix arbitraire.
-        match programmes::selectionner(
-            &liste,
-            id.as_deref(),
-            filiere.as_deref(),
-            matiere,
-            niveau.as_deref(),
-        ) {
-            programmes::Selection::Unique(p) => serde_json::json!({
-                "trouve": true, "id": p.id, "contraintes": programmes::contraintes(p),
-            })
-            .to_string(),
-            programmes::Selection::Plusieurs(candidats) => serde_json::json!({
+        // Pas de sélection UNIQUE ici : chercher dans plusieurs programmes à la
+        // fois est le cas normal — l'utilisateur en déclare souvent trois.
+        let cibles = filtrer(&liste, id.as_deref(), filiere.as_deref(), matiere, niveau.as_deref());
+        if cibles.is_empty() {
+            return serde_json::json!({
                 "trouve": false,
-                "raison": "demande ambiguë : rappelle cet outil avec le champ `id` d'un candidat.",
-                "candidats": candidats.iter().map(|p| serde_json::json!({
-                    "id": p.id, "matiere": p.matiere, "filiere": p.filiere, "niveau": p.niveau,
-                })).collect::<Vec<_>>(),
+                "raison": "aucun programme ne correspond aux critères. Appelle `azprose_programme_lister`.",
             })
-            .to_string(),
-            programmes::Selection::Aucun => serde_json::json!({
-                "trouve": false,
-                "raison": "aucun programme ne correspond. Appelle `azprose_programme_lister`.",
-            })
-            .to_string(),
+            .to_string();
         }
+
+        let max = max.unwrap_or(3).clamp(1, 5);
+        let mut resultats: Vec<(u32, serde_json::Value)> = Vec::new();
+        for p in &cibles {
+            for (s, note) in programmes::chercher(p, &requete, max) {
+                resultats.push((
+                    note,
+                    serde_json::json!({
+                        "programme": p.id,
+                        "section": s.numero,
+                        "chemin": s.chemin,
+                        "contexte": s.contexte,
+                        "texte": programmes::section(p, &s.numero).unwrap_or_default(),
+                        // Les contraintes voyagent AVEC la section : une
+                        // interdiction ne s'interprète pas sans ce qu'elle
+                        // restreint.
+                        "contraintes": programmes::contraintes_de(p, &s.numero),
+                    }),
+                ));
+            }
+        }
+        resultats.sort_by(|a, b| b.0.cmp(&a.0));
+        resultats.truncate(max);
+
+        if resultats.is_empty() {
+            // Rendre « le moins mauvais » résultat ferait rédiger sur une
+            // section hors sujet, sous les contraintes d'une autre notion.
+            return serde_json::json!({
+                "trouve": false,
+                "raison": "aucune section ne traite de cette requête. Reformule avec les termes du programme, ou appelle `azprose_programme_plan` pour voir le découpage.",
+            })
+            .to_string();
+        }
+        serde_json::json!({
+            "trouve": true,
+            "resultats": resultats.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+        })
+        .to_string()
+    }
+
+    /// Découpage d'un programme : l'adresse, le titre et le nombre de
+    /// contraintes de chaque section. La carte, pour se repérer — le contenu
+    /// s'obtient ensuite par `programme_section`.
+    #[tool(
+        name = "programme_plan",
+        description = "Découpage d'un programme officiel en sections adressables, avec le nombre de contraintes de chacune.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn programme_plan(&self, params: Parameters<CibleProgramme>) -> String {
+        let liste = self.programmes();
+        let p = match choisir(&liste, params.0) {
+            Ok(p) => p,
+            Err(refus) => return refus,
+        };
+        serde_json::json!({
+            "trouve": true,
+            "id": p.id,
+            "sections": programmes::plan_annote(p).into_iter().map(|(s, n)| serde_json::json!({
+                "section": s.numero,
+                "titre": s.titre,
+                "contexte": s.contexte,
+                "contraintes": n,
+            })).collect::<Vec<_>>(),
+        })
+        .to_string()
+    }
+
+    /// Texte de sections désignées, avec les contraintes qui les visent.
+    #[tool(
+        name = "programme_section",
+        description = "Texte de sections précises d'un programme officiel, avec leurs contraintes.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn programme_section(&self, params: Parameters<CibleSection>) -> String {
+        let CibleSection { sections, id, filiere, matiere, niveau } = params.0;
+        let liste = self.programmes();
+        let p = match choisir(&liste, CibleProgramme { id, filiere, matiere, niveau }) {
+            Ok(p) => p,
+            Err(refus) => return refus,
+        };
+
+        // Plafond : demander le document section par section reviendrait à le
+        // charger en entier, en plus cher.
+        if sections.len() > 8 {
+            return serde_json::json!({
+                "trouve": false,
+                "raison": "trop de sections demandées (8 au plus). Si le document entier est nécessaire, appelle `azprose_programme_charger`.",
+            })
+            .to_string();
+        }
+
+        let mut trouvees = Vec::new();
+        let mut inconnues = Vec::new();
+        for numero in &sections {
+            match programmes::section(p, numero) {
+                Some(texte) => trouvees.push(serde_json::json!({
+                    "section": numero,
+                    "texte": texte,
+                    "contraintes": programmes::contraintes_de(p, numero),
+                })),
+                // JAMAIS de repli sur une section voisine : le modèle
+                // rédigerait sur autre chose que ce qui a été demandé.
+                None => inconnues.push(numero.clone()),
+            }
+        }
+
+        let mut sortie = serde_json::json!({
+            "trouve": !trouvees.is_empty(),
+            "id": p.id,
+            "sections": trouvees,
+        });
+        if !inconnues.is_empty() {
+            sortie["inconnues"] = serde_json::json!(inconnues);
+            sortie["adresses_valides"] = serde_json::json!(
+                programmes::plan(p).into_iter().map(|s| s.numero).collect::<Vec<_>>()
+            );
+        }
+        sortie.to_string()
     }
 
     /// Corpus visible : programmes livrés + échappatoire du vault (§4.2).
@@ -362,6 +450,64 @@ Demande confirmation à l'utilisateur avant de rappeler l'outil."
     .to_string())
 }
 
+/// Programmes qui répondent à des critères — zéro, un ou plusieurs.
+///
+/// À distinguer de `choisir` : la recherche porte volontiers sur plusieurs
+/// programmes à la fois (l'utilisateur en déclare souvent trois), là où charger
+/// ou décrire un document exige d'en désigner UN.
+fn filtrer<'a>(
+    liste: &'a [programmes::Programme],
+    id: Option<&str>,
+    filiere: Option<&str>,
+    matiere: Option<&str>,
+    niveau: Option<&str>,
+) -> Vec<&'a programmes::Programme> {
+    liste
+        .iter()
+        .filter(|p| {
+            id.is_none_or(|x| programmes::meme_libelle(&p.id, x))
+                && filiere.is_none_or(|f| p.filiere.iter().any(|x| programmes::meme_libelle(x, f)))
+                && matiere
+                    .is_none_or(|m| p.matiere.as_deref().is_some_and(|x| programmes::meme_libelle(x, m)))
+                // Niveau ABSENT du document = vaut pour toutes les années :
+                // le programme de sciences industrielles couvre les deux.
+                && niveau.is_none_or(|n| p.niveau.as_deref().is_none_or(|x| programmes::meme_libelle(x, n)))
+        })
+        .collect()
+}
+
+/// Désigne UN programme, ou explique pourquoi c'est impossible.
+///
+/// Un seul comportement pour tous les outils qui visent un document : le code
+/// de matière est validé contre le vocabulaire fermé, et une demande ambiguë
+/// est REFUSÉE avec ses candidats. Rendre le premier de la liste donnait le
+/// programme d'informatique à qui demandait les mathématiques.
+fn choisir<'a>(
+    liste: &'a [programmes::Programme],
+    cible: CibleProgramme,
+) -> Result<&'a programmes::Programme, String> {
+    let CibleProgramme { id, filiere, matiere, niveau } = cible;
+    let matiere = code_matiere(matiere.as_deref())?;
+    let apercu = |p: &programmes::Programme| {
+        serde_json::json!({ "id": p.id, "matiere": p.matiere, "filiere": p.filiere, "niveau": p.niveau })
+    };
+    match programmes::selectionner(liste, id.as_deref(), filiere.as_deref(), matiere, niveau.as_deref()) {
+        programmes::Selection::Unique(p) => Ok(p),
+        programmes::Selection::Plusieurs(candidats) => Err(serde_json::json!({
+            "trouve": false,
+            "raison": "demande ambiguë : plusieurs programmes correspondent. Rappelle cet outil avec le champ `id` d'un des candidats ci-dessous.",
+            "candidats": candidats.iter().copied().map(apercu).collect::<Vec<_>>(),
+        })
+        .to_string()),
+        programmes::Selection::Aucun => Err(serde_json::json!({
+            "trouve": false,
+            "raison": "aucun programme ne correspond. Appelle `azprose_programme_lister` et rappelle cet outil avec le champ `id` voulu.",
+            "disponibles": liste.iter().map(apercu).collect::<Vec<_>>(),
+        })
+        .to_string()),
+    }
+}
+
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct CibleProgramme {
@@ -376,6 +522,47 @@ pub struct CibleProgramme {
     /// Code de matière — EXACTEMENT l'un de : `math`, `phys`, `chim`, `info`,
     /// `scii`. Quatre lettres, sans accent. Tout autre texte est refusé, avec
     /// une suggestion. Omettre ce champ = toutes les matières.
+    pub matiere: Option<String>,
+    /// Niveau (« 1 » ou « 2 »). Facultatif.
+    pub niveau: Option<String>,
+}
+
+/// Argument de `programme_chercher`.
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CibleRecherche {
+    /// Mots du sujet traité, tels qu'ils viennent de la question de
+    /// l'utilisateur (ex. « nombres complexes module argument »). Les accents,
+    /// la casse et les pluriels n'ont pas d'importance.
+    pub requete: String,
+    /// Nombre de sections à rendre — 3 par défaut, 5 au plus.
+    pub max: Option<usize>,
+    /// Restreint la recherche à ce programme. Omettre pour chercher dans tous
+    /// ceux qui correspondent aux autres champs.
+    pub id: Option<String>,
+    /// Filière visée (ex. « MP », « MPSI »). Facultatif.
+    pub filiere: Option<String>,
+    /// Code de matière — EXACTEMENT l'un de : `math`, `phys`, `chim`, `info`,
+    /// `scii`. Omettre ce champ = toutes les matières.
+    pub matiere: Option<String>,
+    /// Niveau (« 1 » ou « 2 »). Facultatif.
+    pub niveau: Option<String>,
+}
+
+/// Argument de `programme_section`.
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CibleSection {
+    /// Adresses des sections voulues, telles que `azprose_programme_chercher`
+    /// ou `azprose_programme_plan` les ont rendues (ex. « 3 », « 3.8 »). Ces
+    /// adresses ne se devinent pas : elles ne suivent PAS la numérotation
+    /// écrite dans le document. Huit au plus.
+    pub sections: Vec<String>,
+    /// Identifiant exact du programme, rendu par `azprose_programme_lister`.
+    pub id: Option<String>,
+    /// Filière visée. Utilisée seulement sans `id`.
+    pub filiere: Option<String>,
+    /// Code de matière — `math`, `phys`, `chim`, `info` ou `scii`.
     pub matiere: Option<String>,
     /// Niveau (« 1 » ou « 2 »). Facultatif.
     pub niveau: Option<String>,
@@ -657,6 +844,111 @@ mod tests {
         dir
     }
 
+    fn corpus() -> Vec<programmes::Programme> {
+        let doc = |id: &str, filiere: &str, matiere: &str, niveau: &str| {
+            let contenu = format!(
+                "---\nid: {id}\nfiliere: [{filiere}]\nmatiere: {matiere}\n{niveau}---\n\n# T\n\n## S\n\n- Item.\n"
+            );
+            programmes::parse_programme(std::path::Path::new(&format!("/x/{id}.md")), &contenu).unwrap()
+        };
+        vec![
+            doc("mathematiques-mpsi-mp2i", "MPSI, MP2I", "mathematiques", "niveau: 1\n"),
+            doc("mathematiques-mp-mpi", "MP, MPI", "mathematiques", "niveau: 2\n"),
+            doc("inf-1", "MPSI, PCSI", "informatique", "niveau: 1\n"),
+            // Les sciences industrielles ne portent PAS de niveau : le
+            // document couvre les deux années.
+            doc("si-tout", "MPSI, MP", "sciences industrielles", ""),
+        ]
+    }
+
+    fn ids(v: Vec<&programmes::Programme>) -> Vec<String> {
+        v.into_iter().map(|p| p.id.clone()).collect()
+    }
+
+    #[test]
+    fn sans_critere_la_recherche_porte_sur_tout_le_corpus() {
+        // C'est le cas normal : l'utilisateur déclare plusieurs programmes et
+        // pose une question sans préciser lequel.
+        let c = corpus();
+        assert_eq!(ids(filtrer(&c, None, None, None, None)).len(), 4);
+    }
+
+    #[test]
+    fn la_recherche_se_restreint_sans_exiger_un_seul_programme() {
+        // Différence avec `choisir` : deux programmes de mathématiques ne sont
+        // pas une ambiguïté ici, ils sont deux terrains de recherche.
+        let c = corpus();
+        assert_eq!(
+            ids(filtrer(&c, None, None, Some("mathematiques"), None)),
+            vec!["mathematiques-mpsi-mp2i", "mathematiques-mp-mpi"]
+        );
+        assert_eq!(ids(filtrer(&c, Some("inf-1"), None, None, None)), vec!["inf-1"]);
+    }
+
+    #[test]
+    fn un_document_sans_niveau_vaut_pour_les_deux_annees() {
+        // Exiger une correspondance stricte rendait le programme de sciences
+        // industrielles introuvable.
+        let c = corpus();
+        assert!(ids(filtrer(&c, None, None, None, Some("2"))).contains(&"si-tout".to_string()));
+        assert!(ids(filtrer(&c, None, None, None, Some("1"))).contains(&"si-tout".to_string()));
+    }
+
+    #[test]
+    fn un_critere_sans_correspondance_ne_rend_rien() {
+        let c = corpus();
+        assert!(filtrer(&c, None, Some("PT"), None, None).is_empty());
+        assert!(filtrer(&c, Some("inexistant"), None, None, None).is_empty());
+    }
+
+    fn cible(id: Option<&str>, filiere: Option<&str>, matiere: Option<&str>) -> CibleProgramme {
+        CibleProgramme {
+            id: id.map(str::to_string),
+            filiere: filiere.map(str::to_string),
+            matiere: matiere.map(str::to_string),
+            niveau: None,
+        }
+    }
+
+    #[test]
+    fn choisir_designe_un_programme_par_son_id() {
+        let c = corpus();
+        let p = choisir(&c, cible(Some("inf-1"), None, None)).unwrap();
+        assert_eq!(p.id, "inf-1");
+    }
+
+    #[test]
+    fn choisir_refuse_l_ambiguite_avec_ses_candidats() {
+        // Rendre le premier de la liste donnait le programme d'informatique à
+        // qui demandait les mathématiques — avec `trouve: true`.
+        let c = corpus();
+        let refus = choisir(&c, cible(None, Some("MPSI"), None)).err().expect("un refus etait attendu");
+        let v: serde_json::Value = serde_json::from_str(&refus).unwrap();
+        assert_eq!(v["trouve"], false);
+        assert!(v["candidats"].as_array().unwrap().len() > 1);
+    }
+
+    #[test]
+    fn choisir_refuse_un_code_de_matiere_hors_vocabulaire() {
+        // Le code traverse l'appel d'outil en JSON, où l'accent se fait
+        // tronquer : le vocabulaire est fermé, et la correction est SOUMISE à
+        // l'utilisateur au lieu d'être devinée.
+        let c = corpus();
+        let refus = choisir(&c, cible(None, Some("MPSI"), Some("mathématiques"))).err().expect("un refus etait attendu");
+        let v: serde_json::Value = serde_json::from_str(&refus).unwrap();
+        assert_eq!(v["trouve"], false);
+        assert_eq!(v["suggestion"], "math");
+        assert!(v["matieres_valides"].as_array().unwrap().len() == 5);
+    }
+
+    #[test]
+    fn choisir_sans_correspondance_liste_ce_qui_existe() {
+        let c = corpus();
+        let refus = choisir(&c, cible(None, Some("PT"), None)).err().expect("un refus etait attendu");
+        let v: serde_json::Value = serde_json::from_str(&refus).unwrap();
+        assert_eq!(v["disponibles"].as_array().unwrap().len(), 4);
+    }
+
     #[test]
     fn preambule_lu_depuis_la_config() {
         let dir = vault_with_config(r#"{"math":{"preamble":"\\newcommand{\\R}{\\mathbb{R}}"}}"#);
@@ -729,7 +1021,7 @@ mod tests {
     #[test]
     fn base_absente_nest_pas_une_panne() {
         let dir = vault_with_config("{}");
-        let err = query_readonly(dir.path().to_str().unwrap(), "SELECT 1").unwrap_err();
+        let err = query_readonly(dir.path().to_str().unwrap(), "SELECT 1").err().expect("un refus etait attendu");
         assert!(err.contains("aucune base"), "message inattendu : {err}");
     }
 

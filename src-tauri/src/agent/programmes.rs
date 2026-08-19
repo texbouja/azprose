@@ -809,6 +809,23 @@ fn portee_couvre(portee: &str, chemin: &str) -> bool {
     portee.is_empty() || portee == chemin || chemin.starts_with(&format!("{portee} › "))
 }
 
+/// Plan du document, chaque section portant le NOMBRE de contraintes qui la
+/// visent.
+///
+/// Sépare de `contraintes_de` pour une raison de coût : appelé section par
+/// section sur les 160 sections du programme de mathématiques, il ré-analyserait
+/// 94 Ko à chaque fois. Ici, les deux analyses sont faites une fois.
+pub fn plan_annote(p: &Programme) -> Vec<(SectionProgramme, usize)> {
+    let liste = contraintes(p);
+    plan(p)
+        .into_iter()
+        .map(|s| {
+            let n = liste.iter().filter(|c| portee_couvre(&c.section, &s.chemin)).count();
+            (s, n)
+        })
+        .collect()
+}
+
 /// Contraintes qui s'appliquent à une section : les siennes, celles de ses
 /// PARENTES, et celles de portée document.
 ///
