@@ -51,6 +51,7 @@ import {
   type ProseMarkStyle,
 } from "@/stores/markdown-settings.svelte";
 import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { latexDelimitersExtensions, grammaireDelimiteursLatex } from "@/lib/prose-latex-math";
 
 let {
   value = "",
@@ -135,15 +136,36 @@ function buildProseTypographyTheme(s: ProseMarkStyle) {
   });
 }
 
+let monte = true;
+
 onMount(() => {
   latexCompartment = new Compartment();
   proseStyleCompartment = new Compartment();
   proseLayoutCompartment = new Compartment();
 
-  // Inject the global MathJax preamble before any formula widget renders.
-  // Because resolved-promise callbacks execute in registration order, queueing
-  // this .then() before the EditorView is created guarantees our preamble call
-  // enters MathJax's serial queue ahead of every formula widget's call.
+  // La vue n'est construite QU'APRÈS le chargement du moteur.
+  //
+  // ProseMark est en mode `static-import` : il ATTEND `MathJax.startup.promise`
+  // sans jamais charger le moteur lui-même. Depuis que celui-ci arrive par une
+  // balise `<script>` (il ne survit pas à l'empaquetage, cf.
+  // `mathjax-charger.ts`), il peut n'être pas encore là au montage — et un
+  // widget qui le trouve absent affiche « MathJax is not ready » DÉFINITIVEMENT,
+  // sa promesse d'échec étant mise en cache. Le préambule du projet souffrait du
+  // même décalage : lu trop tôt, il n'était jamais appliqué.
+  void chargerMathJax()
+    .catch(() => {
+      /* moteur absent : l'éditeur s'ouvre quand même, sans formules composées */
+    })
+    .then(() => {
+      if (monte) construireVue();
+    });
+});
+
+/** Construit l'éditeur — appelée une fois le moteur mathématique disponible. */
+function construireVue(): void {
+  // Préambule joué AVANT tout widget : les rappels d'une promesse déjà résolue
+  // s'exécutent dans l'ordre d'inscription, donc cet appel entre dans la file
+  // de MathJax avant ceux des formules.
   const preamble = mathJaxPreamble.current.trim();
   if (preamble) {
     const mj = window.MathJax as
@@ -169,6 +191,11 @@ onMount(() => {
           GFM,
           prosemarkMarkdownSyntaxExtensions,
           renderHtmlMarkdownSyntaxExtensions,
+          // ProseMark ne connaît que `$…$` : la grammaire des délimiteurs
+          // LaTeX est la nôtre (cf. `lib/prose-latex-math.ts`).
+          // ProseMark pose sa propre règle d'échappement AVANT `Escape` : il
+          // faut la devancer, elle, sinon `\\(` est mangé avant d'arriver ici.
+          grammaireDelimiteursLatex("EscapeMark"),
         ],
       }),
       prosemarkBasicSetup(),
@@ -177,6 +204,9 @@ onMount(() => {
       pasteRichTextExtension(),
       ...latexMarkdownSyntaxTheme,
       latexCompartment.of(latexMarkdownEditorExtensions(mathOpts)),
+      // Widget des délimiteurs LaTeX — le sien découpe en supposant des
+      // dollars, il rendrait « (x^2\ » pour `\(x^2\)`.
+      latexDelimitersExtensions(),
       ...createLatexPreambleExtension(latexCompartment, mathOpts),
       EditorView.lineWrapping,
       EditorView.theme({
@@ -210,9 +240,10 @@ onMount(() => {
   });
 
   view = new EditorView({ state, parent: hostEl });
-});
+}
 
 onDestroy(() => {
+  monte = false;
   view?.destroy();
   // Custom CSS is global in <head> — must clean up explicitly.
   document.getElementById("mdv-prose-custom-css")?.remove();

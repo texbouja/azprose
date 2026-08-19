@@ -21,6 +21,7 @@ import {
 import type { StreamParser } from "@codemirror/language";
 import type { CompletionSource } from "@codemirror/autocomplete";
 import type { Extension } from "@codemirror/state";
+import { grammaireDelimiteursLatex } from "@/lib/prose-latex-math";
 
 const mathHighlight = syntaxHighlighting(HighlightStyle.define([
   { tag: mathDelimiterTag, color: "var(--syntax-keyword)" },
@@ -63,7 +64,9 @@ export function languageFromExt(
           ["stex", "tex", "latex", "math"].includes(info)
             ? latexLanguage
             : null,
-        extensions: [mathMarkdownSyntaxExtension],
+        // Deux grammaires de maths : celle de ProseMark (`$…$`, `$$…$$`) et la
+        // nôtre pour les délimiteurs LaTeX `\\(…\\)` et `\\[…\\]`.
+        extensions: [mathMarkdownSyntaxExtension, grammaireDelimiteursLatex()],
       });
       const extras: Extension[] = [md.support, mathHighlight];
       // Register extra completion sources through languageData (a cumulative
