@@ -129,6 +129,8 @@ const ICONES = {
   next: '<i class="wxi-arrow-down"></i>',
   close: '<i class="wxi-close"></i>',
   deplier: '<i class="wxi-chevron-right"></i>',
+  remplacer: '<i class="wxi-replace"></i>',
+  remplacerTout: '<i class="wxi-replace-all"></i>',
 };
 
 export function creerPanneauRecherche(view: EditorView, t: Traductions): Panel {
@@ -197,8 +199,8 @@ export function creerPanneauRecherche(view: EditorView, t: Traductions): Panel {
   champRemplace.setAttribute("aria-label", t.replace);
   ligneReplace.appendChild(champRemplace);
 
-  bouton(ligneReplace, "mdv-find__nav", t.replaceOne, "↹", () => replaceNext(view));
-  bouton(ligneReplace, "mdv-find__nav", t.replaceAll, "⇥", () => replaceAll(view));
+  bouton(ligneReplace, "mdv-find__nav", t.replaceOne, ICONES.remplacer, () => replaceNext(view));
+  bouton(ligneReplace, "mdv-find__nav", t.replaceAll, ICONES.remplacerTout, () => replaceAll(view));
 
   const etat = () => getSearchQuery(view.state);
 
