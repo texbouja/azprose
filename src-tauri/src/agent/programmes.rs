@@ -626,6 +626,205 @@ pub fn synthese_contraintes(p: &Programme) -> String {
     out
 }
 
+// ── Découpage en sections ───────────────────────────────────────────────────
+
+/// Une section du document, adressable et bornée.
+///
+/// Le `numero` est une adresse **calculée par position**, pas la numérotation
+/// du document : celle-ci est irrégulière d'une matière à l'autre (`4.4.2.` en
+/// chimie, `B2.` en SI, `a)` en mathématiques) et parfois absente. Le modèle ne
+/// la compose jamais lui-même — il la reçoit d'une recherche ou du plan et la
+/// recopie.
+#[derive(Clone, Serialize)]
+pub struct SectionProgramme {
+    /// Adresse positionnelle : `3` pour une section, `3.2` pour une
+    /// sous-section.
+    pub numero: String,
+    /// Titre tel qu'il est écrit dans le document.
+    pub titre: String,
+    /// `Section › Sous-section`. **Même forme que `Contrainte::section`** —
+    /// c'est ce qui permet de rapprocher une section de ses contraintes.
+    pub chemin: String,
+    /// Titre de niveau `#` qui englobe la section — « Premier semestre » en
+    /// mathématiques. Informatif : seul `math-mpsi-mp2i.md` découpe ainsi, et
+    /// ce titre ne participe donc PAS au chemin, qui doit rester comparable
+    /// d'un document à l'autre.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contexte: Option<String>,
+    /// 1 pour `##`, 2 pour `###`.
+    pub niveau: u8,
+    /// Décalage du début du titre, en octets.
+    #[serde(skip)]
+    pub debut: usize,
+    /// Fin du corps PROPRE — avant la première sous-section. C'est ce corps que
+    /// la recherche note : compter les sous-sections ferait ressortir toute
+    /// section parente devant ses propres enfants.
+    #[serde(skip)]
+    pub fin_corps: usize,
+    /// Fin de la section, sous-sections COMPRISES. C'est ce que rend
+    /// `section()` : demander « 3 » veut dire demander le chapitre.
+    #[serde(skip)]
+    pub fin: usize,
+}
+
+/// Découpe un document en sections adressables.
+///
+/// Trois pièges, tous rencontrés par le parseur de contraintes avant celui-ci :
+/// les blocs délimités (` ``` `) contiennent des lignes qui ressemblent à des
+/// titres ; le front matter précède le corps ; et la légende du gabarit
+/// (`SECTION_LEGENDE`) parle DES étiquettes sans en porter — elle est écartée
+/// ici comme elle l'est de l'analyse, faute de quoi toute recherche sur une
+/// mention limitative la ferait remonter en tête.
+pub fn plan(p: &Programme) -> Vec<SectionProgramme> {
+    plan_du_texte(&p.contenu)
+}
+
+fn plan_du_texte(contenu: &str) -> Vec<SectionProgramme> {
+    let (_, premiere_ligne) = parse_front_matter(contenu);
+
+    let mut out: Vec<SectionProgramme> = Vec::new();
+    let mut contexte: Option<String> = None;
+    let mut titre_document_vu = false;
+    let mut section = String::new();
+    let mut dans_legende = false;
+    let mut dans_fence = false;
+    let mut majeur = 0u32;
+    let mut mineur = 0u32;
+
+    let mut offset = 0usize;
+    for (no, brut) in contenu.split_inclusive('\n').enumerate() {
+        let debut_ligne = offset;
+        offset += brut.len();
+        if no < premiere_ligne {
+            continue;
+        }
+        let t = brut.trim();
+
+        if t.starts_with("```") {
+            dans_fence = !dans_fence;
+            continue;
+        }
+        if dans_fence {
+            continue;
+        }
+
+        // Niveau du titre, ou rien. `#` vaut 0 : il clôt tout ce qui est
+        // ouvert, sans jamais être une section adressable.
+        let niveau = if let Some(x) = t.strip_prefix("### ") {
+            Some((2u8, x))
+        } else if let Some(x) = t.strip_prefix("## ") {
+            Some((1u8, x))
+        } else if let Some(x) = t.strip_prefix("# ") {
+            Some((0u8, x))
+        } else {
+            None
+        };
+        let Some((niveau, titre)) = niveau else { continue };
+        let titre = titre.trim();
+
+        // Un titre ferme le corps propre de la section précédente, et la
+        // section entière de toutes celles d'un niveau au moins aussi profond.
+        if let Some(derniere) = out.last_mut() {
+            if derniere.fin_corps == usize::MAX {
+                derniere.fin_corps = debut_ligne;
+            }
+        }
+        for s in out.iter_mut().rev() {
+            if s.fin == usize::MAX && s.niveau >= niveau.max(1) {
+                s.fin = debut_ligne;
+            }
+        }
+
+        match niveau {
+            0 => {
+                // Le PREMIER `#` est le titre du document ; les suivants
+                // découpent le corps (« Premier semestre »).
+                if titre_document_vu {
+                    contexte = Some(titre.to_string());
+                } else {
+                    titre_document_vu = true;
+                }
+                dans_legende = false;
+            }
+            1 => {
+                section = titre.to_string();
+                dans_legende = titre == SECTION_LEGENDE;
+                if dans_legende {
+                    continue;
+                }
+                majeur += 1;
+                mineur = 0;
+                out.push(SectionProgramme {
+                    numero: majeur.to_string(),
+                    titre: titre.to_string(),
+                    chemin: chemin_section(&section, ""),
+                    contexte: contexte.clone(),
+                    niveau: 1,
+                    debut: debut_ligne,
+                    fin_corps: usize::MAX,
+                    fin: usize::MAX,
+                });
+            }
+            _ => {
+                if dans_legende || majeur == 0 {
+                    continue;
+                }
+                mineur += 1;
+                out.push(SectionProgramme {
+                    numero: format!("{majeur}.{mineur}"),
+                    titre: titre.to_string(),
+                    chemin: chemin_section(&section, titre),
+                    contexte: contexte.clone(),
+                    niveau: 2,
+                    debut: debut_ligne,
+                    fin_corps: usize::MAX,
+                    fin: usize::MAX,
+                });
+            }
+        }
+    }
+
+    for s in out.iter_mut() {
+        if s.fin_corps == usize::MAX {
+            s.fin_corps = contenu.len();
+        }
+        if s.fin == usize::MAX {
+            s.fin = contenu.len();
+        }
+    }
+    out
+}
+
+/// Texte d'une section, sous-sections comprises. `None` si l'adresse est
+/// inconnue — jamais un repli sur une section voisine.
+pub fn section<'a>(p: &'a Programme, numero: &str) -> Option<&'a str> {
+    let s = plan(p).into_iter().find(|s| s.numero == numero)?;
+    Some(&p.contenu[s.debut..s.fin])
+}
+
+/// Vrai si une contrainte de portée `portee` s'applique à la section `chemin` :
+/// c'est la sienne, celle d'une de ses parentes, ou une portée document
+/// (chemin vide, pour ce qui précède la première section).
+fn portee_couvre(portee: &str, chemin: &str) -> bool {
+    portee.is_empty() || portee == chemin || chemin.starts_with(&format!("{portee} › "))
+}
+
+/// Contraintes qui s'appliquent à une section : les siennes, celles de ses
+/// PARENTES, et celles de portée document.
+///
+/// Une contrainte ne veut rien dire sans ce qu'elle restreint — « Hors
+/// programme : la définition des exceptions » ne s'interprète pas seul. Elle
+/// voyage donc avec la section, au lieu d'être servie en liste séparée.
+pub fn contraintes_de(p: &Programme, numero: &str) -> Vec<Contrainte> {
+    let Some(s) = plan(p).into_iter().find(|s| s.numero == numero) else {
+        return Vec::new();
+    };
+    contraintes(p)
+        .into_iter()
+        .filter(|c| portee_couvre(&c.section, &s.chemin))
+        .collect()
+}
+
 #[derive(Serialize)]
 pub struct Verdict {
     pub statut: String,
@@ -1260,6 +1459,241 @@ niveau: 2
         let corpus_labels = ["mathematiques", "physique", "chimie", "informatique", "sciences industrielles"];
         for (_, libelle, _) in MATIERES {
             assert!(corpus_labels.contains(libelle), "libellé inconnu du corpus : {libelle}");
+        }
+    }
+}
+
+// ── Découpage en sections ───────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests_plan {
+    use super::*;
+
+    /// Reprend les particularités RÉELLES du corpus : légende en tête, titres
+    /// de semestre en `#` (propres aux mathématiques), titres de sous-section
+    /// non identifiants (« a) Généralités » se répète), et un bloc délimité
+    /// contenant une ligne qui ressemble à un titre.
+    const DOC: &str = r#"---
+id: test-plan
+filiere: [TEST]
+matiere: mathematiques
+niveau: 1
+---
+
+# Programme de test
+
+## Comment lire ce document
+
+- `**Hors programme.**` signifie exclu.
+
+# Premier semestre
+
+## Nombres complexes
+
+> Cadre de la section.
+>
+> **Limite.** On se limite au cas réel.
+
+### a) Généralités
+
+- Module et argument.
+
+  **Hors programme.** La construction axiomatique.
+
+### b) Racines
+
+- Racines n-ièmes de l'unité.
+
+# Deuxième semestre
+
+## Intégration
+
+Corps propre du chapitre.
+
+```python
+## Ceci n'est pas un titre
+```
+
+### a) Généralités
+
+- Sommes de Riemann.
+"#;
+
+    fn doc() -> Programme {
+        parse_programme(Path::new("/x/test-plan.md"), DOC).unwrap()
+    }
+
+    #[test]
+    fn numerote_par_position_et_ignore_la_legende() {
+        // La légende est un mode d'emploi, pas du programme : elle ne consomme
+        // pas d'adresse, sans quoi toutes les autres seraient décalées.
+        let p = doc();
+        let adresses: Vec<_> = plan(&p).iter().map(|s| (s.numero.clone(), s.titre.clone())).collect();
+        assert_eq!(
+            adresses,
+            vec![
+                ("1".into(), "Nombres complexes".to_string()),
+                ("1.1".into(), "a) Généralités".to_string()),
+                ("1.2".into(), "b) Racines".to_string()),
+                ("2".into(), "Intégration".to_string()),
+                ("2.1".into(), "a) Généralités".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn un_titre_dans_un_bloc_de_code_n_est_pas_une_section() {
+        // Le parseur de contraintes a déjà eu ce défaut : un diagramme ou un
+        // extrait de code y écrit des lignes qui ressemblent à du programme.
+        let p = doc();
+        assert!(!plan(&p).iter().any(|s| s.titre.contains("Ceci n'est pas")));
+    }
+
+    #[test]
+    fn le_semestre_accompagne_la_section_sans_entrer_dans_son_chemin() {
+        // Seules les mathématiques découpent en semestres : le faire entrer
+        // dans le chemin rendrait les chemins incomparables d'un document à
+        // l'autre — et ce sont eux qui rapprochent section et contraintes.
+        let p = doc();
+        let plan = plan(&p);
+        let complexes = plan.iter().find(|s| s.numero == "1").unwrap();
+        let integration = plan.iter().find(|s| s.numero == "2").unwrap();
+        assert_eq!(complexes.contexte.as_deref(), Some("Premier semestre"));
+        assert_eq!(integration.contexte.as_deref(), Some("Deuxième semestre"));
+        assert_eq!(complexes.chemin, "Nombres complexes");
+        assert_eq!(plan.iter().find(|s| s.numero == "1.1").unwrap().chemin, "Nombres complexes › a) Généralités");
+    }
+
+    #[test]
+    fn le_chemin_distingue_deux_titres_identiques() {
+        // « a) Généralités » apparaît trois fois dans le programme de maths
+        // MPSI : le titre seul ne peut pas servir d'adresse.
+        let p = doc();
+        let plan = plan(&p);
+        let a = plan.iter().find(|s| s.numero == "1.1").unwrap();
+        let b = plan.iter().find(|s| s.numero == "2.1").unwrap();
+        assert_eq!(a.titre, b.titre);
+        assert_ne!(a.chemin, b.chemin);
+    }
+
+    #[test]
+    fn une_section_rend_ses_sous_sections() {
+        // Demander « 1 » veut dire demander le chapitre entier.
+        let p = doc();
+        let chapitre = section(&p, "1").unwrap();
+        assert!(chapitre.starts_with("## Nombres complexes"));
+        assert!(chapitre.contains("Racines n-ièmes"));
+        assert!(!chapitre.contains("Sommes de Riemann"));
+
+        let feuille = section(&p, "1.2").unwrap();
+        assert!(feuille.starts_with("### b) Racines"));
+        assert!(!feuille.contains("Module et argument"));
+    }
+
+    #[test]
+    fn le_corps_propre_s_arrete_a_la_premiere_sous_section() {
+        // C'est ce corps que la recherche notera : compter les sous-sections
+        // ferait ressortir toute parente devant ses propres enfants.
+        let p = doc();
+        let plan = plan(&p);
+        let chapitre = plan.iter().find(|s| s.numero == "1").unwrap();
+        let corps = &p.contenu[chapitre.debut..chapitre.fin_corps];
+        assert!(corps.contains("Cadre de la section"));
+        assert!(!corps.contains("Module et argument"));
+    }
+
+    #[test]
+    fn une_adresse_inconnue_ne_rend_rien() {
+        // Jamais de repli sur une section voisine : même règle que
+        // `selectionner`, une réponse au hasard est pire que pas de réponse.
+        let p = doc();
+        assert!(section(&p, "9.9").is_none());
+        assert!(section(&p, "").is_none());
+        assert!(contraintes_de(&p, "9.9").is_empty());
+    }
+
+    #[test]
+    fn une_sous_section_herite_des_contraintes_de_sa_parente() {
+        // « Hors programme : la construction axiomatique » ne s'interprète que
+        // sous la limite posée en tête de chapitre.
+        let p = doc();
+        let c = contraintes_de(&p, "1.1");
+        let genres: Vec<_> = c.iter().map(|c| c.genre.as_str()).collect();
+        assert!(genres.contains(&"limite"), "la limite du chapitre doit descendre");
+        assert!(genres.contains(&"hors"), "la contrainte propre doit rester");
+
+        // …mais elle ne remonte pas : une sœur n'en hérite pas.
+        let soeur = contraintes_de(&p, "1.2");
+        assert_eq!(soeur.len(), 1);
+        assert_eq!(soeur[0].genre, "limite");
+    }
+
+    #[test]
+    fn une_contrainte_ne_traverse_pas_les_chapitres() {
+        let p = doc();
+        assert!(contraintes_de(&p, "2.1").is_empty());
+    }
+
+    /// Le corpus livré, s'il est là. Absent d'un build empaqueté : le test se
+    /// tait alors au lieu d'échouer.
+    fn corpus_du_depot() -> Vec<Programme> {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/programmes");
+        if dir.is_dir() { decouvrir(Some(&dir)) } else { Vec::new() }
+    }
+
+    #[test]
+    fn le_corpus_livre_se_decoupe_entierement() {
+        // Ces fichiers sont AUSSI la vue « programmes » de la fenêtre NAV :
+        // l'utilisateur les lit et peut les retoucher. Un titre déplacé ne doit
+        // pas casser l'adressage en silence — d'où ce garde-fou sur les
+        // fichiers réels, et non sur un spécimen seul.
+        for p in corpus_du_depot() {
+            let plan = plan(&p);
+            assert!(!plan.is_empty(), "{} : aucune section", p.id);
+
+            for s in &plan {
+                assert!(s.debut < s.fin, "{} § {} : bornes vides", p.id, s.numero);
+                assert!(s.fin <= p.contenu.len(), "{} § {} : borne hors texte", p.id, s.numero);
+                assert!(s.fin_corps <= s.fin, "{} § {} : corps propre débordant", p.id, s.numero);
+                assert!(!s.titre.is_empty(), "{} § {} : titre vide", p.id, s.numero);
+                // Le mode d'emploi n'est pas du programme : jamais adressable.
+                assert_ne!(s.titre, SECTION_LEGENDE, "{} : légende adressable", p.id);
+                // L'adresse doit rendre exactement la section annoncée.
+                let texte = section(&p, &s.numero).expect("adresse rendue par le plan");
+                assert!(texte.contains(&s.titre), "{} § {} : texte décalé", p.id, s.numero);
+            }
+
+            // Une adresse ne peut pas en désigner deux.
+            let mut adresses: Vec<&str> = plan.iter().map(|s| s.numero.as_str()).collect();
+            adresses.sort_unstable();
+            let total = adresses.len();
+            adresses.dedup();
+            assert_eq!(adresses.len(), total, "{} : adresses en double", p.id);
+        }
+    }
+
+    #[test]
+    fn toute_contrainte_du_corpus_trouve_sa_section() {
+        // Contrôle du RAPPROCHEMENT entre les deux analyses : elles découpent
+        // le document séparément, et un chemin construit ici mais pas là
+        // laisserait des contraintes orphelines — invisibles pour le modèle,
+        // qui rédigerait sans les connaître.
+        for p in corpus_du_depot() {
+            let plan = plan(&p);
+            let couvertes: usize = plan
+                .iter()
+                .map(|s| contraintes_de(&p, &s.numero).len())
+                .sum();
+            assert!(couvertes > 0 || contraintes(&p).is_empty(), "{} : contraintes toutes orphelines", p.id);
+
+            for c in contraintes(&p) {
+                assert!(
+                    plan.iter().any(|s| portee_couvre(&c.section, &s.chemin)),
+                    "{} : contrainte orpheline, portée « {} »",
+                    p.id,
+                    c.section
+                );
+            }
         }
     }
 }
