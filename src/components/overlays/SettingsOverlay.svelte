@@ -26,6 +26,7 @@ import { generalSettings, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT
 import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
 import { programmesSelection } from "@/stores/programmes-selection.svelte";
+import { grouperParMatiere, groupeOuvert } from "@/lib/programmes-groupes";
 import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
 import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.svelte";
 import { getRootPath } from "@/stores/root-path.svelte";
@@ -57,13 +58,23 @@ let {
 type ModuleId = "general" | "prose-writing" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques" | "programmes";
 type SectionId = "markdown" | "general" | "latex" | "colles" | "printing" | "assistant";
 
-const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labelKey: string }[] }[] = [
+const SECTIONS: {
+  id: SectionId;
+  labelKey: string;
+  /** Rendre la section repliable MÊME avec un seul module — pour celles
+   *  destinées à en accueillir d'autres (assistant IA). Sans ce drapeau, un
+   *  module unique s'affiche à plat et la section n'existe pas visuellement. */
+  toujoursGroupe?: boolean;
+  modules: { id: ModuleId; labelKey: string }[];
+}[] = [
   {
     id: "general",
     labelKey: "settings.section.general",
     modules: [
-      { id: "editor", labelKey: "settings.module.editor" },
+      // « Interface » en tête : c'est le réglage le plus consulté de la
+      // section (thème, langue, polices de l'application).
       { id: "appearance", labelKey: "settings.module.appearance" },
+      { id: "editor", labelKey: "settings.module.editor" },
       { id: "profile", labelKey: "settings.module.profile" },
       { id: "csv-general", labelKey: "settings.module.csvGeneral" },
       { id: "calendar", labelKey: "settings.module.calendar" },
@@ -102,6 +113,9 @@ const SECTIONS: { id: SectionId; labelKey: string; modules: { id: ModuleId; labe
     // pas un réglage de rendu, ce sont les données de référence de l'assistant.
     id: "assistant",
     labelKey: "settings.section.assistant",
+    // Repliable dès maintenant, avec un seul module : d'autres réglages de
+    // l'assistant viendront s'y ranger, et la place est déjà nommée.
+    toujoursGroupe: true,
     modules: [
       { id: "programmes", labelKey: "settings.module.programmes" },
     ],
@@ -126,6 +140,27 @@ type ProgrammeDispo = {
   source?: string; statut?: string; couverture?: string[]; origine: string; chemin: string;
 };
 let programmesDispo = $state<ProgrammeDispo[]>([]);
+
+/**
+ * Programmes regroupés par matière, matières triées par ordre alphabétique.
+ *
+ * Un utilisateur enseigne UNE matière : la liste à plat lui faisait parcourir
+ * une trentaine d'entrées dont une poignée le concernent. Une matière absente
+ * du champ `matiere` va sous « Autres » plutôt que de disparaître.
+ */
+let programmesParMatiere = $derived(grouperParMatiere(programmesDispo));
+
+/** Matières dépliées. Une matière dont un programme est SÉLECTIONNÉ s'ouvre
+ *  d'office : c'est celle de l'utilisateur, la refermer serait absurde. */
+let matieresOuvertes = $state(new Set<string>());
+
+function basculerMatiere(matiere: string) {
+  const next = new Set(matieresOuvertes);
+  if (next.has(matiere)) next.delete(matiere);
+  else next.add(matiere);
+  matieresOuvertes = next;
+}
+
 
 /** Corpus LIVRÉ, en lecture seule (2026-08-16) : plus d'ajout, plus de
  *  suppression, plus d'édition. Le réglage se réduit à désigner les programmes
@@ -154,7 +189,9 @@ $effect(() => {
   if (activeModule !== "programmes") return;
   void rechargerProgrammes();
 });
-let expandedSections = $state(new Set<SectionId>(["general", "markdown", "latex", "colles", "printing"]));
+let expandedSections = $state(
+  new Set<SectionId>(["general", "markdown", "latex", "colles", "printing", "assistant"]),
+);
 
 // ── Réglages des colles (Dates + Rubriques) ────────────────────────────────
 let cs = $derived(collesSettings.current);
@@ -1073,7 +1110,7 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
       <div class="mdv-settings__body">
         <nav class="mdv-settings__nav" aria-label={t("settings.navAria")}>
           {#each SECTIONS as section (section.id)}
-            {#if section.modules.length === 1}
+            {#if section.modules.length === 1 && !section.toujoursGroupe}
               <button
                 type="button"
                 class="mdv-settings__nav-item mdv-settings__nav-item--flat"
@@ -1130,14 +1167,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               onchange={(ev) => (generalSettings.defaultEditorMode = ev.value as any)}
             />
             <p class="mdv-settings__hint">{t("settings.editorHint")}</p>
-
-            <p class="mdv-settings__section-title">{t("settings.language")}</p>
-            <Segmented
-              value={$language}
-              options={LANGUAGE_CHOICES.map((c) => ({ id: c.value, label: c.nativeLabel }))}
-              onchange={(ev) => setLanguage(ev.value as any)}
-            />
-            <p class="mdv-settings__hint">{t("settings.languageHint")}</p>
 
             {@render listesSection()}
             <p class="mdv-settings__hint">{t("settings.listsHint")}</p>
@@ -1397,8 +1426,15 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             </div>
 
             <p class="mdv-settings__section-title">{t("settings.globalMacros")}</p>
-            <div style="font-family: var(--font-ui); font-size: 12px;">
-              <TextArea value={mathJaxPreamble.current} placeholder={t("settings.mathjaxPlaceholder")} onchange={(ev) => debounceInput("mathjax", ev.value, (v) => (mathJaxPreamble.current = v))} />
+            <!-- Le préambule prend tout le reste du panneau : c'est le champ
+                 où l'on écrit vraiment, et une boîte de quatre lignes obligeait
+                 à faire défiler pour relire ses propres macros. -->
+            <div class="mdv-settings__macros">
+              <TextArea
+                value={mathJaxPreamble.current}
+                placeholder={t("settings.mathjaxPlaceholder")}
+                onchange={(ev) => debounceInput("mathjax", ev.value, (v) => (mathJaxPreamble.current = v))}
+              />
             </div>
           {/if}
 
@@ -1487,19 +1523,45 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             {#if programmesDispo.length === 0}
               <p class="mdv-settings__hint">{t("settings.programmesVide")}</p>
             {:else}
-              {#each programmesDispo as p (p.id)}
-                <div class="mdv-prog">
-                  <Checkbox
-                    label={`${p.filiere.join(" / ")}${p.matiere ? ` — ${p.matiere}` : ""}${p.niveau ? ` (${t("settings.programmesNiveau")} ${p.niveau})` : ""}`}
-                    value={programmesSelection.current.includes(p.id)}
-                    onchange={() => programmesSelection.toggle(p.id)}
-                  />
-                  <p class="mdv-prog__meta">
-                    {#if p.statut === "specimen"}
-                      {t("settings.programmesPartiel", { n: String(p.couverture?.length ?? 0) })} ·
-                    {/if}
-                    {p.source ?? ""}
-                  </p>
+              {#each programmesParMatiere as groupe (groupe.matiere)}
+                {@const ouvert = groupeOuvert(groupe, matieresOuvertes, programmesSelection.current)}
+                {@const retenus = groupe.items.filter((p) => programmesSelection.current.includes(p.id)).length}
+                <div class="mdv-prog-groupe" class:is-open={ouvert}>
+                  <button
+                    type="button"
+                    class="mdv-prog-groupe__header"
+                    onclick={() => basculerMatiere(groupe.matiere)}
+                    aria-expanded={ouvert}
+                  >
+                    <span class="mdv-prog-groupe__chevron">
+                      <i class="wxi-chevron-right" style="font-size:10px"></i>
+                    </span>
+                    <span class="mdv-prog-groupe__titre">
+                      {groupe.matiere || t("settings.programmesAutres")}
+                    </span>
+                    <span class="mdv-prog-groupe__compte">
+                      {retenus > 0 ? `${retenus}/${groupe.items.length}` : groupe.items.length}
+                    </span>
+                  </button>
+                  {#if ouvert}
+                    <div transition:slide={{ duration: 120 }} class="mdv-prog-groupe__corps">
+                      {#each groupe.items as p (p.id)}
+                        <div class="mdv-prog">
+                          <Checkbox
+                            label={`${p.filiere.join(" / ")}${p.niveau ? ` (${t("settings.programmesNiveau")} ${p.niveau})` : ""}`}
+                            value={programmesSelection.current.includes(p.id)}
+                            onchange={() => programmesSelection.toggle(p.id)}
+                          />
+                          <p class="mdv-prog__meta">
+                            {#if p.statut === "specimen"}
+                              {t("settings.programmesPartiel", { n: String(p.couverture?.length ?? 0) })} ·
+                            {/if}
+                            {p.source ?? ""}
+                          </p>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
                 </div>
               {/each}
             {/if}
@@ -1717,6 +1779,17 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <!-- Réglage d'échelle UI SUPPRIMÉ (vague 4, phase 4.3) : un
                  remplaçant (zoom matériel, multiples de pixels) viendra dans
                  un chantier distinct — pas anticipé ici. -->
+
+            <!-- Langue de l'interface : rapatriée de « Markdown / Général »,
+                 où elle n'avait rien à faire — elle ne concerne pas le rendu
+                 des documents mais l'application elle-même. -->
+            <p class="mdv-settings__section-title">{t("settings.language")}</p>
+            <Segmented
+              value={$language}
+              options={LANGUAGE_CHOICES.map((c) => ({ id: c.value, label: c.nativeLabel }))}
+              onchange={(ev) => setLanguage(ev.value as any)}
+            />
+            <p class="mdv-settings__hint">{t("settings.languageHint")}</p>
 
             <!-- UI Fonts -->
             <p class="mdv-settings__section-title">{t("settings.appearanceUiFont")}</p>

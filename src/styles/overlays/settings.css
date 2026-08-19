@@ -62,7 +62,7 @@ body:has(.mdv-overlay--settings) {
 
 /* ── sidebar nav ───────────────────────────────────── */
 .mdv-settings__nav {
-  width: 150px;
+  width: 190px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   padding: 10px 8px;
@@ -890,3 +890,105 @@ body:has(.mdv-overlay--settings) {
 .mdv-prog__btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--fg); }
 .mdv-prog__btn:disabled { opacity: 0.3; cursor: default; }
 .mdv-prog__btn--danger:hover:not(:disabled) { color: var(--color-error); }
+
+/* ── Programmes groupés par matière ──────────────────────────────────────────
+   Un utilisateur enseigne UNE matière : la liste à plat lui faisait parcourir
+   une trentaine d'entrées pour en cocher deux. Les groupes reprennent la
+   mécanique de la barre latérale (chevron, repli) plutôt que d'en inventer
+   une seconde. */
+.mdv-prog-groupe {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mdv-prog-groupe + .mdv-prog-groupe {
+  margin-top: 6px;
+}
+
+.mdv-prog-groupe__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mdv-prog-groupe__header:hover {
+  background: var(--surface-hover);
+}
+
+.mdv-prog-groupe__chevron {
+  display: flex;
+  color: var(--muted);
+  transition: transform 0.12s ease;
+}
+
+.mdv-prog-groupe.is-open .mdv-prog-groupe__chevron {
+  transform: rotate(90deg);
+}
+
+.mdv-prog-groupe__titre {
+  flex: 1;
+  min-width: 0;
+  text-transform: capitalize;
+}
+
+/* Combien de programmes sont retenus dans ce groupe — l'information qui
+   décide s'il faut l'ouvrir. */
+.mdv-prog-groupe__compte {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.mdv-prog-groupe__corps {
+  padding: 2px 10px 6px;
+}
+
+.mdv-prog-groupe__corps .mdv-prog:last-child {
+  border-bottom: 0;
+}
+
+/* ── Préambule LaTeX : occupe tout le reste du panneau ──────────────────────
+   Le panneau est une colonne flex ; ce bloc prend l'espace restant et le
+   champ le remplit. `min-height: 0` est indispensable — sans lui, un enfant
+   flex refuse de rétrécir sous sa hauteur de contenu. */
+.mdv-settings__macros {
+  flex: 1;
+  min-height: 160px;
+  display: flex;
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.mdv-settings__macros > * {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.mdv-settings__macros textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  font-family: var(--font-mono);
+}
+
+/* ── Choix segmentés : le cadre ceint les boutons, pas la ligne ──────────────
+   Le panneau est une colonne flex, dont les enfants s'étirent par défaut : le
+   `inline-flex` du composant se retrouvait tiré sur toute la largeur, et son
+   cadre dessinait une boîte vide à droite des boutons. */
+.mdv-settings__panel .wx-segmented {
+  align-self: flex-start;
+  max-width: 100%;
+}
