@@ -3,8 +3,9 @@ import { saveProjectUi, loadProjectUi, type ProjectUi } from "@/lib/project-ui"
 import { generalSettings } from "@/stores/general-settings.svelte"
 import { proseMarkSettings, previewSettings, printSettings, presentationSettings, DEFAULT_PROSE_MARK_STYLE, DEFAULT_PREVIEW_STYLE, DEFAULT_PRINT_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte"
 import { slideSettings } from "@/stores/slide-settings.svelte"
-import { mathJaxPreamble, mathJaxPackages, mathJaxFont } from "@/stores/mathjax-preamble.svelte"
+import { mathJaxPreamble, mathJaxPackages, mathJaxFont, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte"
 import { policeValide, MATHJAX_FONT_DEFAUT } from "@/lib/mathjax-font"
+import { espacementValide, MATH_SPACING_DEFAUT } from "@/lib/mathjax-spacing"
 import { latexSettings } from "@/stores/latex-settings.svelte"
 import { calloutSettings } from "@/stores/callout-settings.svelte"
 import { programmesSelection } from "@/stores/programmes-selection.svelte"
@@ -73,6 +74,7 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   if (mathJaxPreamble.current) math.preamble = mathJaxPreamble.current;
   if (mathJaxPackages.current.length) math.packages = mathJaxPackages.current;
   if (mathJaxFont.current !== MATHJAX_FONT_DEFAUT) math.font = mathJaxFont.current;
+  if (mathJaxSpacing.current !== MATH_SPACING_DEFAUT) math.spacing = mathJaxSpacing.current;
   if (Object.keys(math).length) cfg.math = math;
 
   const ls = latexSettings.current;
@@ -164,6 +166,7 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   if (cfg.math?.preamble != null) mathJaxPreamble.current = cfg.math.preamble;
   if (cfg.math?.packages != null) mathJaxPackages.current = cfg.math.packages;
   if (cfg.math?.font != null) mathJaxFont.current = policeValide(cfg.math.font);
+  if (cfg.math?.spacing != null) mathJaxSpacing.current = espacementValide(cfg.math.spacing);
   if (cfg.latex != null) latexSettings.patch(cfg.latex);
   if (cfg.callouts != null) calloutSettings.load(cfg.callouts);
   if (cfg.programmes != null) programmesSelection.load(cfg.programmes);

@@ -17,8 +17,9 @@ import {
   type HeadingFont,
   type OlType,
 } from "@/stores/markdown-settings.svelte";
-import { mathJaxPreamble, mathJaxPackages, mathJaxFont } from "@/stores/mathjax-preamble.svelte";
+import { mathJaxPreamble, mathJaxPackages, mathJaxFont, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte";
 import { MATHJAX_FONTS, policeValide } from "@/lib/mathjax-font";
+import { MATH_SPACINGS, espacementValide } from "@/lib/mathjax-spacing";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
 import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import { generalSettings, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT_PRESETS, PREVIEW_FONT_PRESETS, PREVIEW_MONO_FONT_PRESETS, FONT_HINTING_OPTIONS } from "@/stores/general-settings.svelte";
@@ -1375,6 +1376,14 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               onchange={(ev) => (mathJaxFont.current = policeValide(ev.value))}
             />
             <p class="mdv-settings__hint">{t("settings.mathFontHint")}</p>
+
+            <p class="mdv-settings__section-title">{t("settings.mathSpacing")}</p>
+            <Segmented
+              value={mathJaxSpacing.current}
+              options={MATH_SPACINGS.map((id) => ({ id, label: t("settings.mathSpacing." + id) }))}
+              onchange={(ev) => (mathJaxSpacing.current = espacementValide(ev.value))}
+            />
+            <p class="mdv-settings__hint">{t("settings.mathSpacingHint")}</p>
 
             <p class="mdv-settings__section-title">{t("settings.packages")}</p>
             <div class="mdv-settings__pkg-grid">

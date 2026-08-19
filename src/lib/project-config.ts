@@ -51,6 +51,9 @@ export interface MathConfig {
   /** Police mathématique : `newcm` (défaut) ou `fira`. Le moteur la lit à son
    *  chargement — un changement ne prend effet qu'au redémarrage. */
   font?: string | null;
+  /** Espace vertical autour des formules hors texte : `small`, `medium` ou
+   *  `large` (défaut). Effet immédiat — c'est du CSS. */
+  spacing?: string | null;
 }
 
 export interface ProjectConfig {
@@ -79,7 +82,10 @@ const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
   preview: { style: "object" },
   print: { style: "object" },
   presentation: { style: "object", slideMode: "string" },
-  math: { preamble: "string", packages: "object" },
+  // ⚠️ Une clé absente de ce schéma fait rejeter la SECTION ENTIÈRE
+  // (`config.invalidSection:math`) : ajouter un réglage au store sans l'ajouter
+  // ici ferait perdre en silence le préambule et les paquets du projet.
+  math: { preamble: "string", packages: "object", font: "string", spacing: "string" },
   colles: { dateDebut: "string", dateFin: "string", vacances: "object", rubriques: "object", colloscope: "object", layout: "object" },
 };
 

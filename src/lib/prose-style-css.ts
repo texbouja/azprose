@@ -111,8 +111,13 @@ function descendant(scope: string, sel: string): string {
  * colonnes ont une largeur fixe. Le `customCss` utilisateur est ajouté tel
  * quel (c'est son outil de réglage fin des espaces verticaux).
  */
-export function buildReportPrintCss(s: ProseStyleSettings): string {
-  const css = buildProseStyleCss(s, ".rp-enonce-box, .rp-obs-content", false);
+export function buildReportPrintCss(
+  s: ProseStyleSettings,
+  espacementMaths = "",
+): string {
+  const css =
+    buildProseStyleCss(s, ".rp-enonce-box, .rp-obs-content", false) +
+    (espacementMaths ? "\n" + espacementMaths : "");
   return s.customCss?.trim() ? css + "\n" + s.customCss.trim() : css;
 }
 

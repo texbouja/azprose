@@ -26,6 +26,7 @@ import {
   applyPreviewMonoFont,
   applyFontHinting,
 } from "@/stores/general-settings.svelte";
+import { applyMathSpacing, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte";
 
 export function initPresentation(): void {
   initTheme();
@@ -35,4 +36,8 @@ export function initPresentation(): void {
   applyPreviewFont(generalSettings.previewFontFamily, generalSettings.previewCustomFontName);
   applyPreviewMonoFont(generalSettings.previewMonoFamily);
   applyFontHinting(generalSettings.fontHinting);
+  // Espace autour des formules hors texte : posé ici comme les polices, pour
+  // que le premier rendu ait déjà la bonne densité (sinon un document composé
+  // avant l'application de la variable sauterait à la valeur réglée).
+  applyMathSpacing(mathJaxSpacing.current);
 }

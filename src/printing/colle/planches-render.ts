@@ -20,10 +20,11 @@ import { assemblePrintHtml, type CollePrintOptions } from "./planches";
 import { DEFAULT_REPORT_LAYOUT } from "./layout";
 import type { RubriquesParMatiere } from "@/colles/types";
 import { buildMathJaxConfig } from "@/lib/pdf-export";
-import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { mathJaxPreamble, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte";
 import { collesSettings } from "@/stores/colles-settings.svelte";
 import { printSettings } from "@/stores/markdown-settings.svelte";
 import { buildReportPrintCss } from "@/lib/prose-style-css";
+import { cssEspacementMaths } from "@/lib/mathjax-spacing";
 import { getRootPath } from "@/stores/root-path.svelte";
 import {
   buildPrintCdpOptions,
@@ -70,7 +71,7 @@ export async function exportPlanchesPdf(
     req.includeEval,
     buildMathJaxConfig(),
     mathJaxPreamble.current,
-    buildReportPrintCss(printSettings.current),
+    buildReportPrintCss(printSettings.current, cssEspacementMaths(mathJaxSpacing.current, ".rp-enonce-box, .rp-obs-content")),
     collesSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
     print,
   );
@@ -116,7 +117,7 @@ export async function previewPlanchesPdf(req: CollePrintRequest): Promise<string
     req.includeEval,
     buildMathJaxConfig(),
     mathJaxPreamble.current,
-    buildReportPrintCss(printSettings.current),
+    buildReportPrintCss(printSettings.current, cssEspacementMaths(mathJaxSpacing.current, ".rp-enonce-box, .rp-obs-content")),
     collesSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
     print,
   );

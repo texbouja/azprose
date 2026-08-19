@@ -179,10 +179,31 @@
 
 /* ── Math (MathJax) ──────────────────────────────────────────────────────── */
 
+/* L'espace vertical est un RÉGLAGE (module MathJax) : `--math-space` est posée
+   sur la racine par `applyMathSpacing`. Le repli 1.2em est la valeur d'avant le
+   réglage — un document rendu avant que la variable soit posée ne bouge pas. */
 .mdv-prose .math-block, .azp-slide__content .math-block {
   text-align: center;
-  margin: 1.2em 0;
+  margin: var(--math-space, 1.2em) 0;
   overflow-x: auto;
+}
+
+/* MathJax pose sa propre marge (0,7em) autour du conteneur. Le porteur n'ayant
+   ni bordure ni remplissage, les deux marges FUSIONNENT et la plus grande
+   l'emporte : sans cette remise à zéro, tout réglage sous 0,7em serait sans
+   effet. Un seul nombre gouverne l'espace. */
+.mdv-prose .math-block mjx-container[display="true"],
+.azp-slide__content .math-block mjx-container[display="true"] {
+  margin: 0;
+}
+
+/* Même fusion, côté VOISIN : le blanc au-dessus d'une formule est en réalité la
+   marge basse du paragraphe qui la précède (1em), plus grande que le réglage —
+   le réglage n'aurait donc agi que SOUS la formule, mesuré à 16 px contre 5 px
+   en position serrée. On efface la marge du voisin pour que le réglage gouverne
+   les deux côtés, symétriquement. */
+.mdv-prose p:has(+ .math-block), .azp-slide__content p:has(+ .math-block) {
+  margin-bottom: 0;
 }
 
 /* ── Horizontal rule ─────────────────────────────────────────────────────── */

@@ -29,8 +29,9 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { collesSettings } from "@/stores/colles-settings.svelte";
 import { printSettings } from "@/stores/markdown-settings.svelte";
-import { mathJaxPreamble } from "@/stores/mathjax-preamble.svelte";
+import { mathJaxPreamble, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte";
 import { buildReportPrintCss } from "@/lib/prose-style-css";
+import { cssEspacementMaths } from "@/lib/mathjax-spacing";
 import { buildMathJaxConfig } from "@/lib/pdf-export";
 import { rubriquesFor, sumMaxScore, sumNotes } from "@/colles/rubrics";
 import type { CollePlanche, RubriquesParMatiere } from "@/colles/types";
@@ -146,7 +147,7 @@ function assembleReportHtml(data: ColleReportData): string {
   return assembleReportImageHtml(data, {
     mathjaxConfig: buildMathJaxConfig(),
     preamble: mathJaxPreamble.current,
-    printCss: buildReportPrintCss(printSettings.current),
+    printCss: buildReportPrintCss(printSettings.current, cssEspacementMaths(mathJaxSpacing.current, ".rp-enonce-box, .rp-obs-content")),
     layout: collesSettings.current.layout ?? DEFAULT_REPORT_LAYOUT,
   });
 }

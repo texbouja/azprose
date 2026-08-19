@@ -19,8 +19,14 @@ import { buildProseStyleCss } from "@/lib/prose-style-css";
 import { resolveFontFamily } from "@/lib/font-resolvers";
 import { renderMermaidBlocks, type ApparenceDiagramme } from "@/lib/mermaid-render";
 import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
-import { mathJaxPreamble, mathJaxPackages, mathJaxFont } from "@/stores/mathjax-preamble.svelte";
+import {
+  mathJaxPreamble,
+  mathJaxPackages,
+  mathJaxFont,
+  mathJaxSpacing,
+} from "@/stores/mathjax-preamble.svelte";
 import { nomInterne } from "@/lib/mathjax-font";
+import { cssEspacementMaths } from "@/lib/mathjax-spacing";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { expandWikilinksForPrint } from "@/markdown/print-expand";
 import type { Theme } from "./theme";
@@ -48,7 +54,14 @@ function buildProseCss(): string {
 }
 
 function buildPrintCss(req: PrintRequest): string {
-  return buildPrintBaseCss(req) + "\n" + DIAGRAM_PRINT_CSS;
+  return [
+    buildPrintBaseCss(req),
+    DIAGRAM_PRINT_CSS,
+    // Le document imprimé ne reprend pas `preview.css` : l'espace autour des
+    // formules hors texte s'y écrit à partir du même réglage, sans quoi le
+    // papier et l'écran ne s'accorderaient pas.
+    cssEspacementMaths(mathJaxSpacing.current),
+  ].join("\n");
 }
 
 /**

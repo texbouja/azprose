@@ -1,6 +1,12 @@
 import { persistedState } from "./persisted.svelte";
 import { STORAGE_KEYS } from "@/lib";
 import { policeValide, MATHJAX_FONT_DEFAUT, type MathJaxFont } from "@/lib/mathjax-font";
+import {
+  espacementEm,
+  espacementValide,
+  MATH_SPACING_DEFAUT,
+  type MathSpacing,
+} from "@/lib/mathjax-spacing";
 
 const _preamble = persistedState<string>(STORAGE_KEYS.mathJaxPreamble, "");
 
@@ -39,4 +45,34 @@ export const mathJaxFont = {
   get current(): MathJaxFont { return _font.current; },
   set current(v: MathJaxFont) { _font.current = v; },
   reset() { _font.current = MATHJAX_FONT_DEFAUT; },
+};
+
+/**
+ * Espace vertical autour des formules hors texte.
+ *
+ * Contrairement à la police, c'est du CSS : l'effet est IMMÉDIAT, sans
+ * redémarrage. La valeur est posée en variable sur la racine du document —
+ * `applyMathSpacing` — et `preview.css` la consomme.
+ */
+export function applyMathSpacing(v: MathSpacing): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty("--math-space", `${espacementEm(v)}em`);
+}
+
+const _spacing = persistedState<MathSpacing>(
+  STORAGE_KEYS.mathJaxSpacing,
+  MATH_SPACING_DEFAUT,
+  espacementValide,
+  // Écriture venue d'une AUTRE fenêtre : le setter n'est pas passé, la
+  // variable CSS ne serait jamais rejouée sans ce rappel.
+  applyMathSpacing,
+);
+
+export const mathJaxSpacing = {
+  get current(): MathSpacing { return _spacing.current; },
+  set current(v: MathSpacing) {
+    _spacing.current = v;
+    applyMathSpacing(_spacing.current);
+  },
+  reset() { mathJaxSpacing.current = MATH_SPACING_DEFAUT; },
 };
