@@ -4,7 +4,7 @@
  * MERGÉE avec la config globale et que permission ask remonte en ACP.
  */
 // @ts-nocheck
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   buildAgentConfig,
   buildAgentEnv,
@@ -155,4 +155,38 @@ test("extractToolDiff : pas de diff → undefined, jamais d'erreur", () => {
   expect(extractToolDiff({ toolCall: { content: [{ type: "content" }] } })).toBeUndefined();
   expect(extractToolDiff(undefined)).toBeUndefined();
   expect(extractToolDiff(null)).toBeUndefined();
+});
+
+describe("noms d'outils exposés au modèle", () => {
+  // Le serveur MCP est déclaré sous le nom « azprose » : OpenCode préfixe
+  // CHAQUE outil. Nommer un outil sans son préfixe dans les instructions le
+  // rend introuvable, et le modèle improvise — observé en usage, il émettait
+  // des `<tool_call>` en texte brut, rejetés en « Invalid Tool ».
+  const OUTILS = [
+    "vault_preambule_math",
+    "vault_callouts",
+    "vault_donnees_description",
+    "base_interroger",
+    "programme_lister",
+    "programme_charger",
+    "verifier_perimetre",
+  ];
+
+  test("les instructions ne nomment aucun outil sans le préfixe du serveur", () => {
+    const txt = buildAgentInstructions("/vault", {
+      programmes: [{ id: "math-mpsi", nom: "Mathématiques MPSI" }],
+    });
+    for (const o of OUTILS) {
+      const sansPrefixe = new RegExp(String.raw`(?<![\w_])${o}(?![\w_])`);
+      expect({ outil: o, trouve: sansPrefixe.test(txt) }).toEqual({ outil: o, trouve: false });
+    }
+  });
+
+  test("la commande /ajouter nomme l'outil tel qu'il est exposé", () => {
+    const cfg = buildAgentConfig("/tmp/instructions.md") as {
+      command: { ajouter: { template: string } };
+    };
+    expect(cfg.command.ajouter.template).toContain("azprose_programme_charger");
+    expect(cfg.command.ajouter.template).toContain("azprose_programme_lister");
+  });
 });

@@ -26,7 +26,7 @@ export interface AgentCalloutInfo {
 /** Programme retenu pour ce projet — **un nom, pas un contenu**.
  *
  *  L'instruction ne porte qu'un COMPORTEMENT (« charge-les quand la question
- *  est pédagogique ») ; la donnée continue de passer par `programme_charger`.
+ *  est pédagogique ») ; la donnée continue de passer par `azprose_programme_charger`.
  *
  *  La sélection en compte **plusieurs** : un professeur de seconde année veut
  *  couramment aussi les limites de la première, et un polycopié commun à deux
@@ -41,7 +41,7 @@ export interface AgentProgramme {
  *
  *  Le préambule mathématique et la liste des callouts étaient auparavant
  *  interpolés dans ce texte. Ils sont désormais servis par les outils MCP
- *  `vault_preambule_math` et `vault_callouts` — doctrine du rectificatif :
+ *  `azprose_vault_preambule_math` et `azprose_vault_callouts` — doctrine du rectificatif :
  *  **une donnée ne s'écrit jamais dans les instructions**, elle s'expose comme
  *  outil dont la réponse fait foi. Bénéfice second : elles ne sont plus payées
  *  dans le contexte à chaque tour, mais seulement quand l'agent les demande.
@@ -83,13 +83,17 @@ d'une application.
 Un serveur d'outils te donne accès aux données de ce vault. Leur réponse fait
 foi : ne suppose pas, ne recopie pas de mémoire, appelle-les.
 
-- \`vault_preambule_math\` — macros LaTeX en vigueur. **Appelle-le avant
+Leurs noms commencent TOUS par \`azprose_\` — c'est le nom du serveur, et
+c'est sous ce nom qu'ils te sont présentés. Un outil appelé sans ce préfixe
+n'existe pas.
+
+- \`azprose_vault_preambule_math\` — macros LaTeX en vigueur. **Appelle-le avant
   d'écrire des formules** : ne réinvente pas une notation qui existe déjà.
-- \`vault_callouts\` — types d'encadrés disponibles, builtin et personnalisés.
+- \`azprose_vault_callouts\` — types d'encadrés disponibles, builtin et personnalisés.
   Appelle-le avant d'employer un \`> [!type]\`.
-- \`vault_donnees_description\` — rôle et format de chaque fichier de
+- \`azprose_vault_donnees_description\` — rôle et format de chaque fichier de
   \`.azprose/\`. Appelle-le avant d'y toucher.
-- \`base_interroger\` — **seul** accès légitime à \`.azprose/data.db\`
+- \`azprose_base_interroger\` — **seul** accès légitime à \`.azprose/data.db\`
   (calendrier, tableurs, grilles). Lecture seule.
 
 ## Conventions d'écriture
@@ -107,7 +111,7 @@ documents que tu rédiges.`,
   ];
 
   // Programmes retenus : des NOMS et une consigne, jamais le contenu — celui-ci
-  // reste servi par `programme_charger`. Section OMISE quand la sélection est
+  // reste servi par `azprose_programme_charger`. Section OMISE quand la sélection est
   // vide : l'instruction ne doit jamais désigner un document inexistant, et
   // sans programme l'assistant travaille sans contrainte, ce qui est un état
   // normal et non une panne.
@@ -124,8 +128,8 @@ documents que tu rédiges.`,
 ${lignes}
 
 Dès qu'une question touche au contenu pédagogique — rédiger un cours, un
-exercice, un sujet — charge-les avec \`programme_charger\` et vérifie les
-notions douteuses avec \`verifier_perimetre\`.
+exercice, un sujet — charge-les avec \`azprose_programme_charger\` et vérifie les
+notions douteuses avec \`azprose_verifier_perimetre\`.
 
 **Quand plusieurs programmes sont retenus, ils s'appliquent TOUS** : un
 contenu destiné à ces classes doit respecter la contrainte la plus stricte
@@ -133,7 +137,7 @@ d'entre elles. Signale-le à l'utilisateur quand les périmètres divergent.
 
 Un programme se lit **en entier** : ne travaille jamais sur un extrait, les
 mentions limitatives sont dispersées — la synthèse en tête du document les
-rassemble. \`programme_lister\` donne les autres programmes disponibles ;
+rassemble. \`azprose_programme_lister\` donne les autres programmes disponibles ;
 l'utilisateur peut en charger un de plus avec \`/ajouter\`.`);
   }
 
@@ -154,7 +158,7 @@ export function buildAgentConfig(instructionsPath: string): Record<string, unkno
       // ouvrir cette base avec les outils texte — un modèle peut l'ignorer, et
       // rien ne le détecte. Le refus est appliqué par le harness lui-même :
       // lire ou éditer ce fichier binaire le corromprait, et l'outil MCP
-      // `base_interroger` en offre l'accès légitime.
+      // `azprose_base_interroger` en offre l'accès légitime.
       // Deux motifs : le fichier est à la racine du vault, mais tous les
       // moteurs de glob ne font pas correspondre `**/` à une profondeur nulle.
       read: { ".azprose/data.db": "deny", "**/.azprose/data.db": "deny" },
@@ -168,10 +172,10 @@ export function buildAgentConfig(instructionsPath: string): Record<string, unkno
         description: "Charger un programme officiel dans la conversation",
         template:
           "Charge le programme officiel de la filière $1" +
-          " (matière : $2, vide = toutes) avec l'outil `programme_charger`," +
+          " (matière : $2, vide = toutes) avec l'outil `azprose_programme_charger`," +
           " puis résume en trois lignes son périmètre et ses limites" +
           " principales. Si aucun programme ne correspond, dis-le et liste" +
-          " ce qui est disponible avec `programme_lister`.",
+          " ce qui est disponible avec `azprose_programme_lister`.",
       },
     },
   };
