@@ -25,8 +25,8 @@ export interface AgentCalloutInfo {
 
 /** Programme retenu pour ce projet — **un nom, pas un contenu**.
  *
- *  L'instruction ne porte qu'un COMPORTEMENT (« charge-les quand la question
- *  est pédagogique ») ; la donnée continue de passer par `azprose_programme_charger`.
+ *  L'instruction ne porte qu'un COMPORTEMENT (« cherche la section qui traite
+ *  du sujet ») ; la donnée passe par les outils MCP, section par section.
  *
  *  La sélection en compte **plusieurs** : un professeur de seconde année veut
  *  couramment aussi les limites de la première, et un polycopié commun à deux
@@ -111,8 +111,9 @@ documents que tu rédiges.`,
   ];
 
   // Programmes retenus : des NOMS et une consigne, jamais le contenu — celui-ci
-  // reste servi par `azprose_programme_charger`. Section OMISE quand la sélection est
-  // vide : l'instruction ne doit jamais désigner un document inexistant, et
+  // est servi section par section par les outils MCP. Section OMISE quand la
+  // sélection est vide : l'instruction ne doit jamais désigner un document
+  // inexistant, et
   // sans programme l'assistant travaille sans contrainte, ce qui est un état
   // normal et non une panne.
   const progs = (opts.programmes ?? []).filter((p) => p.filiere);
@@ -128,25 +129,46 @@ documents que tu rédiges.`,
 ${lignes}
 
 Dès qu'une question touche au contenu pédagogique — rédiger un cours, un
-exercice, un sujet — charge-les avec \`azprose_programme_charger\` et vérifie les
-notions douteuses avec \`azprose_verifier_perimetre\`.
+exercice, un sujet — **cherche la section qui traite du sujet, lis les
+contraintes qui l'accompagnent, puis rédige.**
+
+Appelle \`azprose_programme_chercher\` avec les mots de la question. Il rend
+les sections concernées, leur texte, et les contraintes qui les visent : celles
+de la section, celles des sections qui l'englobent, celles qui valent pour tout
+le document. **Ce sont ces contraintes-là qui font foi** — une interdiction ne
+s'interprète pas sans le contenu qu'elle restreint.
+
+Ne charge pas un programme entier pour y chercher un point : celui de
+mathématiques MPSI pèse 94 Ko pour 140 sous-sections, et tout ce que tu charges
+t'est renvoyé à chaque tour de la conversation.
+
+Les autres outils, quand la recherche ne suffit pas :
+
+- \`azprose_programme_plan\` — le découpage du document, pour te repérer ou
+  trouver l'adresse d'une section voisine.
+- \`azprose_programme_section\` — le texte d'adresses précises. Ces adresses
+  viennent de la recherche ou du plan : elles **ne se devinent pas** et ne
+  suivent pas la numérotation écrite dans le document.
+- \`azprose_verifier_perimetre\` — pour situer une notion douteuse.
+- \`azprose_programme_charger\` — le document entier, **seulement** si
+  l'utilisateur le demande explicitement.
 
 **Quand plusieurs programmes sont retenus, ils s'appliquent TOUS** : un
 contenu destiné à ces classes doit respecter la contrainte la plus stricte
-d'entre elles. Signale-le à l'utilisateur quand les périmètres divergent.
+d'entre elles. Sans \`id\`, la recherche porte sur tous ceux qui correspondent —
+compare ce qu'elle rend et signale à l'utilisateur les périmètres qui divergent.
 
-Un programme se lit **en entier** : ne travaille jamais sur un extrait, les
-mentions limitatives sont dispersées — la synthèse en tête du document les
-rassemble. \`azprose_programme_lister\` donne les autres programmes disponibles ;
-l'utilisateur peut en charger un de plus avec \`/ajouter\`.
+\`azprose_programme_lister\` donne les programmes disponibles.
 
 **Désigne toujours un programme par son \`id\`** (celui que rend
 \`azprose_programme_lister\`) : une filière seule en désigne plusieurs, et
 l'outil refuse alors de choisir à ta place. Ne construis jamais un chemin de
 fichier à partir d'un \`id\` — ils ne coïncident pas.
 
-Les matières se désignent par un **code de quatre lettres, sans accent** :
-\`math\`, \`phys\`, \`chim\`, \`info\`, \`scii\`. Tout autre texte est refusé.
+Les matières se désignent par un **code de quatre lettres, sans accent** —
+EXACTEMENT l'un de : \`math\`, \`phys\`, \`chim\`, \`info\`, \`scii\`. Le
+vocabulaire est FERMÉ : tout autre texte est refusé, y compris le nom accentué
+de la matière.
 Quand un argument ne correspond à rien, l'outil rend une suggestion :
 **propose-la à l'utilisateur et attends sa réponse**, ne choisis jamais à sa
 place.`);
@@ -175,36 +197,16 @@ export function buildAgentConfig(instructionsPath: string): Record<string, unkno
       read: { ".azprose/data.db": "deny", "**/.azprose/data.db": "deny" },
       edit: { ".azprose/data.db": "deny", "**/.azprose/data.db": "deny" },
     },
-    // Commandes personnalisées injectées PAR LA CONFIG (R0 : la clé `command`
-    // est supportée) — donc aucun dossier `.opencode/` à créer dans le vault
-    // de l'utilisateur. `$1`/`$2` sont les arguments positionnels.
-    command: {
-      ajouter: {
-        description: "Charger un programme officiel dans la conversation",
-        // ⚠️ Le gabarit impose de LISTER d'abord, puis de charger PAR `id`.
-        //
-        // Passer directement la filière et la matière au chargement échouait
-        // de deux façons, observées le 2026-08-19 : la matière accentuée que
-        // l'utilisateur avait tapée arrivait telle quelle dans les arguments
-        // JSON de l'appel — que le modèle tronquait —, et une filière seule
-        // désigne cinq programmes, dont le premier était rendu au hasard.
-        // Un `id` est ASCII, exact, et vient de l'outil lui-même.
-        template:
-          "Arguments attendus : $1 = filière (MPSI, MP2I, MP, MPI, PCSI, PC," +
-          " PSI, PT, PTSI…), $2 = code de matière, EXACTEMENT l'un de :" +
-          " math, phys, chim, info, scii. Quatre lettres, sans accent." +
-          " Rien d'autre n'est accepté." +
-          " 1. Appelle `azprose_programme_lister`." +
-          " 2. Repère le programme dont la filière contient « $1 » et dont la" +
-          " matière correspond au code « $2 »." +
-          " 3. Appelle `azprose_programme_charger` avec le champ `id` de ce" +
-          " programme — et RIEN d'autre." +
-          " 4. Résume en trois lignes son périmètre et ses limites principales." +
-          " Si un argument ne correspond à rien, NE DEVINE PAS : propose à" +
-          " l'utilisateur la correction la plus proche (l'outil te la suggère)" +
-          " et attends sa confirmation. Si $2 est vide, demande-lui la matière.",
-      },
-    },
+    // Aucune commande de contextualisation (2026-08-19).
+    //
+    // `/ajouter` chargeait un programme entier — 94 Ko pour les mathématiques
+    // MPSI — dans une conversation qui n'en traitait qu'un point, et le coût
+    // était payé à CHAQUE tour. Elle demandait en outre à l'utilisateur de
+    // retenir une syntaxe (filière, code de matière à quatre lettres) pour un
+    // travail que le modèle fait mieux à partir de la question elle-même.
+    //
+    // Ce que la commande faisait est désormais un COMPORTEMENT, décrit dans
+    // les instructions : chercher la section qui traite du sujet.
   };
 }
 

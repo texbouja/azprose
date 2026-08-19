@@ -75,11 +75,38 @@ test("instructions : les programmes retenus sont NOMMÉS, jamais recopiés", () 
   });
   expect(text).toContain("MP / MPI");
   expect(text).toContain("MPSI");
-  expect(text).toContain("programme_charger");
+  expect(text).toContain("programme_chercher");
   expect(text).toContain("verifier_perimetre");
-  // La consigne « en entier » est ce qui empêche un travail sur extrait, où
-  // les mentions limitatives se perdent.
-  expect(text).toContain("en entier");
+});
+
+test("instructions : la doctrine est la récupération, plus le chargement intégral", () => {
+  // Renversement du 2026-08-19. « Un programme se lit en entier » faisait
+  // charger 94 Ko pour une question qui n'en traitait qu'un point — et un
+  // résultat d'outil est renvoyé au modèle à CHAQUE tour.
+  const text = buildAgentInstructions(ROOT, { programmes: [{ filiere: "MPSI" }] });
+  expect(text).not.toContain("en entier");
+  expect(text).toContain("cherche la section");
+  // Le document complet reste possible, mais sur demande de l'utilisateur.
+  expect(text).toContain("azprose_programme_charger");
+  expect(text).toMatch(/seulement.*l'utilisateur le demande/s);
+});
+
+test("instructions : les contraintes voyagent avec la section, jamais seules", () => {
+  // Objection de l'utilisateur : une liste d'interdits portant sur des items
+  // invisibles ne s'interprète pas. « Hors programme : la définition des
+  // exceptions » ne veut rien dire sans l'item qu'elle restreint.
+  const text = buildAgentInstructions(ROOT, { programmes: [{ filiere: "MPSI" }] });
+  expect(text).toContain("englobent");
+  expect(text).toMatch(/s'interprète pas sans/);
+});
+
+test("instructions : les adresses de section ne se devinent pas", () => {
+  // Les documents portent leur propre numérotation, irrégulière d'une matière
+  // à l'autre (4.4.2. en chimie, B2. en SI, a) en maths) : l'adresse des
+  // outils est positionnelle et vient d'eux.
+  const text = buildAgentInstructions(ROOT, { programmes: [{ filiere: "MPSI" }] });
+  expect(text).toContain("azprose_programme_section");
+  expect(text).toMatch(/ne se devinent pas/);
 });
 
 test("instructions : plusieurs programmes s'appliquent TOUS, au plus strict", () => {
@@ -106,12 +133,12 @@ test("instructions : une entrée sans filière est ignorée", () => {
   expect(text).not.toContain("Programmes officiels");
 });
 
-test("la config injecte la commande /ajouter (aucun dossier .opencode/ requis)", () => {
-  const cfg = buildAgentConfig("/appdata/agent-instructions.md") as any;
-  expect(cfg.command.ajouter.template).toContain("$1");
-  expect(cfg.command.ajouter.template).toContain("programme_charger");
-  // Repli explicite quand rien ne correspond — sinon l'agent invente.
-  expect(cfg.command.ajouter.template).toContain("programme_lister");
+test("la config ne déclare plus aucune commande de contextualisation", () => {
+  // `/ajouter` obligeait l'utilisateur à retenir une syntaxe (filière, code de
+  // matière) pour un travail que le modèle fait mieux à partir de la question,
+  // et chargeait le programme entier. Le comportement a remplacé la commande.
+  const cfg = buildAgentConfig("/appdata/agent-instructions.md") as { command?: Record<string, unknown> };
+  expect(cfg.command?.ajouter).toBeUndefined();
 });
 
 test("la config INTERDIT l'accès texte à data.db (règle, pas supplique)", () => {
@@ -169,6 +196,9 @@ describe("noms d'outils exposés au modèle", () => {
     "base_interroger",
     "programme_lister",
     "programme_charger",
+    "programme_chercher",
+    "programme_plan",
+    "programme_section",
     "verifier_perimetre",
   ];
 
@@ -182,36 +212,25 @@ describe("noms d'outils exposés au modèle", () => {
     }
   });
 
-  test("la commande /ajouter nomme l'outil tel qu'il est exposé", () => {
-    const cfg = buildAgentConfig("/tmp/instructions.md") as {
-      command: { ajouter: { template: string } };
-    };
-    expect(cfg.command.ajouter.template).toContain("azprose_programme_charger");
-    expect(cfg.command.ajouter.template).toContain("azprose_programme_lister");
-  });
-
-  test("la commande /ajouter passe par l'identifiant, pas par le texte saisi", () => {
-    // La matière accentuée tapée par l'utilisateur arrivait telle quelle dans
-    // les arguments JSON de l'appel d'outil, et une filière seule désigne
-    // plusieurs programmes : le gabarit impose donc de lister puis de charger
-    // par `id`.
-    const t = (buildAgentConfig("/tmp/i.md") as { command: { ajouter: { template: string } } })
-      .command.ajouter.template;
-    expect(t).toMatch(/`id`/);
-    expect(t.indexOf("azprose_programme_lister")).toBeLessThan(t.indexOf("azprose_programme_charger"));
+  test("la recherche est nommée avant les outils de repli", () => {
+    // L'ordre du texte porte la doctrine : la recherche est la porte d'entrée,
+    // le plan et le chargement intégral sont des recours.
+    const txt = buildAgentInstructions("/vault", { programmes: [{ filiere: "MPSI" }] });
+    expect(txt.indexOf("azprose_programme_chercher")).toBeLessThan(txt.indexOf("azprose_programme_plan"));
+    expect(txt.indexOf("azprose_programme_chercher")).toBeLessThan(txt.indexOf("azprose_programme_charger"));
   });
 });
 
 describe("vocabulaire des matières", () => {
   const CODES = ["math", "phys", "chim", "info", "scii"];
 
-  test("la commande /ajouter énumère les codes acceptés", () => {
-    const t = (buildAgentConfig("/tmp/i.md") as { command: { ajouter: { template: string } } })
-      .command.ajouter.template;
-    for (const c of CODES) expect(t).toContain(c);
-    // Le contrat est FERMÉ : le gabarit doit le dire, sinon le modèle
+  test("les instructions énumèrent les codes acceptés et disent le contrat fermé", () => {
+    // Le vocabulaire vivait dans le gabarit de `/ajouter` ; la commande étant
+    // supprimée, c'est aux instructions de le porter — sinon le modèle
     // improvise avec ce que l'utilisateur a tapé.
-    expect(t).toMatch(/EXACTEMENT|exactement/);
+    const txt = buildAgentInstructions("/vault", { programmes: [{ filiere: "MPSI" }] });
+    for (const c of CODES) expect(txt).toContain(c);
+    expect(txt).toMatch(/EXACTEMENT|exactement/i);
   });
 
   test("les instructions demandent de PROPOSER la correction, pas de deviner", () => {

@@ -114,12 +114,22 @@ session* du panneau suffit, inutile de redémarrer l'application.
 
 ### Ce que l'assistant en fait
 
-Quand une question touche au contenu pédagogique, il charge le programme **en
-entier** — jamais un extrait, car les mentions limitatives y sont dispersées.
-AZprose lui présente d'abord la **liste complète des contraintes** du programme :
-chacune indique le chapitre, le résultat officiel visé, et sa nature (exclusion,
-limite de portée, démonstration non exigible). Vous pouvez d'ailleurs la lui
-demander telle quelle — « qu'est-ce qui est hors programme en MP ? ».
+Quand une question touche au contenu pédagogique, il **cherche la section qui
+traite du sujet** et ne lit que celle-là. Un programme est un gros document —
+celui de mathématiques MPSI fait près de cent pages —, et tout ce qu'un
+assistant charge lui est représenté à chaque échange : le lire en entier pour
+une question sur les nombres complexes coûterait cher sans rien apporter.
+
+Chaque section qu'il consulte lui arrive **avec les contraintes qui la
+visent** : les siennes, celles des chapitres qui l'englobent, et celles qui
+valent pour tout le document. Chacune indique le résultat officiel visé et sa
+nature — exclusion, limite de portée, démonstration non exigible. Elles ne
+voyagent jamais seules : une interdiction ne se comprend qu'avec le contenu
+qu'elle restreint.
+
+Vous pouvez aussi lui demander la liste complète des contraintes d'un programme
+— « qu'est-ce qui est hors programme en MP ? » — ou le document entier, si vous
+le voulez vraiment.
 
 Il peut ensuite situer une notion précise et vous répondre :
 
@@ -136,18 +146,17 @@ Il peut ensuite situer une notion précise et vous répondre :
 > programme ». À vous de trancher : lui laisser conclure à votre place serait le
 > plus sûr moyen d'obtenir un refus injustifié.
 
-### Charger un autre programme le temps d'une conversation
+### Consulter un autre programme
 
-Vos réglages fixent les programmes habituels du projet. Pour en consulter un
-autre ponctuellement — préparer un sujet commun, vérifier ce qu'un élément
-suppose acquis de l'année précédente — tapez `/ajouter` suivi de la filière, et
-éventuellement de la matière :
+Vos réglages fixent les programmes habituels du projet, et l'assistant y
+cherche de lui-même. Pour en consulter un autre ponctuellement — préparer un
+sujet commun, vérifier ce qu'un chapitre suppose acquis de l'année précédente —
+**dites-le simplement** :
 
-```
-/ajouter MPSI mathematiques
-```
+> Ce que je viens d'écrire, est-ce au programme de MPSI ?
 
-L'assistant le charge et vous en résume le périmètre. Cela ne vaut que pour la
+Il n'y a aucune commande à retenir, ni aucune orthographe à respecter : c'est la
+question elle-même qui indique où chercher. Cela ne vaut que pour la
 conversation en cours ; vos réglages ne changent pas.
 
 > [!tip] Lever une contrainte ponctuellement

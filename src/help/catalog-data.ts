@@ -2,7 +2,7 @@
 // La source de vérité est docs/user/ ; ce fichier est régénéré via
 // `bun run help` (scénario explicite) après chaque édition de la doc.
 
-export const HELP_VERSION = "6e8e0356999d";
+export const HELP_VERSION = "8f3d574cfdbf";
 
 export const catalog = [
   { path: "index.md", title: "AZprose — Guide utilisateur" },
