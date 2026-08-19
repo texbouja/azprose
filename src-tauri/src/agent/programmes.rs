@@ -901,11 +901,26 @@ fn retenir(out: &mut Vec<String>, brut: &str) {
     }
 }
 
-/// Un mot du document répond à un terme de la requête s'il lui est égal ou
-/// s'il le prolonge — « suites » répond à « suite ». Le seuil de quatre
-/// lettres empêche un terme court d'attraper des mots sans rapport.
+/// Longueur du préfixe commun à partir de laquelle deux mots sont tenus pour
+/// la même notion. Six lettres rapprochent « matricielle » de « matrices » et
+/// « diagonalisation » de « diagonalisable » sans confondre des mots courts.
+const PREFIXE_COMMUN: usize = 6;
+
+/// Un mot du document répond à un terme de la requête s'il lui est égal, s'il
+/// le prolonge — « suites » répond à « suite » —, ou s'ils partagent une racine
+/// assez longue.
+///
+/// Cette dernière règle n'est pas un raffinement : sans elle, « diagonalisation »
+/// ne rendait **rien** alors que le chapitre entier y est consacré, le programme
+/// n'écrivant jamais que « diagonalisable » (constaté en usage le 2026-08-19).
+/// Le français dérive — nominalisation contre adjectif, singulier contre
+/// pluriel — et une question ne reprend pas la forme du texte officiel.
 fn repond(mot: &str, terme: &str) -> bool {
-    mot == terme || (terme.len() >= 4 && mot.starts_with(terme))
+    if mot == terme || (terme.len() >= 4 && mot.starts_with(terme)) {
+        return true;
+    }
+    let commun = mot.bytes().zip(terme.bytes()).take_while(|(a, b)| a == b).count();
+    commun >= PREFIXE_COMMUN
 }
 
 /// Sections d'un programme qui traitent d'une requête, les mieux notées
@@ -929,7 +944,12 @@ pub fn chercher(p: &Programme, requete: &str, max: usize) -> Vec<(SectionProgram
     let mut notes: Vec<(SectionProgramme, u32)> = plan(p)
         .into_iter()
         .filter_map(|s| {
-            let titre = mots_indexes(&s.titre);
+            // Le CHEMIN, pas le seul titre : « d) Endomorphismes diagonalisables »
+            // ne dit pas de quoi il traite, c'est le chapitre qui le nomme
+            // (« Réduction des endomorphismes… »). Sans les titres parents, une
+            // question sur la réduction faisait remonter « Réduction des
+            // isométries » devant le chapitre qui lui est consacré.
+            let titre = mots_indexes(&s.chemin);
             // Le corps PROPRE, titre exclu : le compter deux fois fausserait
             // la pondération, et inclure les sous-sections ferait remonter
             // toute parente devant ses propres enfants.
@@ -1888,8 +1908,8 @@ matiere: mathematiques
         // L'utilisateur écrit « intégration » ; le pliage est le même que pour
         // les libellés de matière, où l'accent avait déjà fait échouer la
         // sélection en silence.
-        assert_eq!(adresses("intégration", 5), vec!["2"]);
-        assert_eq!(adresses("integration", 5), vec!["2"]);
+        assert_eq!(adresses("intégration", 5), adresses("integration", 5));
+        assert!(adresses("integration", 5).contains(&"2".to_string()));
     }
 
     #[test]
@@ -1928,10 +1948,46 @@ matiere: mathematiques
     }
 
     #[test]
+    fn une_derivation_ne_fait_pas_manquer_la_section() {
+        // Défaut constaté EN USAGE (2026-08-19) : « diagonalisation » ne
+        // rendait RIEN alors qu'un chapitre entier y est consacré — le
+        // programme n'écrit jamais que « diagonalisable ». Le français dérive,
+        // et une question ne reprend pas la forme du texte officiel.
+        // Ici : « convergent » contre « Convergence », que le préfixe seul ne
+        // rapprochait pas.
+        assert!(adresses("convergent", 5).contains(&"1.1".to_string()));
+    }
+
+    #[test]
+    fn une_racine_trop_courte_ne_rapproche_rien() {
+        // Le seuil de six lettres est ce qui sépare la dérivation du hasard :
+        // « critique » et « critère » partagent quatre lettres et n'ont rien à
+        // voir. Sans lui, la recherche rendrait n'importe quoi.
+        assert!(adresses("critique", 5).is_empty());
+        assert!(adresses("critère", 5).contains(&"1.2".to_string()));
+    }
+
+    #[test]
+    fn le_titre_du_chapitre_qualifie_ses_sous_sections() {
+        // « d) Endomorphismes diagonalisables » ne dit pas de quoi il traite :
+        // c'est le chapitre qui le nomme. Sans les titres parents, une question
+        // sur la réduction matricielle faisait remonter « Réduction des
+        // isométries » devant le chapitre qui lui est consacré (constaté en
+        // usage le 2026-08-19).
+        let r = adresses("intégration", 5);
+        assert!(r.contains(&"2".to_string()), "le chapitre lui-même");
+        assert!(r.contains(&"2.1".to_string()), "sa sous-section hérite du sujet");
+        // …mais l'héritage ne traverse pas les chapitres : les sous-sections de
+        // « Suites numériques » n'ont rien à voir avec l'intégration.
+        assert!(!r.contains(&"1.1".to_string()));
+        assert!(!r.contains(&"1.2".to_string()));
+    }
+
+    #[test]
     fn un_compose_se_trouve_colle_ou_separe() {
         // Le corpus écrit « oxydo-réduction », « semi-convergentes » ; la
         // question s'écrit tout aussi bien d'un seul tenant.
-        assert_eq!(adresses("semi-convergentes", 5), vec!["1.3"]);
+        assert_eq!(adresses("semi-convergentes", 5).first().map(String::as_str), Some("1.3"));
         assert_eq!(adresses("semiconvergentes", 5), vec!["1.3"]);
     }
 

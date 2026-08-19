@@ -376,6 +376,11 @@ async function mcpServers(root: string): Promise<McpServerDecl[]> {
       facts: {
         root,
         corpusDir: corpus,
+        // Les programmes cochés BORNENT la recherche côté serveur. Passer les
+        // seuls noms aux instructions ne suffisait pas : la recherche balayait
+        // les dix programmes livrés et rendait de la chimie à une question de
+        // mathématiques (2026-08-19).
+        programmes: [...programmesSelection.current],
         preambuleMath: mathJaxPreamble.current || null,
         callouts: calloutSettings.current.map((c) => ({
           nom: c.name,

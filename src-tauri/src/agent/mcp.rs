@@ -64,6 +64,15 @@ pub struct VaultFacts {
     /// Dossier du corpus livre (`app_data_dir()/programmes`), resolu par
     /// `mcp_start` : les outils Rust n'ont pas d'AppHandle.
     pub corpus_dir: Option<String>,
+    /// Identifiants des programmes COCHÉS dans les réglages.
+    ///
+    /// Sans eux, la recherche balayait les dix programmes livrés : une question
+    /// sur la réduction matricielle rendait une section de chimie (« réactions
+    /// d'oxydo-réduction ») alors que seules les mathématiques MP étaient
+    /// cochées — observé en usage le 2026-08-19. Le réglage doit gouverner ce
+    /// que l'assistant consulte, sinon il ne gouverne rien.
+    #[serde(default)]
+    pub programmes: Vec<String>,
     #[serde(default)]
     pub callouts: Vec<CalloutInfo>,
 }
@@ -190,7 +199,14 @@ impl AzproseTools {
         annotations(read_only_hint = true)
     )]
     pub async fn programme_lister(&self) -> String {
-        serde_json::json!({ "programmes": self.programmes() }).to_string()
+        // La sélection est rendue AVEC la liste : sans elle, le modèle ne peut
+        // pas savoir que sa recherche est bornée, ni expliquer à l'utilisateur
+        // pourquoi un programme non coché ne remonte pas.
+        serde_json::json!({
+            "programmes": self.programmes(),
+            "retenus": self.root.facts().programmes,
+        })
+        .to_string()
     }
 
     /// Contenu intégral du programme d'une filière. À charger AVANT de rédiger
@@ -283,11 +299,22 @@ impl AzproseTools {
         };
         // Pas de sélection UNIQUE ici : chercher dans plusieurs programmes à la
         // fois est le cas normal — l'utilisateur en déclare souvent trois.
-        let cibles = filtrer(&liste, id.as_deref(), filiere.as_deref(), matiere, niveau.as_deref());
+        let mut cibles = filtrer(&liste, id.as_deref(), filiere.as_deref(), matiere, niveau.as_deref());
+
+        // Les réglages font autorité. `filiere` et `matiere` NARROWISSENT la
+        // sélection, ils n'en sortent pas : le modèle passe `matiere: math`
+        // parce que la question est mathématique, pas parce que l'utilisateur
+        // réclame un autre programme. Seul un `id` explicite permet de sortir
+        // du périmètre coché — c'est le seul signal non ambigu.
+        let cochés = self.root.facts().programmes;
+        if id.is_none() && !cochés.is_empty() {
+            cibles.retain(|p| cochés.iter().any(|s| programmes::meme_libelle(s, &p.id)));
+        }
+
         if cibles.is_empty() {
             return serde_json::json!({
                 "trouve": false,
-                "raison": "aucun programme ne correspond aux critères. Appelle `azprose_programme_lister`.",
+                "raison": "aucun programme retenu ne correspond aux critères. `azprose_programme_lister` donne les programmes disponibles et ceux que l'utilisateur a retenus ; pour en consulter un autre, rappelle cet outil avec son `id`.",
             })
             .to_string();
         }

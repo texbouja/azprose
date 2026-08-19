@@ -100,6 +100,33 @@ test("instructions : les contraintes voyagent avec la section, jamais seules", (
   expect(text).toMatch(/s'interprète pas sans/);
 });
 
+test("instructions : le périmètre est ce que les sections énumèrent", () => {
+  // Constaté en usage (2026-08-19) : interrogé sur la réduction matricielle,
+  // le modèle a exposé la réduction de Jordan, absente du programme MP. Lire
+  // les contraintes ne suffit pas — une notion jamais mentionnée n'est
+  // interdite par aucune contrainte. Il faut dire de ne pas sortir du lu.
+  const text = buildAgentInstructions(ROOT, { programmes: [{ filiere: "MP" }] });
+  expect(text).toMatch(/n'ajoute pas une notion/);
+  expect(text).toMatch(/pas au programme de cette classe/);
+});
+
+test("instructions : les arguments d'outil s'écrivent sans accent", () => {
+  // Les caractères accentués se font tronquer dans les arguments JSON d'un
+  // appel d'outil (« JSON parsing failed », observé deux fois). La recherche
+  // plie de toute façon accents et casse : rien n'est perdu.
+  const text = buildAgentInstructions(ROOT, { programmes: [{ filiere: "MP" }] });
+  expect(text).toMatch(/sans accent/);
+  expect(text).toContain("reduction matricielle diagonalisation");
+});
+
+test("instructions : la recherche est bornée aux programmes retenus", () => {
+  // Le réglage doit gouverner ce que l'assistant consulte : sans cette borne,
+  // une question de mathématiques rendait une section de chimie.
+  const text = buildAgentInstructions(ROOT, { programmes: [{ filiere: "MP" }] });
+  expect(text).toMatch(/bornée aux programmes retenus/);
+  expect(text).toMatch(/azprose_programme_lister/);
+});
+
 test("instructions : les adresses de section ne se devinent pas", () => {
   // Les documents portent leur propre numérotation, irrégulière d'une matière
   // à l'autre (4.4.2. en chimie, B2. en SI, a) en maths) : l'adresse des
