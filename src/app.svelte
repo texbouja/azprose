@@ -117,7 +117,9 @@ import {
 } from "@/latex";
 import { FileOpsManager } from "@/lib/file-operations.svelte";
 import ConsolePanel from "@/components/console/ConsolePanel.svelte";
-import { mathJaxPreamble, mathJaxPackages } from "@/stores/mathjax-preamble.svelte";
+import { mathJaxPreamble, mathJaxPackages, mathJaxFont, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte";
+import { calloutSettings } from "@/stores/callout-settings.svelte";
+import { programmesSelection } from "@/stores/programmes-selection.svelte";
 import { latexSettings } from "@/stores/latex-settings.svelte";
 import { theme } from "@/stores/theme.svelte";
 import { editorSettings } from "@/stores/editor-settings.svelte";
@@ -418,11 +420,25 @@ $effect(() => {
   typography.current;
   mathJaxPreamble.current;
   mathJaxPackages.current;
+  // ⚠️ TOUT store écrit dans `.azprose/config.json` doit être LU ici, sinon sa
+  // modification ne déclenche aucune écriture : le fichier garde l'ancienne
+  // valeur et `loadConfig` la réimpose au démarrage suivant. C'est ce qui
+  // rendait le changement de police mathématique impossible à conserver
+  // (signalé le 2026-08-19) — le clic prenait, le fichier ne bougeait pas.
+  mathJaxFont.current;
+  mathJaxSpacing.current;
   vimOn;
   theme.mode;
   latexSettings.current;
   editorSettings.current;
   collesSettings.current;
+  // Même règle pour ces trois-là : ils sont écrits dans le fichier de projet
+  // (`cfg.callouts`, `cfg.programmes`, `cfg.favorites`) mais n'étaient lus
+  // nulle part ici — leurs changements n'atteignaient le disque que par
+  // raccroc, quand un AUTRE réglage bougeait.
+  calloutSettings.current;
+  programmesSelection.current;
+  fo.favorites.current;
   scheduleConfigSync();
 });
 
