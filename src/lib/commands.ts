@@ -77,7 +77,7 @@ export type CommandActions = {
   isLatexActive: boolean;
 
   // Markdown editor modes
-  setEditorMode: (mode: "raw" | "prose" | "preview") => void;
+  setEditorMode: (mode: "raw" | "preview") => void;
   startPresentation: () => void;
   startColles: () => void;
   editorMode: string;
@@ -283,16 +283,6 @@ export function buildCommands(actions: CommandActions, t: Translate = defaultT):
         category: "markdown" as CommandCategory,
         keywords: ["markdown", "raw", "code", "editor mode"],
         action: () => actions.setEditorMode("raw"),
-      },
-      {
-        id: "md-prose",
-        label: t("command.mdProse"),
-        hint: t("command.mdProseHint"),
-        shortcut: "⌘2",
-        icon: "wxi-pencil",
-        category: "markdown" as CommandCategory,
-        keywords: ["markdown", "prose", "writing", "editor mode"],
-        action: () => actions.setEditorMode("prose"),
       },
       {
         id: "md-preview",

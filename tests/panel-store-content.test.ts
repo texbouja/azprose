@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { PanelState } from "../src/lib/panel-store";
+import { PanelState, normaliserRenderMode } from "../src/lib/panel-store";
 import { ContentStore, type ContentFs } from "../src/lib/content-store";
 
 /** Fake fs DI — le ContentStore est PUR : aucun Tauri requis. */
@@ -159,9 +159,9 @@ test("repoint sur tab MAIN : modes éditeur raw/prose préservés", async () => 
   await p.repoint(p.activeTabId!, "/b.md");
   expect(p.activeTab!.renderMode).toBe("raw");
 
-  p.setRenderMode(p.activeTabId!, "prose");
+  p.setRenderMode(p.activeTabId!, "preview");
   await p.repoint(p.activeTabId!, "/a.md");
-  expect(p.activeTab!.renderMode).toBe("prose");
+  expect(p.activeTab!.renderMode).toBe("preview");
 });
 
 test("open ré-affectation d'un onglet éphémère : renderMode viewer réarmé sur preview", async () => {
@@ -187,4 +187,12 @@ test("open dédup (même fichier) : PAS de recyclage — le mode alternatif surv
   await p.open("/a.md", { preview: true, fallbackToActive: true });
 
   expect(p.activeTab!.renderMode).toBe("colle");
+});
+
+test("une session d'avant le retrait du WYSIWYM rouvre ses onglets en mode brut", () => {
+  // `"prose"` n'existe plus : sans normalisation, l'application restaurerait un
+  // onglet dans un mode qu'aucune branche de rendu ne connaît.
+  expect(normaliserRenderMode("prose")).toBe("raw");
+  expect(normaliserRenderMode("preview")).toBe("preview");
+  expect(normaliserRenderMode(undefined)).toBeUndefined();
 });

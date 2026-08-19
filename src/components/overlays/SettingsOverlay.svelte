@@ -4,12 +4,10 @@ import { slide } from "svelte/transition";
 import { Button } from "@/components/primitives";
 import { getT, language, setLanguage, LANGUAGE_CHOICES } from "@/lib/i18n";
 import {
-  proseMarkSettings,
   previewSettings,
   printSettings,
   presentationSettings,
   csvSettings,
-  type ProseMarkStyle,
   type PreviewStyle,
   type PrintStyle,
   type PresentationStyle,
@@ -55,7 +53,7 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "prose-writing" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques" | "programmes";
+type ModuleId = "general" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques" | "programmes";
 type SectionId = "markdown" | "general" | "latex" | "colles" | "printing" | "assistant";
 
 const SECTIONS: {
@@ -85,7 +83,6 @@ const SECTIONS: {
     labelKey: "settings.section.markdown",
     modules: [
       { id: "general",        labelKey: "settings.module.general" },
-      { id: "prose-writing", labelKey: "settings.module.prose" },
       { id: "apercu",        labelKey: "settings.module.apercu" },
       { id: "presentation",  labelKey: "settings.module.presentation" },
       { id: "mathjax",       labelKey: "settings.module.mathjax" },
@@ -413,7 +410,6 @@ function dateToIso(d: Date | null | undefined): string {
 }
 
 // Explicit $derived so the template tracks settings reactively.
-let s = $derived(proseMarkSettings.current);
 let pvs = $derived(previewSettings.current);
 let prt = $derived(printSettings.current);
 let prs = $derived(presentationSettings.current);
@@ -469,7 +465,6 @@ function fontFieldStyle(state: FontCheck): { inputStyle: string; error: boolean 
   return { inputStyle: "", error: false };
 }
 
-let customFontState = $derived(s.fontFamily === "custom" ? checkFontName(s.customFontName) : null);
 let prsCustomFontState = $derived(prs.fontFamily === "custom" ? checkFontName(prs.customFontName) : null);
 let pvsCustomFontState = $derived(pvs.fontFamily === "custom" ? checkFontName(pvs.customFontName) : null);
 let prtCustomFontState = $derived(prt.fontFamily === "custom" ? checkFontName(prt.customFontName) : null);
@@ -594,50 +589,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
     {/if}
     <Counter value={mt} min={0} max={5} step={0.1} onchange={(ev) => onMt(ev.value)} />
     <Counter value={mb} min={0} max={3} step={0.05} onchange={(ev) => onMb(ev.value)} />
-  </div>
-{/snippet}
-
-{#snippet policesSection()}
-  <p class="mdv-settings__section-title">{t("settings.fonts")}</p>
-  <div class="mdv-settings__fonts">
-    <div class="mdv-settings__font-row">
-      <span class="mdv-settings__font-label">{t("settings.fontMain")}</span>
-      <Combo
-        value={s.fontFamily}
-        options={[
-          {id: "fira-sans", label: "Fira Sans"},
-          {id: "inter", label: "Inter"},
-          {id: "ubuntu", label: "Ubuntu"},
-          {id: "ubuntu-condensed", label: "Ubuntu Condensed"},
-          {id: "system", label: t("settings.fontSystem")},
-          {id: "custom", label: t("settings.fontCustom")},
-        ]}
-        onchange={(ev) => proseMarkSettings.patch({ fontFamily: ev.value as ProseMarkStyle["fontFamily"] })}
-      />
-      {#if s.fontFamily === "custom"}
-        {@const fs = fontFieldStyle(customFontState)}
-        <Text
-          value={s.customFontName}
-          placeholder={t("settings.fontPlaceholder")}
-          inputStyle={fs.inputStyle}
-          error={fs.error}
-          onchange={(ev) => debounceInput("font-main", String(ev.value), (v) => proseMarkSettings.patch({ customFontName: v }))}
-        />
-      {/if}
-    </div>
-    <div class="mdv-settings__font-row">
-      <span class="mdv-settings__font-label">{t("settings.fontMono")}</span>
-      <Combo
-        value={s.monoFont}
-        options={[
-          {id: "fira-code", label: "Fira Code"},
-          {id: "jetbrains-mono", label: "JetBrains Mono"},
-          {id: "ubuntu-mono", label: "Ubuntu Mono"},
-          {id: "system", label: t("settings.fontSystem")},
-        ]}
-        onchange={(ev) => proseMarkSettings.patch({ monoFont: ev.value as ProseMarkStyle["monoFont"] })}
-      />
-    </div>
   </div>
 {/snippet}
 
@@ -769,77 +720,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
         ]}
         onchange={(ev) => printSettings.patch({ monoFont: ev.value as PrintStyle["monoFont"] })}
       />
-    </div>
-  </div>
-{/snippet}
-
-{#snippet titresSection(showAlign: boolean, fontsFirst: boolean)}
-  <p class="mdv-settings__section-title">{t("settings.headings")}</p>
-  <!-- wrapper flex so CSS order can swap fonts ↔ table when fontsFirst -->
-  <div class="mdv-settings__titres-layout">
-    <div class="mdv-settings__heading-fonts" style={fontsFirst ? "order:-1" : ""}>
-      {#each ([
-        { tag: "H1", key: "h1FontFamily", nameKey: "h1CustomFontName" },
-        { tag: "H2", key: "h2FontFamily", nameKey: "h2CustomFontName" },
-        { tag: "H3", key: "h3FontFamily", nameKey: "h3CustomFontName" },
-      ] as const) as row}
-        {@const isCustom = s[row.key] === "custom"}
-        {@const fontName = s[row.nameKey]}
-        {@const fontState = isCustom && fontName.trim() ? checkFontName(fontName) : null}
-        {@const fs = fontFieldStyle(fontState)}
-        <div class="mdv-settings__font-row">
-          <span class="mdv-settings__font-label mdv-settings__heading-tag">{row.tag}</span>
-          <Combo
-            value={s[row.key]}
-            options={HEADING_FONT_OPTIONS.map(o => ({id: o.value, label: t(o.labelKey)}))}
-            onchange={(ev) => {
-              const val = ev.value as HeadingFont;
-              if (val === "custom" && !fontName.trim()) {
-                const fallback = s.h1CustomFontName || s.h2CustomFontName || s.h3CustomFontName;
-                if (fallback) { proseMarkSettings.patch({ [row.key]: val, [row.nameKey]: fallback }); return; }
-              }
-              proseMarkSettings.patch({ [row.key]: val });
-            }}
-          />
-          {#if isCustom}
-            <Text
-              value={fontName}
-              placeholder={t("settings.fontPlaceholder")}
-              inputStyle={fs.inputStyle}
-              error={fs.error}
-              onchange={(ev) => debounceInput("heading-" + row.tag, String(ev.value), (v) => proseMarkSettings.patch({ [row.nameKey]: v }))}
-            />
-          {/if}
-        </div>
-      {/each}
-    </div>
-
-    <div class="mdv-settings__headings">
-      <div class="mdv-settings__heading-header" class:no-align={!showAlign}>
-        <span></span>
-        <span>{t("settings.headingSize")}</span>
-        {#if showAlign}<span>{t("settings.headingAlign")}</span>{/if}
-        <span>{t("settings.headingMarginTop")}</span>
-        <span>{t("settings.headingMarginBottom")}</span>
-      </div>
-      {@render headingRow("H1",
-        s.h1Size,    (v) => proseMarkSettings.patch({ h1Size: v }),
-        showAlign ? s.h1Align : null, showAlign ? (v) => proseMarkSettings.patch({ h1Align: v }) : null,
-        s.h1MarginTop,  (v) => proseMarkSettings.patch({ h1MarginTop: v }),
-        s.h1MarginBottom, (v) => proseMarkSettings.patch({ h1MarginBottom: v }),
-      )}
-      {@render headingRow("H2",
-        s.h2Size,    (v) => proseMarkSettings.patch({ h2Size: v }),
-        showAlign ? s.h2Align : null, showAlign ? (v) => proseMarkSettings.patch({ h2Align: v }) : null,
-        s.h2MarginTop,  (v) => proseMarkSettings.patch({ h2MarginTop: v }),
-        s.h2MarginBottom, (v) => proseMarkSettings.patch({ h2MarginBottom: v }),
-      )}
-      {@render headingRow("H3",
-        s.h3Size,    (v) => proseMarkSettings.patch({ h3Size: v }),
-        showAlign ? s.h3Align : null, showAlign ? (v) => proseMarkSettings.patch({ h3Align: v }) : null,
-        s.h3MarginTop,  (v) => proseMarkSettings.patch({ h3MarginTop: v }),
-        s.h3MarginBottom, (v) => proseMarkSettings.patch({ h3MarginBottom: v }),
-      )}
     </div>
   </div>
 {/snippet}
@@ -1060,25 +940,25 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
     <div class="mdv-settings__list-row">
       <span class="mdv-settings__list-label">{t("settings.listLevel1")}</span>
       <Combo
-        value={s.olLevel1}
+        value={pvs.olLevel1}
         options={OL_OPTIONS.map(o => ({id: o.value, label: t(o.labelKey)}))}
-        onchange={(ev) => proseMarkSettings.patch({ olLevel1: ev.value as OlType })}
+        onchange={(ev) => previewSettings.patch({ olLevel1: ev.value as OlType })}
       />
     </div>
     <div class="mdv-settings__list-row">
       <span class="mdv-settings__list-label">{t("settings.listLevel2")}</span>
       <Combo
-        value={s.olLevel2}
+        value={pvs.olLevel2}
         options={OL_OPTIONS.map(o => ({id: o.value, label: t(o.labelKey)}))}
-        onchange={(ev) => proseMarkSettings.patch({ olLevel2: ev.value as OlType })}
+        onchange={(ev) => previewSettings.patch({ olLevel2: ev.value as OlType })}
       />
     </div>
     <div class="mdv-settings__list-row">
       <span class="mdv-settings__list-label">{t("settings.listLevel3")}</span>
       <Combo
-        value={s.olLevel3}
+        value={pvs.olLevel3}
         options={OL_OPTIONS.map(o => ({id: o.value, label: t(o.labelKey)}))}
-        onchange={(ev) => proseMarkSettings.patch({ olLevel3: ev.value as OlType })}
+        onchange={(ev) => previewSettings.patch({ olLevel3: ev.value as OlType })}
       />
     </div>
   </div>
@@ -1157,50 +1037,8 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
         <div class="mdv-settings__panel" role="region" aria-label={t("settings.module." + activeModule)}>
 
           {#if activeModule === "general"}
-            <p class="mdv-settings__section-title">{t("settings.defaultEditorMode")}</p>
-            <Segmented
-              value={generalSettings.defaultEditorMode}
-              options={[
-                {id: "prose", label: t("settings.editorProse")},
-                {id: "raw", label: t("settings.editorRaw")},
-              ]}
-              onchange={(ev) => (generalSettings.defaultEditorMode = ev.value as any)}
-            />
-            <p class="mdv-settings__hint">{t("settings.editorHint")}</p>
-
             {@render listesSection()}
             <p class="mdv-settings__hint">{t("settings.listsHint")}</p>
-          {/if}
-
-          {#if activeModule === "prose-writing"}
-            {@render policesSection()}
-
-            <p class="mdv-settings__section-title">{t("settings.typography")}</p>
-            <div class="mdv-settings__sliders">
-              <div class="mdv-settings__slider-row">
-                <span class="mdv-settings__slider-label">{t("settings.fontSize")}</span>
-                <Slider min={12} max={24} step={1} value={s.fontSize} onchange={(ev) => proseMarkSettings.patch({ fontSize: ev.value })} />
-                <span class="mdv-settings__slider-value">{s.fontSize} px</span>
-              </div>
-              <div class="mdv-settings__slider-row">
-                <span class="mdv-settings__slider-label">{t("settings.lineHeight")}</span>
-                <Slider min={1.3} max={2.2} step={0.05} value={s.lineHeight} onchange={(ev) => proseMarkSettings.patch({ lineHeight: ev.value })} />
-                <span class="mdv-settings__slider-value">{s.lineHeight.toFixed(2)}</span>
-              </div>
-              <div class="mdv-settings__slider-row">
-                <span class="mdv-settings__slider-label">{t("settings.columnWidth")}</span>
-                <Slider min={500} max={1200} step={10} value={s.maxWidth} onchange={(ev) => proseMarkSettings.patch({ maxWidth: ev.value })} />
-                <span class="mdv-settings__slider-value">{s.maxWidth} px</span>
-              </div>
-            </div>
-
-            {@render titresSection(false, false)}
-
-            <p class="mdv-settings__section-title">{t("settings.customCss")}</p>
-            <p class="mdv-settings__hint">{t("settings.customCssHint")}</p>
-            <div style="font-family: var(--font-ui); font-size: 12px;">
-              <TextArea value={s.customCss} onchange={(ev) => debounceInput("css-prose", ev.value, (v) => proseMarkSettings.patch({ customCss: v }))} />
-            </div>
           {/if}
 
           {#if activeModule === "apercu"}
@@ -2033,10 +1871,6 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
       >
         {#if activeModule === "general"}
           <button type="button" class="mdv-settings__reset" onclick={() => generalSettings.reset()}>
-            {t("settings.reset")}
-          </button>
-        {:else if activeModule === "prose-writing"}
-          <button type="button" class="mdv-settings__reset" onclick={() => proseMarkSettings.reset()}>
             {t("settings.reset")}
           </button>
         {:else if activeModule === "apercu"}

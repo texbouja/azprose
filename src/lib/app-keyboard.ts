@@ -19,7 +19,7 @@ export interface KeyboardDeps {
   handleSave: () => Promise<void>
   handleSaveAll: (deps: string[]) => Promise<void>
   handleExportPdf: () => Promise<void>
-  handleSetEditorMode: (mode: "raw" | "prose" | "preview" | "presentation") => void
+  handleSetEditorMode: (mode: "raw" | "preview" | "presentation") => void
   onShowHelp?: () => void
   sidebarOpen: { current: boolean }
   notify: { setInfo: (msg: string) => void }
@@ -66,11 +66,6 @@ export function handleKeydown(e: KeyboardEvent, ctx: KeyboardDeps) {
   if (shortcuts.matches(e, "editorMode1")) {
     e.preventDefault();
     ctx.handleSetEditorMode("raw");
-    return;
-  }
-  if (shortcuts.matches(e, "editorMode2")) {
-    e.preventDefault();
-    ctx.handleSetEditorMode("prose");
     return;
   }
   if (shortcuts.matches(e, "editorMode3")) {

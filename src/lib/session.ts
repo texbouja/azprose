@@ -59,7 +59,7 @@ export interface SessionTab {
   path: string;
   title: string;
   sourceType?: "latex";
-  renderMode?: "raw" | "prose" | "preview" | "presentation" | "colle";
+  renderMode?: "raw" | "preview" | "presentation" | "colle";
   kind?: "file" | "custom" | "spreadsheet" | "datafilter" | "doc";
 }
 

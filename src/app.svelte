@@ -86,7 +86,7 @@ import {
   type ExternalChangeDeps,
 } from "@/lib/app-events";
 import { generalSettings, applyFontHinting } from "@/stores/general-settings.svelte";
-import { proseMarkSettings, previewSettings, printSettings, presentationSettings } from "@/stores/markdown-settings.svelte";
+import { previewSettings, printSettings, presentationSettings } from "@/stores/markdown-settings.svelte";
 import { setRootPath, getRootPath } from "@/stores/root-path.svelte";
 import { setActivePath } from "@/stores/active-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
@@ -329,7 +329,6 @@ let words = $state(0);
 let minutes = $state(1);
 
 let vimOn = $state(false);
-let prosemarkOn = $state(generalSettings.defaultEditorMode === "prose");
 let jumpToLine = $state<number | null>(null);
 let jumpToCol = $state<number | null>(null);
 
@@ -412,12 +411,10 @@ $effect(() => {
 
 $effect(() => {
   if (!configRoot) return;
-  proseMarkSettings.current;
   previewSettings.current;
   printSettings.current;
   presentationSettings.current;
   slideSettings.mode;
-  generalSettings.defaultEditorMode;
   typography.current;
   mathJaxPreamble.current;
   mathJaxPackages.current;
@@ -1213,7 +1210,6 @@ const editorMode = $derived<EditorMode>(
   sideActivePath && pm.side.activeTab?.renderMode === "colle" ? "colle"
   : sideActivePath && pm.side.activeTab?.renderMode === "presentation" ? "presentation"
   : sideActivePath && pm.side.activeTab?.renderMode === "preview" ? "preview"
-  : prosemarkOn ? "prose"
   : "raw"
 );
 
@@ -1224,8 +1220,6 @@ const editorModeCtx: EditorModeDeps = {
   setSideVisible: (v) => { sideVisible = v; pm.sideVisible = v; },
   get presentationFs() { return presentationFs; },
   setPresentationFs: (v) => { presentationFs = v; },
-  get prosemarkOn() { return prosemarkOn; },
-  setProsemarkOn: (v) => { prosemarkOn = v; },
   bumpPanelVersion: () => { _panelVersion++; },
   get jumpToLine() { return jumpToLine; },
   setJumpToLine: (v) => { jumpToLine = v; },
@@ -1579,7 +1573,7 @@ let cmds = $derived(
       const ok = await confirm(t("latex.cleanAllConfirm"), { title: t("latex.cleanAllTitle"), kind: "warning" });
       if (ok) await cleanLatexAll(ls.rootFilePath ?? activePath);
     },
-    setEditorMode: (mode: "raw" | "prose" | "preview") => {
+    setEditorMode: (mode: "raw" | "preview") => {
       handleSetEditorMode(mode);
     },
     startPresentation: () => handleSetEditorMode("presentation"),
@@ -1737,7 +1731,6 @@ let cmds = $derived(
           {jumpToCol}
           onJumpApplied={() => { jumpToLine = null; jumpToCol = null; }}
           {vimOn}
-          {prosemarkOn}
           onInverseSync={handleInverseSync}
           buildRev={ls.buildRev}
           latexBuildFailed={ls.buildFailed}

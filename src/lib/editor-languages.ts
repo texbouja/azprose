@@ -14,14 +14,13 @@ import { latex, latexLanguage } from "codemirror-lang-latex";
 import { clojure } from "@codemirror/legacy-modes/mode/clojure";
 import { tags as t } from "@lezer/highlight";
 import {
-  mathMarkdownSyntaxExtension,
+  mathSyntaxExtension,
   mathDelimiterTag,
   mathFormulaTag,
-} from "@prosemark/core";
+} from "@/markdown/lexer-math";
 import type { StreamParser } from "@codemirror/language";
 import type { CompletionSource } from "@codemirror/autocomplete";
 import type { Extension } from "@codemirror/state";
-import { grammaireDelimiteursLatex } from "@/lib/prose-latex-math";
 
 const mathHighlight = syntaxHighlighting(HighlightStyle.define([
   { tag: mathDelimiterTag, color: "var(--syntax-keyword)" },
@@ -64,9 +63,8 @@ export function languageFromExt(
           ["stex", "tex", "latex", "math"].includes(info)
             ? latexLanguage
             : null,
-        // Deux grammaires de maths : celle de ProseMark (`$…$`, `$$…$$`) et la
-        // nôtre pour les délimiteurs LaTeX `\\(…\\)` et `\\[…\\]`.
-        extensions: [mathMarkdownSyntaxExtension, grammaireDelimiteursLatex()],
+        // Une seule grammaire de maths, la nôtre : les quatre délimiteurs.
+        extensions: [mathSyntaxExtension],
       });
       const extras: Extension[] = [md.support, mathHighlight];
       // Register extra completion sources through languageData (a cumulative

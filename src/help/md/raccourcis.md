@@ -25,7 +25,6 @@ Les raccourcis sont donnés pour macOS (`⌘` = Commande). Sur Windows et Linux,
 | Action | Raccourci |
 |--------|-----------|
 | Mode source (Markdown brut) | `⌘1` |
-| Mode écriture | `⌘2` |
 | Mode aperçu | `⌘3` |
 | Ouvrir/fermer le panneau d'aperçu | `⌘\` |
 

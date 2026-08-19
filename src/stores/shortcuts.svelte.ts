@@ -14,7 +14,6 @@ export type ShortcutAction =
   | "exportPdf"
   | "build"
   | "editorMode1"
-  | "editorMode2"
   | "editorMode3"
   | "console"
   | "viewPanel"
@@ -39,7 +38,6 @@ const MAC_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
   exportPdf:     { key: "p" },
   build:         { key: "b", alt: true },
   editorMode1:   { key: "1" },
-  editorMode2:   { key: "2" },
   editorMode3:   { key: "3" },
   console:       { key: "c", shift: true },
   viewPanel:     { key: "\\" },
@@ -61,7 +59,6 @@ const OTHER_DEFAULTS: Record<ShortcutAction, ShortcutDef> = {
   exportPdf:     { key: "p" },
   build:         { key: "b", alt: true },
   editorMode1:   { key: "1" },
-  editorMode2:   { key: "2" },
   editorMode3:   { key: "3" },
   console:       { key: "c", shift: true },
   viewPanel:     { key: "\\" },

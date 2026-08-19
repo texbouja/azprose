@@ -2,8 +2,6 @@ import { persistedState } from "./persisted.svelte";
 import { STORAGE_KEYS } from "@/lib";
 import { resolveFontFamily, resolveMonoFont, type BodyFont, type MonoFont } from "./markdown-settings.svelte";
 
-export type DefaultEditorMode = "prose" | "raw";
-
 /** Apply a UI font-family value via --font-ui-temp (cascade from tokens.css).
  *  Preset ids (see UI_FONT_PRESETS) are resolved to their full stacks. */
 export function applyUiFont(value: string) {
@@ -119,7 +117,6 @@ export const UI_SIDEBAR_FONT_PRESETS: UiFontPreset[] = [
 ];
 
 function createGeneralSettings() {
-  const mode = persistedState<DefaultEditorMode>(STORAGE_KEYS.defaultEditorMode, "prose");
   const uiFont = persistedState<string>(STORAGE_KEYS.uiFontFamily, "", undefined, applyUiFont);
   const uiMono = persistedState<string>(STORAGE_KEYS.uiMonoFamily, "", undefined, applyUiMonoFont);
   const uiSidebar = persistedState<string>(STORAGE_KEYS.sidebarFontFamily, "", undefined, applyUiSidebarFont);
@@ -141,8 +138,6 @@ function createGeneralSettings() {
   // facile à casser sans le remarquer).
 
   return {
-    get defaultEditorMode() { return mode.current; },
-    set defaultEditorMode(v: DefaultEditorMode) { mode.current = v; },
 
     get uiFontFamily() { return uiFont.current; },
     set uiFontFamily(v: string) { uiFont.current = v; applyUiFont(v); },
@@ -166,7 +161,6 @@ function createGeneralSettings() {
     set fontHinting(v: FontHinting) { hinting.current = v; applyFontHinting(v); },
 
     reset() {
-      mode.current = "prose";
       uiFont.current = "";
       uiMono.current = "";
       uiSidebar.current = "";

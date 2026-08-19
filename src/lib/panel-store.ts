@@ -3,7 +3,7 @@ import { readText, writeText } from "@/lib/files";
 import { saveDraft, loadDraft, clearDraft } from "@/lib/session";
 import { ContentStore } from "@/lib/content-store";
 
-export type RenderMode = "raw" | "prose" | "preview" | "presentation" | "colle";
+export type RenderMode = "raw" | "preview" | "presentation" | "colle";
 export type TabSource = "latex";
 export type TabKind = "file" | "custom" | "spreadsheet" | "datafilter";
 
@@ -245,7 +245,20 @@ export function pickOpenTarget(
  * no-op.
  */
 function recycleRenderMode(mode: RenderMode | undefined): RenderMode | undefined {
-  return mode === "presentation" || mode === "colle" ? "preview" : mode;
+  return mode === "presentation" || mode === "colle" ? "preview" : normaliserRenderMode(mode);
+}
+
+/**
+ * Ramène un mode de rendu venu du DISQUE à un mode existant.
+ *
+ * Les sessions écrites avant le 2026-08-19 portent des onglets en `"prose"` —
+ * le mode WYSIWYM, retiré. Sans cette normalisation, l'application rouvrirait
+ * un onglet dans un mode qui n'existe plus.
+ */
+export function normaliserRenderMode(mode: string | undefined): RenderMode | undefined {
+  if (mode == null) return undefined;
+  if (mode === "prose") return "raw";
+  return mode as RenderMode;
 }
 
 export class PanelState {
@@ -885,7 +898,8 @@ export class PanelState {
           title: t.title,
           source: "",
           savedContent: "",
-          renderMode: t.renderMode,
+          // Session d'avant le retrait du WYSIWYM : `"prose"` n'existe plus.
+          renderMode: normaliserRenderMode(t.renderMode),
           sourceType: t.sourceType,
           kind,
           spreadsheetId,

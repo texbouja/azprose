@@ -18,7 +18,6 @@ import type { Tab } from "@/lib/panel-store";
 import Editor from "@/components/editor/Editor.svelte";
 import LazyPdfViewer from "@/components/pdf/LazyPdfViewer.svelte";
 import ImageViewer from "@/components/image/ImageViewer.svelte";
-import LazyProseMark from "@/components/markdown/LazyProseMark.svelte";
 import LazySlideDeck from "@/components/markdown/LazySlideDeck.svelte";
 import LazyCollePreview from "@/components/colles/LazyCollePreview.svelte";
 import LazyMarkdownPreview from "@/components/markdown/LazyMarkdownPreview.svelte";
@@ -49,7 +48,6 @@ let {
   jumpToCol = null as number | null,
   onJumpApplied,
   vimOn: _vimOn = false,
-  prosemarkOn = false,
   forwardToPage = null as number | null,
   onInverseSync,
   buildRev = 0,
@@ -69,7 +67,6 @@ let {
   jumpToCol?: number | null;
   onJumpApplied?: () => void;
   vimOn?: boolean;
-  prosemarkOn?: boolean;
   previewOn?: never;
   presentationOn?: never;
   forwardToPage?: number | null;
@@ -138,11 +135,6 @@ let {
     value={contentFor(tab.path)}
     rev={contentVersionOf(tab.path)}
     filePath={tab.path}
-  />
-{:else if panelId === "main" && extFromPath(tab.path) === "md" && prosemarkOn}
-  <LazyProseMark
-    value={contentFor(tab.path)}
-    onChange={(next: string) => onSourceChange?.(next)}
   />
 {:else if extFromPath(tab.path) === "html" && panelId !== "main"}
   <LazyHtmlPreview

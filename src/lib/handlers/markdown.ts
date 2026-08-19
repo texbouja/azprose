@@ -24,7 +24,6 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
   const ctx = context
   const cleanups: (() => void)[] = []
   const timers: ReturnType<typeof setTimeout>[] = []
-  let proseWarmupDone = false
 
   function setupEffects() {
     // Ensure .moxide.toml exists at project root
@@ -42,21 +41,6 @@ export function createMarkdownHandler(context: HandlerContext): FileHandler {
     })()
 
     // ProseMark lazy warmup on first .md open
-    {
-      let lastPath = ctx.activePath()
-      const tick = () => {
-        const path = ctx.activePath()
-        if (path !== lastPath) {
-          lastPath = path
-          if (path && extFromPath(path) === "md" && !proseWarmupDone) {
-            proseWarmupDone = true
-            void import("@/components/markdown/ProseMarkEditor.svelte")
-          }
-        }
-        timers.push(setTimeout(tick, 50))
-      }
-      tick()
-    }
 
     // wikilink navigation from preview : le handler ne décide PAS du routage —
     // il résout la cible (monde réel : LSP oxide, walk du vault) puis poste

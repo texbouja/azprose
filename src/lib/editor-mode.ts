@@ -3,7 +3,7 @@ import type { PanelManager } from "@/lib/panel-manager";
 import { tabContentKind, tabSpace } from "@/lib/panel-store";
 import type { LatexState } from "@/latex";
 
-export type EditorMode = "raw" | "prose" | "preview" | "presentation" | "colle";
+export type EditorMode = "raw" | "preview" | "presentation" | "colle";
 
 export interface EditorModeDeps {
   pm: PanelManager;
@@ -12,8 +12,6 @@ export interface EditorModeDeps {
   setSideVisible: (v: boolean) => void;
   get presentationFs(): boolean;
   setPresentationFs: (v: boolean) => void;
-  get prosemarkOn(): boolean;
-  setProsemarkOn: (v: boolean) => void;
   bumpPanelVersion: () => void;
   get jumpToLine(): number | null;
   setJumpToLine: (v: number | null) => void;
@@ -71,14 +69,8 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
   const isPreviewable = ctx.activePath && (ctx.extFromPath(ctx.activePath) === "md" || ctx.extFromPath(ctx.activePath) === "csv" || ctx.extFromPath(ctx.activePath) === "tsv");
   switch (mode) {
     case "raw":
-      ctx.setProsemarkOn(false);
       { const tab = ctx.pm.main.tabs.find((t: any) => t.path === ctx.activePath);
         if (tab) ctx.pm.main.setRenderMode(tab.id, "raw"); }
-      break;
-    case "prose":
-      ctx.setProsemarkOn(true);
-      { const tab = ctx.pm.main.tabs.find((t: any) => t.path === ctx.activePath);
-        if (tab) ctx.pm.main.setRenderMode(tab.id, "prose"); }
       break;
     case "preview": {
       if (!isPreviewable) return;
@@ -107,7 +99,6 @@ export function setEditorMode(ctx: EditorModeDeps, mode: EditorMode) {
     }
     case "presentation": {
       if (!isMd) return;
-      ctx.setProsemarkOn(true);
       const existing = findSideTabFor(ctx, ctx.activePath);
       if (existing) {
         ctx.pm.side.setRenderMode(existing.id, "presentation");

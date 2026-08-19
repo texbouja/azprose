@@ -21,17 +21,17 @@ Un projet AZprose est un simple **dossier** sur votre ordinateur, appelé *vault
 2. Donnez-lui un nom parlant : c'est ce nom qui servira à le relier aux autres notes (voir [[wikilinks|Les liens entre notes]]).
 3. Écrivez ! Le texte suit la syntaxe Markdown : `# Titre`, `## Sous-titre`, `**gras**`, `*italique*`, listes, etc.
 
-## Trois façons de travailler
+## Écrire d'un côté, voir de l'autre
 
-L'éditeur propose trois modes, que vous changez avec les raccourcis `⌘1`, `⌘2` et `⌘3` (ou `Ctrl+1`, `Ctrl+2`, `Ctrl+3`) :
+AZprose sépare l'écriture de la lecture, comme un atelier LaTeX : vous écrivez
+du Markdown dans l'éditeur, et le rendu s'affiche à côté.
 
 | Raccourci | Mode | Usage |
 |-----------|------|-------|
-| `⌘1` | Source | Vous voyez le texte Markdown brut. |
-| `⌘2` | Écriture | La mise en forme s'applique pendant que vous écrivez. |
-| `⌘3` | Aperçu | Vous voyez le résultat final, comme sur une page web. |
+| `⌘1` | Source | Le texte Markdown, tel que vous l'écrivez. |
+| `⌘3` | Aperçu | Le résultat final, comme sur une page web. |
 
-Le panneau d'aperçu du côté droit (`⌘\` ou `Ctrl+\`) affiche le rendu en continu pendant que vous écrivez — très pratique pour vérifier son travail sans changer de mode.
+Le panneau d'aperçu du côté droit (`⌘\` ou `Ctrl+\`) affiche le rendu en continu pendant que vous écrivez — c'est la façon habituelle de travailler : la source à gauche, le rendu à droite, sans changer de mode.
 
 ## Enregistrer
 

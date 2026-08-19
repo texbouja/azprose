@@ -44,7 +44,7 @@ let {
   pinnedFormat?: string | null;
   viewportEl?: HTMLElement | null;
   renderMode?: RenderMode;
-  onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
+  onSetEditorMode?: (mode: "raw" | "preview") => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
   onExportPdf?: () => void;
@@ -184,9 +184,6 @@ let mainItems = $derived.by(() => {
       { comp: "button", icon: "wxi-code", text: t("tabs.raw"),
         type: renderMode === "raw" ? "pressed" : "",
         handler: () => onSetEditorMode?.("raw") },
-      { comp: "button", icon: "wxi-edit", text: t("tabs.prose"),
-        type: renderMode === "prose" ? "pressed" : "",
-        handler: () => onSetEditorMode?.("prose") },
       { comp: "button", icon: "wxi-file-down", text: t("tabs.exportPdf"),
         handler: () => onExportPdf?.() },
       { comp: "button", icon: "wxi-eye", text: t("tabs.preview"),

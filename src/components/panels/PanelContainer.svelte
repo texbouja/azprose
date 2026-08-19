@@ -16,7 +16,6 @@ let {
   jumpToCol = null as number | null,
   onJumpApplied,
   vimOn = false,
-  prosemarkOn = false,
   forwardToPage = null as number | null,
   onInverseSync,
   buildRev = 0,
@@ -57,12 +56,11 @@ let {
   jumpToCol?: number | null;
   onJumpApplied?: () => void;
   vimOn?: boolean;
-  prosemarkOn?: boolean;
   forwardToPage?: number | null;
   onInverseSync?: (file: string, line: number, col?: number) => void;
   buildRev?: number;
   flex?: string;
-  onSetEditorMode?: (mode: "raw" | "prose" | "preview") => void;
+  onSetEditorMode?: (mode: "raw" | "preview") => void;
   onLatexViewer?: () => void;
   onLatexBuild?: () => void;
   onExportPdf?: () => void;
@@ -154,7 +152,6 @@ function handleViewerFullscreen() {
           jumpToCol={tab.id === activeTabId ? jumpToCol : null}
           {onJumpApplied}
           {vimOn}
-          {prosemarkOn}
           {forwardToPage}
           {onInverseSync}
           {buildRev}

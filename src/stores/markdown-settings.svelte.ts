@@ -14,7 +14,12 @@ export type CsvBodyFont = "fira-sans" | "inter" | "ubuntu" | "ubuntu-condensed" 
 
 // ── ProseMark editing mode ─────────────────────────────────────────────────
 
-export interface ProseMarkStyle {
+/**
+ * Forme d'un style de document. Héritée du mode WYSIWYM (retiré le
+ * 2026-08-19), elle reste la forme COMMUNE de l'aperçu, de l'impression et des
+ * diapositives — d'où le nom neutre.
+ */
+export interface ProseStyle {
   fontFamily: BodyFont;
   customFontName: string;
   monoFont: MonoFont;
@@ -47,7 +52,7 @@ export interface ProseMarkStyle {
 
 // ── Preview panel (independent copy — same shape as ProseMark) ──────────────
 
-export type PreviewStyle = ProseMarkStyle;
+export type PreviewStyle = ProseStyle;
 
 // ── Printing (independent copy — same shape as Preview) ───────────────────
 // Section « Printing » des réglages : une copie indépendante de Preview qui
@@ -94,7 +99,7 @@ export interface PresentationStyle {
 
 // ── Defaults ────────────────────────────────────────────────────────────────
 
-export const DEFAULT_PROSE_MARK_STYLE: ProseMarkStyle = {
+export const DEFAULT_PROSE_STYLE: ProseStyle = {
   fontFamily: "fira-sans",
   customFontName: "",
   monoFont: "fira-code",
@@ -125,7 +130,7 @@ export const DEFAULT_PROSE_MARK_STYLE: ProseMarkStyle = {
   olLevel3: "lower-roman",
 };
 
-export const DEFAULT_PREVIEW_STYLE: PreviewStyle = { ...DEFAULT_PROSE_MARK_STYLE };
+export const DEFAULT_PREVIEW_STYLE: PreviewStyle = { ...DEFAULT_PROSE_STYLE };
 
 export const DEFAULT_PRINT_STYLE: PrintStyle = { ...DEFAULT_PREVIEW_STYLE };
 
@@ -185,16 +190,6 @@ function gapFill<T extends object>(stored: T, defaults: T): T {
   return { ...def, ...valid } as T;
 }
 
-function createProseMarkSettings() {
-  const stored = persistedState<ProseMarkStyle>(STORAGE_KEYS.proseMarkStyle, { ...DEFAULT_PROSE_MARK_STYLE });
-  stored.current = gapFill(stored.current, DEFAULT_PROSE_MARK_STYLE);
-  return {
-    get current() { return stored.current; },
-    patch(partial: Partial<ProseMarkStyle>) { stored.current = { ...stored.current, ...partial }; },
-    reset() { stored.current = { ...DEFAULT_PROSE_MARK_STYLE }; },
-  };
-}
-
 function createPreviewSettings() {
   const stored = persistedState<PreviewStyle>(STORAGE_KEYS.previewStyle, { ...DEFAULT_PREVIEW_STYLE });
   stored.current = gapFill(stored.current, DEFAULT_PREVIEW_STYLE);
@@ -240,7 +235,6 @@ function createCsvSettings() {
 
 // ── Exports ─────────────────────────────────────────────────────────────────
 
-export const proseMarkSettings = createProseMarkSettings();
 export const previewSettings = createPreviewSettings();
 export const printSettings = createPrintSettings();
 export const presentationSettings = createPresentationSettings();

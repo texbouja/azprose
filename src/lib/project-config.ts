@@ -1,8 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { joinPath } from "./files";
-import type { ProseMarkStyle, PreviewStyle, PrintStyle, PresentationStyle } from "@/stores/markdown-settings.svelte";
+import type { PreviewStyle, PrintStyle, PresentationStyle } from "@/stores/markdown-settings.svelte";
 import type { SlideMode } from "@/stores/slide-settings.svelte";
-import type { DefaultEditorMode } from "@/stores/general-settings.svelte";
 import type { TypographySettings } from "./typography";
 import type { CalloutDef } from "@/stores/callout-settings.svelte";
 import type { LatexSettings } from "@/stores/latex-settings.svelte";
@@ -12,7 +11,6 @@ import type { CollesSettings } from "@/stores/colles-settings.svelte";
 // ── Nested config sections (mirror Settings Overlay hierarchy) ──────────────
 
 export interface ApplicationConfig {
-  defaultMode?: DefaultEditorMode | null;
   vim?: boolean | null;
   typography?: TypographySettings | null;
   uiFontFamily?: string | null;
@@ -26,10 +24,6 @@ export interface EditorConfig {
   tabSize?: number | null;
   lineNumbers?: boolean | null;
   lineWrapping?: boolean | null;
-}
-
-export interface ProseMarkConfig {
-  style?: ProseMarkStyle | null;
 }
 
 export interface PreviewConfig {
@@ -59,7 +53,6 @@ export interface MathConfig {
 export interface ProjectConfig {
   application?: ApplicationConfig;
   editor?: EditorConfig;
-  proseMark?: ProseMarkConfig;
   preview?: PreviewConfig;
   print?: PrintConfig;
   presentation?: PresentationConfig;
@@ -76,9 +69,13 @@ export interface ProjectConfig {
 // ── Schema — validates nested sections ──────────────────────────────────────
 
 const SECTION_SCHEMAS: Record<string, Record<string, string>> = {
+  // `defaultMode` et la section `proseMark` sont des RESTES du mode WYSIWYM
+  // (retiré le 2026-08-19) : ils restent tolérés pour qu'un fichier de projet
+  // écrit avant ne déclenche pas d'avertissement à l'ouverture. Leur contenu
+  // est simplement ignoré.
   application: { defaultMode: "string", vim: "boolean", typography: "object", uiFontFamily: "string", uiMonoFamily: "string" },
   editor: { fontFamily: "string", customFontName: "string", fontSize: "number", tabSize: "number", lineNumbers: "boolean", lineWrapping: "boolean" },
-  proseMark: { style: "object" },
+  proseMark: { style: "object" },  // toléré, ignoré (voir plus haut)
   preview: { style: "object" },
   print: { style: "object" },
   presentation: { style: "object", slideMode: "string" },

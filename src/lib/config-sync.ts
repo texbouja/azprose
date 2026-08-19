@@ -1,7 +1,6 @@
 import { saveProjectConfig, loadProjectConfig, sectionMath, type ProjectConfig } from "@/lib/project-config"
 import { saveProjectUi, loadProjectUi, type ProjectUi } from "@/lib/project-ui"
-import { generalSettings } from "@/stores/general-settings.svelte"
-import { proseMarkSettings, previewSettings, printSettings, presentationSettings, DEFAULT_PROSE_MARK_STYLE, DEFAULT_PREVIEW_STYLE, DEFAULT_PRINT_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte"
+import { previewSettings, printSettings, presentationSettings, DEFAULT_PREVIEW_STYLE, DEFAULT_PRINT_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte"
 import { slideSettings } from "@/stores/slide-settings.svelte"
 import { mathJaxPreamble, mathJaxPackages, mathJaxFont, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte"
 import { policeValide } from "@/lib/mathjax-font"
@@ -31,7 +30,6 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   const cfg: ProjectConfig = {};
 
   const app: import("@/lib/project-config").ApplicationConfig = {};
-  if (generalSettings.defaultEditorMode !== "prose") app.defaultMode = generalSettings.defaultEditorMode;
   if (ctx.vimOn) app.vim = true;
   if (JSON.stringify(ctx.typo) !== JSON.stringify(DEFAULT_TYPOGRAPHY)) app.typography = ctx.typo;
   if (Object.keys(app).length) cfg.application = app;
@@ -45,11 +43,6 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
   if (!es.lineNumbers) editor.lineNumbers = false;
   if (!es.lineWrapping) editor.lineWrapping = false;
   if (Object.keys(editor).length) cfg.editor = editor;
-
-  const pms = proseMarkSettings.current;
-  if (JSON.stringify(pms) !== JSON.stringify(DEFAULT_PROSE_MARK_STYLE)) {
-    cfg.proseMark = { style: pms };
-  }
 
   const pvs = previewSettings.current;
   if (JSON.stringify(pvs) !== JSON.stringify(DEFAULT_PREVIEW_STYLE)) {
@@ -143,7 +136,6 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
   ]);
 
   const app = cfg.application;
-  if (app?.defaultMode != null) generalSettings.defaultEditorMode = app.defaultMode;
   if (app?.vim != null) deps.vimOn.current = app.vim;
   if (app?.typography != null) deps.typography.current = { ...DEFAULT_TYPOGRAPHY, ...app.typography };
 
@@ -168,7 +160,6 @@ export async function loadConfig(root: string, deps: LoadConfigDeps): Promise<st
     if (Object.keys(patch).length) editorSettings.patch(patch);
   }
 
-  if (cfg.proseMark?.style) proseMarkSettings.patch(cfg.proseMark.style);
   if (cfg.preview?.style) previewSettings.patch(cfg.preview.style);
   if (cfg.print?.style) printSettings.patch(cfg.print.style);
   if (cfg.presentation?.style) presentationSettings.patch(cfg.presentation.style);
