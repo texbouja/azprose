@@ -1,53 +1,200 @@
-/* CM6 search / find-replace panel — overrides baseTheme via plain CSS */
-.mdv-editor .cm-panel.cm-search {
-  background: var(--surface);
-  color: var(--fg);
-  border-bottom: 1px solid var(--border);
-  box-shadow: var(--shadow-soft);
-  padding: 4px 8px;
+/* ── Panneau de recherche de l'éditeur ───────────────────────────────────────
+   Balisage : `src/lib/editor-search-panel.ts` (le panneau de CodeMirror est
+   remplacé, pas rhabillé — il n'a ni compteur ni mise en page compacte).
+
+   Le panneau FLOTTE au-dessus du texte, en haut à GAUCHE : le coin haut droit
+   de l'onglet porte le menu d'actions, qui doit rester atteignable pendant une
+   recherche. D'où la neutralisation de la réservation de place que CodeMirror
+   applique par défaut à ses panneaux. */
+
+.mdv-editor .cm-panels {
+  background: transparent;
+  border: 0;
+  color: inherit;
 }
 
-.mdv-editor .cm-panel.cm-search .cm-textfield {
-  background: color-mix(in srgb, var(--fg) 5%, var(--surface));
+/* Le conteneur de panneaux ne pousse plus le texte vers le bas : il se pose
+   par-dessus. `pointer-events` est rendu au panneau lui-même, sinon la bande
+   transparente intercepterait les clics dans le document. */
+.mdv-editor .cm-panels.cm-panels-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: auto;
+  z-index: 5;
+  border-bottom: 0;
+  pointer-events: none;
+}
+
+.mdv-find {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 6px 0 0 8px;
+  padding: 4px 6px 4px 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-soft, 0 4px 14px rgb(0 0 0 / 0.18));
+  font-family: var(--font-ui);
+  font-size: 12px;
   color: var(--fg);
+}
+
+.mdv-find__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mdv-find__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* La ligne « remplacer » n'existe qu'une fois dépliée — sa place n'est pas
+   réservée, le panneau reste d'une seule ligne le plus souvent. */
+.mdv-find__row--replace {
+  display: none;
+}
+
+.mdv-find.is-replacing .mdv-find__row--replace {
+  display: flex;
+}
+
+/* Champ + compteur + options dans une seule boîte encadrée, comme VS Code :
+   c'est ce qui rend la barre compacte plutôt qu'une file de contrôles. */
+.mdv-find__box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 2px 6px;
-  font-family: var(--font-mono);
-  font-size: var(--writing-font-size);
-  outline: none;
 }
 
-.mdv-editor .cm-panel.cm-search .cm-textfield:focus {
+.mdv-find__box:focus-within {
   border-color: var(--accent);
 }
 
-.mdv-editor .cm-panel.cm-search .cm-button {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+.mdv-find__input {
+  width: 180px;
+  padding: 3px 2px;
+  background: transparent;
+  border: 0;
+  outline: none;
   color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 8px;
   font-family: var(--font-mono);
-  font-size: 0.85em;
+  font-size: 12px;
+}
+
+.mdv-find__input::placeholder {
+  color: var(--muted);
+}
+
+/* Motif d'expression régulière invalide : le champ le dit, sans message —
+   l'utilisateur est en train de le taper. */
+.mdv-find__input.is-invalid {
+  color: var(--color-error);
+}
+
+.mdv-find__count {
+  flex: none;
+  min-width: 3.5em;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mdv-find__count.is-empty {
+  color: var(--color-error);
+}
+
+.mdv-find__options {
+  display: flex;
+  gap: 1px;
+}
+
+/* Aa / ab / .* — bascules d'option. Actives, elles prennent l'accent : c'est
+   le seul repère qui dit que la recherche n'est pas « ordinaire ». */
+.mdv-find__opt {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.mdv-editor .cm-panel.cm-search .cm-button:hover {
+.mdv-find__opt:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+.mdv-find__opt.is-on {
   background: color-mix(in srgb, var(--accent) 25%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--fg);
 }
 
-.mdv-editor .cm-panel.cm-search label {
-  font-size: 0.85em;
+.mdv-find__nav,
+.mdv-find__toggle {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
   color: var(--muted);
-  margin: 0 4px;
+  font-size: 12px;
+  cursor: pointer;
 }
 
-.mdv-editor .cm-panel.cm-search .cm-searchMatch {
-  background: color-mix(in srgb, var(--color-warning, #f9e2af) 35%, transparent);
+.mdv-find__nav:hover,
+.mdv-find__toggle:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* Le chevron de dépli tourne, comme partout ailleurs dans l'application. */
+.mdv-find__toggle {
+  align-self: stretch;
+  height: auto;
+  transition: transform 0.12s ease;
+}
+
+.mdv-find.is-replacing .mdv-find__toggle {
+  transform: rotate(90deg);
+}
+
+.mdv-find__nav i,
+.mdv-find__toggle i {
+  font-size: 13px;
+}
+
+.mdv-find :focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ── Correspondances dans le texte ───────────────────────────────────────── */
+.mdv-editor .cm-searchMatch {
+  background: color-mix(in srgb, var(--color-warning, #f9e2af) 32%, transparent);
   border-radius: 2px;
 }
 
-.mdv-editor .cm-panel.cm-search .cm-searchMatch.cm-searchMatch-selected {
-  background: color-mix(in srgb, var(--accent) 40%, transparent);
+.mdv-editor .cm-searchMatch.cm-searchMatch-selected {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
 }

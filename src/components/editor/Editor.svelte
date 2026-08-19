@@ -5,6 +5,9 @@ import { EditorView, keymap, highlightActiveLine, drawSelection } from "@codemir
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, syntaxHighlighting } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
+import { creerPanneauRecherche } from "@/lib/editor-search-panel";
+import { getT, language as langueUi } from "@/lib/i18n";
+import { get } from "svelte/store";
 import { languageFromExt, mdHighlight, buildTheme } from "@/lib/editor-languages";
 import { calloutCompletionSource } from "@/lib/callout-completion";
 import { calloutSettings } from "@/stores/callout-settings.svelte";
@@ -77,6 +80,26 @@ const mdCalloutSource = calloutCompletionSource(() =>
 );
 const mdCompletions = [mdCalloutSource];
 
+/** Libellés du panneau de recherche, lus au MONTAGE du panneau : il se
+ *  recrée à chaque ouverture, la langue courante est donc toujours la bonne. */
+function libellesRecherche() {
+  const t = getT(get(langueUi));
+  return {
+    find: t("find.find"),
+    replace: t("find.replace"),
+    noResults: t("find.noResults"),
+    matchCase: t("find.matchCase"),
+    wholeWord: t("find.wholeWord"),
+    regexp: t("find.regexp"),
+    previous: t("find.previous"),
+    next: t("find.next"),
+    close: t("find.close"),
+    replaceOne: t("find.replaceOne"),
+    replaceAll: t("find.replaceAll"),
+    toggleReplace: t("find.toggleReplace"),
+  };
+}
+
 onMount(() => {
   langCompartment = new Compartment();
   lspCompartment = new Compartment();
@@ -92,7 +115,9 @@ onMount(() => {
       syntaxHighlighting(mdHighlight, { fallback: true }),
       langCompartment.of(languageFromExt(language, mdCompletions)),
       lspCompartment.of(lspClient && filePath ? lspClient.plugin(toFileUri(filePath)) : []),
-      search({ top: true }),
+      // Panneau à nous : compact, en coin, avec le compteur de correspondances
+      // que CodeMirror n'expose pas (cf. `lib/editor-search-panel.ts`).
+      search({ top: true, createPanel: (v) => creerPanneauRecherche(v, libellesRecherche()) }),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
       buildTheme(),
       EditorView.updateListener.of((update) => {
