@@ -36,15 +36,10 @@ export default defineConfig(async () => ({
         main: path.resolve(__dirname, "index.html"),
         nav: path.resolve(__dirname, "nav.html"),
       },
-      output: {
-        manualChunks(id) {
-          if (id.includes("/node_modules/mathjax/")) return "mathjax";
-          // Les polices mathématiques vivent dans leurs propres paquets
-          // (`@mathjax/mathjax-<nom>-font`) : sans cette règle, celle de Fira
-          // atterrirait dans un chunk quelconque au lieu du sien.
-          if (id.includes("/node_modules/@mathjax/")) return "mathjax-font";
-        },
-      },
+      // Plus aucune règle de chunk pour MathJax : le moteur n'est PLUS
+      // empaqueté du tout. Il est servi depuis `public/mathjax/` et chargé par
+      // balise `<script>` (cf. `lib/mathjax-charger.ts`) — l'empaqueter empêche
+      // son démarrage en production, mesuré le 2026-08-19.
     },
   },
 

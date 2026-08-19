@@ -11,7 +11,7 @@
  * `shell/boot.ts`) : c'est le moteur qui lit cet objet à son chargement.
  */
 
-import { policeValide, type MathJaxFont } from "@/lib/mathjax-font";
+import { policeValide, scriptLocal, type MathJaxFont } from "@/lib/mathjax-font";
 // Import DIRECT, pas par le baril `@/lib` : ce module est chargé au démarrage,
 // avant tout le reste, et le baril entraînerait la moitié de l'application.
 import { STORAGE_KEYS } from "@/lib/storage";
@@ -38,20 +38,32 @@ export function policeDemandee(): MathJaxFont {
 /**
  * Charge le moteur, une seule fois par fenêtre.
  *
- * Les deux polices ne se chargent pas par le même fichier : `tex-svg.js`
- * embarque New Computer Modern en entier, alors que Fira arrive par le fichier
- * combiné de son propre paquet, qui laisse six plages de glyphes se charger à
- * la demande depuis `public/mathjax-fonts/` (cf. `mathjax-font.ts`).
+ * Par BALISE `<script>`, jamais par `import` : un moteur MathJax ne survit pas
+ * à l'empaquetage (voir `scriptLocal` — le démarrage n'aboutit pas et le
+ * document reste en LaTeX brut). Le fichier est un actif servi, déposé par
+ * `bun run mathjax`.
  *
- * Les deux chemins sont des imports STATIQUEMENT ANALYSABLES : Vite en fait
- * deux chunks distincts, et seul celui de la police retenue est téléchargé.
+ * Les deux polices arrivent par deux fichiers différents : `tex-svg.js`
+ * embarque New Computer Modern en entier, tandis que Fira laisse six plages de
+ * glyphes se charger à la demande depuis `public/mathjax-fonts/`.
  */
 export function chargerMathJax(): Promise<void> {
   if (!charge) {
-    charge =
-      policeDemandee() === "fira"
-        ? import("@mathjax/mathjax-fira-font/tex-mml-svg-mathjax-fira.js").then(() => undefined)
-        : import("mathjax/tex-svg.js").then(() => undefined);
+    charge = new Promise<void>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = scriptLocal(policeDemandee());
+      script.async = true;
+      script.addEventListener("load", () => resolve(), { once: true });
+      // Un moteur absent n'est PAS silencieux : sans cela, l'appelant
+      // attendrait une promesse qui ne se résout jamais — exactement le
+      // symptôme qu'on vient de corriger.
+      script.addEventListener(
+        "error",
+        () => reject(new Error(`moteur MathJax introuvable : ${script.src}`)),
+        { once: true },
+      );
+      document.head.appendChild(script);
+    });
   }
   return charge;
 }

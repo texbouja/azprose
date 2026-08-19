@@ -64,6 +64,27 @@ export function nomInterne(police: MathJaxFont): string {
 }
 
 /**
+ * Moteur servi par l'application, pour la police demandée.
+ *
+ * ⚠️ **MathJax n'est JAMAIS empaqueté.** Ces fichiers combinés sont des bundles
+ * UMD déjà minifiés : enveloppés par Rolldown en module à fabrique, le
+ * démarrage du moteur n'aboutit pas — `MathJax.startup.promise` ne se résout
+ * jamais, aucune formule n'est composée, et le document affiche son LaTeX
+ * brut. Mesuré en production le 2026-08-19 sur la police Fira ; le même fichier
+ * chargé par balise `<script>` fonctionne, extensions et plages comprises.
+ *
+ * Ils sont donc déposés dans `public/mathjax/` par `bun run mathjax`, au même
+ * titre que les extensions TeX et SRE — que l'application chargeait déjà ainsi.
+ * Bénéfice second : MathJax retrouve sa propre base d'URL par la balise, au lieu
+ * de dépendre entièrement de `loader.paths`.
+ */
+export function scriptLocal(police: MathJaxFont): string {
+  return police === "fira"
+    ? "/mathjax/tex-mml-svg-mathjax-fira.js"
+    : "/mathjax/tex-svg.js";
+}
+
+/**
  * Script MathJax des documents HORS application (impression, export PDF).
  *
  * Variante `-nofont` : le moteur sans aucune police, la police étant nommée
