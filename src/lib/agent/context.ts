@@ -143,7 +143,13 @@ l'utilisateur peut en charger un de plus avec \`/ajouter\`.
 **Désigne toujours un programme par son \`id\`** (celui que rend
 \`azprose_programme_lister\`) : une filière seule en désigne plusieurs, et
 l'outil refuse alors de choisir à ta place. Ne construis jamais un chemin de
-fichier à partir d'un \`id\` — ils ne coïncident pas.`);
+fichier à partir d'un \`id\` — ils ne coïncident pas.
+
+Les matières se désignent par un **code de quatre lettres, sans accent** :
+\`math\`, \`phys\`, \`chim\`, \`info\`, \`scii\`. Tout autre texte est refusé.
+Quand un argument ne correspond à rien, l'outil rend une suggestion :
+**propose-la à l'utilisateur et attends sa réponse**, ne choisis jamais à sa
+place.`);
   }
 
   return parts.join("\n\n") + "\n";
@@ -184,14 +190,19 @@ export function buildAgentConfig(instructionsPath: string): Record<string, unkno
         // désigne cinq programmes, dont le premier était rendu au hasard.
         // Un `id` est ASCII, exact, et vient de l'outil lui-même.
         template:
-          "1. Appelle `azprose_programme_lister`." +
-          " 2. Trouve dans la liste le programme dont la filière contient « $1 »" +
-          " et dont la matière correspond à « $2 » (vide = demande à" +
-          " l'utilisateur laquelle il veut, ne choisis pas)." +
+          "Arguments attendus : $1 = filière (MPSI, MP2I, MP, MPI, PCSI, PC," +
+          " PSI, PT, PTSI…), $2 = code de matière, EXACTEMENT l'un de :" +
+          " math, phys, chim, info, scii. Quatre lettres, sans accent." +
+          " Rien d'autre n'est accepté." +
+          " 1. Appelle `azprose_programme_lister`." +
+          " 2. Repère le programme dont la filière contient « $1 » et dont la" +
+          " matière correspond au code « $2 »." +
           " 3. Appelle `azprose_programme_charger` avec le champ `id` de ce" +
           " programme — et RIEN d'autre." +
           " 4. Résume en trois lignes son périmètre et ses limites principales." +
-          " Si aucun programme ne correspond, dis-le et montre la liste.",
+          " Si un argument ne correspond à rien, NE DEVINE PAS : propose à" +
+          " l'utilisateur la correction la plus proche (l'outil te la suggère)" +
+          " et attends sa confirmation. Si $2 est vide, demande-lui la matière.",
       },
     },
   };

@@ -101,7 +101,13 @@ pub struct Programme {
 /// comparaison ASCII stricte les déclarait différents, et la matière demandée
 /// était silencieusement ignorée (transcription du 2026-08-19).
 pub fn meme_libelle(a: &str, b: &str) -> bool {
-    fn plie(s: &str) -> String {
+    plier(a) == plier(b)
+}
+
+/// Forme comparable d'un libellé : minuscules, sans accent ni séparateur.
+pub fn plier(s: &str) -> String {
+    {
+        fn plie(s: &str) -> String {
         s.chars()
             .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
             .flat_map(|c| {
@@ -117,9 +123,10 @@ pub fn meme_libelle(a: &str, b: &str) -> bool {
                 }
                 .to_lowercase()
             })
-            .collect()
+                .collect()
+        }
+        plie(s)
     }
-    plie(a) == plie(b)
 }
 
 impl Programme {
@@ -138,6 +145,57 @@ impl Programme {
         };
         f && m && n
     }
+}
+
+// ── Vocabulaire des matières ────────────────────────────────────────────────
+
+/// Codes de matière acceptés par les outils — **quatre lettres, sans accent**.
+///
+/// Un vocabulaire FERMÉ plutôt qu'un texte libre : l'argument venait de ce que
+/// l'utilisateur avait tapé (« mathématiques »), traversait l'appel d'outil en
+/// JSON, et s'y faisait tronquer. Cinq codes ASCII n'ont ni accent, ni pluriel,
+/// ni variante — il n'y a plus rien à deviner.
+///
+/// `(code, libellé du corpus, alias reconnus pour SUGGÉRER une correction)`
+pub const MATIERES: &[(&str, &str, &[&str])] = &[
+    ("math", "mathematiques", &["mathematiques", "maths", "mathematique", "m"]),
+    ("phys", "physique", &["physique", "physiques", "p"]),
+    ("chim", "chimie", &["chimie", "chimies", "c"]),
+    ("info", "informatique", &["informatique", "informatiques", "algo", "i"]),
+    ("scii", "sciences industrielles", &["sciencesindustrielles", "si", "sii", "industrielles"]),
+];
+
+/// Libellé du corpus pour un code EXACT. `None` si le code est inconnu —
+/// aucune tolérance ici, c'est le principe du vocabulaire fermé.
+pub fn matiere_depuis_code(code: &str) -> Option<&'static str> {
+    MATIERES
+        .iter()
+        .find(|(c, _, _)| *c == code.trim())
+        .map(|(_, libelle, _)| *libelle)
+}
+
+/// Code le plus plausible pour une saisie hors vocabulaire — de quoi PROPOSER
+/// une correction plutôt que de refuser sèchement.
+///
+/// Aucune tolérance à l'exécution : cette fonction ne sert qu'à formuler la
+/// suggestion, jamais à sélectionner un programme.
+pub fn suggerer_matiere(saisie: &str) -> Option<&'static str> {
+    let s = saisie.trim();
+    if s.is_empty() {
+        return None;
+    }
+    MATIERES
+        .iter()
+        .find(|(code, libelle, alias)| {
+            meme_libelle(code, s)
+                || meme_libelle(libelle, s)
+                || alias.iter().any(|a| meme_libelle(a, s))
+                // Une saisie plus longue qui COMMENCE par le libellé attendu :
+                // « mathematiques appliquees » suggère `math`.
+                || plier(s).starts_with(&plier(libelle))
+                || plier(libelle).starts_with(&plier(s))
+        })
+        .map(|(code, _, _)| *code)
 }
 
 /// Résultat d'une sélection de programme.
@@ -1149,5 +1207,59 @@ niveau: 2
     fn sans_critere_aucun_programme() {
         let c = corpus();
         assert!(matches!(selectionner(&c, None, None, None, None), Selection::Aucun));
+    }
+
+    // ── Vocabulaire fermé des matières ─────────────────────────────────────
+
+    #[test]
+    fn les_codes_font_quatre_lettres_et_sont_ascii() {
+        for (code, _, _) in MATIERES {
+            assert_eq!(code.len(), 4, "code « {code} » : quatre lettres attendues");
+            assert!(code.is_ascii(), "code « {code} » : pas d'accent dans le vocabulaire");
+        }
+    }
+
+    #[test]
+    fn un_code_exact_donne_le_libelle_du_corpus() {
+        assert_eq!(matiere_depuis_code("math"), Some("mathematiques"));
+        assert_eq!(matiere_depuis_code("scii"), Some("sciences industrielles"));
+    }
+
+    #[test]
+    fn hors_vocabulaire_aucune_tolerance() {
+        // Le principe du vocabulaire fermé : « mathématiques » n'est PAS un
+        // code, même s'il désigne clairement la matière. Il sera suggéré, pas
+        // accepté.
+        assert_eq!(matiere_depuis_code("mathématiques"), None);
+        assert_eq!(matiere_depuis_code("Math"), None);
+        assert_eq!(matiere_depuis_code("maths"), None);
+    }
+
+    #[test]
+    fn la_suggestion_rattrape_ce_que_l_utilisateur_a_tape() {
+        assert_eq!(suggerer_matiere("mathématiques"), Some("math"));
+        assert_eq!(suggerer_matiere("Maths"), Some("math"));
+        assert_eq!(suggerer_matiere("physique"), Some("phys"));
+        assert_eq!(suggerer_matiere("sciences industrielles"), Some("scii"));
+        assert_eq!(suggerer_matiere("SI"), Some("scii"));
+        assert_eq!(suggerer_matiere("informatique"), Some("info"));
+    }
+
+    #[test]
+    fn une_saisie_sans_rapport_ne_suggere_rien() {
+        // Suggérer au hasard serait pire que se taire : le modèle proposerait
+        // une correction absurde à l'utilisateur.
+        assert_eq!(suggerer_matiere("cuisine"), None);
+        assert_eq!(suggerer_matiere(""), None);
+    }
+
+    #[test]
+    fn chaque_libelle_du_vocabulaire_existe_dans_le_corpus() {
+        // Garde-fou : un libellé mal orthographié ici ne sélectionnerait
+        // jamais rien, en silence.
+        let corpus_labels = ["mathematiques", "physique", "chimie", "informatique", "sciences industrielles"];
+        for (_, libelle, _) in MATIERES {
+            assert!(corpus_labels.contains(libelle), "libellé inconnu du corpus : {libelle}");
+        }
     }
 }

@@ -204,11 +204,18 @@ impl AzproseTools {
     pub async fn programme_charger(&self, params: Parameters<CibleProgramme>) -> String {
         let CibleProgramme { id, filiere, matiere, niveau } = params.0;
         let programmes = self.programmes();
+        // Vocabulaire FERMÉ : un code hors liste est refusé, avec la
+        // correction la plus plausible. Le modèle la propose à l'utilisateur
+        // au lieu de deviner — c'est lui qui sait ce qu'il voulait.
+        let matiere = match code_matiere(matiere.as_deref()) {
+            Ok(m) => m,
+            Err(refus) => return refus,
+        };
         match programmes::selectionner(
             &programmes,
             id.as_deref(),
             filiere.as_deref(),
-            matiere.as_deref(),
+            matiere,
             niveau.as_deref(),
         ) {
             programmes::Selection::Unique(p) => serde_json::json!({
@@ -283,13 +290,17 @@ impl AzproseTools {
     pub async fn programme_contraintes(&self, params: Parameters<CibleProgramme>) -> String {
         let CibleProgramme { id, filiere, matiere, niveau } = params.0;
         let liste = self.programmes();
+        let matiere = match code_matiere(matiere.as_deref()) {
+            Ok(m) => m,
+            Err(refus) => return refus,
+        };
         // Même sélection que `programme_charger` : un seul comportement à
         // comprendre pour le modèle, et jamais de choix arbitraire.
         match programmes::selectionner(
             &liste,
             id.as_deref(),
             filiere.as_deref(),
-            matiere.as_deref(),
+            matiere,
             niveau.as_deref(),
         ) {
             programmes::Selection::Unique(p) => serde_json::json!({
@@ -321,6 +332,36 @@ impl AzproseTools {
 
 /// Argument commun aux outils de programme : la filière est obligatoire, le
 /// reste affine.
+/// Traduit un code de matière en libellé du corpus.
+///
+/// `Ok(None)` = aucune matière demandée (toutes). `Err(json)` = code hors
+/// vocabulaire : la réponse porte la liste des codes valides et la correction
+/// la plus plausible, à SOUMETTRE à l'utilisateur.
+fn code_matiere(saisi: Option<&str>) -> Result<Option<&'static str>, String> {
+    let Some(code) = saisi.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    if let Some(libelle) = programmes::matiere_depuis_code(code) {
+        return Ok(Some(libelle));
+    }
+    let suggestion = programmes::suggerer_matiere(code);
+    Err(serde_json::json!({
+        "trouve": false,
+        "raison": match suggestion {
+            Some(c) => format!(
+                "« {code} » n'est pas un code de matière. Voulais-tu dire « {c} » ? \
+Demande confirmation à l'utilisateur avant de rappeler l'outil."
+            ),
+            None => format!("« {code} » n'est pas un code de matière."),
+        },
+        "suggestion": suggestion,
+        "matieres_valides": programmes::MATIERES.iter()
+            .map(|(code, libelle, _)| serde_json::json!({ "code": code, "matiere": libelle }))
+            .collect::<Vec<_>>(),
+    })
+    .to_string())
+}
+
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct CibleProgramme {
@@ -332,7 +373,9 @@ pub struct CibleProgramme {
     /// Filière visée (ex. « MP », « MPSI »). Utilisée seulement sans `id`.
     /// Attention : une filière seule désigne souvent plusieurs programmes.
     pub filiere: Option<String>,
-    /// Matière (ex. « mathematiques »). Accents et casse indifférents.
+    /// Code de matière — EXACTEMENT l'un de : `math`, `phys`, `chim`, `info`,
+    /// `scii`. Quatre lettres, sans accent. Tout autre texte est refusé, avec
+    /// une suggestion. Omettre ce champ = toutes les matières.
     pub matiere: Option<String>,
     /// Niveau (« 1 » ou « 2 »). Facultatif.
     pub niveau: Option<String>,

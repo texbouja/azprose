@@ -174,7 +174,7 @@ describe("noms d'outils exposés au modèle", () => {
 
   test("les instructions ne nomment aucun outil sans le préfixe du serveur", () => {
     const txt = buildAgentInstructions("/vault", {
-      programmes: [{ id: "math-mpsi", nom: "Mathématiques MPSI" }],
+      programmes: [{ filiere: "MPSI", matiere: "mathematiques", niveau: "1" }],
     });
     for (const o of OUTILS) {
       const sansPrefixe = new RegExp(String.raw`(?<![\w_])${o}(?![\w_])`);
@@ -199,5 +199,26 @@ describe("noms d'outils exposés au modèle", () => {
       .command.ajouter.template;
     expect(t).toMatch(/`id`/);
     expect(t.indexOf("azprose_programme_lister")).toBeLessThan(t.indexOf("azprose_programme_charger"));
+  });
+});
+
+describe("vocabulaire des matières", () => {
+  const CODES = ["math", "phys", "chim", "info", "scii"];
+
+  test("la commande /ajouter énumère les codes acceptés", () => {
+    const t = (buildAgentConfig("/tmp/i.md") as { command: { ajouter: { template: string } } })
+      .command.ajouter.template;
+    for (const c of CODES) expect(t).toContain(c);
+    // Le contrat est FERMÉ : le gabarit doit le dire, sinon le modèle
+    // improvise avec ce que l'utilisateur a tapé.
+    expect(t).toMatch(/EXACTEMENT|exactement/);
+  });
+
+  test("les instructions demandent de PROPOSER la correction, pas de deviner", () => {
+    const txt = buildAgentInstructions("/vault", {
+      programmes: [{ filiere: "MPSI", matiere: "mathematiques", niveau: "1" }],
+    });
+    for (const c of CODES) expect(txt).toContain(c);
+    expect(txt).toMatch(/propose-la à l'utilisateur/i);
   });
 });
