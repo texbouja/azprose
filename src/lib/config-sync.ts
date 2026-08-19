@@ -1,11 +1,11 @@
-import { saveProjectConfig, loadProjectConfig, type ProjectConfig } from "@/lib/project-config"
+import { saveProjectConfig, loadProjectConfig, sectionMath, type ProjectConfig } from "@/lib/project-config"
 import { saveProjectUi, loadProjectUi, type ProjectUi } from "@/lib/project-ui"
 import { generalSettings } from "@/stores/general-settings.svelte"
 import { proseMarkSettings, previewSettings, printSettings, presentationSettings, DEFAULT_PROSE_MARK_STYLE, DEFAULT_PREVIEW_STYLE, DEFAULT_PRINT_STYLE, DEFAULT_PRESENTATION_STYLE } from "@/stores/markdown-settings.svelte"
 import { slideSettings } from "@/stores/slide-settings.svelte"
 import { mathJaxPreamble, mathJaxPackages, mathJaxFont, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte"
-import { policeValide, MATHJAX_FONT_DEFAUT } from "@/lib/mathjax-font"
-import { espacementValide, MATH_SPACING_DEFAUT } from "@/lib/mathjax-spacing"
+import { policeValide } from "@/lib/mathjax-font"
+import { espacementValide } from "@/lib/mathjax-spacing"
 import { latexSettings } from "@/stores/latex-settings.svelte"
 import { calloutSettings } from "@/stores/callout-settings.svelte"
 import { programmesSelection } from "@/stores/programmes-selection.svelte"
@@ -70,12 +70,22 @@ export async function doConfigSync(ctx: ConfigSyncContext) {
     if (slideNonDefault) cfg.presentation.slideMode = slideSettings.mode;
   }
 
-  const math: import("@/lib/project-config").MathConfig = {};
-  if (mathJaxPreamble.current) math.preamble = mathJaxPreamble.current;
-  if (mathJaxPackages.current.length) math.packages = mathJaxPackages.current;
-  if (mathJaxFont.current !== MATHJAX_FONT_DEFAUT) math.font = mathJaxFont.current;
-  if (mathJaxSpacing.current !== MATH_SPACING_DEFAUT) math.spacing = mathJaxSpacing.current;
-  if (Object.keys(math).length) cfg.math = math;
+  // ⚠️ Les réglages mathématiques sont écrits MÊME à leur valeur par défaut, et
+  // même vides.
+  //
+  // La règle « n'écrire que ce qui diffère du défaut » rend le RETOUR au défaut
+  // impossible : le fichier garde l'ancienne valeur, et `loadConfig` la
+  // réimpose à chaque ouverture du projet. Signalé le 2026-08-19 — après un
+  // passage à Fira Math, revenir à New Computer Modern ne tenait ni au
+  // redémarrage ni au relancement complet, le réglage se remettait tout seul.
+  // Le même piège valait pour un préambule effacé et pour des paquets
+  // décochés : ils revenaient au démarrage suivant.
+  cfg.math = sectionMath(
+    mathJaxPreamble.current,
+    mathJaxPackages.current,
+    mathJaxFont.current,
+    mathJaxSpacing.current,
+  );
 
   const ls = latexSettings.current;
   if (ls.engine !== "pdflatex" || ls.shellEscape || ls.outputDir !== "output" || ls.auxDir !== "auxdir" || ls.maxRuns !== 5 || ls.bibtex !== "auto") {

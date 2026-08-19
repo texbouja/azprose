@@ -114,6 +114,25 @@ function validateSection(obj: Record<string, unknown>, schema: Record<string, st
   return true;
 }
 
+/**
+ * Section `math` du fichier de projet — TOUJOURS COMPLÈTE.
+ *
+ * Aucune clé n'est omise, pas même à sa valeur par défaut ou vide. La règle
+ * inverse (« n'écrire que ce qui diffère du défaut ») rend le retour au défaut
+ * IMPOSSIBLE : le fichier conserve l'ancienne valeur et `loadConfig` la
+ * réimpose à chaque ouverture du projet. Constaté le 2026-08-19 — après un
+ * passage à Fira Math, revenir à New Computer Modern ne tenait ni au
+ * redémarrage ni au relancement complet.
+ */
+export function sectionMath(
+  preamble: string,
+  packages: string[],
+  font: string,
+  spacing: string,
+): MathConfig {
+  return { preamble, packages, font, spacing };
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 export function configPath(root: string): string {
