@@ -825,6 +825,125 @@ pub fn contraintes_de(p: &Programme, numero: &str) -> Vec<Contrainte> {
         .collect()
 }
 
+// ── Recherche de sections ───────────────────────────────────────────────────
+
+/// Mots trop fréquents pour discriminer quoi que ce soit. Sans eux, « les
+/// suites » remonterait tout le document par la grâce de « les ».
+const MOTS_VIDES: &[&str] = &[
+    "au", "aux", "avec", "ce", "ces", "dans", "de", "des", "du", "en", "est",
+    "et", "il", "la", "le", "les", "ne", "on", "ou", "par", "pas", "pour",
+    "que", "qui", "sa", "se", "ses", "son", "sur", "un", "une",
+];
+
+/// Poids d'une occurrence au titre. Un titre nomme le sujet de la section ;
+/// une occurrence dans le corps ne fait que l'évoquer.
+const POIDS_TITRE: u32 = 10;
+
+/// Plafond du poids, pour qu'il ne déborde jamais sur le nombre de termes
+/// distincts — celui-ci prime, toujours.
+const PLAFOND_POIDS: u32 = 999;
+
+/// Découpe un texte en mots comparables : pliés comme les libellés (accents,
+/// casse), débarrassés des mots vides et des lettres isolées — le corpus est
+/// plein de « a) », « b) » et de commandes LaTeX à une lettre.
+///
+/// Le trait d'union sépare : « oxydo-réduction » donne deux mots.
+fn mots(texte: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for brut in texte.split(|c: char| !c.is_alphanumeric()) {
+        retenir(&mut out, brut);
+    }
+    out
+}
+
+/// Mots du DOCUMENT — comme `mots`, plus la forme collée des composés.
+///
+/// Dissymétrie voulue : le corpus écrit « oxydo-réduction », l'utilisateur tape
+/// « oxydoréduction ». Indexer les deux formes côté document les rapproche ;
+/// le faire aussi côté requête gonflerait au contraire le nombre de termes
+/// distincts, qui est le premier critère du classement.
+fn mots_indexes(texte: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for brut in texte.split(|c: char| !c.is_alphanumeric() && c != '-') {
+        if brut.contains('-') {
+            // `plier` retire le trait d'union : la forme collée en découle.
+            retenir(&mut out, brut);
+        }
+        for partie in brut.split('-') {
+            retenir(&mut out, partie);
+        }
+    }
+    out
+}
+
+/// Plie un mot brut et le retient s'il discrimine quelque chose.
+fn retenir(out: &mut Vec<String>, brut: &str) {
+    let m = plier(brut);
+    if m.len() > 1 && !MOTS_VIDES.contains(&m.as_str()) {
+        out.push(m);
+    }
+}
+
+/// Un mot du document répond à un terme de la requête s'il lui est égal ou
+/// s'il le prolonge — « suites » répond à « suite ». Le seuil de quatre
+/// lettres empêche un terme court d'attraper des mots sans rapport.
+fn repond(mot: &str, terme: &str) -> bool {
+    mot == terme || (terme.len() >= 4 && mot.starts_with(terme))
+}
+
+/// Sections d'un programme qui traitent d'une requête, les mieux notées
+/// d'abord, avec leur note.
+///
+/// **Classement lexical, délibérément.** Le corpus fait 400 Ko, le découpage
+/// est DONNÉ par la structure du document et le vocabulaire d'un texte
+/// officiel est normalisé : des plongements n'y ajouteraient qu'une dépendance
+/// et une opacité. Si les paraphrases coincent à l'usage, seul le corps de
+/// cette fonction change — sa signature, elle, ne dit rien du classement.
+///
+/// Une requête sans correspondance rend une liste VIDE. Rendre « le moins
+/// mauvais » résultat ferait rédiger le modèle sur une section hors sujet,
+/// avec les contraintes d'une autre notion.
+pub fn chercher(p: &Programme, requete: &str, max: usize) -> Vec<(SectionProgramme, u32)> {
+    let termes = mots(requete);
+    if termes.is_empty() || max == 0 {
+        return Vec::new();
+    }
+
+    let mut notes: Vec<(SectionProgramme, u32)> = plan(p)
+        .into_iter()
+        .filter_map(|s| {
+            let titre = mots_indexes(&s.titre);
+            // Le corps PROPRE, titre exclu : le compter deux fois fausserait
+            // la pondération, et inclure les sous-sections ferait remonter
+            // toute parente devant ses propres enfants.
+            let bloc = &p.contenu[s.debut..s.fin_corps];
+            let corps = mots_indexes(bloc.split_once('\n').map(|(_, reste)| reste).unwrap_or(""));
+
+            let mut distincts = 0u32;
+            let mut poids = 0u32;
+            for t in &termes {
+                let au_titre = titre.iter().filter(|m| repond(m, t)).count() as u32;
+                let au_corps = corps.iter().filter(|m| repond(m, t)).count() as u32;
+                if au_titre + au_corps > 0 {
+                    distincts += 1;
+                }
+                poids += au_titre * POIDS_TITRE + au_corps;
+            }
+            if distincts == 0 {
+                return None;
+            }
+            Some((s, distincts * (PLAFOND_POIDS + 1) + poids.min(PLAFOND_POIDS)))
+        })
+        .collect();
+
+    // À note égale, l'ordre du document tranche : le classement doit être le
+    // même d'un appel à l'autre, sans quoi une conversation reprise ne donne
+    // pas les mêmes sections.
+    notes.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.debut.cmp(&b.0.debut)));
+    notes.truncate(max);
+    notes
+}
+
 #[derive(Serialize)]
 pub struct Verdict {
     pub statut: String,
@@ -1695,5 +1814,158 @@ Corps propre du chapitre.
                 );
             }
         }
+    }
+}
+
+// ── Recherche de sections ───────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests_recherche {
+    use super::*;
+
+    const DOC: &str = r#"---
+id: test-recherche
+filiere: [TEST]
+matiere: mathematiques
+---
+
+# Programme de test
+
+## Suites numériques
+
+### a) Convergence
+
+- Une suite convergente est bornée.
+- Toute suite croissante et majorée converge.
+
+### b) Séries
+
+- Séries à termes positifs.
+- Critère de Riemann.
+
+### c) Séries semi-convergentes
+
+- Théorème d'Abel.
+
+## Intégration
+
+### a) Sommes de Riemann
+
+- Convergence des sommes vers l'intégrale.
+
+### b) Comparaison
+
+- Critère de Riemann.
+"#;
+
+    fn doc() -> Programme {
+        parse_programme(Path::new("/x/test-recherche.md"), DOC).unwrap()
+    }
+
+    fn adresses(requete: &str, max: usize) -> Vec<String> {
+        chercher(&doc(), requete, max).into_iter().map(|(s, _)| s.numero).collect()
+    }
+
+    #[test]
+    fn la_requete_accentuee_trouve_la_section() {
+        // L'utilisateur écrit « intégration » ; le pliage est le même que pour
+        // les libellés de matière, où l'accent avait déjà fait échouer la
+        // sélection en silence.
+        assert_eq!(adresses("intégration", 5), vec!["2"]);
+        assert_eq!(adresses("integration", 5), vec!["2"]);
+    }
+
+    #[test]
+    fn le_pluriel_ne_fait_pas_manquer_la_section() {
+        // « suites numériques » au titre, « suite » dans la question.
+        assert!(adresses("suite", 5).contains(&"1".to_string()));
+    }
+
+    #[test]
+    fn un_terme_au_titre_pese_plus_qu_au_corps() {
+        // « Convergence » titre la section 1.1 ; la 2.1 ne fait que l'employer.
+        let r = adresses("convergence", 5);
+        assert_eq!(r.first().map(String::as_str), Some("1.1"));
+        assert!(r.contains(&"2.1".to_string()));
+    }
+
+    #[test]
+    fn le_nombre_de_termes_distincts_prime_sur_le_poids() {
+        // 1.1 ne porte aucun des deux termes à son titre, mais les porte tous
+        // les deux ; la section 1 en porte un seul, au titre. Couvrir la
+        // question compte plus que la nommer à moitié.
+        let r = adresses("suite convergente", 5);
+        assert_eq!(r.first().map(String::as_str), Some("1.1"));
+        assert!(r.contains(&"1".to_string()));
+    }
+
+    #[test]
+    fn a_note_egale_l_ordre_du_document_tranche() {
+        // Deux sections portent exactement « Critère de Riemann ». Le
+        // classement doit être le même d'un appel à l'autre : une conversation
+        // reprise donnerait sinon d'autres sections.
+        let r = adresses("critère Riemann", 5);
+        assert_eq!(r[0], "1.2");
+        assert_eq!(r[1], "2.2");
+        assert_eq!(adresses("critère Riemann", 5), r);
+    }
+
+    #[test]
+    fn un_compose_se_trouve_colle_ou_separe() {
+        // Le corpus écrit « oxydo-réduction », « semi-convergentes » ; la
+        // question s'écrit tout aussi bien d'un seul tenant.
+        assert_eq!(adresses("semi-convergentes", 5), vec!["1.3"]);
+        assert_eq!(adresses("semiconvergentes", 5), vec!["1.3"]);
+    }
+
+    #[test]
+    fn une_requete_sans_correspondance_ne_rend_rien() {
+        // Rendre « le moins mauvais » résultat ferait rédiger le modèle sur
+        // une section hors sujet, sous les contraintes d'une autre notion.
+        assert!(adresses("cuisine marocaine", 5).is_empty());
+    }
+
+    #[test]
+    fn une_requete_sans_mot_utile_ne_rend_rien() {
+        assert!(adresses("de la les", 5).is_empty());
+        assert!(adresses("", 5).is_empty());
+        assert!(adresses("convergence", 0).is_empty());
+    }
+
+    #[test]
+    fn le_plafond_de_resultats_est_respecte() {
+        assert_eq!(adresses("critère Riemann", 1).len(), 1);
+    }
+
+    #[test]
+    fn la_legende_ne_remonte_jamais() {
+        // Elle emploie tous les mots des étiquettes sans porter de programme :
+        // une question sur une restriction la ferait remonter en tête.
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/programmes");
+        if !dir.is_dir() {
+            return;
+        }
+        for p in decouvrir(Some(&dir)) {
+            for (s, _) in chercher(&p, "hors programme limite non exigible", 10) {
+                assert_ne!(s.titre, SECTION_LEGENDE, "{} : la légende remonte", p.id);
+            }
+        }
+    }
+
+    #[test]
+    fn la_recherche_dans_le_corpus_livre_reste_ciblee() {
+        // Garde-fou de VOLUME : la promesse du chantier est de servir quelques
+        // Ko au lieu des 94 Ko du programme entier.
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/programmes");
+        if !dir.is_dir() {
+            return;
+        }
+        let Some(maths) = decouvrir(Some(&dir)).into_iter().find(|p| p.id.contains("mpsi-mp2i")) else {
+            return;
+        };
+        let trouve = chercher(&maths, "nombres complexes module argument", 3);
+        assert!(!trouve.is_empty(), "requête sur une notion du programme sans résultat");
+        let octets: usize = trouve.iter().map(|(s, _)| s.fin - s.debut).sum();
+        assert!(octets < 12_000, "trois sections pèsent {octets} octets");
     }
 }
