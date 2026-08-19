@@ -229,7 +229,6 @@
   "gate.subtitle": "AZprose a besoin d'un dossier projet pour fonctionner. Choisissez un dossier existant ci-dessous — le dialogue système permet aussi d'en créer un nouveau.",
   "gate.chooseFolder": "Choisir un dossier",
   "gate.hintChooseFolder": "pour ouvrir le sélecteur de dossier",
-  "tabs.raw": "Brut",
   "tabs.preview": "Aperçu",
   "tabs.viewPdf": "Voir PDF",
   "tabs.liveView": "Live View",

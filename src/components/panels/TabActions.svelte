@@ -181,9 +181,6 @@ let mainItems = $derived.by(() => {
     const items: any[] = [
       ...pinnedHistItems,
       { spacer: true },
-      { comp: "button", icon: "wxi-code", text: t("tabs.raw"),
-        type: renderMode === "raw" ? "pressed" : "",
-        handler: () => onSetEditorMode?.("raw") },
       { comp: "button", icon: "wxi-file-down", text: t("tabs.exportPdf"),
         handler: () => onExportPdf?.() },
       { comp: "button", icon: "wxi-eye", text: t("tabs.preview"),
