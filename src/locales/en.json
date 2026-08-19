@@ -77,7 +77,7 @@
   "sidebar.guestFolder": "guest",
   "sidebar.removeGuest": "remove guest folder",
   "sidebar.unfavorite": "remove from favorites",
-  "sidebar.searchFolder": "search folder",
+  "sidebar.searchFolder": "filter files (⌘F / Ctrl+F)",
   "sidebar.closeSearch": "close search",
   "sidebar.closeSearchShortcut": "close search (esc)",
   "sidebar.searchPlaceholder": "search files…",

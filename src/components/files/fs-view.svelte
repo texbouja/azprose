@@ -127,6 +127,21 @@ function closeSearch() {
   query = "";
 }
 
+/**
+ * `Ctrl/⌘+F` ouvre le filtre — mais SEULEMENT depuis la barre latérale.
+ *
+ * L'écouteur vit sur la vue elle-même, pas sur `document` : l'événement
+ * remonte des lignes de l'arbre (ce sont des boutons, donc focalisables)
+ * jusqu'ici, et la recherche de l'éditeur garde son raccourci intact dès que
+ * le focus est ailleurs. Aucun arbitrage global à écrire.
+ */
+function onViewKeydown(e: KeyboardEvent) {
+  if (e.key !== "f" || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+  e.preventDefault();
+  if (searchOpen) searchInputRef?.select();
+  else searchOpen = true;
+}
+
 function onHeaderMouseDown(e: MouseEvent) {
   if (e.button !== 0) return;
   const target = e.target as HTMLElement | null;
@@ -138,7 +153,8 @@ function onHeaderMouseDown(e: MouseEvent) {
 }
 </script>
 
-<div class="mdv-fsview">
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div class="mdv-fsview" onkeydown={onViewKeydown} role="none">
   <header
     class="mdv-sidebar__header"
     data-tauri-drag-region

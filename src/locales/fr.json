@@ -68,7 +68,7 @@
   "breadcrumb.latexBuild": "compiler latex",
   "breadcrumb.engine": "moteur",
   "sidebar.noFolder": "aucun dossier",
-  "sidebar.searchFolder": "rechercher dans le dossier",
+  "sidebar.searchFolder": "filtrer les fichiers (⌘F / Ctrl+F)",
   "sidebar.closeSearch": "fermer la recherche",
   "sidebar.closeSearchShortcut": "fermer la recherche (esc)",
   "sidebar.searchPlaceholder": "rechercher des fichiers…",
