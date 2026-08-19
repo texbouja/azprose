@@ -189,4 +189,15 @@ describe("noms d'outils exposés au modèle", () => {
     expect(cfg.command.ajouter.template).toContain("azprose_programme_charger");
     expect(cfg.command.ajouter.template).toContain("azprose_programme_lister");
   });
+
+  test("la commande /ajouter passe par l'identifiant, pas par le texte saisi", () => {
+    // La matière accentuée tapée par l'utilisateur arrivait telle quelle dans
+    // les arguments JSON de l'appel d'outil, et une filière seule désigne
+    // plusieurs programmes : le gabarit impose donc de lister puis de charger
+    // par `id`.
+    const t = (buildAgentConfig("/tmp/i.md") as { command: { ajouter: { template: string } } })
+      .command.ajouter.template;
+    expect(t).toMatch(/`id`/);
+    expect(t.indexOf("azprose_programme_lister")).toBeLessThan(t.indexOf("azprose_programme_charger"));
+  });
 });

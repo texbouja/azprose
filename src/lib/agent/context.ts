@@ -138,7 +138,12 @@ d'entre elles. Signale-le à l'utilisateur quand les périmètres divergent.
 Un programme se lit **en entier** : ne travaille jamais sur un extrait, les
 mentions limitatives sont dispersées — la synthèse en tête du document les
 rassemble. \`azprose_programme_lister\` donne les autres programmes disponibles ;
-l'utilisateur peut en charger un de plus avec \`/ajouter\`.`);
+l'utilisateur peut en charger un de plus avec \`/ajouter\`.
+
+**Désigne toujours un programme par son \`id\`** (celui que rend
+\`azprose_programme_lister\`) : une filière seule en désigne plusieurs, et
+l'outil refuse alors de choisir à ta place. Ne construis jamais un chemin de
+fichier à partir d'un \`id\` — ils ne coïncident pas.`);
   }
 
   return parts.join("\n\n") + "\n";
@@ -170,12 +175,23 @@ export function buildAgentConfig(instructionsPath: string): Record<string, unkno
     command: {
       ajouter: {
         description: "Charger un programme officiel dans la conversation",
+        // ⚠️ Le gabarit impose de LISTER d'abord, puis de charger PAR `id`.
+        //
+        // Passer directement la filière et la matière au chargement échouait
+        // de deux façons, observées le 2026-08-19 : la matière accentuée que
+        // l'utilisateur avait tapée arrivait telle quelle dans les arguments
+        // JSON de l'appel — que le modèle tronquait —, et une filière seule
+        // désigne cinq programmes, dont le premier était rendu au hasard.
+        // Un `id` est ASCII, exact, et vient de l'outil lui-même.
         template:
-          "Charge le programme officiel de la filière $1" +
-          " (matière : $2, vide = toutes) avec l'outil `azprose_programme_charger`," +
-          " puis résume en trois lignes son périmètre et ses limites" +
-          " principales. Si aucun programme ne correspond, dis-le et liste" +
-          " ce qui est disponible avec `azprose_programme_lister`.",
+          "1. Appelle `azprose_programme_lister`." +
+          " 2. Trouve dans la liste le programme dont la filière contient « $1 »" +
+          " et dont la matière correspond à « $2 » (vide = demande à" +
+          " l'utilisateur laquelle il veut, ne choisis pas)." +
+          " 3. Appelle `azprose_programme_charger` avec le champ `id` de ce" +
+          " programme — et RIEN d'autre." +
+          " 4. Résume en trois lignes son périmètre et ses limites principales." +
+          " Si aucun programme ne correspond, dis-le et montre la liste.",
       },
     },
   };

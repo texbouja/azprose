@@ -202,13 +202,16 @@ impl AzproseTools {
         annotations(read_only_hint = true)
     )]
     pub async fn programme_charger(&self, params: Parameters<CibleProgramme>) -> String {
-        let CibleProgramme { filiere, matiere, niveau } = params.0;
+        let CibleProgramme { id, filiere, matiere, niveau } = params.0;
         let programmes = self.programmes();
-        let trouve = programmes.iter().find(|p| {
-            p.correspond(&filiere, matiere.as_deref(), niveau.as_deref())
-        });
-        match trouve {
-            Some(p) => serde_json::json!({
+        match programmes::selectionner(
+            &programmes,
+            id.as_deref(),
+            filiere.as_deref(),
+            matiere.as_deref(),
+            niveau.as_deref(),
+        ) {
+            programmes::Selection::Unique(p) => serde_json::json!({
                 "trouve": true,
                 "id": p.id,
                 // Synthèse des contraintes EN TÊTE : les mentions limitatives
@@ -217,9 +220,29 @@ impl AzproseTools {
                 "contenu": format!("{}{}", programmes::synthese_contraintes(p), p.contenu),
             })
             .to_string(),
-            None => serde_json::json!({
+            // AMBIGU : on ne choisit PAS à la place du demandeur. Rendre le
+            // premier de la liste donnait le programme d'informatique à qui
+            // demandait les mathématiques — avec `trouve: true`.
+            programmes::Selection::Plusieurs(candidats) => serde_json::json!({
                 "trouve": false,
-                "raison": format!("aucun programme disponible pour la filière « {filiere} »"),
+                "raison": "demande ambiguë : plusieurs programmes correspondent. Rappelle cet outil avec le champ `id` d'un des candidats ci-dessous.",
+                "candidats": candidats.iter().map(|p| serde_json::json!({
+                    "id": p.id,
+                    "matiere": p.matiere,
+                    "filiere": p.filiere,
+                    "niveau": p.niveau,
+                })).collect::<Vec<_>>(),
+            })
+            .to_string(),
+            programmes::Selection::Aucun => serde_json::json!({
+                "trouve": false,
+                "raison": "aucun programme ne correspond. Appelle `azprose_programme_lister` et rappelle cet outil avec le champ `id` voulu.",
+                "disponibles": programmes.iter().map(|p| serde_json::json!({
+                    "id": p.id,
+                    "matiere": p.matiere,
+                    "filiere": p.filiere,
+                    "niveau": p.niveau,
+                })).collect::<Vec<_>>(),
             })
             .to_string(),
         }
@@ -258,19 +281,32 @@ impl AzproseTools {
         annotations(read_only_hint = true)
     )]
     pub async fn programme_contraintes(&self, params: Parameters<CibleProgramme>) -> String {
-        let CibleProgramme { filiere, matiere, niveau } = params.0;
+        let CibleProgramme { id, filiere, matiere, niveau } = params.0;
         let liste = self.programmes();
-        let trouve = liste
-            .iter()
-            .find(|p| p.correspond(&filiere, matiere.as_deref(), niveau.as_deref()));
-        match trouve {
-            Some(p) => serde_json::json!({
+        // Même sélection que `programme_charger` : un seul comportement à
+        // comprendre pour le modèle, et jamais de choix arbitraire.
+        match programmes::selectionner(
+            &liste,
+            id.as_deref(),
+            filiere.as_deref(),
+            matiere.as_deref(),
+            niveau.as_deref(),
+        ) {
+            programmes::Selection::Unique(p) => serde_json::json!({
                 "trouve": true, "id": p.id, "contraintes": programmes::contraintes(p),
             })
             .to_string(),
-            None => serde_json::json!({
+            programmes::Selection::Plusieurs(candidats) => serde_json::json!({
                 "trouve": false,
-                "raison": format!("aucun programme disponible pour la filière « {filiere} »"),
+                "raison": "demande ambiguë : rappelle cet outil avec le champ `id` d'un candidat.",
+                "candidats": candidats.iter().map(|p| serde_json::json!({
+                    "id": p.id, "matiere": p.matiere, "filiere": p.filiere, "niveau": p.niveau,
+                })).collect::<Vec<_>>(),
+            })
+            .to_string(),
+            programmes::Selection::Aucun => serde_json::json!({
+                "trouve": false,
+                "raison": "aucun programme ne correspond. Appelle `azprose_programme_lister`.",
             })
             .to_string(),
         }
@@ -288,9 +324,15 @@ impl AzproseTools {
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct CibleProgramme {
-    /// Filière visée (ex. « MP », « MPSI », « PCSI »).
-    pub filiere: String,
-    /// Matière (ex. « mathematiques »). Facultatif.
+    /// Identifiant exact rendu par `azprose_programme_lister` (ex.
+    /// « mathematiques-mpsi-mp2i »). C'est la façon SÛRE de désigner un
+    /// programme : sans accent, sans ambiguïté. Prioritaire sur les autres
+    /// champs.
+    pub id: Option<String>,
+    /// Filière visée (ex. « MP », « MPSI »). Utilisée seulement sans `id`.
+    /// Attention : une filière seule désigne souvent plusieurs programmes.
+    pub filiere: Option<String>,
+    /// Matière (ex. « mathematiques »). Accents et casse indifférents.
     pub matiere: Option<String>,
     /// Niveau (« 1 » ou « 2 »). Facultatif.
     pub niveau: Option<String>,

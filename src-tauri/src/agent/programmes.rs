@@ -94,11 +94,39 @@ pub struct Programme {
     pub contenu: String,
 }
 
+/// Compare deux libellés sans tenir compte de la casse NI DES ACCENTS.
+///
+/// Le modèle reçoit ce que l'utilisateur a tapé — « mathématiques » avec son
+/// accent — alors que le corpus écrit `matiere: mathematiques`. Une
+/// comparaison ASCII stricte les déclarait différents, et la matière demandée
+/// était silencieusement ignorée (transcription du 2026-08-19).
+pub fn meme_libelle(a: &str, b: &str) -> bool {
+    fn plie(s: &str) -> String {
+        s.chars()
+            .filter(|c| !c.is_whitespace() && *c != '-' && *c != '_')
+            .flat_map(|c| {
+                let c = c.to_ascii_lowercase();
+                match c {
+                    'á' | 'à' | 'â' | 'ä' => 'a',
+                    'é' | 'è' | 'ê' | 'ë' => 'e',
+                    'í' | 'ì' | 'î' | 'ï' => 'i',
+                    'ó' | 'ò' | 'ô' | 'ö' => 'o',
+                    'ú' | 'ù' | 'û' | 'ü' => 'u',
+                    'ç' => 'c',
+                    autre => autre.to_lowercase().next().unwrap_or(autre),
+                }
+                .to_lowercase()
+            })
+            .collect()
+    }
+    plie(a) == plie(b)
+}
+
 impl Programme {
     pub fn correspond(&self, filiere: &str, matiere: Option<&str>, niveau: Option<&str>) -> bool {
-        let f = self.filiere.iter().any(|x| x.eq_ignore_ascii_case(filiere));
+        let f = self.filiere.iter().any(|x| meme_libelle(x, filiere));
         let m = matiere.is_none_or(|m| {
-            self.matiere.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(m))
+            self.matiere.as_deref().is_some_and(|x| meme_libelle(x, m))
         });
         // `niveau` ABSENT = vaut pour toutes les années. Ce n'est pas une
         // tolérance, c'est le cas réel : le programme de sciences
@@ -106,9 +134,54 @@ impl Programme {
         // correspondance stricte le rendrait introuvable.
         let n = match (niveau, self.niveau.as_deref()) {
             (None, _) | (Some(_), None) => true,
-            (Some(demande), Some(porte)) => porte.eq_ignore_ascii_case(demande),
+            (Some(demande), Some(porte)) => meme_libelle(porte, demande),
         };
         f && m && n
+    }
+}
+
+/// Résultat d'une sélection de programme.
+///
+/// ⚠️ `Plusieurs` est un cas NORMAL, pas une erreur : « MPSI » seul désigne
+/// cinq programmes (maths, physique, chimie, SI, informatique). Rendre le
+/// premier de la liste — ce que faisait `find` — donnait le programme
+/// d'informatique à qui demandait les mathématiques, avec `trouve: true` pour
+/// couronner le tout (transcription du 2026-08-19).
+pub enum Selection<'a> {
+    Unique(&'a Programme),
+    Plusieurs(Vec<&'a Programme>),
+    Aucun,
+}
+
+/// Choisit UN programme, ou dit pourquoi il ne peut pas.
+///
+/// `id` l'emporte sur tout le reste : c'est l'identifiant exact rendu par
+/// `programme_lister`, sans accent ni ambiguïté — la façon fiable de désigner
+/// un programme pour un modèle.
+pub fn selectionner<'a>(
+    programmes: &'a [Programme],
+    id: Option<&str>,
+    filiere: Option<&str>,
+    matiere: Option<&str>,
+    niveau: Option<&str>,
+) -> Selection<'a> {
+    if let Some(id) = id.map(str::trim).filter(|s| !s.is_empty()) {
+        return match programmes.iter().find(|p| meme_libelle(&p.id, id)) {
+            Some(p) => Selection::Unique(p),
+            None => Selection::Aucun,
+        };
+    }
+    let Some(filiere) = filiere.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Selection::Aucun;
+    };
+    let candidats: Vec<&Programme> = programmes
+        .iter()
+        .filter(|p| p.correspond(filiere, matiere, niveau))
+        .collect();
+    match candidats.len() {
+        0 => Selection::Aucun,
+        1 => Selection::Unique(candidats[0]),
+        _ => Selection::Plusieurs(candidats),
     }
 }
 
@@ -998,5 +1071,83 @@ niveau: 2
         // « dans » et la citation retrouvable malgré les astérisques.
         let v = verifier_perimetre(&prog_phys(), "dispositif de mesure", "TEST", None, None);
         assert_eq!(v.statut, "dans");
+    }
+
+    // ── Sélection d'un programme (transcription du 2026-08-19) ──────────────
+
+    fn fiche(id: &str, filieres: &[&str], matiere: &str, niveau: &str) -> Programme {
+        Programme {
+            id: id.to_string(),
+            filiere: filieres.iter().map(|s| s.to_string()).collect(),
+            matiere: Some(matiere.to_string()),
+            niveau: Some(niveau.to_string()),
+            source: None,
+            statut: None,
+            couverture: vec![],
+            chemin: PathBuf::from(format!("/corpus/{id}.md")),
+            contenu: String::new(),
+        }
+    }
+
+    fn corpus() -> Vec<Programme> {
+        vec![
+            fiche("inf-1", &["MPSI", "PCSI", "PTSI"], "informatique", "1"),
+            fiche("mathematiques-mpsi-mp2i", &["MPSI", "MP2I"], "mathematiques", "1"),
+            fiche("phys-mpsi", &["MPSI"], "physique", "1"),
+        ]
+    }
+
+    #[test]
+    fn accent_et_casse_sont_indifferents() {
+        // Le modèle transmet ce que l'utilisateur a tapé : « mathématiques »
+        // avec son accent, quand le corpus écrit « mathematiques ».
+        assert!(meme_libelle("mathematiques", "Mathématiques"));
+        assert!(meme_libelle("MPSI", "mpsi"));
+        assert!(!meme_libelle("mathematiques", "physique"));
+    }
+
+    #[test]
+    fn matiere_accentuee_selectionne_le_bon_programme() {
+        let c = corpus();
+        match selectionner(&c, None, Some("MPSI"), Some("mathématiques"), None) {
+            Selection::Unique(p) => assert_eq!(p.id, "mathematiques-mpsi-mp2i"),
+            _ => panic!("la matière accentuée doit désigner UN programme"),
+        }
+    }
+
+    #[test]
+    fn filiere_seule_est_ambigue_et_ne_choisit_pas() {
+        // C'est le défaut observé : « MPSI » seul rendait le PREMIER de la
+        // liste — l'informatique — à qui demandait les mathématiques.
+        let c = corpus();
+        match selectionner(&c, None, Some("MPSI"), None, None) {
+            Selection::Plusieurs(candidats) => assert_eq!(candidats.len(), 3),
+            _ => panic!("une filière seule doit être déclarée ambiguë"),
+        }
+    }
+
+    #[test]
+    fn id_l_emporte_et_suffit() {
+        let c = corpus();
+        match selectionner(&c, Some("mathematiques-mpsi-mp2i"), None, None, None) {
+            Selection::Unique(p) => assert_eq!(p.id, "mathematiques-mpsi-mp2i"),
+            _ => panic!("un id exact doit désigner UN programme"),
+        }
+    }
+
+    #[test]
+    fn id_inconnu_ne_retombe_pas_sur_la_filiere() {
+        // Sinon un id mal orthographié rendrait un programme au hasard.
+        let c = corpus();
+        assert!(matches!(
+            selectionner(&c, Some("inexistant"), Some("MPSI"), None, None),
+            Selection::Aucun
+        ));
+    }
+
+    #[test]
+    fn sans_critere_aucun_programme() {
+        let c = corpus();
+        assert!(matches!(selectionner(&c, None, None, None, None), Selection::Aucun));
     }
 }
