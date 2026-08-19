@@ -219,7 +219,7 @@ impl AzproseTools {
     )]
     pub async fn programme_charger(&self, params: Parameters<CibleProgramme>) -> String {
         let liste = self.programmes();
-        let p = match choisir(&liste, params.0) {
+        let p = match choisir(&liste, &self.root.facts().programmes, params.0) {
             Ok(p) => p,
             Err(refus) => return refus,
         };
@@ -268,7 +268,7 @@ impl AzproseTools {
     )]
     pub async fn programme_contraintes(&self, params: Parameters<CibleProgramme>) -> String {
         let liste = self.programmes();
-        let p = match choisir(&liste, params.0) {
+        let p = match choisir(&liste, &self.root.facts().programmes, params.0) {
             Ok(p) => p,
             Err(refus) => return refus,
         };
@@ -291,15 +291,11 @@ impl AzproseTools {
         annotations(read_only_hint = true)
     )]
     pub async fn programme_chercher(&self, params: Parameters<CibleRecherche>) -> String {
-        let CibleRecherche { requete, max, id, filiere, matiere, niveau } = params.0;
+        let CibleRecherche { requete, id, max } = params.0;
         let liste = self.programmes();
-        let matiere = match code_matiere(matiere.as_deref()) {
-            Ok(m) => m,
-            Err(refus) => return refus,
-        };
         // Pas de sélection UNIQUE ici : chercher dans plusieurs programmes à la
         // fois est le cas normal — l'utilisateur en déclare souvent trois.
-        let mut cibles = filtrer(&liste, id.as_deref(), filiere.as_deref(), matiere, niveau.as_deref());
+        let mut cibles = filtrer(&liste, id.as_deref(), None, None, None);
 
         // Les réglages font autorité. `filiere` et `matiere` NARROWISSENT la
         // sélection, ils n'en sortent pas : le modèle passe `matiere: math`
@@ -368,7 +364,7 @@ impl AzproseTools {
     )]
     pub async fn programme_plan(&self, params: Parameters<CibleProgramme>) -> String {
         let liste = self.programmes();
-        let p = match choisir(&liste, params.0) {
+        let p = match choisir(&liste, &self.root.facts().programmes, params.0) {
             Ok(p) => p,
             Err(refus) => return refus,
         };
@@ -394,7 +390,7 @@ impl AzproseTools {
     pub async fn programme_section(&self, params: Parameters<CibleSection>) -> String {
         let CibleSection { sections, id, filiere, matiere, niveau } = params.0;
         let liste = self.programmes();
-        let p = match choisir(&liste, CibleProgramme { id, filiere, matiere, niveau }) {
+        let p = match choisir(&liste, &self.root.facts().programmes, CibleProgramme { id, filiere, matiere, niveau }) {
             Ok(p) => p,
             Err(refus) => return refus,
         };
@@ -511,10 +507,25 @@ fn filtrer<'a>(
 /// programme d'informatique à qui demandait les mathématiques.
 fn choisir<'a>(
     liste: &'a [programmes::Programme],
+    retenus: &[String],
     cible: CibleProgramme,
 ) -> Result<&'a programmes::Programme, String> {
     let CibleProgramme { id, filiere, matiere, niveau } = cible;
     let matiere = code_matiere(matiere.as_deref())?;
+
+    // Aucun critère et UN SEUL programme retenu : il n'y a rien à désigner.
+    // Exiger un argument dans ce cas obligeait à un appel préalable pour
+    // récupérer un identifiant déjà déterminé — et chaque argument que le
+    // modèle doit sérialiser est une occasion d'appel malformé (constaté).
+    if id.is_none() && filiere.is_none() && matiere.is_none() && niveau.is_none() {
+        let cochés: Vec<_> = liste
+            .iter()
+            .filter(|p| retenus.iter().any(|s| programmes::meme_libelle(s, &p.id)))
+            .collect();
+        if let [unique] = cochés[..] {
+            return Ok(unique);
+        }
+    }
     let apercu = |p: &programmes::Programme| {
         serde_json::json!({ "id": p.id, "matiere": p.matiere, "filiere": p.filiere, "niveau": p.niveau })
     };
@@ -554,26 +565,32 @@ pub struct CibleProgramme {
     pub niveau: Option<String>,
 }
 
-/// Argument de `programme_chercher`.
+/// Argument de `programme_chercher` — **trois champs, un seul obligatoire**.
+///
+/// La surface a été réduite après deux échecs d'appel en usage (2026-08-19 et
+/// 20) : sur six paramètres, le modèle produisait `"matiere": {}` — un objet
+/// vide là où le schéma attend une chaîne — et l'appel entier était rejeté
+/// (« JSON parsing failed »). Le schéma était pourtant correct ; c'est le
+/// NOMBRE de champs facultatifs qui invitait à la faute.
+///
+/// Filière, matière et niveau ont disparu sans perte : les programmes cochés
+/// dans les réglages bornent déjà la recherche, et le classement lexical écarte
+/// de lui-même les sections d'une autre matière (elles notent zéro). Pour
+/// atteindre un programme NON coché, il reste `id`.
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct CibleRecherche {
     /// Mots du sujet traité, tels qu'ils viennent de la question de
-    /// l'utilisateur (ex. « nombres complexes module argument »). Les accents,
-    /// la casse et les pluriels n'ont pas d'importance.
+    /// l'utilisateur (ex. « nombres complexes module argument »). Sans accent.
+    /// La casse et les pluriels n'ont pas d'importance.
+    /// **Dans le cas normal, c'est le SEUL champ à fournir.**
     pub requete: String,
+    /// Identifiant d'un programme NON retenu dans les réglages, pour l'y
+    /// chercher exceptionnellement (rendu par `azprose_programme_lister`).
+    /// Omettre pour chercher dans les programmes retenus — le cas normal.
+    pub id: Option<String>,
     /// Nombre de sections à rendre — 3 par défaut, 5 au plus.
     pub max: Option<usize>,
-    /// Restreint la recherche à ce programme. Omettre pour chercher dans tous
-    /// ceux qui correspondent aux autres champs.
-    pub id: Option<String>,
-    /// Filière visée (ex. « MP », « MPSI »). Facultatif.
-    pub filiere: Option<String>,
-    /// Code de matière — EXACTEMENT l'un de : `math`, `phys`, `chim`, `info`,
-    /// `scii`. Omettre ce champ = toutes les matières.
-    pub matiere: Option<String>,
-    /// Niveau (« 1 » ou « 2 »). Facultatif.
-    pub niveau: Option<String>,
 }
 
 /// Argument de `programme_section`.
@@ -940,7 +957,7 @@ mod tests {
     #[test]
     fn choisir_designe_un_programme_par_son_id() {
         let c = corpus();
-        let p = choisir(&c, cible(Some("inf-1"), None, None)).unwrap();
+        let p = choisir(&c, &[], cible(Some("inf-1"), None, None)).unwrap();
         assert_eq!(p.id, "inf-1");
     }
 
@@ -949,7 +966,7 @@ mod tests {
         // Rendre le premier de la liste donnait le programme d'informatique à
         // qui demandait les mathématiques — avec `trouve: true`.
         let c = corpus();
-        let refus = choisir(&c, cible(None, Some("MPSI"), None)).err().expect("un refus etait attendu");
+        let refus = choisir(&c, &[], cible(None, Some("MPSI"), None)).err().expect("un refus etait attendu");
         let v: serde_json::Value = serde_json::from_str(&refus).unwrap();
         assert_eq!(v["trouve"], false);
         assert!(v["candidats"].as_array().unwrap().len() > 1);
@@ -961,7 +978,7 @@ mod tests {
         // tronquer : le vocabulaire est fermé, et la correction est SOUMISE à
         // l'utilisateur au lieu d'être devinée.
         let c = corpus();
-        let refus = choisir(&c, cible(None, Some("MPSI"), Some("mathématiques"))).err().expect("un refus etait attendu");
+        let refus = choisir(&c, &[], cible(None, Some("MPSI"), Some("mathématiques"))).err().expect("un refus etait attendu");
         let v: serde_json::Value = serde_json::from_str(&refus).unwrap();
         assert_eq!(v["trouve"], false);
         assert_eq!(v["suggestion"], "math");
@@ -969,9 +986,39 @@ mod tests {
     }
 
     #[test]
+    fn un_seul_programme_retenu_se_designe_tout_seul() {
+        // Chaque argument que le modèle doit sérialiser est une occasion
+        // d'appel malformé — observé deux fois, sur le champ `matiere`. Quand
+        // un seul programme est coché, il n'y a rien à désigner : exiger un
+        // argument imposait un appel préalable pour un identifiant déjà connu.
+        let c = corpus();
+        let retenus = vec!["inf-1".to_string()];
+        let p = choisir(&c, &retenus, cible(None, None, None)).unwrap();
+        assert_eq!(p.id, "inf-1");
+    }
+
+    #[test]
+    fn plusieurs_programmes_retenus_ne_se_devinent_pas() {
+        // Le raccourci ne vaut QUE pour l'évidence : à deux programmes cochés,
+        // on retombe sur le refus d'ambiguïté.
+        let c = corpus();
+        let retenus = vec!["inf-1".to_string(), "mathematiques-mp-mpi".to_string()];
+        assert!(choisir(&c, &retenus, cible(None, None, None)).is_err());
+    }
+
+    #[test]
+    fn un_critere_explicite_prime_sur_le_raccourci() {
+        // Sinon on rendrait le programme coché à qui en désigne un autre.
+        let c = corpus();
+        let retenus = vec!["inf-1".to_string()];
+        let p = choisir(&c, &retenus, cible(Some("mathematiques-mp-mpi"), None, None)).unwrap();
+        assert_eq!(p.id, "mathematiques-mp-mpi");
+    }
+
+    #[test]
     fn choisir_sans_correspondance_liste_ce_qui_existe() {
         let c = corpus();
-        let refus = choisir(&c, cible(None, Some("PT"), None)).err().expect("un refus etait attendu");
+        let refus = choisir(&c, &[], cible(None, Some("PT"), None)).err().expect("un refus etait attendu");
         let v: serde_json::Value = serde_json::from_str(&refus).unwrap();
         assert_eq!(v["disponibles"].as_array().unwrap().len(), 4);
     }

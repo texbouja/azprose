@@ -138,10 +138,16 @@ de la section, celles des sections qui l'englobent, celles qui valent pour tout
 le document. **Ce sont ces contraintes-là qui font foi** — une interdiction ne
 s'interprète pas sans le contenu qu'elle restreint.
 
-Écris la requête **sans accent** : \`reduction matricielle diagonalisation\`.
-La recherche ignore accents, casse et pluriels, et les caractères accentués
-dans les arguments d'un appel d'outil se font tronquer — l'appel échoue alors
-avec « JSON parsing failed ». Cette règle vaut pour TOUS les arguments d'outil.
+**N'envoie que le champ \`requete\`.** Les autres champs sont des recours
+exceptionnels : n'en ajoute aucun, ne les envoie pas à vide. Un appel bien
+formé ressemble à ceci, et à rien d'autre :
+
+\`\`\`json
+{"requete": "theoreme convergence dominee"}
+\`\`\`
+
+Écris la requête **sans accent** et sans ponctuation — la recherche ignore de
+toute façon accents, casse et pluriels, et un argument accentué n'apporte rien.
 
 **Le périmètre est ce que les sections énumèrent.** Ce que tu rédiges reste
 dans ce que tu as lu : n'ajoute pas une notion parce qu'elle appartient au

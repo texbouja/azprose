@@ -110,13 +110,15 @@ test("instructions : le périmètre est ce que les sections énumèrent", () => 
   expect(text).toMatch(/pas au programme de cette classe/);
 });
 
-test("instructions : les arguments d'outil s'écrivent sans accent", () => {
-  // Les caractères accentués se font tronquer dans les arguments JSON d'un
-  // appel d'outil (« JSON parsing failed », observé deux fois). La recherche
-  // plie de toute façon accents et casse : rien n'est perdu.
+test("instructions : la recherche s'appelle avec le seul champ requete", () => {
+  // Deux appels rejetés en usage (« JSON parsing failed ») : sur six
+  // paramètres, le modèle produisait `"matiere": {}`. Le schéma a été réduit à
+  // trois champs ; les instructions montrent en plus l'appel exact attendu,
+  // parce qu'un exemple vaut mieux qu'une consigne.
   const text = buildAgentInstructions(ROOT, { programmes: [{ filiere: "MP" }] });
+  expect(text).toMatch(/N'envoie que le champ/);
+  expect(text).toContain('{"requete": "theoreme convergence dominee"}');
   expect(text).toMatch(/sans accent/);
-  expect(text).toContain("reduction matricielle diagonalisation");
 });
 
 test("instructions : la recherche est bornée aux programmes retenus", () => {
