@@ -140,6 +140,10 @@
 \RequirePackage { titletoc }
 \RequirePackage { lastpage }
 \RequirePackage { bookmark }
+%% fontawesome : les pictogrammes des blocs semantiques. Charge par la classe
+%% et non par azbloc, qui doit rester utilisable sans lui — une icone est un
+%% repere, pas un contenu.
+\RequirePackage { fontawesome }
 
 \ExplSyntaxOff
 \usetikzlibrary{calc,babel,positioning}

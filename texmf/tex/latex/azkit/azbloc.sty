@@ -1,0 +1,766 @@
+%% azbloc.sty — les blocs sémantiques, sans tcolorbox
+%%
+%% ALTERNATIVE à azthm.sty. Même surface d'écriture, même vocabulaire, même
+%% interface de déclaration — un autre moteur dessous.
+%%
+%% ── Pourquoi ────────────────────────────────────────────────────────────────
+%%
+%% tcolorbox coûte 56 ms par bloc pour le visuel du kit, et 124 ms une fois
+%% notre machinerie dessus. La raison est structurelle : chaque zone spécialisée
+%% (le bandeau de titre, le badge de numéro) y est ELLE-MÊME une boîte complète,
+%% mesurée, coupable en pages, décorée. Trois boîtes par théorème.
+%%
+%% Ici : UNE boîte, découpée par `framed`, décorée par pgf NU — sans tikz.
+%% Le bandeau de titre est du contenu ordinaire, le fond est un chemin pgf.
+%%
+%% ── Le principe ─────────────────────────────────────────────────────────────
+%%
+%% Un SEUL environnement fait le travail :
+%%
+%%   \begin{azbloc}{<genre>}\op{<clés>}(<intitulé>)<<étiquette>>
+%%
+%% Tout le reste — `theo`, `defi`, `exer`… — n'est qu'un genre ENREGISTRÉ, que
+%% \aznewtheorem déclare et qui se surcharge par clés. Il n'y a donc qu'un
+%% chemin de code à comprendre, à corriger et à optimiser.
+%%
+%% ── L'apparence ─────────────────────────────────────────────────────────────
+%%
+%% Celle des callouts Markdown de l'application, transposée : coins arrondis,
+%% filet fin, barre d'accent à gauche, bandeau de titre teinté portant une
+%% icône. Un document composé et le même document lu dans l'aperçu se
+%% ressemblent enfin.
+%%
+%% ── Les ruptures de page ────────────────────────────────────────────────────
+%%
+%% Un bloc coupé garde ses coins ARRONDIS du côté où il commence et finit, et
+%% des bords PLATS du côté de la coupure. Le lecteur voit donc, sans légende,
+%% qu'un bloc se poursuit page suivante — c'est la convention des éditeurs, et
+%% elle ne coûte rien puisque `framed` nous dit déjà quel fragment il compose.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azbloc} {2026-08-20} {0.1}
+  {azkit — blocs sémantiques sur framed + pgf}
+
+\RequirePackage { azbase }
+\RequirePackage { azcolor }
+\RequirePackage { azlist }
+\RequirePackage { azrecord }
+\RequirePackage { framed }
+\RequirePackage { pgf }
+
+\cs_if_exist:NF \ifdraft { \newif \ifdraft }
+
+\msg_new:nnnn { azkit } { genre-inconnu }
+  { Bloc~«~#1~»~inconnu. }
+  { Le~déclarer~avec~\string\aznewtheorem\ avant~de~l'employer. }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Mesures
+%%
+%% Reprises des callouts de l'application : arrondi 8 px, filet 1 px, barre
+%% d'accent 3 px, gouttière 12 px. Converties en points, arrondies à ce qui
+%% se compose bien.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\dim_new:N \azblocarc      \dim_set:Nn \azblocarc      { 6pt }
+\dim_new:N \azblocrule     \dim_set:Nn \azblocrule     { .4pt }
+\dim_new:N \azblocaccent   \dim_set:Nn \azblocaccent   { 2.4pt }
+\dim_new:N \azblocsep      \dim_set:Nn \azblocsep      { 9pt }
+\dim_new:N \azblocvsep     \dim_set:Nn \azblocvsep     { 6pt }
+\skip_new:N \azblocskip    \skip_set:Nn \azblocskip    { \medskipamount }
+
+%% Hauteur du bandeau de titre du fragment courant. Renseignée à l'ouverture,
+%% remise à zéro dès le second fragment : seul le premier porte un titre.
+\dim_new:N \l__az_bloc_ttlht_dim
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le chemin, avec arrondi PAR COIN
+%%
+%% pgf n'offre que \pgfsetcornersarced, qui arrondit les quatre coins ensemble.
+%% Il faut donc construire le contour à la main — c'est ce qui permet le bord
+%% plat du côté de la coupure, et c'est tout l'enjeu de ce module.
+%%
+%% Le repère a son origine en haut à gauche, la boîte descendant vers -h.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Les dimensions du tracé, rangées dans des REGISTRES : pgfmath sait lire un
+%% registre de dimension, pas une fonction expl3 — passer \box_wd:N dans un
+%% \pgfpoint ne compile pas.
+%%
+%% `w`/`h` sont celles du fragment ; `ph` celle du chemin en cours, qui vaut la
+%% hauteur du fragment pour le cadre et celle du bandeau pour le bandeau. Un
+%% seul constructeur sert donc aux deux.
+\dim_new:N \l__az_bloc_w_dim
+\dim_new:N \l__az_bloc_h_dim
+\dim_new:N \l__az_bloc_ph_dim
+
+\cs_new_protected:Npn \az_bloc_path:nn #1#2
+  % #1 = haut arrondi ?, #2 = bas arrondi ?
+  {
+    \bool_if:nTF {#1}
+      {
+        \pgfpathmoveto { \pgfpoint { \azblocarc } { 0pt } }
+        \pgfpathlineto
+          { \pgfpoint { \dim_eval:n { \l__az_bloc_w_dim - \azblocarc } } { 0pt } }
+        \pgfpatharc {90} {0} { \azblocarc }
+      }
+      {
+        \pgfpathmoveto { \pgfpoint { 0pt } { 0pt } }
+        \pgfpathlineto { \pgfpoint { \l__az_bloc_w_dim } { 0pt } }
+      }
+    \bool_if:nTF {#2}
+      {
+        \pgfpathlineto
+          {
+            \pgfpoint { \l__az_bloc_w_dim }
+              { \dim_eval:n { -\l__az_bloc_ph_dim + \azblocarc } }
+          }
+        \pgfpatharc {0} {-90} { \azblocarc }
+        \pgfpathlineto
+          { \pgfpoint { \azblocarc } { \dim_eval:n { -\l__az_bloc_ph_dim } } }
+        \pgfpatharc {-90} {-180} { \azblocarc }
+      }
+      {
+        \pgfpathlineto
+          {
+            \pgfpoint { \l__az_bloc_w_dim }
+              { \dim_eval:n { -\l__az_bloc_ph_dim } }
+          }
+        \pgfpathlineto
+          { \pgfpoint { 0pt } { \dim_eval:n { -\l__az_bloc_ph_dim } } }
+      }
+    \bool_if:nT {#1}
+      {
+        \pgfpathlineto { \pgfpoint { 0pt } { \dim_eval:n { -\azblocarc } } }
+        \pgfpatharc {180} {90} { \azblocarc }
+      }
+    \pgfpathclose
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le dessin
+%%
+%% Trois formes, aucune superposition à découper :
+%%
+%%   le CADRE   — contour complet, rempli de la teinte de corps et filé ;
+%%   le BANDEAU — même contour, hauteur du titre, bas TOUJOURS plat ;
+%%   l'ACCENT   — un rectangle nu, retiré de l'arrondi aux extrémités.
+%%
+%% ⚠️ Le DÉTOURAGE a été essayé et retiré : `\pgfusepath{clip}` coûtait 34 ms
+%% par bloc — plus que tout le reste du dessin réuni. Faire épouser aux formes
+%% internes leur propre contour revient au même à l'œil, et à rien au chrono.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \l__az_bloc_accentcol_tl
+\tl_new:N \l__az_bloc_tintcol_tl
+\tl_new:N \l__az_bloc_ttltintcol_tl
+\tl_new:N \l__az_bloc_bordercol_tl
+
+%% Une seule couleur d'accent engendre les trois autres, comme dans les
+%% callouts : le fond est la même teinte à 6 %, le bandeau à 14 %, le filet à
+%% 40 %. Un thème n'aura donc qu'UNE valeur à poser par type.
+\cs_new_protected:Npn \az_bloc_teintes:
+  {
+    \tl_set:Nx \l__az_bloc_tintcol_tl    { \l__az_bloc_accentcol_tl !6!pagecol }
+    \tl_set:Nx \l__az_bloc_ttltintcol_tl { \l__az_bloc_accentcol_tl !14!pagecol }
+    \tl_set:Nx \l__az_bloc_bordercol_tl  { \l__az_bloc_accentcol_tl !40!pagecol }
+  }
+
+\cs_new_protected:Npn \az_bloc_couleurs:n #1
+  {
+    \prop_get:NnNF \g_az_bloc_couleur_prop {#1} \l__az_bloc_accentcol_tl
+      { \tl_set:Nn \l__az_bloc_accentcol_tl { othercol } }
+    \az_bloc_teintes:
+  }
+\cs_generate_variant:Nn \az_bloc_couleurs:n { V }
+
+\cs_new_protected:Npn \az_bloc_draw:nn #1#2
+  % #1 = haut arrondi ?, #2 = bas arrondi ?
+  {
+    \pgfpicture
+      %% La ligne de base de l'image est FORCÉE sur notre origine, en haut à
+      %% gauche du cadre. Sans cela pgf la cale sur le bas de son cadre
+      %% englobant, et le dessin remonte d'une hauteur de bloc.
+      \pgfsetbaselinepointnow { \pgfpointorigin }
+      %% le fond du corps, d'abord : c'est le seul remplissage qui couvre toute
+      %% la surface, les autres viennent par-dessus
+      \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
+      \az_bloc_path:nn {#1} {#2}
+      \pgfsetfillcolor { \l__az_bloc_tintcol_tl }
+      \pgfusepath { fill }
+      %% le bandeau, sous le cadre : le filet du cadre passera par-dessus
+      \dim_compare:nT { \l__az_bloc_ttlht_dim > 0pt }
+        {
+          \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_ttlht_dim
+          \az_bloc_path:nn {#1} { \c_false_bool }
+          \pgfsetfillcolor { \l__az_bloc_ttltintcol_tl }
+          \pgfusepath { fill }
+        }
+      %% la barre d'accent, retirée de l'arrondi là où le coin est arrondi
+      \pgfpathrectanglecorners
+        {
+          \pgfpoint { 0pt }
+            { \dim_eval:n { \bool_if:nTF {#1} { -\azblocarc } { 0pt } } }
+        }
+        {
+          \pgfpoint { \azblocaccent }
+            {
+              \dim_eval:n
+                {
+                  -\l__az_bloc_h_dim
+                  + \bool_if:nTF {#2} { \azblocarc } { 0pt }
+                }
+            }
+        }
+      \pgfsetfillcolor { \l__az_bloc_accentcol_tl }
+      \pgfusepath { fill }
+      %% le cadre : le fond du corps est posé en DERNIER, et seulement filé —
+      %% le remplissage écraserait le bandeau et l'accent.
+      \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
+      \az_bloc_path:nn {#1} {#2}
+      \pgfsetstrokecolor { \l__az_bloc_bordercol_tl }
+      \pgfsetlinewidth { \azblocrule }
+      \pgfusepath { stroke }
+    \endpgfpicture
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Les quatre commandes de cadre
+%%
+%% `framed` en appelle une par fragment, et nous dit ainsi de quel côté le bloc
+%% est coupé. C'est exactement l'information dont on a besoin.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\box_new:N \l__az_bloc_box
+
+\cs_new_protected:Npn \az_bloc_frame:nnn #1#2#3
+  % #1 = haut arrondi ?, #2 = bas arrondi ?, #3 = contenu
+  {
+    \hbox_set:Nn \l__az_bloc_box
+      {
+        \hspace { \dimexpr \azblocaccent + \azblocsep \relax }
+        #3
+        \hspace { \azblocsep }
+      }
+    \dim_set:Nn \l__az_bloc_w_dim { \box_wd:N \l__az_bloc_box }
+    \dim_set:Nn \l__az_bloc_h_dim
+      { \box_ht:N \l__az_bloc_box + \box_dp:N \l__az_bloc_box }
+    \leavevmode
+    \hbox:n
+      {
+        \rlap
+          {
+            \raisebox { \box_ht:N \l__az_bloc_box } [0pt] [0pt]
+              { \az_bloc_draw:nn {#1} {#2} }
+          }
+        \box_use_drop:N \l__az_bloc_box
+      }
+    %% Le titre n'appartient qu'au premier fragment : dès que celui-ci est
+    %% posé, le bandeau disparaît des suivants.
+    \dim_gzero:N \l__az_bloc_ttlht_dim
+  }
+
+\cs_new_protected:Npn \az_bloc_frames_install:
+  {
+    \cs_set:Npn \FrameCommand ##1
+      { \az_bloc_frame:nnn { \c_true_bool } { \c_true_bool } {##1} }
+    \cs_set:Npn \FirstFrameCommand ##1
+      { \az_bloc_frame:nnn { \c_true_bool } { \c_false_bool } {##1} }
+    \cs_set:Npn \MidFrameCommand ##1
+      { \az_bloc_frame:nnn { \c_false_bool } { \c_false_bool } {##1} }
+    \cs_set:Npn \LastFrameCommand ##1
+      { \az_bloc_frame:nnn { \c_false_bool } { \c_true_bool } {##1} }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Les types
+%%
+%% Sept types, comme dans azthm : ils décident de la couleur, de l'icône et de
+%% la famille de style. Le GENRE (theo, defi, exer…) choisit son type.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\clist_const:Nn \c_az_bloc_types_clist
+  { theorem, definition, exercise, remark, example, proof, other }
+
+\prop_new:N \g_az_bloc_icone_prop
+\prop_new:N \g_az_bloc_couleur_prop
+
+%% Les icônes viennent de fontawesome, chargé par la classe. Absent, le kit se
+%% passe d'icônes plutôt que d'échouer : elles sont un repère, pas un contenu.
+\cs_new:Npn \az_bloc_icone_defaut:n #1
+  {
+    \cs_if_exist:NTF \faicon
+      { \str_case:nnF {#1}
+          {
+            { theorem }    { \faBookmark }
+            { definition } { \faInfoCircle }
+            { exercise }   { \faPencil }
+            { remark }     { \faLightbulbO }
+            { example }    { \faListUl }
+            { proof }      { \faCheck }
+          }
+          { \faQuoteLeft }
+      }
+      { }
+  }
+
+\clist_map_inline:Nn \c_az_bloc_types_clist
+  {
+    \prop_gput:Nnn \g_az_bloc_couleur_prop {#1} { #1 col }
+    \prop_gput:Nnx \g_az_bloc_icone_prop {#1}
+      { \exp_not:N \az_bloc_icone_defaut:n {#1} }
+  }
+
+\keys_define:nn { az / bloc / type }
+  {
+    icon  .code:n = { \prop_gput:Nnn \g_az_bloc_icone_prop { \l__az_bloc_type_tl } {#1} } ,
+    color .code:n = { \prop_gput:Nnn \g_az_bloc_couleur_prop { \l__az_bloc_type_tl } {#1} } ,
+  }
+
+\tl_new:N \l__az_bloc_type_tl
+
+%% \azsetuptypes{theorem = {color = azgreen, icon = \faStar}}
+\NewDocumentCommand \azsetuptypes { m }
+  { \keys_set:nn { az / bloc / types } {#1} }
+
+\clist_map_inline:Nn \c_az_bloc_types_clist
+  {
+    \keys_define:nn { az / bloc / types }
+      {
+        #1 .code:n =
+          { \tl_set:Nn \l__az_bloc_type_tl {#1}
+            \keys_set:nn { az / bloc / type } {##1} }
+      }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Les genres
+%%
+%% Un genre est une entrée de registre, pas un environnement à part entière :
+%% `theo` et `exer` empruntent le MÊME chemin de code, à quelques clés près.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\prop_new:N \g_az_bloc_Name_prop     % Théorème
+\prop_new:N \g_az_bloc_name_prop     % théorème
+\prop_new:N \g_az_bloc_prefix_prop   % du␣
+\prop_new:N \g_az_bloc_type_prop     % theorem
+\prop_new:N \g_az_bloc_counter_prop  % theo
+\prop_new:N \g_az_bloc_keys_prop     % clés locales
+\prop_new:N \g_az_bloc_listed_prop   % entre-t-il dans la liste des résultats ?
+
+\tl_new:N \l__az_bloc_genre_tl
+
+\keys_define:nn { az / bloc / new }
+  {
+    use~counter      .code:n =
+      { \tl_set:Nn \l__az_bloc_counter_tl {#1} \bool_set_true:N \l__az_bloc_owncnt_bool } ,
+    use~counter~from .code:n =
+      { \tl_set:Nn \l__az_bloc_counter_tl {#1} } ,
+    no~counter       .code:n = { \tl_clear:N \l__az_bloc_counter_tl } ,
+    within           .code:n = { \tl_set:Nn \l__az_bloc_within_tl {#1} } ,
+    %% Reprise du raccourci d'azthm : par chapitre s'il y en a, par section
+    %% sinon. Un même genre sert alors dans un livre et dans un article.
+    within~chapter~or~section .code:n =
+      {
+        \cs_if_exist:cTF { c@chapter }
+          { \tl_set:Nn \l__az_bloc_within_tl { chapter } }
+          { \tl_set:Nn \l__az_bloc_within_tl { section } }
+      } ,
+    listed  .bool_set:N = \l__az_bloc_listed_bool ,
+    listed  .default:n  = { true } ,
+    unknown .code:n = { } ,
+  }
+
+\tl_new:N  \l__az_bloc_counter_tl
+\tl_new:N  \l__az_bloc_within_tl
+\bool_new:N \l__az_bloc_owncnt_bool
+
+%% \aznewtheorem[<création>]{<genre>}{<Nom>}{<nom>}{<préfixe>}{<type>}{<clés>}
+%%
+%% Signature IDENTIQUE à celle d'azthm : le vocabulaire d'un document existant
+%% se déclare mot pour mot de la même façon.
+\NewDocumentCommand \aznewbloc { O{} m m m m m m }
+  {
+    \tl_clear:N \l__az_bloc_counter_tl
+    \tl_clear:N \l__az_bloc_within_tl
+    \bool_set_false:N \l__az_bloc_owncnt_bool
+    \bool_set_true:N \l__az_bloc_listed_bool
+    \keys_set:nn { az / bloc / new } {#1}
+
+    \prop_gput:Nnn \g_az_bloc_Name_prop   {#2} {#3}
+    \prop_gput:Nnn \g_az_bloc_name_prop   {#2} {#4}
+    \prop_gput:Nnn \g_az_bloc_prefix_prop {#2} {#5}
+    \prop_gput:Nnn \g_az_bloc_type_prop   {#2} {#6}
+    \prop_gput:Nnn \g_az_bloc_keys_prop   {#2} {#7}
+    \prop_gput:NnV \g_az_bloc_counter_prop {#2} \l__az_bloc_counter_tl
+    \prop_gput:Nnx \g_az_bloc_listed_prop {#2}
+      { \bool_if:NTF \l__az_bloc_listed_bool { 1 } { 0 } }
+
+    %% Le compteur n'est créé que par le genre qui le POSSÈDE ; les autres
+    %% s'y accrochent, ce qui fait avancer théorème et proposition ensemble.
+    \bool_if:NT \l__az_bloc_owncnt_bool
+      {
+        \tl_if_empty:NF \l__az_bloc_within_tl
+          { \exp_args:NVV \az_bloc_counter_new:nn
+              \l__az_bloc_counter_tl \l__az_bloc_within_tl }
+        \tl_if_empty:NT \l__az_bloc_within_tl
+          { \exp_args:NV \az_bloc_counter_new:n \l__az_bloc_counter_tl }
+      }
+    \cs_gset:cpn { #2 autorefname } {#4}
+    \az_bloc_env_new:n {#2}
+  }
+
+\cs_new_protected:Npn \az_bloc_counter_new:nn #1#2
+  { \azdefcounter {#1} { |1| } [#2] }
+\cs_new_protected:Npn \az_bloc_counter_new:n #1
+  { \azdefcounter {#1} { |1| } }
+
+\cs_generate_variant:Nn \prop_gput:Nnn { NnV, Nnx }
+
+%% Le genre devient un environnement — une enveloppe de trois lignes autour de
+%% l'unique moteur, et sa variante étoilée non numérotée.
+\cs_new_protected:Npn \az_bloc_env_new:n #1
+  {
+    \DeclareDocumentEnvironment {#1} { E{\op}{{}} d() d<> }
+      { \az_bloc_begin:nnnnn {#1} {##1} {##2} {##3} { } }
+      { \az_bloc_end: }
+    \DeclareDocumentEnvironment { #1 * } { E{\op}{{}} d() d<> }
+      { \az_bloc_begin:nnnnn {#1} { ##1, unnumbered } {##2} {##3} { } }
+      { \az_bloc_end: }
+  }
+
+%% Les noms d'azthm, pour que le vocabulaire d'un document ne bouge pas.
+\cs_new_eq:NN \aznewtheorem \aznewbloc
+\cs_new_eq:NN \azrenewtheorem \aznewbloc
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Clés d'instance
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bool_new:N \l__az_bloc_numbered_bool
+\bool_new:N \l__az_bloc_important_bool
+\tl_new:N   \l__az_bloc_icone_tl
+\tl_new:N   \l__az_bloc_accent_tl
+
+\keys_define:nn { az / bloc }
+  {
+    unnumbered .code:n = { \bool_set_false:N \l__az_bloc_numbered_bool } ,
+    numbered   .code:n = { \bool_set_true:N  \l__az_bloc_numbered_bool } ,
+    important  .code:n = { \bool_set_true:N  \l__az_bloc_important_bool } ,
+    icon       .tl_set:N = \l__az_bloc_icone_tl ,
+    color      .tl_set:N = \l__az_bloc_accent_tl ,
+    %% Une clé inconnue est ignorée : un fragment peut voyager vers une classe
+    %% qui en fait moins, il ne doit pas échouer pour autant.
+    unknown    .code:n = { } ,
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le titre
+%%
+%% Contenu ORDINAIRE, posé en première ligne du bloc — pas une boîte à part.
+%% C'est ce qui évite la seconde tcolorbox, et donc l'essentiel du coût. Sa
+%% hauteur est relevée pour que le cadre sache où peindre le bandeau.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \l__az_bloc_titre_tl        % l'intitulé, entre parenthèses
+\tl_new:N \l__az_bloc_numero_tl
+\tl_new:N \l__az_bloc_Name_tl
+
+\cs_new:Npn \azblocfonttitle { \TitlingFont \footnotesize }
+
+\cs_new_protected:Npn \az_bloc_titre:
+  {
+    \noindent
+    \begingroup
+      \azblocfonttitle
+      \color { \l__az_bloc_accentcol_tl }
+      \tl_if_empty:NF \l__az_bloc_icone_tl
+        { \l__az_bloc_icone_tl \hspace { .5em } }
+      \l__az_bloc_Name_tl
+      \tl_if_empty:NF \l__az_bloc_numero_tl
+        { \hspace { .35em } \l__az_bloc_numero_tl }
+      \tl_if_empty:NF \l__az_bloc_titre_tl
+        {
+          \hspace { .6em }
+          { \normalfont \itshape \footnotesize
+            \color { frametextcol } \l__az_bloc_titre_tl }
+        }
+      \hfill
+    \endgroup
+    \par
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Liste des résultats
+%%
+%% Sans tcolorbox il faut son propre fichier de liste — mais ce n'est que la
+%% machinerie de table des matières du noyau, à laquelle \tcblistof se ramenait
+%% déjà.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new:Npn \l@azbloc { \@dottedtocline {1} {1.5em} {2.8em} }
+\cs_new:Npn \toclevel@azbloc { 0 }
+
+\ProvideDocumentCommand \tableofresults
+  { O{\section*} D(){Liste~des~résultats~remarquables} }
+  {
+    #1 {#2}
+    \@starttoc { theo }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le moteur
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \l__az_bloc_cnt_tl
+\tl_new:N \l__az_bloc_typ_tl
+\box_new:N \l__az_bloc_ttl_box
+
+\cs_new_protected:Npn \az_bloc_begin:nnnnn #1#2#3#4#5
+  % #1 = genre, #2 = cles, #3 = intitule, #4 = etiquette, #5 = nom impose
+  {
+    \prop_if_in:NnF \g_az_bloc_Name_prop {#1}
+      { \msg_error:nnn { azkit } { genre-inconnu } {#1} }
+
+    \tl_set:Nn \l__az_bloc_genre_tl {#1}
+    \prop_get:NnN \g_az_bloc_Name_prop    {#1} \l__az_bloc_Name_tl
+    \prop_get:NnN \g_az_bloc_type_prop    {#1} \l__az_bloc_typ_tl
+    \prop_get:NnN \g_az_bloc_counter_prop {#1} \l__az_bloc_cnt_tl
+
+    \bool_set_true:N \l__az_bloc_numbered_bool
+    \bool_set_false:N \l__az_bloc_important_bool
+    \tl_set:Nn \l__az_bloc_titre_tl {#3}
+    \IfNoValueT {#3} { \tl_clear:N \l__az_bloc_titre_tl }
+    \tl_clear:N \l__az_bloc_numero_tl
+
+    \az_bloc_couleurs:V \l__az_bloc_typ_tl
+    \prop_get:NVN \g_az_bloc_icone_prop \l__az_bloc_typ_tl \l__az_bloc_icone_tl
+
+    %% Les clés du GENRE d'abord, celles de l'INSTANCE ensuite : une instance
+    %% doit pouvoir corriger son genre, jamais l'inverse.
+    \exp_args:NnV \keys_set:nn { az / bloc }
+      { \prop_item:Nn \g_az_bloc_keys_prop {#1} }
+    \keys_set:nn { az / bloc } {#2}
+    %% Un accent changé après coup — par `important` ou par la clé `color` —
+    %% doit faire RECALCULER les trois teintes qui en dérivent, sinon le fond
+    %% et le filet resteraient à la couleur du type.
+    \bool_if:NT \l__az_bloc_important_bool
+      { \tl_set:Nn \l__az_bloc_accent_tl { importantcol } }
+    \tl_if_empty:NF \l__az_bloc_accent_tl
+      {
+        \tl_set_eq:NN \l__az_bloc_accentcol_tl \l__az_bloc_accent_tl
+        \az_bloc_teintes:
+      }
+    %% Le nom peut être imposé par l'appelant — c'est ce que fait `genthm`,
+    %% dont le nom est un argument et non une propriété du genre.
+    \tl_if_blank:nF {#5} { \tl_set:Nn \l__az_bloc_Name_tl {#5} }
+
+    \tl_if_empty:NT \l__az_bloc_cnt_tl
+      { \bool_set_false:N \l__az_bloc_numbered_bool }
+    \bool_if:NT \l__az_bloc_numbered_bool { \az_bloc_step:n {#1} }
+
+    \IfValueT {#4} { \label {#4} }
+    \az_bloc_listing:nn {#1} {#4}
+
+    %% Le numéro du bloc, mis à disposition des gabarits |X| de azlist : c'est
+    %% ainsi qu'une \unite à l'intérieur se numérote « 2.3 ».
+    \exp_args:NV \az_current_counter_set:n \l__az_bloc_numero_tl
+    \az_liste_defaults_inside:
+
+    \hbox_set:Nn \l__az_bloc_ttl_box { \azblocfonttitle \strut }
+    \dim_gset:Nn \l__az_bloc_ttlht_dim
+      {
+        \box_ht:N \l__az_bloc_ttl_box + \box_dp:N \l__az_bloc_ttl_box
+        + 2 \azblocvsep
+      }
+
+    \az_bloc_frames_install:
+    \par \addvspace { \azblocskip }
+    \MakeFramed
+      {
+        \dim_sub:Nn \hsize
+          { 2\azblocsep + \azblocaccent + 2\azblocrule }
+        \FrameRestore
+      }
+    \vspace { \azblocvsep }
+    \az_bloc_titre:
+    \vspace { \dimexpr \azblocvsep - \parskip \relax }
+    \noindent \ignorespaces
+  }
+
+
+\cs_new_protected:Npn \az_bloc_end:
+  {
+    \az_bloc_solution_finish:
+    \exit
+    \closeunite
+    \vspace { \azblocvsep }
+    \endMakeFramed
+    \addvspace { \azblocskip }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Numérotation et renvois
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_bloc_step:n #1
+  {
+    \exp_args:NV \refstepcounter \l__az_bloc_cnt_tl
+    \tl_set:Nx \l__az_bloc_numero_tl
+      {
+        \cs_if_exist:cT { c@chapter }
+          { \int_compare:nT { \value{chapter} > 0 } { \thechapter . } }
+        \use:c { the \l__az_bloc_cnt_tl }
+      }
+    %% Le nom d'autoréférence suit le GENRE, pas le compteur : « voir le
+    %% corollaire 3 » et non « voir le théorème 3 ».
+    \cs_set:cpx { \l__az_bloc_cnt_tl autorefname }
+      { \prop_item:Nn \g_az_bloc_name_prop {#1} }
+  }
+
+%% Seuls les blocs INTITULÉS entrent dans la liste des résultats : c'est ce que
+%% l'on cherche en la consultant — les résultats qu'on a pris la peine de
+%% nommer, pas les 84 blocs du chapitre.
+\cs_new_protected:Npn \az_bloc_listing:nn #1#2
+  {
+    \tl_if_empty:NF \l__az_bloc_titre_tl
+      {
+        \str_if_eq:eeT { \prop_item:Nn \g_az_bloc_listed_prop {#1} } { 1 }
+          {
+            \addcontentsline { theo } { azbloc }
+              {
+                \protect \numberline { \l__az_bloc_numero_tl }
+                \l__az_bloc_Name_tl \nobreakspace :~ \l__az_bloc_titre_tl
+              }
+          }
+      }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Solutions et démonstrations déportées
+%%
+%% tcolorbox faisait cela par `savelowerto`. Ce n'est PAS une capture du
+%% contenu composé, contrairement à ce qu'on pourrait croire : `\tcbverbatimwrite`
+%% relit la SOURCE en catcodes 12 et l'écrit ligne à ligne. Le remplacement est
+%% donc un échange direct — `\azwriteonce` d'azrecord fait exactement cela, et
+%% c'est le même code, hérité par cpgekit d'answers.sty.
+%%
+%% Le scanner de `verbatim` s'arrête sur `\end{\@currenvir}` : un \solution
+%% ouvert dans un `theo` capture jusqu'au `\end{theo}`, sans qu'on ait à le lui
+%% dire. C'est ce qui rend le mécanisme indépendant du moteur de boîtes.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bool_new:N \l__az_bloc_capturing_bool
+\tl_new:N   \l__az_bloc_solfile_tl
+
+%% Point d'accroche : azsolution y branche le relevé et le lien. Ici, azbloc ne
+%% sait que déporter le texte ; il ignore tout de ce qu'on en fera.
+\cs_new_protected:Npn \az_bloc_solution_hook:n #1 { }
+
+\cs_new_protected:Npn \az_bloc_solution_start:n #1
+  {
+    \bool_set_true:N \l__az_bloc_capturing_bool
+    \tl_set:Nx \l__az_bloc_solfile_tl
+      { \azauxdir / #1 - \l__az_bloc_numero_tl }
+    \az_bloc_solution_hook:n {#1}
+    \exp_args:NV \azwriteonce \l__az_bloc_solfile_tl
+  }
+
+\cs_new_protected:Npn \az_bloc_solution_finish:
+  {
+    \bool_if:NT \l__az_bloc_capturing_bool
+      {
+        \endazwriteonce
+        \bool_set_false:N \l__az_bloc_capturing_bool
+      }
+  }
+
+\cs_if_exist:NF \azauxdir { \tl_new:N \azauxdir \tl_set:Nn \azauxdir { tmp } }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le vocabulaire
+%%
+%% Mot pour mot celui d'azthm : c'est la condition pour que ce module en soit
+%% une alternative et non un remplaçant.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\aznewbloc [ use~counter = theo, within~chapter~or~section ] {theo}
+  {Théorème} {théorème} {du~} {theorem} { }
+\aznewbloc [ use~counter~from = theo ] {theodef}
+  {Théorème~et~définition} {théorème} {du~} {theorem} { }
+\aznewbloc [ use~counter~from = theo ] {propdef}
+  {Proposition~et~définition} {proposition} {de~la~} {theorem} { }
+\aznewbloc [ use~counter~from = theo ] {prop}
+  {Proposition} {proposition} {de~la~} {theorem} { }
+\aznewbloc [ use~counter~from = theo ] {lemm}
+  {Lemme} {lemme} {du~} {theorem} { }
+\aznewbloc [ use~counter~from = theo ] {ppte}
+  {Propriétés} {propriétés} {des~} {theorem} { }
+\aznewbloc [ use~counter~from = theo ] {coro}
+  {Corollaire} {corollaire} {du~} {theorem} { }
+
+\aznewbloc [ use~counter = defi, within~chapter~or~section ] {defi}
+  {Définition} {définition} { } {definition} { }
+\aznewbloc [ use~counter~from = defi ] {voca}
+  {Vocabulaire} {vocabulaire} { } {definition} { }
+\aznewbloc [ use~counter~from = defi ] {nota}
+  {Notations} {notation} { } {definition} { }
+\aznewbloc [ use~counter~from = defi ] {vocanota}
+  {Vocabulaire~et~notations} {notation} { } {definition} { }
+
+\aznewbloc [ use~counter = rema, within~chapter~or~section, listed = false ] {rema}
+  {Remarque} {remarque} { } {remark} { }
+\aznewbloc [ use~counter~from = rema, listed = false ] {remas}
+  {Remarques} {remarques} { } {remark} { }
+\aznewbloc [ use~counter~from = rema, listed = false ] {remap}
+  {Remarques~pratiques} {remarques~pratiques} { } {remark} { }
+
+\aznewbloc [ use~counter = exem, within~chapter~or~section, listed = false ] {exem}
+  {Exemples} {exemples} { } {example} { }
+\aznewbloc [ use~counter~from = exem ] {exemf}
+  {Exemples~fondamentaux} {exemples~fondamentaux} { } {theorem} { }
+\aznewbloc [ use~counter~from = exem, listed = false ] {exema}
+  {Exemple~d'application} {exemple~d'application} { } {example} { }
+\aznewbloc [ use~counter~from = exem, listed = false ] {exemp}
+  {Exemple~pratique} {exemple~pratique} { } {example} { }
+\aznewbloc [ use~counter~from = exem, listed = false ] {appl}
+  {Application} {application} { } {example} { }
+\aznewbloc [ use~counter~from = exem, listed = false ] {appls}
+  {Applications} {applications} { } {example} { }
+
+\aznewbloc [ no~counter, listed = false ] {demo}
+  {Démonstration} { } { } {proof} { }
+
+\aznewbloc [ use~counter = exer, within~chapter~or~section ] {exer}
+  {Exercice} {exercice} {de~l'} {exercise} { }
+\aznewbloc [ use~counter~from = exer ] {exerappli}
+  {Exercice~d'application} {exercice} {de~l'} {exercise} { }
+\aznewbloc [ use~counter~from = exer ] {exerappro}
+  {Exercice~d'approfondissement} {exercice} {de~l'} {exercise} { }
+\aznewbloc [ use~counter~from = exer ] {prob}
+  {Problème} {problème} {du~} {exercise} { }
+\aznewbloc [ use~counter~from = exer ] {acti}
+  {Activité} {activité} {de~l'} {exercise} { }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% genthm — le bloc à nom libre
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\aznewbloc [ use~counter = genthm, within~chapter~or~section ] {az@genthm}
+  { } { bloc } { } { other } { }
+
+\DeclareDocumentEnvironment { genthm } { m E{\op}{{}} d() d<> }
+  {
+    \az_bloc_begin:nnnnn { az@genthm } {#2} {#3} {#4} {#1}
+  }
+  { \az_bloc_end: }
+
+\DeclareDocumentEnvironment { genthm* } { m E{\op}{{}} d() }
+  {
+    \az_bloc_begin:nnnnn { az@genthm } { #2, unnumbered } {#3} { \NoValue } {#1}
+  }
+  { \az_bloc_end: }
+
+\endinput
