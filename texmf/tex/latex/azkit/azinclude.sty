@@ -1,0 +1,210 @@
+%% azinclude.sty — documents à fragments
+%%
+%% Un cours du kit s'écrit en un MAÎTRE et des FRAGMENTS. Le maître porte le
+%% préambule et l'assemblage ; chaque fragment porte un chapitre.
+%%
+%% La difficulté tenait à ce qu'un fragment doit compiler DES DEUX CÔTÉS :
+%% inclus dans le maître, et seul pendant la rédaction. La solution — reprise
+%% de subfiles, à qui ce module doit tout — consiste à neutraliser
+%% \documentclass, \begin{document} et \end{document} selon le sens de lecture :
+%%
+%%   · compilé seul, le fragment charge le préambule du maître (azsubdoc.cls)
+%%     et le maître s'arrête à son propre \begin{document} ;
+%%   · inclus, le fragment voit son propre préambule avalé jusqu'à
+%%     \begin{document}, et son \end{document} rendu inoffensif.
+%%
+%% Cette partie est écrite en TeX du noyau, hors syntaxe expl3 : elle
+%% redéfinit \begin et la séquence « end␣ » — dont le nom porte une espace —,
+%% et l'exprimer autrement la rendrait impossible à comparer à son original.
+%%
+%% D'après subfiles.sty de Federico Garcia. Adaptation : Sadik Boujaida.
+%% Licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesPackage{azinclude}[2026-08-20 v0.1 azkit — documents à fragments]
+
+\RequirePackage{azbase}
+\RequirePackage{import}
+
+%% Alias en catcodes ORDINAIRES : le detournement de \begin ci-dessous est ecrit
+%% hors syntaxe expl3, ou ni « _ » ni « : » ne sont des lettres.
+\ExplSyntaxOn
+\cs_new_eq:NN \az@sub@strifeq \str_if_eq:nnTF
+\ExplSyntaxOff
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Détournement de \begin et \end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\az@sub@renewbegin#1{%
+  \let\az@sub@begin\begin
+  \def\begin##1{%
+    \az@sub@strifeq{##1}{document}{%
+      \let\begin\az@sub@begin
+      #1%
+    }{%
+      \csname az@sub@begin\endcsname{##1}%
+    }%
+  }%
+}
+\def\az@sub@saveendto#1{\expandafter\let\expandafter#1\csname end \endcsname}
+\def\az@sub@restoreendfrom{\expandafter\let\csname end \endcsname}
+\def\az@sub@renewend#1{%
+  \ifcsname az@sub@end\endcsname
+  \else
+    \az@sub@saveendto\az@sub@end
+  \fi
+  \expandafter\def\csname end \endcsname##1{%
+    \romannumeral
+    \az@sub@strifeq{##1}{document}{%
+      \z@
+      \az@sub@restoreendfrom\az@sub@end
+      #1%
+    }{%
+      \expandafter\expandafter\expandafter\z@\az@sub@end{##1}%
+    }%
+  }%
+}
+
+%% Côté MAÎTRE, lu depuis un fragment : tout s'arrête au \begin{document}.
+\def\az@sub@handlemain{%
+  \az@sub@renewbegin{%
+    \endinput
+    \ignorespaces
+  }%
+}
+
+%% Côté FRAGMENT, lu depuis le maître : le préambule du fragment est avalé
+%% jusqu'à son \begin{document}, et son \end{document} devient un \endinput.
+\def\az@sub@handlesub{%
+  \let\az@sub@documentclass\documentclass
+  \long\def\documentclass##1\begin##2{%
+    \az@sub@strifeq{##2}{document}{%
+      \let\documentclass\az@sub@documentclass
+      \az@sub@renewend{%
+        \endinput
+        \ignorespaces
+      }%
+      \ignorespaces
+    }{\documentclass}%
+  }%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Inclusion
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% \filename@simple est momentanément détourné pour que le nom de base garde
+%% son extension éventuelle : sans cela, « intro-crs.tex » deviendrait
+%% « intro-crs » puis « intro-crs.tex.tex » à l'inclusion.
+\def\az@sub@split#1{%
+  \let\az@sub@filenamesimple\filename@simple
+  \def\filename@simple##1.\\{\edef\filename@base{##1}}%
+  \filename@parse{#1}%
+  \let\filename@simple\az@sub@filenamesimple
+}
+
+\newcommand\azsubdoc{%
+  \let\az@sub@loadfile\subimport
+  \az@sub@subdoc
+}
+\newcommand\azsubdocinclude{%
+  \let\az@sub@loadfile\subincludefrom
+  \az@sub@subdoc
+}
+\def\az@sub@subdoc#1{%
+  \begingroup
+  \az@sub@handlesub
+  \az@sub@split{#1}%
+  \az@sub@loadfile{\filename@area}{\filename@base}%
+  \endgroup
+}
+
+%% Rend à un chemin relatif du fragment son sens depuis le maître.
+\def\subfix#1{\import@path#1}
+
+\def\az@sub@fixfilelist#1{%
+  \def\az@sub@list{}%
+  \def\az@sub@sep{}%
+  \@for\az@sub@tmp:=#1\do{%
+    \edef\az@sub@list{\az@sub@list\az@sub@sep\subfix{\az@sub@tmp}}%
+    \def\az@sub@sep{,}%
+  }%
+}
+\def\az@sub@fixpathlist#1{%
+  \def\az@sub@list{}%
+  \@tfor\az@sub@tmp:=#1\do{%
+    \edef\az@sub@list{\az@sub@list{\subfix\az@sub@tmp}}%
+  }%
+}
+\let\az@sub@bibliography\bibliography
+\def\bibliography#1{%
+  \az@sub@fixfilelist{#1}%
+  \expandafter\az@sub@bibliography\expandafter{\az@sub@list}%
+}
+\@ifpackageloaded{graphics}{%
+  \let\az@sub@graphicspath\graphicspath
+  \def\graphicspath#1{%
+    \az@sub@fixpathlist{#1}%
+    \edef\az@sub@list{{\subfix{}}\az@sub@list}%
+    \expandafter\az@sub@graphicspath\expandafter{\az@sub@list}%
+  }%
+}{}
+
+\newcommand\ifSubdocClassLoaded{%
+  \expandafter\ifx\csname ver@azsubdoc.cls\endcsname\relax
+    \expandafter\@secondoftwo
+  \else
+    \expandafter\@firstoftwo
+  \fi
+}
+
+%% Chargé depuis un fragment : c'est le MAÎTRE que l'on est en train de lire,
+%% il faut donc l'arrêter à son \begin{document}.
+\ifSubdocClassLoaded{\az@sub@handlemain}{}
+
+\ExplSyntaxOn
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \azinclude
+%%
+%%   \azinclude[<clés>]{<fragment>}
+%%
+%% Deux points d'accroche encadrent l'inclusion. azsolution s'y branche pour
+%% relever et replacer les solutions du fragment ; azinclude, lui, ignore tout
+%% de cette affaire — c'est ce qui permet aux deux modules de ne pas se
+%% connaître.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \g_az_include_before_tl
+\tl_new:N \g_az_include_after_tl
+\tl_new:N \az@current@file
+
+%% \ifincluded dit au fragment s'il est lu par le maître ou compilé seul. En
+%% \newif et non en booléen l3 : c'est un drapeau que le CONTENU consulte.
+\cs_if_exist:NF \ifincluded { \newif \ifincluded }
+\cs_if_exist:NF \ifdraft { \newif \ifdraft }
+
+\NewDocumentCommand \azinclude { o m }
+  {
+    \group_begin:
+      \includedtrue
+      \tl_set:Nn \az@current@file {#2}
+      \ifdraft
+        \azsubdoc {#2}
+      \else
+        \IfValueT {#1} { \keys_set:nn { az / include } {#1} }
+        \g_az_include_before_tl
+        \azsubdoc {#2}
+        \g_az_include_after_tl
+      \fi
+    \group_end:
+  }
+
+%% Famille ouverte : elle est remplie par azsolution, qui y dépose ses clés de
+%% placement. Ici elle n'a rien à dire, et une clé inconnue est ignorée plutôt
+%% que refusée — un fragment peut voyager vers une classe qui en fait moins.
+\keys_define:nn { az / include } { unknown .code:n = { } }
+
+\ExplSyntaxOff
+\endinput

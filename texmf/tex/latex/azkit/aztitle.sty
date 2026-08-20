@@ -1,0 +1,424 @@
+%% aztitle.sty — titre et page de garde
+%%
+%% Le titre d'un document du kit n'est pas une chaîne : c'est un GABARIT qui
+%% nomme des métadonnées.
+%%
+%%   \azsettitle{|document| \par |theme| \par |periode|}
+%%
+%% Chaque |clef| est remplacée par la métadonnée correspondante, habillée selon
+%% son rôle. Le rédacteur ne compose donc jamais son titre — il renseigne des
+%% champs, et le gabarit de la classe (ou du thème) décide de la forme.
+%%
+%% Deux gabarits cohabitent : le titre EN TÊTE DE PAGE et la PAGE DE GARDE.
+%% Ils diffèrent moins par leur contenu que par leur échelle — sur une page de
+%% garde chaque ligne est dilatée à la largeur disponible, ce qui demande un
+%% habillage distinct.
+%%
+%% Ce module n'enrobe PAS titlesec : les formats de titres de section sont
+%% l'affaire de la classe et des thèmes, qui l'emploient directement.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {aztitle} {2026-08-20} {0.1}
+  {azkit — titre du document et page de garde}
+
+\RequirePackage { azbase }
+\RequirePackage { azmeta }
+\RequirePackage { relsize }
+%% \resizebox porte toute la hierarchie de la page de garde : sans lui, les
+%% niveaux de titre n'existent plus.
+\RequirePackage { graphicx }
+
+\cs_if_exist:NF \iftitlepage  { \newif \iftitlepage }
+\cs_if_exist:NF \ifstriptitle { \newif \ifstriptitle }
+\cs_if_exist:NF \iflandscape  { \newif \iflandscape }
+\cs_if_exist:NF \ifbackground { \newif \ifbackground }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Mesures
+%%
+%% \az@ttlw est l'unité de largeur de la page de garde : les lignes du titre
+%% sont composées dans un parbox d'un multiple de cette unité, puis dilatées à
+%% la largeur du texte. Le multiple choisi fait donc la HIÉRARCHIE — plus le
+%% parbox est étroit, plus la ligne ressort une fois dilatée.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\dim_new:N \az@ttlw
+\dim_new:N \az@title@width
+\dim_new:N \l__az_title_bl_dim
+\tl_new:N  \az@relsize
+\tl_new:N  \aftertitleskip
+
+\AddToHook { begindocument }
+  { \dim_set:Nn \az@ttlw { \iflandscape 4.23 \else 3 \fi cm } }
+
+\AddToHook { begindocument/before }
+  {
+    \dim_compare:nTF { \paperwidth > 127mm }
+      { \tl_set:Nn \az@relsize { \relsize{2} } }
+      { \tl_set:Nn \az@relsize { \relsize{1} } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Mots-clefs de gabarit
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\seq_new:N \g_az_title_kw_seq
+
+%% Le \baselineskip est relevé DANS le groupe puis rétabli après le \par :
+%% chaque ligne du titre a son propre corps, et l'interligne doit suivre la
+%% ligne qui vient d'être composée, pas celle de la fonte courante.
+\NewDocumentCommand \aznewtitlekeyword { m m }
+  {
+    \seq_if_in:NnF \g_az_title_kw_seq {#1}
+      { \seq_gput_right:Nn \g_az_title_kw_seq {#1} }
+    \cs_gset:cpn { az@title@ #1 }
+      {
+        { #2 \az@relsize \usemeta {#1}
+          \dim_gset:Nn \l__az_title_bl_dim { \baselineskip } }
+        \par \dim_set_eq:NN \baselineskip \l__az_title_bl_dim
+      }
+  }
+
+\aznewtitlekeyword {document}    { \LARGE \bfseries }
+\aznewtitlekeyword {devoir}      { \LARGE \bfseries }
+\aznewtitlekeyword {matiere}     { \LARGE \bfseries }
+\aznewtitlekeyword {concours}    { \LARGE \bfseries }
+\aznewtitlekeyword {epreuve}     { \Large \scshape }
+\aznewtitlekeyword {evenement}   { \Large \scshape }
+\aznewtitlekeyword {origine}     { \large \scshape }
+\aznewtitlekeyword {theme}       { \Large \scshape }
+\aznewtitlekeyword {subtheme}    { \large \scshape \itshape }
+\aznewtitlekeyword {centre}      { \Large \scshape }
+\aznewtitlekeyword {ville}       { \large \scshape }
+\aznewtitlekeyword {classe}      { \large \scshape }
+\aznewtitlekeyword {filiere}     { \large \scshape }
+\aznewtitlekeyword {texte}       { \sffamily \slshape }
+\aznewtitlekeyword {periode}     { \itshape }
+\aznewtitlekeyword {horaire}     { \itshape }
+\aznewtitlekeyword {session}     { \itshape }
+\aznewtitlekeyword {duree}       { \itshape }
+\aznewtitlekeyword {auteur}      { \small \itshape \usemeta{preauteur} \upshape }
+\aznewtitlekeyword {moderateur}  { \small }
+\aznewtitlekeyword {affiliation} { \small \itshape }
+\aznewtitlekeyword {email}       { \small \ttfamily }
+\aznewtitlekeyword {website}     { \small \ttfamily }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le parseur de gabarit
+%%
+%% Même découpe que les gabarits d'étiquette de azbase : on scinde sur « | »,
+%% les rangs impairs sont littéraux, les rangs pairs des mots-clefs. Un mot
+%% inconnu est laissé tel quel, entre barres — visible dans la sortie, ce qui
+%% vaut mieux qu'un titre silencieusement amputé.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N  \l__az_title_tl
+\seq_new:N \l__az_title_seq
+\int_new:N \l__az_title_rang_int
+
+\cs_new_protected:Npn \az_title_parse:n #1
+  {
+    \tl_clear:N \l__az_title_tl
+    \seq_set_split:Nnn \l__az_title_seq { | } {#1}
+    \int_zero:N \l__az_title_rang_int
+    \seq_map_inline:Nn \l__az_title_seq
+      {
+        \int_incr:N \l__az_title_rang_int
+        \int_if_odd:nTF { \l__az_title_rang_int }
+          { \tl_put_right:Nn \l__az_title_tl {##1} }
+          {
+            \cs_if_exist:cTF { az@title@ ##1 }
+              { \tl_put_right:Nx \l__az_title_tl
+                  { \exp_not:c { az@title@ ##1 } } }
+              { \tl_put_right:Nn \l__az_title_tl { | ##1 | } }
+          }
+      }
+  }
+
+\NewDocumentCommand \azsettitle { s +m }
+  {
+    \az_title_parse:n {#2}
+    \IfBooleanTF {#1}
+      { \tl_gset_eq:NN \az@titlepagecontents \l__az_title_tl }
+      { \tl_gset_eq:NN \az@titlecontents     \l__az_title_tl }
+  }
+
+\tl_new:N \az@titlecontents
+\tl_new:N \az@titlepagecontents
+
+%% Version LOCALE, pour l'argument entre parenthèses de \titre : le gabarit ne
+%% vaut que pour cet appel et ne doit pas contaminer le document.
+\NewDocumentCommand \az_title_local:nn { s +m }
+  {
+    \az_title_parse:n {#2}
+    \IfBooleanTF {#1}
+      { \tl_set_eq:NN \az@titlepagecontents \l__az_title_tl }
+      { \tl_set_eq:NN \az@titlecontents     \l__az_title_tl }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Habillages de page de garde
+%%
+%% Le niveau 1 donne le plus GRAND rendu (parbox large, donc dilatation forte
+%% une fois ramené à la largeur du texte), le niveau 4 le plus discret.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_title_pagefmt:nnn #1#2#3
+  % #1 = multiple de \az@ttlw, #2 = clef, #3 = habillage
+  {
+    \cs_set:cpn { az@title@ #2 }
+      {
+        \resizebox { \hsize } { ! }
+          {
+            \parbox { #1 \az@ttlw }
+              {
+                \az@fil@inner@titlepage \linespread {.8}
+                #3 \usemeta {#2} \strut
+                \dim_gset:Nn \l__az_title_bl_dim { \baselineskip }
+              }
+          }
+        \par \dim_set:Nn \baselineskip { 1.56 \l__az_title_bl_dim }
+      }
+  }
+
+\NewDocumentCommand \aztitlepageformat { O{1} m m }
+  { \az_title_pagefmt:nnn {#1} {#2} {#3} }
+
+\cs_new_protected:Npn \az_title_pageformats:
+  {
+    \aztitlepageformat [2] {centre}      { \scshape }
+    \aztitlepageformat [2] {ville}       { \scshape }
+    \aztitlepageformat [2] {classe}      { \scshape }
+    \aztitlepageformat [2] {filiere}     { \scshape }
+    \aztitlepageformat [3] {matiere}     { \bfseries }
+    \aztitlepageformat [4] {evenement}   { \bfseries }
+    \aztitlepageformat [4] {document}    { \bfseries }
+    \aztitlepageformat [4] {devoir}      { \bfseries }
+    \aztitlepageformat [4] {concours}    { \bfseries }
+    \aztitlepageformat [3] {theme}       { \scshape }
+    \aztitlepageformat [2] {subtheme}    { \scshape \itshape }
+    \aztitlepageformat [3] {epreuve}     { \scshape }
+    \aztitlepageformat [2] {session}     { \itshape }
+    \aztitlepageformat [1] {origine}     { \scshape }
+    \aztitlepageformat [1] {periode}     { \small \itshape }
+    \aztitlepageformat [1] {horaire}     { \small \itshape }
+    \aztitlepageformat [1] {duree}       { \small \itshape }
+    \aztitlepageformat [1] {auteur}
+      { \smaller \itshape \usemeta{preauteur} \upshape \small }
+    \aztitlepageformat [1] {moderateur}  { \small }
+    \aztitlepageformat [1] {affiliation} { \itshape }
+    \aztitlepageformat [1] {email}       { \footnotesize \ttfamily }
+    \aztitlepageformat [1] {website}     { \footnotesize \ttfamily }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Réglages
+%%
+%% « inner » désigne l'alignement DANS le bloc de titre, « outer » celui du
+%% bloc dans la page. Les deux sont indépendants : un titre centré dans un bloc
+%% aligné à gauche est une mise en page courante, l'inverse aussi.
+%% L'étoile désigne systématiquement la variante « page de garde ».
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_eq:NN \az@fil@inner \centering
+\cs_new_eq:NN \az@fil@outer \centering
+\cs_new_eq:NN \az@fil@inner@titlepage \raggedright
+\cs_new_eq:NN \az@fil@outer@titlepage \centering
+
+\cs_new_protected:Npn \az_title_align:Nn #1#2
+  {
+    \str_case:nn {#2}
+      {
+        { l } { \cs_set_eq:NN #1 \raggedright }
+        { r } { \cs_set_eq:NN #1 \raggedleft }
+        { c } { \cs_set_eq:NN #1 \centering }
+      }
+  }
+
+\tl_new:N \az@hook@beforetitle      \tl_new:N \az@hook@aftertitle
+\tl_new:N \az@hook@beforetitlepage  \tl_new:N \az@hook@aftertitlepage
+\tl_new:N \az@hook@titlebefore      \tl_new:N \az@hook@titleafter
+\tl_new:N \az@hook@titlebefore@page \tl_new:N \az@hook@titleafter@page
+\tl_new:N \az@hook@lateafter        \tl_new:N \az@hook@lateafterpage
+\tl_new:N \az@hook@earlybeforepage
+
+\keys_define:nn { az / title }
+  {
+    inner~align   .code:n = { \az_title_align:Nn \az@fil@inner {#1} } ,
+    inner~align*  .code:n = { \az_title_align:Nn \az@fil@inner@titlepage {#1} } ,
+    outer~align   .code:n = { \az_title_align:Nn \az@fil@outer {#1} } ,
+    outer~align*  .code:n = { \az_title_align:Nn \az@fil@outer@titlepage {#1} } ,
+    inner~align   .default:n = { c } ,
+    inner~align*  .default:n = { l } ,
+    outer~align   .default:n = { c } ,
+    outer~align*  .default:n = { c } ,
+    before        .tl_set:N = \az@hook@beforetitle ,
+    after         .tl_set:N = \az@hook@aftertitle ,
+    before*       .tl_set:N = \az@hook@beforetitlepage ,
+    after*        .tl_set:N = \az@hook@aftertitlepage ,
+    late~after    .tl_set:N = \az@hook@lateafter ,
+    late~after*   .tl_set:N = \az@hook@lateafterpage ,
+    early~before* .tl_set:N = \az@hook@earlybeforepage ,
+    %% Les quatre hooks « title » entourent le gabarit lui-même : leur valeur
+    %% est donc un GABARIT, passée au parseur comme le titre.
+    before~title  .code:n =
+      { \az_title_parse:n {#1} \tl_set_eq:NN \az@hook@titlebefore \l__az_title_tl } ,
+    after~title   .code:n =
+      { \az_title_parse:n {#1} \tl_set_eq:NN \az@hook@titleafter \l__az_title_tl } ,
+    before~title* .code:n =
+      { \az_title_parse:n {#1} \tl_set_eq:NN \az@hook@titlebefore@page \l__az_title_tl } ,
+    after~title*  .code:n =
+      { \az_title_parse:n {#1} \tl_set_eq:NN \az@hook@titleafter@page \l__az_title_tl } ,
+    width      .code:n = { \dim_set:Nn \az@title@width {#1} } ,
+    width      .default:n = { .75\columnwidth } ,
+    format     .code:n = { \azsettitle {#1} } ,
+    format*    .code:n = { \azsettitle* {#1} } ,
+    afterskip  .tl_set:N = \aftertitleskip ,
+    afterskip  .default:n = { 2.5 } ,
+    %% Réduit l'unité de la page de garde, donc tout le titre d'un coup.
+    scale      .code:n =
+      { \AddToHook { begindocument }
+          { \dim_set:Nn \az@ttlw { \az@ttlw / #1 } } } ,
+  }
+
+\NewDocumentCommand \azsetuptitle { m } { \keys_set:nn { az / title } {#1} }
+
+\AddToHook { begindocument/before }
+  {
+    \dim_compare:nT { \az@title@width = 0pt }
+      { \dim_set:Nn \az@title@width { .75\columnwidth } }
+    \tl_if_empty:NT \aftertitleskip { \tl_set:Nn \aftertitleskip { 2.5 } }
+    \tl_if_empty:NT \az@hook@beforetitle
+      { \tl_set:Nn \az@hook@beforetitle { \minipage { \az@title@width } } }
+    \tl_if_empty:NT \az@hook@aftertitle
+      { \tl_set:Nn \az@hook@aftertitle { \endminipage } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \titre
+%%
+%%   \titre                titre en tête de page
+%%   \titre*               page de garde
+%%   \titre\op{clés}       réglages pour ce seul appel
+%%   \titre(gabarit)       gabarit pour ce seul appel
+%%
+%% Sur deux colonnes, le titre traverse les deux : c'est le rôle de `strip`,
+%% fourni par cuted et chargé par azlayout.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentEnvironment { STRIP } { } { } { }
+
+\NewDocumentCommand \titre { s e{\op} +d() }
+  {
+    \IfBooleanT {#1} { \titlepagetrue }
+    \IfValueT {#2} { \azsetuptitle {#2} }
+    \IfValueT {#3}
+      {
+        \iftitlepage
+          \az_title_local:nn* {#3}
+        \else
+          \az_title_local:nn {#3}
+        \fi
+      }
+    \iftitlepage \az_titlepage: \else \az_titleinline: \fi
+    %% Un document n'a qu'un titre. Les \titre suivants — il y en a dans les
+    %% fragments inclus, qui doivent aussi compiler seuls — sont sans effet.
+    \cs_gset_eq:NN \titre \az_title_dummy:w
+  }
+
+\NewDocumentCommand \az_title_dummy:w { s e{\op} +d() } { }
+
+\cs_new_protected:Npn \az_titlepage:
+  {
+    \begin { titlepage }
+      \az_title_pageformats:
+      \az@hook@earlybeforepage
+      \ifbackground \cs_set:Npn \az@back@code { } \fi
+      \az@fil@outer@titlepage
+      \az@hook@beforetitlepage
+      \az@hook@titlebefore@page
+        \az@fil@inner@titlepage
+        \az@titlepagecontents
+      \az@hook@titleafter@page
+      \az@hook@aftertitlepage
+      \az@hook@lateafterpage
+    \end { titlepage }
+    \cs_if_exist:NT \pagecolor { \pagecolor { pagecol } \color { textcol } }
+    %% La page de garde a pu changer de geometrie ; azlayout n'est pas une
+    %% dependance de ce module, d'ou la garde.
+    \cs_if_exist_use:N \restoregeometry
+  }
+
+\cs_new_protected:Npn \az_titleinline:
+  {
+    \thispagestyle { plain }
+    \ifstriptitle
+      \RenewDocumentEnvironment { STRIP } { } { \strip } { \endstrip }
+    \fi
+    \begin { STRIP }
+      %% Les notes du titre prennent des symboles, pas des chiffres : elles ne
+      %% relèvent pas de la numérotation du corps du document.
+      \RenewDocumentCommand \thefootnote { } { \@fnsymbol \c@footnote }
+      \cs_set:Npn \@makefnmark
+        { \rlap { \@textsuperscript { \normalfont \@thefnmark } } }
+      \cs_set:Npn \@makefntext ##1
+        {
+          \parindent 1em \noindent
+          \hb@xt@ 1.8em { \hss \@textsuperscript { \normalfont \@thefnmark } } ##1
+        }
+      \az@fil@outer
+      \az@hook@beforetitle
+      \az@fil@inner
+      \az@hook@titlebefore
+        \az@titlecontents
+        \az@hook@titleafter
+        \az@hook@aftertitle
+      \az@hook@lateafter
+      \par \vspace { \bigskipamount * \real { \aftertitleskip } }
+    \end { STRIP }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Métadonnées en en-tête et pied de page
+%%
+%% Pas de \azsethead : enrober titlesec est explicitement écarté. Ce qui est
+%% fourni, c'est la VALEUR — \azhf{centre} rend la métadonnée habillée pour un
+%% filet de page — de sorte qu'un thème écrive directement
+%%
+%%   \sethead{}{\azhf{centre}}{\azhf{page}}
+%%
+%% avec l'interface de titlesec, sans couche intermédiaire à maintenir.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentCommand \aznewhfkeyword { m m }
+  { \cs_gset:cpn { az@hf@ #1 } { { #2 \azrawmeta {#1} } } }
+
+\clist_map_inline:nn
+  { centre, classe, filiere, matiere, evenement, theme, concours, epreuve, origine }
+  { \aznewhfkeyword {#1} { \scshape } }
+
+\clist_map_inline:nn { session, periode, horaire }
+  { \aznewhfkeyword {#1} { \itshape } }
+
+\clist_map_inline:nn { document, devoir, subtheme }
+  { \aznewhfkeyword {#1} { } }
+
+\clist_map_inline:nn { auteur, moderateur }
+  { \aznewhfkeyword {#1} { \scshape } }
+
+\aznewhfkeyword {affiliation} { \scshape \itshape }
+\aznewhfkeyword {email}       { \ttfamily }
+\aznewhfkeyword {website}     { \ttfamily }
+
+%% Les repères de position, qui ne sont pas des métadonnées.
+\cs_gset:cpn { az@hf@page }  { \thepage }
+\cs_gset:cpn { az@hf@pages } { page~\thepage{}~/~\pageref* {LastPage} }
+\cs_gset:cpn { az@hf@C }     { \int_compare:nT { \value{chapter} > 0 } { \thechapter } }
+\cs_gset:cpn { az@hf@S }     { \int_compare:nT { \value{section} > 0 } { \thesection } }
+\cs_gset:cpn { az@hf@square } { \azsquare }
+
+\NewExpandableDocumentCommand \azhf { m } { \use:c { az@hf@ #1 } }
+
+\endinput
