@@ -1,0 +1,439 @@
+%% azlegacy.sty — les formules centrées, d'avant azmath
+%%
+%% Portage de `oldmath.sty`. Le nom dit ce qu'il est : l'ANCÊTRE des
+%% constructions de mise en valeur d'azmath, encore massivement employé dans le
+%% contenu — \formule y compte 1740 occurrences, \resultat 94, mFormule 75.
+%% Il reste donc chargé, et le restera tant que le contenu n'aura pas migré.
+%%
+%% Ce que le module fournit : une famille de commandes qui CENTRENT une formule
+%% en lui adjoignant, à gauche un texte d'annonce, à droite un numéro ou une
+%% référence, avec un cadre facultatif. Toute la subtilité tient à ce que ces
+%% trois pièces ne tiennent pas toujours sur une ligne : le placement mesure et
+%% décide de rejeter l'annonce au-dessus, le numéro en dessous, ou de reculer
+%% dans la marge.
+%%
+%%   \formule[annonce]{$…$}[numéro]     la forme courante
+%%   \resultat(largeur)[annonce]{…}     idem, encadré, corps en paragraphe
+%%   \begin{mFormule} … \end{mFormule}  la même, en environnement, en mode math
+%%   \igboxed                           encadre un membre d'un alignement
+%%   develop, iggather                  alignements à quatre colonnes
+%%
+%% ── Ce qui a changé au portage ──────────────────────────────────────────────
+%%
+%% Strictement les noms, comme demandé :
+%%   \cpgesetdeco  → \azsetdeco
+%%   \deco@formule → \az@deco@formule   (azbase préfixe désormais ses décos)
+%%
+%% Les internes en `ig@` sont laissés tels quels : ils ne portaient pas le nom
+%% de domaine, et les renommer ne gagnerait rien contre le risque de casser un
+%% module qu'on ne retouche pas.
+%%
+%% Un DÉFAUT corrigé au passage : l'environnement `Formule*` appelait
+%% `\forumle`, coquille pour `\formule*`. Il ne produisait donc rien. Aucune
+%% occurrence dans `Cours/`, ce qui explique qu'il soit passé inaperçu.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesPackage{azlegacy}[2026-08-20 v0.1 azkit — formules centrées (héritage)]
+
+\RequirePackage{azbase}
+%% etoolbox : \csdef et \forcsvlist, dont ce module se sert sans les charger
+%% -- il vivait jusqu'ici a l'ombre de cpgemath, qui les apportait.
+\RequirePackage{etoolbox}
+%% empheq porte les environnements `*result` ; mathtools est sa dépendance et
+%% celle des alignements repris ci-dessous.
+\RequirePackage{mathtools}
+\RequirePackage{empheq}
+
+%% \fakebox neutralise l'encadrement d'empheq là où le cadre est déjà posé par
+%% \resultat : deux cadres emboîtés au lieu d'un.
+\providecommand\fakebox[1]{#1}
+
+
+%%%% Formules mathématiques
+\chardef\b@ig@left=0 \chardef\b@ig@middle=2 \chardef\b@ig@right=4
+\chardef\b@ig@z=0
+\newif\if@ig@frame
+\newif\if@ig@auto
+\newif\if@ig@numero 
+\newif\if@ig@minipage
+\newif\if@ig@inmini
+\newtoks\t@ig@tmp 
+\newdimen\d@ig@tmp
+\newdimen\d@ig@tmpa
+\newcount\c@ig@tmp
+\newcount\c@ig@numberlines
+\newcounter{Equation}%[Corrige]
+
+
+%%%% Les variables visibles par l'utilisateur %%%%
+\newbox\midbox % boite qui contient le texte central dans \mlcenterr
+\newdimen\midwidth % largeur de cette boite+\fadjwidth
+\newdimen\fadjwidth % excédent de largeur ajouté par le cadre
+\newskip\bigcenterskip %grand espace vertical avant et après \lcenterr
+\bigcenterskip=8\p@ plus 2pt minus 4\p@
+\newskip\midcenterskip % espace vertical moyen avant et après \lcenterr
+\midcenterskip=6\p@ plus 1.5pt minus 3\p@
+\newskip\smallcenterskip %petit espace, si \lcenterr dans \mlcenterr
+\smallcenterskip=4\p@  plus 1pt minus 2\p@
+\newskip\numvskip % saut vertical qui sépare une équation et son numéro
+\numvskip2\p@\@minus2\p@
+\newcount\precenterpenalty \newcount\postcenterpenalty
+\precenterpenalty\@highpenalty \postcenterpenalty\z@
+
+%%%% Quelques commandes utilitaires %%%%
+\def\m@ig@stop{\vrule\@width\z@}
+\def\m@ig@par{\par\nointerlineskip}
+\def\m@ig@narrowpar{\rightskip \z@ plus .5em 
+ 	 \@rightskip\rightskip \parfillskip\z@ plus .1\hsize}  
+\def\m@ig@noindent{\everypar{{\setbox\z@\lastbox}}}
+\def\endpar{\ifhmode\unskip\nobreak\hfill\m@ig@stop\fi}
+
+\def\m@ig@removestar#1*{#1}
+\def\m@ig@erasesymbol#1#2+{#2}
+\def\m@ig@erasestar*#1+{#1}
+
+\def\m@ig@for{\@for\m@ig@fortok:=}
+%%%% Pour les besoins d'un hack %%%%%
+%% crée un groupe pour limiter portée 
+%% end{f@ke} traite les changements effectués par \endtrivlist
+\newenvironment{f@ke}{}{}
+
+%%%%  Les commandes butineuses %%%%
+
+%% \ig@center@ s'occupe du placement des éléments, 
+%% esp. vert. et pénalités de rupture de page
+\newif\iffirst@pass
+\def\let@bracket{\let\[=[\let\]=]}
+\newcommand\ig@center@[3]{%
+  \begin{f@ke}%
+  \let\n@bre@\relax
+   %% les espaces verticaux, petit espace si \lcenterr dans \mlcenterr 
+   \partopsep\z@%
+   \if@ig@inmini
+      \topsep\smallcenterskip
+   \else
+      \topsep\bigcenterskip
+   \fi%
+  %% récupération des paramètres
+  \def\n@bre{#3}
+  \if@ig@numero%
+    \refstepcounter{Equation}%
+    \ifx\@empty\n@bre\else%
+      \expandafter\label\expandafter{\n@bre}
+    \fi
+    \def\n@bre{(\theEquation)}
+  \fi%
+  \setbox\b@ig@right\hbox{\color@begingroup\n@bre\color@endgroup}%
+  \setbox\b@ig@left\hbox{\color@begingroup\let@bracket#1\color@endgroup}%
+  \edef\every@math{\the\everymath}
+  \everymath{\every@math\displaystyle}%
+  \setbox\b@ig@middle\hbox{\color@begingroup\let@bracket#2\color@endgroup}%
+  \setlength\d@ig@tmp{.5\linewidth-.5\wd\b@ig@middle-1em}%
+  %% si pas assez d'espace pour #1, l'insérer en dehors de \trivlist
+  \ifdim\wd\b@ig@left>\d@ig@tmp%
+    \ifhmode\unskip\par\nobreak\noindent\fi%
+    \unhbox\b@ig@left\topsep\midcenterskip%
+  \fi%
+  %% si \b@ig@middle trop haute, #1 en dehors de \trivlist.
+  %\showthe\c@ig@numberlines
+  \ifnum\c@ig@numberlines>2\relax
+    \ifdim\wd\b@ig@left>\z@
+      \ifhmode\unskip\par\nobreak\noindent\fi%
+      \unhbox\b@ig@left\topsep\smallcenterskip%
+  \fi\fi%
+  %% hack pour une meilleure gestion des espaces vert.
+  \if@inlabel\vskip\bigcenterskip\fi%
+  %% début trivlist
+  \trivlist \parindent\z@%
+  %% pénalités, pas de rupture de page si #1 vide ou trop long.
+   \ifdim\wd\b@ig@left=\z@\relax
+       \@beginparpenalty\@M%
+   \else 
+       \@beginparpenalty\precenterpenalty%
+   \fi
+   \@endparpenalty\postcenterpenalty%
+  %% mise en place des pénalités et des sauts avec \item.
+  %% Double \item[] +\@noparlistfalse = hack pour 
+  %% mieux gérer les espaces verticaux si imbriqué dans une liste
+  \item[]\@trivlist\@noparlistfalse\item[]%
+  %% insérer #1 si non encore fait
+  \ifdim\wd\b@ig@left>\z@%
+    \leavevmode\hbox to\z@{\unhcopy\b@ig@left\hss}%
+  \fi%
+  %% recul si #2 trop long
+  \ifdim\wd\b@ig@middle>\linewidth%
+     \hskip-\@totalleftmargin%
+  \fi%
+  %% insérer #2, \m@ig@stop à la fin pour empêcher disparition de \hfill
+  %% si jamais saut de ligne pour insérer #3
+  \m@ig@stop\hfill\box\b@ig@middle\hfill\m@ig@stop%
+  %% inserer #3, si trop long saut de ligne avec \m@ig@par
+  \ifdim\wd\b@ig@right>\z@%
+    \if@ig@minipage\else%
+      \ifdim\d@ig@tmp<\wd\b@ig@right\m@ig@par\nobreak\vskip\numvskip\hfill%
+     \fi\fi%
+    \hbox to\z@{\hss\unhbox\b@ig@right}%
+  \fi%
+\endtrivlist%
+\end{f@ke}
+%% réinitialisation des variables booléennes
+\@ig@framefalse\@ig@numerofalse}
+
+
+
+%% \mig@center@, préparation de la boite centrale
+%% appel de \ig@center@ pour placement
+\newcommand\mig@center@[4]{%
+  \@ig@minipagetrue%
+  %% traitement de #1
+  \in@{*!}{#1!}%
+  \ifin@% 
+     \edef\num@pt{\m@ig@removestar #1}%
+     \let\@render\m@ig@narrowpar \def\@renderer{varwidth}%
+  \else%
+     \def\num@pt{#1}%
+     \let\@render\relax \def\@renderer{minipage}%
+  \fi%
+  \ifnum\num@pt<50\relax%
+    \ifnum\num@pt=0\relax%
+      \midwidth\linewidth%
+    \else%
+       \midwidth.5\linewidth%
+    \fi%
+  \else%
+    \setlength\midwidth{\linewidth*\ratio{\num@pt\p@}{100\p@}}%
+  \fi%
+  %% mise en boite de partie centrale
+  \advance\midwidth-\fadjwidth%
+  \everymath{\displaystyle}%
+  \set@mid@box{#3}%
+  \setlength\midwidth{\wd\midbox+\fadjwidth}
+  %% preparation du cadre
+  \if@ig@frame%
+     \let\m@ig@framecmd\az@deco@formule%
+  \else%
+     \let\m@ig@framecmd\relax%
+  \fi%
+  %% appel de \ig@center@ pour le placement
+  %% \vcenter sert a centrer verticalement 
+  \ig@center@{#2}{%
+        $\m@th\vcenter{\hsize\midwidth\@parboxrestore%
+           \m@ig@framecmd{\box\midbox}}$}{#4}%
+\@ig@minipagefalse%
+%\showthe\c@ig@numberlines
+}
+
+\long\def\set@mid@box#1{
+ \setbox\midbox\hbox{\hbadness\@M\c@ig@numberlines\z@%
+     \csname \@renderer\endcsname\midwidth%
+       \@ig@inminitrue%
+       %\par va compter le nombre de ligne dans la boite
+       \@setpar{{\@@par}\global\advance\c@ig@numberlines\prevgraf}
+      \@render #1\par%
+     \csname end\@renderer\endcsname}%
+}
+
+%% petite commande intermédiaire pour \flcenterr
+\newcommand\fig@center@[3]{%
+   \@ig@frametrue%
+    \ig@center@{#1}{\fbox{#2}}{#3}}
+
+%%%% Les commandes utilisateur %%%%
+\def\lcenterr{%
+   \@ifstar{\@ig@numerotrue\ig@center@}{\@ig@numerofalse\ig@center@}}
+       
+\def\flcenterr{%
+   \@ifstar{\@ig@numerotrue\fig@center@}{\@ig@numerofalse\fig@center@}}
+   
+\def\mlcenterr{%
+   \@ifstar{\@ig@numerotrue\mig@center@}{\@ig@numerofalse\mig@center@}}
+
+\def\fmlcenterr{\@ig@frametrue%
+   \@ifstar{\@ig@numerotrue\mig@center@}{\@ig@numerofalse\mig@center@}}
+   
+%%%% Les commandes \formule et \resultat %%%%
+
+\def\formule{\@ifstar{\@ig@numerotrue\form@}{\@ig@numerofalse\form@}}
+\def\form@{\@ifnextchar[
+        {\@form@}
+        {\@form@[]}}
+\def\@form@[#1]#2{\@ifnextchar[
+        {\@@form@@[#1]{#2}}
+        {\@@form@@[#1]{#2}[]}}
+\def\@@form@@[#1]#2[#3]{\ig@center@{#1}{#2}{#3}}
+
+\azsetdeco{formule}{\fbox{#1}}  
+\setlength\fadjwidth{2\fboxsep+2\fboxrule}
+
+\DeclareDocumentCommand\mformule{s O{} m O{}}{%
+	\IfBooleanTF{#1}{\@ig@numerotrue}{}%
+	\ig@center@{#2}{$#3$}{#4}%
+	}
+\DeclareDocumentEnvironment{Formule}{O{} O{} b}{\formule[#1]{#3}[#2]}{}
+\DeclareDocumentEnvironment{Formule*}{O{} O{} b}{\formule*[#1]{#3}[#2]}{}
+\DeclareDocumentEnvironment{mFormule}{O{} O{} b}{\formule[#1]{$#3$}[#2]}{}
+\DeclareDocumentEnvironment{mFormule*}{O{} O{} b}{\formule*[#1]{$#3$}[#2]}{}
+
+ 
+\long\def\resultat{\@ifstar{\@ig@numerotrue\result@}{\@ig@numerofalse\result@}}
+\long\def\result@{\@ifnextchar(%
+       {\@result@}
+       {\@result@(100*)}}
+\long\def\@result@(#1){\@ifnextchar[%
+       {\@@result@(#1)}
+       {\@@result@(#1)[]}}
+\long\def\@@result@(#1)[#2]#3{\@ifnextchar[%
+       {\@@result@@(#1)[#2]{#3}}
+       {\@@result@@(#1)[#2]{#3}[]}}
+\long\def\@@result@@(#1)[#2]#3[#4]{\@ig@frametrue\mig@center@{#1}{#2}{#3}{#4}}
+
+
+\DeclareDocumentEnvironment{Resultat}{D(){100*} O{} O{} +b}
+	{\resultat(#1)[#2]{#4}[#3]}
+	{}
+\DeclareDocumentEnvironment{Resultat*}{D(){100*} O{} O{} +b}
+	{\resultat*(#1)[#2]{#4}[#3]}
+	{}
+\DeclareDocumentEnvironment{alignedresult}{D(){100*} O{} O{} +b}
+	 {\resultat(#1)[#2]{\begin{empheq}[box=\fakebox]{align*}#4\end{empheq}}[#3]}
+	{}
+\DeclareDocumentEnvironment{alignedresult*}{D(){100*} O{} O{} +b}
+	 {\resultat*(#1)[#2]{\begin{empheq}[box=\fakebox]{align*}#4\end{empheq}}[#3]}
+	{}
+\DeclareDocumentEnvironment{multlineresult}{D(){100*} O{} O{} +b}
+	 {\resultat(#1)[#2]{\begin{empheq}[box=\fakebox]{multline*} #4\end{empheq}}[#3]}
+	{}
+\DeclareDocumentEnvironment{multlineresult*}{D(){100*} O{} O{} +b}
+	 {\resultat*(#1)[#2]{\begin{empheq}[box=\fakebox]{multline}#4\end{empheq}}[#3]}
+	{}
+\DeclareDocumentEnvironment{emresult}{m O{} O{} +b}
+	 {\resultat[#2]{\begin{empheq}[box=\fakebox]{#1*}#4\end{empheq}}[#3]}
+	{}
+\DeclareDocumentEnvironment{emresult*}{m O{} O{} +b}
+	 {\resultat*[#2]{\begin{empheq}[box=\fakebox]{#1*}#4\end{empheq}}[#3]}
+	{}
+
+%%%% Fin des définitions des commandes pour centrer %%%%
+
+ 
+%%%%% l'environnement thm %%%%
+%\let\thmdeco\fbox
+%\newenvironment{thm}[2][]
+%  {\def\thm@name{#2}%
+%  #1%
+%  \let\az@deco@formule\thmdeco%
+%  \setbox0=\vbox\bgroup\advance\hsize-\fadjwidth\m@ig@noindent}
+%  {\egroup\m@ig@noindent\fmlcenterr{0}{\bfseries\thm@name}{\box0}{}}
+  
+  
+  
+\newcommand{\igbox}[1]{\az@deco@formule{\m@th$\displaystyle#1$}}
+\newcommand\igboxed[1]{\let\bgroup{\romannumeral-`}\@igboxed#1&&\ENDIG}
+\def\@igboxed#1&#2&#3\ENDIG{%
+  \ifnum0=`{}\fi 
+    \setbox \z@
+    \hbox{$\displaystyle#1{}\m@th$\kern\fboxsep \kern\fboxrule }%
+    \edef\@tempa {\kern  \wd\z@ &\kern -\the\wd\z@ \fboxsep
+        \the\fboxsep \fboxrule \the\fboxrule }\@tempa \igbox {#1#2}%
+}
+\def\igtag{\tag*{(\theEquation)}\refstepcounter{Equation}}
+\csdef{igtag*}#1{(#1)}
+\newenvironment{develop}{%
+	\let\align@preamble\ig@align@preamble%
+ 	\start@align\tw@\st@rredtrue\m@ne%
+	&&&&\\\noalign{\vskip-\baselineskip}
+}{%
+  \endalign
+}
+\newenvironment{iggather}{%
+	\let\gather@\ig@gather@
+  \start@gather\st@rredtrue
+	&&&\\\noalign{\vskip-\baselineskip}
+}{%
+  \endgather
+}
+\def\column@minus{%
+    \global\advance\column@\m@ne
+}
+\def\ig@align@preamble{%
+	&\setboxz@h to \z@{##\hss}%
+    \set@field%
+    \tabskip\alignsep@%
+   &\hfil
+   \strut@%
+    \setboxz@h{\@lign$\m@th\displaystyle{##}$}%
+    \ifmeasuring@\savefieldlength@\fi%
+    \set@field%
+    \tabskip\z@skip%
+   &\setboxz@h{\@lign$\m@th\displaystyle{{}##}$}%
+    \ifmeasuring@\savefieldlength@\fi%
+    \set@field%
+    \tabskip\alignsep@%
+    \hfil%
+   &\setboxz@h to \z@{\hss##\unskip}%
+    \set@field%
+    \tabskip\z@skip%
+}
+\def\ig@gather@#1{%
+    \ingather@true \let\split\insplit@
+    \let\tag\tag@in@align \let\label\label@in@display
+    \chardef\dspbrk@context\z@
+    \intertext@ \displ@y@ \Let@
+    \let\math@cr@@@\math@cr@@@gather
+    \gmeasure@{#1}%
+    \global\shifttag@false
+    \tabskip\z@skip
+    \global\row@\@ne
+    \halign to\displaywidth\bgroup
+    	\setboxz@h{\strut@{##\hss}}
+		\box0\hfil
+        &\strut@
+        \setboxz@h{$\m@th\displaystyle{##}$}%
+        \calc@shift@gather
+        \set@gather@field
+        \tabskip\@centering
+       &\setboxz@h{\strut@{##}}%
+        \box0
+        \tabskip\z@skip \span
+        \crcr
+        #1%
+}
+\def\ig@place@tag@gather{%
+    \iftagsleft@
+        \kern-\gdisplaywidth@
+        \ifshifttag@
+            \rlap{\vbox{%
+                \normalbaselines
+                \boxz@
+                \vbox to\lineht@{}%
+                \raise@tag
+            }}%
+            \global\shifttag@false
+        \else
+            \rlap{\boxz@}%
+        \fi
+    \else
+        \ifdim\totwidth@>\displaywidth
+            \dimen@\totwidth@
+            \advance\dimen@-\displaywidth
+            \kern-\dimen@
+        \fi
+        \ifshifttag@
+            \llap{\vtop{%
+                \raise@tag
+                \normalbaselines
+                \setbox\@ne\null
+                \dp\@ne\lineht@
+                \box\@ne
+                \boxz@
+            }}%
+            \global\shifttag@false
+        \else
+            \llap{\boxz@}%
+        \fi
+    \fi
+}
+
+\endinput

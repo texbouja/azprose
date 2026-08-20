@@ -648,27 +648,67 @@ fn find_root_dir(start: &Path) -> (std::path::PathBuf, String) {
     (start.to_path_buf(), "default (file directory)".into())
 }
 
-/// Check if a .tex file contains `\documentclass` and is not a subfile.
-/// Returns true if the file has `\documentclass` but NOT
-/// `\documentclass{subfiles}` or `\documentclass{cpgesubdoc}`.
+/// Classes that mark a FRAGMENT of a larger document rather than a root.
+/// `cpgesubdoc` stays alongside `azsubdoc`: existing content still uses it.
+const FRAGMENT_CLASSES: [&str; 3] = ["subfiles", "cpgesubdoc", "azsubdoc"];
+
+/// The class named by the first `\documentclass[…]{…}` of `content`, lowercased.
+///
+/// The optional argument has to be walked, not assumed away: a fragment always
+/// carries `[master=…]`, so the class name is never adjacent to
+/// `\documentclass`. Matching the bare `\documentclass{cpgesubdoc}` — as this
+/// did before — therefore never fired on a real fragment.
+fn documentclass_of(content: &str) -> Option<String> {
+    let at = content.find("\\documentclass")?;
+    let mut it = content[at + "\\documentclass".len()..].chars().peekable();
+
+    while it.peek().is_some_and(|c| c.is_whitespace()) {
+        it.next();
+    }
+    if it.peek() == Some(&'[') {
+        it.next();
+        let mut depth = 1usize;
+        for c in it.by_ref() {
+            match c {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        while it.peek().is_some_and(|c| c.is_whitespace()) {
+            it.next();
+        }
+    }
+    if it.next() != Some('{') {
+        return None;
+    }
+
+    let mut name = String::new();
+    for c in it {
+        if c == '}' {
+            return Some(name.trim().to_lowercase());
+        }
+        name.push(c);
+    }
+    None
+}
+
+/// Check if a .tex file declares a root `\documentclass` — that is, one that is
+/// not a fragment class.
 fn has_documentclass(path: &Path) -> bool {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return false,
     };
-    // Quick check: does it contain \documentclass at all?
-    if !content.contains("\\documentclass") {
-        return false;
+    match documentclass_of(&content) {
+        Some(class) => !FRAGMENT_CLASSES.contains(&class.as_str()),
+        None => false,
     }
-    // Check for excluded classes: \documentclass{subfiles} or \documentclass{cpgesubdoc}
-    let lowered = content.to_lowercase();
-    for excluded in &["subfiles", "cpgesubdoc"] {
-        let pattern = format!("\\documentclass{{{excluded}}}");
-        if lowered.contains(&pattern.to_lowercase()) {
-            return false;
-        }
-    }
-    true
 }
 
 /// Detect the LaTeX root file for a given .tex file.
@@ -799,4 +839,50 @@ pub fn latex_rehash_texmf(project_root: String) -> Result<String, String> {
         }
     }
     Ok("ls-R not generated — mktexlsr/texhash not found (file lookup still works via TEXMFHOME)".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn documentclass_without_options() {
+        assert_eq!(documentclass_of("\\documentclass{azdoc}").as_deref(), Some("azdoc"));
+    }
+
+    #[test]
+    fn documentclass_through_its_options() {
+        // The case that matters: a fragment ALWAYS carries `master=`, so the
+        // class name never sits next to \documentclass.
+        assert_eq!(
+            documentclass_of("\\documentclass[master=../master]{azsubdoc}").as_deref(),
+            Some("azsubdoc")
+        );
+    }
+
+    #[test]
+    fn documentclass_across_lines_and_comments() {
+        let src = "\\documentclass[\n  book,\n%  draft,\n  solution*,\n]{azdoc}";
+        assert_eq!(documentclass_of(src).as_deref(), Some("azdoc"));
+    }
+
+    #[test]
+    fn fragments_are_not_roots() {
+        for src in [
+            "\\documentclass[master=m]{azsubdoc}",
+            "\\documentclass[master=m]{cpgesubdoc}",
+            "\\documentclass[main.tex]{subfiles}",
+        ] {
+            let class = documentclass_of(src).expect("classe lisible");
+            assert!(
+                FRAGMENT_CLASSES.contains(&class.as_str()),
+                "{class} devrait compter comme fragment"
+            );
+        }
+    }
+
+    #[test]
+    fn a_file_without_documentclass_names_nothing() {
+        assert_eq!(documentclass_of("\\section{Sommes directes}"), None);
+    }
 }
