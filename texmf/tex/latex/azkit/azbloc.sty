@@ -184,8 +184,41 @@
       %% gauche du cadre. Sans cela pgf la cale sur le bas de son cadre
       %% englobant, et le dessin remonte d'une hauteur de bloc.
       \pgfsetbaselinepointnow { \pgfpointorigin }
-      %% le fond du corps, d'abord : c'est le seul remplissage qui couvre toute
-      %% la surface, les autres viennent par-dessus
+      %% L'ACCENT en premier, sous tout le reste.
+      %%
+      %% C'est un TRAIT centré sur le bord gauche, pas un rectangle posé à
+      %% l'intérieur : le remplissage du cadre, peint juste après, en recouvre
+      %% la moitié, et il n'en dépasse qu'un demi-filet. Bouts ronds, retirés
+      %% de l'arrondi là où le coin est arrondi, affleurant le bord là où le
+      %% bloc est coupé — le cap arrondi comble exactement le demi-filet.
+      %%
+      %% L'ordre de peinture suffit : les calques pgf ne servent qu'à traverser
+      %% des scopes, et tout se joue ici dans une seule image.
+      \pgfsetroundcap
+      \pgfsetlinewidth { \azblocaccent }
+      \pgfsetstrokecolor { \l__az_bloc_accentcol_tl }
+      \pgfpathmoveto
+        {
+          \pgfpoint { 0pt }
+            {
+              \dim_eval:n
+                { \bool_if:nTF {#1} { -\azblocarc } { -.5\azblocaccent } }
+            }
+        }
+      \pgfpathlineto
+        {
+          \pgfpoint { 0pt }
+            {
+              \dim_eval:n
+                {
+                  -\l__az_bloc_h_dim
+                  + \bool_if:nTF {#2} { \azblocarc } { .5\azblocaccent }
+                }
+            }
+        }
+      \pgfusepath { stroke }
+      %% le fond du corps : il couvre toute la surface, donc la moitié
+      %% intérieure de l'accent
       \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
       \az_bloc_path:nn {#1} {#2}
       \pgfsetfillcolor { \l__az_bloc_tintcol_tl }
@@ -198,26 +231,7 @@
           \pgfsetfillcolor { \l__az_bloc_ttltintcol_tl }
           \pgfusepath { fill }
         }
-      %% la barre d'accent, retirée de l'arrondi là où le coin est arrondi
-      \pgfpathrectanglecorners
-        {
-          \pgfpoint { 0pt }
-            { \dim_eval:n { \bool_if:nTF {#1} { -\azblocarc } { 0pt } } }
-        }
-        {
-          \pgfpoint { \azblocaccent }
-            {
-              \dim_eval:n
-                {
-                  -\l__az_bloc_h_dim
-                  + \bool_if:nTF {#2} { \azblocarc } { 0pt }
-                }
-            }
-        }
-      \pgfsetfillcolor { \l__az_bloc_accentcol_tl }
-      \pgfusepath { fill }
-      %% le cadre : le fond du corps est posé en DERNIER, et seulement filé —
-      %% le remplissage écraserait le bandeau et l'accent.
+      %% le filet du cadre, en dernier pour rester entier
       \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
       \az_bloc_path:nn {#1} {#2}
       \pgfsetstrokecolor { \l__az_bloc_bordercol_tl }
@@ -238,11 +252,19 @@
 \cs_new_protected:Npn \az_bloc_frame:nnn #1#2#3
   % #1 = haut arrondi ?, #2 = bas arrondi ?, #3 = contenu
   {
-    \hbox_set:Nn \l__az_bloc_box
+    %% Le rembourrage VERTICAL est posé ici, par fragment — c'est le seul
+    %% endroit où les bords de COUPURE existent. Posé dans le corps, comme il
+    %% l'était, il ne garnissait que le vrai début et la vraie fin, et le texte
+    %% venait buter contre l'arête à chaque rupture de page.
+    %%
+    %% framed MESURE lui-même ce que la commande de cadre ajoute
+    %% (\fb@sizeofframe la lance sur une boîte témoin) : la place est réservée
+    %% sans qu'on ait à la lui déclarer.
+    \vbox_set:Nn \l__az_bloc_box
       {
-        \hspace { \dimexpr \azblocaccent + \azblocsep \relax }
-        #3
-        \hspace { \azblocsep }
+        \vskip \azblocvsep
+        \hbox:n { \hspace { \azblocsep } #3 \hspace { \azblocsep } }
+        \vskip \azblocvsep
       }
     \dim_set:Nn \l__az_bloc_w_dim { \box_wd:N \l__az_bloc_box }
     \dim_set:Nn \l__az_bloc_h_dim
@@ -569,22 +591,27 @@
     \exp_args:NV \az_current_counter_set:n \l__az_bloc_numero_tl
     \az_liste_defaults_inside:
 
+    %% Hauteur du bandeau : le rembourrage HAUT, que la commande de cadre pose
+    %% désormais, plus la ligne de titre, plus une demi-gouttière en dessous.
+    %% Le bandeau part de l'arête supérieure du fragment, il doit donc englober
+    %% ce que le cadre insère avant le titre.
     \hbox_set:Nn \l__az_bloc_ttl_box { \azblocfonttitle \strut }
     \dim_gset:Nn \l__az_bloc_ttlht_dim
       {
-        \box_ht:N \l__az_bloc_ttl_box + \box_dp:N \l__az_bloc_ttl_box
-        + 2 \azblocvsep
+        \azblocvsep
+        + \box_ht:N \l__az_bloc_ttl_box + \box_dp:N \l__az_bloc_ttl_box
+        + .6 \azblocvsep
       }
 
     \az_bloc_frames_install:
     \par \addvspace { \azblocskip }
     \MakeFramed
       {
-        \dim_sub:Nn \hsize
-          { 2\azblocsep + \azblocaccent + 2\azblocrule }
+        %% L'accent ne mord plus sur la largeur utile : il est peint SUR le bord
+        %% gauche, moitie dehors, et non plus a l'interieur du cadre.
+        \dim_sub:Nn \hsize { 2\azblocsep + 2\azblocrule }
         \FrameRestore
       }
-    \vspace { \azblocvsep }
     \az_bloc_titre:
     \vspace { \dimexpr \azblocvsep - \parskip \relax }
     \noindent \ignorespaces
@@ -596,7 +623,6 @@
     \az_bloc_solution_finish:
     \exit
     \closeunite
-    \vspace { \azblocvsep }
     \endMakeFramed
     \addvspace { \azblocskip }
   }
@@ -711,8 +737,10 @@
 
 \NewDocumentCommand \azblocsetup { m } { \keys_set:nn { az / bloc / sol } {#1} }
 
-\cs_if_exist:NF \solutionname { \newrobustcmd \solutionname { solution } }
-\cs_if_exist:NF \proofname    { \newrobustcmd \proofname { démonstration } }
+%% \NewDocumentCommand et non \newrobustcmd : etoolbox n'est pas une dependance
+%% de ce module, et le noyau fournit deja des commandes robustes.
+\cs_if_exist:NF \solutionname { \NewDocumentCommand \solutionname { } { solution } }
+\cs_if_exist:NF \proofname    { \NewDocumentCommand \proofname { } { démonstration } }
 
 %% Un sous-titre dans le bloc : un filet court dans la couleur d'accent, puis
 %% le nom. Assez pour marquer la bascule énoncé → solution sans ouvrir une
