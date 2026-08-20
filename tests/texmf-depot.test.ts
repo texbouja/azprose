@@ -7,6 +7,7 @@ import {
   type DepsTexmf,
 } from "@/texmf/deposit";
 import { contenuUserDef, CHEMIN_USER_DEF } from "@/texmf/user-def";
+import { valeurTexmfAuxTrees } from "@/texmf/auxtrees";
 
 /**
  * Dépôt de l'arbre texmf du kit. Les accès disque sont INJECTÉS (jamais
@@ -134,5 +135,31 @@ describe("user.def", () => {
     expect(CHEMIN_USER_DEF).toEqual(
       [".azprose", "texmf", "tex", "latex", "azlocal", "user.def"],
     );
+  });
+});
+
+describe("valeur de TEXMFAUXTREES", () => {
+  test("la virgule FINALE est là — kpathsea ignore la liste sans elle", () => {
+    // C'est le défaut le plus coûteux du mécanisme : sans virgule finale, la
+    // liste est ignorée SILENCIEUSEMENT et l'échec sort cent lignes plus loin,
+    // sur un \usepackage introuvable.
+    expect(valeurTexmfAuxTrees(["/app/texmf"])).toBe("/app/texmf,");
+  });
+
+  test("les arbres sont séparés par des virgules, dans l'ordre donné", () => {
+    // L'ordre est celui de la RECHERCHE : l'application d'abord, le projet
+    // ensuite, pour qu'un projet ne masque pas un module du kit par accident.
+    expect(valeurTexmfAuxTrees(["/app/texmf", "/p/.azprose/texmf"]))
+      .toBe("/app/texmf,/p/.azprose/texmf,");
+  });
+
+  test("rien à annoncer rend null, pas une virgule solitaire", () => {
+    // `TEXMFAUXTREES=","` ferait chercher kpathsea dans le dossier courant.
+    expect(valeurTexmfAuxTrees([])).toBeNull();
+    expect(valeurTexmfAuxTrees(["", "   "])).toBeNull();
+  });
+
+  test("un arbre vide au milieu ne crée pas de trou", () => {
+    expect(valeurTexmfAuxTrees(["/a", "", "/b"])).toBe("/a,/b,");
   });
 });

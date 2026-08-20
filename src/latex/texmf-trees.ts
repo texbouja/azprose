@@ -14,11 +14,24 @@
 import { mkdir, remove, writeTextFile } from "@tauri-apps/plugin-fs";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { joinPath } from "@/lib/files";
-import { texmfDir, contenuUserDef, CHEMIN_USER_DEF, DOSSIER_USER_DEF } from "@/texmf";
+import {
+  texmfDir,
+  texmfDirSync,
+  contenuUserDef,
+  CHEMIN_USER_DEF,
+  DOSSIER_USER_DEF,
+} from "@/texmf";
+import { valeurTexmfAuxTrees as formater } from "@/texmf/auxtrees";
 
 /** Assemble un chemin à partir d'une racine et de segments. */
 function chemin(racine: string, segments: readonly string[]): string {
   return segments.reduce((acc, s) => joinPath(acc, s), racine);
+}
+
+/** L'arbre texmf du projet ouvert, s'il y en a un. */
+function arbreProjet(): string | null {
+  const racine = getRootPath();
+  return racine ? chemin(racine, [".azprose", "texmf"]) : null;
 }
 
 /**
@@ -32,9 +45,34 @@ export async function arbresTexmf(): Promise<string[]> {
     const app = await texmfDir();
     if (app) arbres.push(app);
   } catch { /* l'arbre du kit n'a pas pu être résolu : on compile sans */ }
-  const racine = getRootPath();
-  if (racine) arbres.push(chemin(racine, [".azprose", "texmf"]));
+  const projet = arbreProjet();
+  if (projet) arbres.push(projet);
   return arbres;
+}
+
+/**
+ * Les mêmes arbres, sans attendre — pour les appelants synchrones (texlab).
+ * Repose sur le cache renseigné au démarrage : si la synchronisation n'a pas
+ * encore eu lieu, seul l'arbre du projet est annoncé.
+ */
+export function arbresTexmfSync(): string[] {
+  return [texmfDirSync(), arbreProjet()].filter((t): t is string => !!t);
+}
+
+export { valeurTexmfAuxTrees } from "@/texmf/auxtrees";
+
+/**
+ * L'environnement à donner à un processus lancé par l'application — le shell
+ * intégré aujourd'hui.
+ *
+ * Le terminal doit voir EXACTEMENT ce que voit le bouton de compilation : un
+ * `latexmk` lancé à la main dans la console doit trouver le kit, sinon
+ * l'utilisateur constate que sa compilation marche depuis le bouton et pas
+ * depuis le terminal, sans que rien ne l'explique.
+ */
+export async function envTexmf(): Promise<Record<string, string>> {
+  const valeur = formater(await arbresTexmf());
+  return valeur === null ? {} : { TEXMFAUXTREES: valeur };
 }
 
 /**

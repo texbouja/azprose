@@ -4,6 +4,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { Terminal, FitAddon, init } from "ghostty-web";
   import { readXtermTheme } from "@/lib/terminal-theme";
+  import { envTexmf } from "@/latex/texmf-trees";
 
   let {
     id = "main",
@@ -53,13 +54,19 @@
     onData.onmessage = (bytes: unknown) => {
       term?.write(bytes as Uint8Array);
     };
+    // Le shell voit les mêmes arbres texmf que le bouton de compilation : un
+    // `latexmk` lancé à la main doit trouver le kit azkit et le `user.def` du
+    // projet. Sans cela la compilation marcherait depuis le bouton et pas
+    // depuis la console, sans que rien ne l'explique.
+    // Ce qui est passé en prop l'emporte : l'appelant sait ce qu'il fait.
+    const envFinal = { ...(await envTexmf()), ...(env ?? {}) };
     try {
       await invoke("terminal_spawn", {
         id,
         cwd,
         rows: term.rows,
         cols: term.cols,
-        env,
+        env: envFinal,
         onData,
       });
       term.focus();
