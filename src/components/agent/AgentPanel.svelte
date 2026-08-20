@@ -25,6 +25,7 @@ import {
   extractToolDiff,
   type ToolDiff,
 } from "@/lib/agent/context";
+import { cleLibelleOutil, resumerOutil } from "@/lib/agent/outils";
 import { getProjectRoot } from "@/lib/session";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -52,7 +53,7 @@ type FeedItem =
   // repli sur le texte brut tant que le premier rendu n'est pas prêt.
   | { id: number; kind: "agent"; text: string; html?: string }
   | { id: number; kind: "thought"; text: string; html?: string; open: boolean }
-  | { id: number; kind: "tool"; toolCallId: string; title: string; toolKind: string; status: string; detail: string; body?: string; diff?: ToolDiff; open: boolean }
+  | { id: number; kind: "tool"; toolCallId: string; outil: string; title: string; toolKind: string; status: string; detail: string; body?: string; diff?: ToolDiff; open: boolean }
   // Permission DANS LE FIL (jamais en modale — règle 3 de l'anatomie) :
   // `resolve` renvoie l'optionId choisi au handler suspendu, null = annulé.
   | { id: number; kind: "permission"; title: string; location?: string; diff?: ToolDiff; options: PermissionOption[]; resolved: boolean; resolve: (optionId: string | null) => void };
@@ -272,7 +273,10 @@ function applyUpdate(u: SessionUpdate) {
       toolItems.set(u.toolCallId, pushItem({
         kind: "tool",
         toolCallId: u.toolCallId,
-        title: u.title ?? "?",
+        // Le nom INTERNE est conservé — il identifie l'outil pour le résumé —
+        // mais ce n'est pas lui qu'on montre.
+        outil: u.title ?? "",
+        title: titreOutil(u.title ?? "?"),
         toolKind: u.kind ?? "",
         status: u.status ?? "pending",
         detail: "",
@@ -286,13 +290,23 @@ function applyUpdate(u: SessionUpdate) {
       const item = items.find((i) => i.id === toolItems.get(toolCallId));
       if (!item || item.kind !== "tool") break;
       if (u.status) item.status = u.status;
-      if (u.title) item.title = u.title;
+      if (u.title) {
+        item.outil = u.title;
+        item.title = titreOutil(u.title);
+      }
       const loc = u.locations?.[0]?.path;
       if (loc) item.detail = loc;
       // Diff de la modification (D14 : relu DANS le panneau, jamais appliqué
       // à l'éditeur) — fourni par OpenCode dans `content` (phase 0c).
       const corps = extractToolBody(u);
-      if (corps) item.body = corps;
+      if (corps) {
+        // Nos outils répondent en JSON de plusieurs kilo-octets : le montrer
+        // tel quel n'apprend rien. Le résumé rend les adresses de section, les
+        // contraintes et les refus — ce qui explique la réponse qui suit.
+        const resume = resumerOutil(item.outil, corps);
+        item.body = resume.corps ?? (resume.apercu ? undefined : corps);
+        if (resume.apercu) item.detail = resume.apercu;
+      }
       const diff = extractToolDiff(u);
       if (diff) item.diff = diff;
       // Déplié seulement s'il échoue (règle de rendu 2).
@@ -494,6 +508,14 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
     void send();
   }
+}
+
+/** Titre affiché pour un outil : notre libellé traduit quand nous le
+ *  connaissons, le titre natif d'OpenCode sinon (lecture de fichier, shell…),
+ *  dont le vocabulaire ne nous appartient pas. */
+function titreOutil(nom: string): string {
+  const cle = cleLibelleOutil(nom);
+  return cle ? t(cle) : nom;
 }
 
 /** Icône par famille d'outil ACP (read/edit/execute/search/fetch/think) —
