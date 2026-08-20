@@ -1,27 +1,32 @@
 %% az-gruv-colors.def — palette « gruv »
 %%
-%% Portée de `gruvcolors.tex` (cpgekit), d'après Gruvbox. Papier crème et
-%% encres chaudes ; les deux versions viennent des variantes `light` et `dark`
-%% officielles, ce qui en fait la palette la mieux équilibrée du lot.
+%% Gruvbox, VALEURS OFFICIELLES (morhetz/gruvbox, licence MIT), contraste
+%% moyen. Le mode clair prend les accents FADED, le mode sombre les BRIGHT —
+%% c'est la répartition du thème d'origine, chaque jeu étant accordé à son
+%% fond. Le portage de cpgekit mélangeait faded et neutral.
+%%
+%% Gruvbox est SYMÉTRIQUE comme Nord : `bg0` du mode sombre est `fg0` du mode
+%% clair et réciproquement. Les `main*` n'ont donc qu'une valeur.
 
 \azsetupcolors
   {
     default import model = named,
-    mainone         = [HTML]{282828},
-    maintwo         = [HTML]{32302f},
-    mainthree       = [HTML]{f2e5bc},
-    mainfour        = [HTML]{fbf1c7},
-    mainfive        = [HTML]{7c6f64},
-    mainsix         = [HTML]{a89984},
+    mainone         = [HTML]{282828},   % dark bg0  / light fg0
+    maintwo         = [HTML]{3c3836},   % dark bg1  / light fg1
+    mainthree       = [HTML]{ebdbb2},   % dark fg1  / light bg1
+    mainfour        = [HTML]{fbf1c7},   % dark fg0  / light bg0
+    mainfive        = [HTML]{7c6f64},   % bg4 / fg4
+    mainsix         = [HTML]{a89984},   % fg4 / bg4
     azred           = [HTML]{9d0006}{fb4934},
     azgreen         = [HTML]{79740e}{b8bb26},
     azyellow        = [HTML]{b57614}{fabd2f},
     azblue          = [HTML]{076678}{83a598},
     azmagenta       = [HTML]{8f3f71}{d3869b},
     azcyan          = [HTML]{427b58}{8ec07c},
-    azorange        = [HTML]{af3a03}{d65d0e},
-    pagecol         = {mainfour!60}{mainone},
-    textcol         = {mainone!90!red}{mainfour},
+    azorange        = [HTML]{af3a03}{fe8019},
+    azneutral       = [HTML]{7c6f64}{928374},   % gray
+    pagecol         = {mainfour}{mainone},
+    textcol         = {mainone}{mainfour},
     strokecol       = {maintwo}{mainthree},
     frametextcol    = {mainone}{mainfour},
     framestrokecol  = {mainfive}{mainsix},
@@ -33,18 +38,17 @@
     linktextcol     = {azblue}{azblue},
     linkstrokecol   = {azblue}{azblue},
     linkbackcol     = {azblue}{azblue},
-    buttontextcol   = {mainfour}{mainfour},
+    buttontextcol   = {mainfour}{mainone},
     buttonstrokecol = {azred}{azred},
     buttonbackcol   = {azred}{azred},
     importantcol    = {azorange}{azorange},
     alertcol        = {azred}{azred},
-    azneutral       = {mainfive}{mainsix},
-    errorcol        = {azcyan}{azcyan},
+    errorcol        = {azred}{azred},
     theoremcol      = {azgreen}{azgreen},
     definitioncol   = {azblue}{azblue},
-    remarkcol       = {azorange!50!black}{azorange!50},
-    examplecol      = {azorange}{azorange},
-    exercisecol     = {azred}{azred},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azyellow}{azyellow},
+    exercisecol     = {azorange}{azorange},
     class           = {azred}{azorange}{azblue},
   }
 

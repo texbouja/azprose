@@ -1,34 +1,48 @@
 %% az-default-colors.def — palette « default »
 %%
-%% Portée de `defaultcolors.tex` (cpgekit). Encres franches sur papier blanc,
-%% gris neutres : c'est la palette de référence, celle dont les autres
-%% s'écartent. Elle double celle qu'azcolor tient en dur, pour que
-%% \azcolors{default} soit un retour en arrière possible et pas un avertissement.
+%% La palette de référence, celle dont les autres s'écartent. Elle n'est pas un
+%% pis-aller : c'est elle qui rend tout document ne demandant rien.
 %%
-%% Chaque rôle porte deux valeurs : claire, puis sombre.
+%% ── Deux exigences ─────────────────────────────────────────────────────────
+%%
+%% 1. **Le fond de page est le BLANC PUR** en mode clair. Pas un blanc cassé,
+%%    pas un ivoire : #FFFFFF. Un document du kit part à l'imprimante, et un
+%%    fond même très légèrement teinté s'y traduit par un aplat d'encre sur
+%%    toute la page — coûteux, et gris à l'œil.
+%%
+%% 2. **Les sept teintes sont accordées entre elles.** Elles sont posées à
+%%    clarté SENSIBLEMENT ÉGALE dans chaque mode — autour de L*40 en clair, de
+%%    L*80 en sombre — de sorte qu'aucun bloc ne crie plus fort qu'un autre.
+%%    C'est ce que l'ancienne palette n'avait pas : un bleu presque noir
+%%    (#1c1681) y voisinait un jaune olive (#b8ab01), et deux blocs côte à côte
+%%    ne pesaient pas le même poids.
+%%
+%% Les gris portent une NUANCE FROIDE assumée, très légère. Un gris rigoureu-
+%% sement neutre à côté d'encres colorées paraît sale ; celui-ci se lit comme
+%% choisi.
 
 \azsetupcolors
   {
     default import model = named,
-    mainone         = [HTML]{111111},
-    maintwo         = [HTML]{222222},
-    mainthree       = [HTML]{eeeeee},
-    mainfour        = [HTML]{ffffff},
-    mainfive        = [HTML]{666666},
-    mainsix         = [HTML]{fafafa},
-    azblue          = [HTML]{1c1681}{838ecc},
-    azred           = [HTML]{922d2d}{cb7777},
-    azgreen         = [HTML]{407d5d}{b2e6cb},
-    azyellow        = [HTML]{b8ab01}{e0db91},
-    azorange        = [HTML]{b2591d}{e4b18e},
-    azmagenta       = [HTML]{9e187a}{d79ac7},
-    azcyan          = [HTML]{116c7e}{85c9de},
-    azneutral       = {maintwo}{mainthree},
-    textcol         = {mainone}{mainfour},
-    strokecol       = {mainone}{mainfour},
+    mainone         = [HTML]{14161A},
+    maintwo         = [HTML]{2C3038},
+    mainthree       = [HTML]{ECEEF2},
+    mainfour        = [HTML]{FFFFFF},
+    mainfive        = [HTML]{6B7280},
+    mainsix         = [HTML]{9AA1AC},
+    azblue          = [HTML]{1A5FB4}{9FC1EE},
+    azcyan          = [HTML]{0E6E7C}{93C9D6},
+    azgreen         = [HTML]{2C6E49}{A5D2B4},
+    azyellow        = [HTML]{8A6A00}{E0CE8C},
+    azorange        = [HTML]{A8501C}{EEB68F},
+    azred           = [HTML]{B02620}{F0A9A4},
+    azmagenta       = [HTML]{8B2C77}{DCA8D1},
+    azneutral       = [HTML]{5B6270}{9AA1AC},
     pagecol         = {mainfour}{mainone},
+    textcol         = {mainone}{mainfour},
+    strokecol       = {maintwo}{mainthree},
     frametextcol    = {mainone}{mainfour},
-    framestrokecol  = {mainone}{mainfour},
+    framestrokecol  = {mainfive}{mainsix},
     framebackcol    = {mainthree}{maintwo},
     frameshadowcol  = {maintwo}{mainthree},
     titletextcol    = {maintwo}{mainthree},
@@ -37,16 +51,16 @@
     linktextcol     = {azblue}{azblue},
     linkstrokecol   = {azblue}{azblue},
     linkbackcol     = {azblue}{azblue},
-    buttontextcol   = {mainthree}{maintwo},
-    buttonstrokecol = {mainthree}{maintwo},
-    buttonbackcol   = {maintwo}{mainthree},
-    importantcol    = {azred}{azred},
+    buttontextcol   = {mainfour}{mainone},
+    buttonstrokecol = {azblue}{azblue},
+    buttonbackcol   = {azblue}{azblue},
+    importantcol    = {azorange}{azorange},
     alertcol        = {azred}{azred},
-    errorcol        = {azcyan}{azcyan},
+    errorcol        = {azred}{azred},
     theoremcol      = {azgreen}{azgreen},
     definitioncol   = {azblue}{azblue},
     remarkcol       = {azneutral}{azneutral},
-    examplecol      = {azorange}{azorange},
+    examplecol      = {azyellow}{azyellow},
     exercisecol     = {azorange}{azorange},
     proofcol        = {azneutral}{azneutral},
     othercol        = {azneutral}{azneutral},

@@ -1,0 +1,95 @@
+%% az-catppuccin-colors.def — palette « catppuccin »
+%%
+%% Latte en mode clair, Mocha en mode sombre. Valeurs officielles du projet
+%% Catppuccin (licence MIT), reprises sans retouche.
+%%
+%% ── Pourquoi cette palette est bâtie autrement que les dix autres ───────────
+%%
+%% Les thèmes portés de cpgekit posent une SEULE rampe de gris — mainone à
+%% mainsix, une valeur chacun — et laissent les rôles la lire à l'endroit en
+%% mode clair, à l'envers en mode sombre. Cela suppose que la version sombre
+%% d'un thème soit la version claire retournée.
+%%
+%% Catppuccin ne marche pas ainsi : Latte et Mocha sont deux palettes
+%% COMPLÈTES, accordées séparément. Le blanc cassé de Latte (#eff1f5) n'est pas
+%% le texte de Mocha (#cdd6f4), et l'encre de Latte (#4c4f69) n'est pas le fond
+%% de Mocha (#1e1e2e). Retourner une rampe unique donnerait un Mocha faux.
+%%
+%% Les six `main*` portent donc ici un COUPLE, comme les couleurs d'accent. Le
+%% mécanisme l'admettait depuis toujours — aucun thème ne s'en était servi. Ce
+%% que chaque rang désigne devient alors une POSITION dans la rampe, et non une
+%% teinte : `mainone` est le bout sombre, ce qui vaut l'encre de Latte en mode
+%% clair et le fond de Mocha en mode sombre. Les rôles s'écrivent ensuite comme
+%% partout ailleurs, `pagecol = {mainfour}{mainone}`, et tombent juste des deux
+%% côtés.
+%%
+%%   rang        mode clair (Latte)      mode sombre (Mocha)
+%%   mainone     text      #4c4f69       base      #1e1e2e
+%%   maintwo     subtext1  #5c5f77       surface0  #313244
+%%   mainthree   surface0  #ccd0da       subtext1  #bac2de
+%%   mainfour    base      #eff1f5       text      #cdd6f4
+%%   mainfive    overlay0  #9ca0b0       surface2  #585b70
+%%   mainsix     surface2  #acb0be       overlay0  #6c7086
+%%
+%% ── Correspondance des accents ─────────────────────────────────────────────
+%%
+%% Catppuccin nomme quatorze accents, le kit en veut sept. Les rapprochements
+%% sont ceux de l'usage courant du thème : `peach` tient l'orange, `mauve` le
+%% magenta — c'est la couleur signature de Catppuccin, elle prend les titres —
+%% et `teal` le cyan. `sapphire`, `sky`, `lavender`, `rosewater`, `flamingo`,
+%% `pink` et `maroon` n'ont pas de rôle dans le kit et ne sont pas reprises.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{4c4f69}{1e1e2e},
+    maintwo         = [HTML]{5c5f77}{313244},
+    mainthree       = [HTML]{ccd0da}{bac2de},
+    mainfour        = [HTML]{eff1f5}{cdd6f4},
+    mainfive        = [HTML]{9ca0b0}{585b70},
+    mainsix         = [HTML]{acb0be}{6c7086},
+    azblue          = [HTML]{1e66f5}{89b4fa},
+    azred           = [HTML]{d20f39}{f38ba8},
+    azgreen         = [HTML]{40a02b}{a6e3a1},
+    azyellow        = [HTML]{df8e1d}{f9e2af},
+    azorange        = [HTML]{fe640b}{fab387},
+    azmagenta       = [HTML]{8839ef}{cba6f7},
+    azcyan          = [HTML]{179299}{94e2d5},
+    %% Le neutre ne suit PAS {mainfive}{mainsix} comme ailleurs. Ces deux rangs
+    %% servent aussi le filet des cadres, où Latte veut un gris discret ; mais
+    %% `azneutral` est l'accent des remarques et des démonstrations, et
+    %% `overlay0` dilué à 6 % dans la base de Latte ne se voyait plus (2,2:1).
+    %% `overlay2`, deux crans plus sombre, reste une couleur officielle du
+    %% thème et rend la barre d'accent lisible.
+    azneutral       = [HTML]{7c7f93}{6c7086},
+    pagecol         = {mainfour}{mainone},
+    textcol         = {mainone}{mainfour},
+    strokecol       = {maintwo}{mainthree},
+    frametextcol    = {mainone}{mainfour},
+    framestrokecol  = {mainfive}{mainsix},
+    framebackcol    = {mainthree}{maintwo},
+    frameshadowcol  = {black}{white},
+    titletextcol    = {azmagenta}{azmagenta},
+    titlestrokecol  = {azblue}{azblue},
+    titlebackcol    = {mainfour}{mainone},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    %% Le texte d'un bouton est le FOND de la palette, pas son encre : le
+    %% bouton est plein mauve, il faut y écrire en clair sous Latte et en
+    %% sombre sous Mocha — soit exactement `pagecol`.
+    buttontextcol   = {mainfour}{mainone},
+    buttonstrokecol = {azmagenta}{azmagenta},
+    buttonbackcol   = {azmagenta}{azmagenta},
+    importantcol    = {azorange}{azorange},
+    alertcol        = {azred}{azred},
+    errorcol        = {azred}{azred},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azyellow}{azyellow},
+    exercisecol     = {azorange}{azorange},
+    class           = {azorange}{azyellow}{azgreen},
+  }
+
+\endinput

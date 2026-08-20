@@ -1,0 +1,74 @@
+%% az-fleet-colors.def — palette « fleet »
+%%
+%% Fleet, de skarline — les DEUX variantes réunies : Fleet Light en mode clair,
+%% Fleet Dark en mode sombre. Valeurs reprises telles quelles de
+%% `src/styles/themes.json`, où l'application les tient déjà : composer un
+%% document dans le thème Fleet et le lire dans l'éditeur donne enfin la même
+%% chose.
+%%
+%%   rang        mode clair (Fleet Light)  mode sombre (Fleet Dark)
+%%   mainone     fg      #090909           bg            #18191B
+%%   maintwo     muted   #6E747B           surface       #252629
+%%   mainthree   surface #f2f2f2           muted         #898E94
+%%   mainfour    bg      #FFFFFF           fg            #E0E1E4
+%%   mainfive    border  #d1d1d1           surface-hover #323438
+%%   mainsix     #E8E8E8                   border        #3E4147
+%%
+%% ⚠️ DEUX TROUS dans la palette d'origine, comblés et signalés :
+%%
+%%   — Fleet Dark n'a PAS de vert. Sa coloration syntaxique met les chaînes en
+%%     rose et les mots-clefs en sarcelle. `azgreen` prend donc la sarcelle en
+%%     mode sombre, et le vrai vert #086E14 en mode clair.
+%%   — Fleet n'a PAS d'orange, ni de jaune côté clair : son avertissement clair
+%%     est un magenta. `azorange` prend le violet des deux côtés — c'est la
+%%     septième teinte disponible — et `azyellow` garde l'ambre de Fleet Dark,
+%%     assombri pour le mode clair (#8A6512), seule valeur de ce fichier qui
+%%     ne figure pas telle quelle dans le thème.
+%%
+%% Conséquence visible : sous Fleet, les exercices sont violets et non orange.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{090909}{18191B},
+    maintwo         = [HTML]{6E747B}{252629},
+    mainthree       = [HTML]{f2f2f2}{898E94},
+    mainfour        = [HTML]{FFFFFF}{E0E1E4},
+    mainfive        = [HTML]{d1d1d1}{323438},
+    mainsix         = [HTML]{E8E8E8}{3E4147},
+    azblue          = [HTML]{1749BD}{87C3FF},
+    azred           = [HTML]{E1465E}{E1465E},
+    azcyan          = [HTML]{14646E}{82D2CE},
+    azgreen         = [HTML]{086E14}{82D2CE},
+    azmagenta       = [HTML]{A31D8D}{E394DC},
+    azorange        = [HTML]{5511BF}{AF9CFF},
+    azyellow        = [HTML]{8A6512}{EBC88D},
+    azneutral       = [HTML]{6E747B}{898E94},
+    pagecol         = {mainfour}{mainone},
+    textcol         = {mainone}{mainfour},
+    strokecol       = {maintwo}{mainthree},
+    frametextcol    = {mainone}{mainfour},
+    framestrokecol  = {mainfive}{mainsix},
+    framebackcol    = {mainthree}{maintwo},
+    frameshadowcol  = {black}{white},
+    titletextcol    = {azblue}{azblue},
+    titlestrokecol  = {azblue}{azblue},
+    titlebackcol    = {mainfour}{mainone},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    buttontextcol   = {mainfour}{mainone},
+    buttonstrokecol = {azblue}{azblue},
+    buttonbackcol   = {azblue}{azblue},
+    importantcol    = {azmagenta}{azmagenta},
+    alertcol        = {azred}{azred},
+    errorcol        = {azred}{azred},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azyellow}{azyellow},
+    exercisecol     = {azorange}{azorange},
+    class           = {azorange}{azyellow}{azgreen},
+  }
+
+\endinput

@@ -1,26 +1,39 @@
 %% az-nord-colors.def — palette « nord »
 %%
-%% Portée de `nordcolors.tex` (cpgekit). Les gris-bleus froids de Nord, dont la
-%% version claire n'est PAS la palette Nord officielle : ses teintes sont
-%% assombries à la main pour tenir sur papier, la version sombre gardant les
-%% valeurs d'origine. C'est ce qui explique les couples très écartés.
+%% Nord, VALEURS OFFICIELLES (nordtheme.com, licence MIT). Le portage de
+%% cpgekit assombrissait les accents à la main pour le mode clair — ce n'était
+%% plus Nord. Les seize teintes sont ici reprises telles quelles.
+%%
+%% Nord est SYMÉTRIQUE : « Polar Night » (nord0-3) et « Snow Storm » (nord4-6)
+%% sont les deux bouts d'une même rampe, et les accents — Frost et Aurora —
+%% sont accordés à mi-chemin pour tenir des deux côtés. Les `main*` n'ont donc
+%% qu'une valeur, contrairement à `catppuccin`, `fleet` ou `forest` où les deux
+%% modes sont deux palettes distinctes.
+%%
+%% ⚠️ Conséquence assumée : Aurora est fait pour un fond SOMBRE. Sur le blanc
+%% cassé de Snow Storm, nord13 (jaune) et nord12 (orange) restent pâles. C'est
+%% la palette elle-même, et c'est ce qui avait poussé cpgekit à la retoucher.
+%% Le mode sombre, lui, est exact.
 
 \azsetupcolors
   {
     default import model = named,
-    mainone         = [HTML]{282D38},
-    maintwo         = [HTML]{353B4A},
-    mainthree       = [HTML]{D8DEE9},
-    mainfour        = [HTML]{ECEFF4},
-    mainfive        = [HTML]{132C4E},
-    mainsix         = [HTML]{E5E9F0},
-    azgreen         = [HTML]{637852}{A3BE8C},
-    azyellow        = [HTML]{c78d18}{EBCB8B},
-    azblue          = [HTML]{324e71}{7083C8},
-    azred           = [HTML]{b11c1c}{ff5370},
-    azmagenta       = [HTML]{6f546a}{B48EAD},
-    azorange        = [HTML]{a46420}{D08770},
-    azcyan          = [HTML]{67929e}{8FBCBB},
+    mainone         = [HTML]{2E3440},   % nord0  Polar Night
+    maintwo         = [HTML]{3B4252},   % nord1
+    mainthree       = [HTML]{D8DEE9},   % nord4  Snow Storm
+    mainfour        = [HTML]{ECEFF4},   % nord6
+    mainfive        = [HTML]{4C566A},   % nord3
+    mainsix         = [HTML]{E5E9F0},   % nord5
+    azcyan          = [HTML]{8FBCBB},   % nord7  Frost
+    azblue          = [HTML]{5E81AC},   % nord10
+    azred           = [HTML]{BF616A},   % nord11 Aurora
+    azorange        = [HTML]{D08770},   % nord12
+    azyellow        = [HTML]{EBCB8B},   % nord13
+    azgreen         = [HTML]{A3BE8C},   % nord14
+    azmagenta       = [HTML]{B48EAD},   % nord15
+    %% nord8 (#88C0D0) en clair, nord3/nord5 seraient trop neutres : le neutre
+    %% prend la nuance froide de Polar Night, qui reste lisible des deux côtés.
+    azneutral       = [HTML]{4C566A}{81A1C1},
     pagecol         = {mainfour}{mainone},
     textcol         = {mainone}{mainfour},
     strokecol       = {maintwo}{mainthree},
@@ -28,23 +41,22 @@
     framestrokecol  = {mainfive}{mainsix},
     framebackcol    = {mainthree}{maintwo},
     frameshadowcol  = {black}{white},
-    titletextcol    = {azorange}{azorange},
-    titlestrokecol  = {azgreen!86!black}{azgreen!86},
+    titletextcol    = {azblue}{azcyan},
+    titlestrokecol  = {azblue}{azcyan},
     titlebackcol    = {mainfour}{mainone},
-    linktextcol     = {azblue}{azblue!75!blue!65!white},
-    linkstrokecol   = {azblue}{azblue},
-    linkbackcol     = {azblue}{azblue},
-    buttontextcol   = {mainone}{mainone},
+    linktextcol     = {azblue}{azcyan},
+    linkstrokecol   = {azblue}{azcyan},
+    linkbackcol     = {azblue}{azcyan},
+    buttontextcol   = {mainfour}{mainone},
     buttonstrokecol = {azblue}{azblue},
     buttonbackcol   = {azblue}{azblue},
     importantcol    = {azorange}{azorange},
     alertcol        = {azred}{azred},
-    azneutral       = {mainfive}{mainsix},
-    errorcol        = {azcyan}{azcyan},
+    errorcol        = {azred}{azred},
     theoremcol      = {azgreen}{azgreen},
     definitioncol   = {azblue}{azblue},
     remarkcol       = {azneutral}{azneutral},
-    examplecol      = {azorange}{azorange},
+    examplecol      = {azyellow}{azyellow},
     exercisecol     = {azorange}{azorange},
     class           = {azorange}{azyellow}{azgreen},
   }

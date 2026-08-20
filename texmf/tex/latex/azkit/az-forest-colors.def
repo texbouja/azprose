@@ -1,45 +1,69 @@
 %% az-forest-colors.def — palette « forest »
 %%
-%% Portée de `forestcolors.tex` (cpgekit). Verts sourds et sable.
-%% Elle ne pose ni vert nommé, ni magenta, ni cyan — les verts de la palette
-%% sont dans les `main*`, et les blocs sémantiques tirent leurs couleurs de
-%% l'orange et du jaune. `azgreen`, `azmagenta` et `azcyan` gardent donc les
-%% valeurs de la palette en place.
+%% Material Theme, VALEURS OFFICIELLES (material-theme.com). Remplace le
+%% « forest » de cpgekit, qui n'avait de Material que le nom.
+%%
+%% ⚠️ UNE SUBSTITUTION, à savoir avant d'y toucher. Material Forest est un
+%% thème SOMBRE ET SEULEMENT SOMBRE : son fond est le vert-sapin très foncé
+%% #002626, et la famille Material ne publie pas de Forest clair. Le kit, lui,
+%% doit rendre sur papier. Le mode clair prend donc **Material Lighter**, la
+%% variante claire de la même famille. Forcer Forest en clair par retournement
+%% de rampe est exactement ce qui faisait de l'ancien `material` la palette la
+%% moins lisible du lot — l'erreur n'est pas refaite.
+%%
+%%   rang        mode clair (Lighter)     mode sombre (Forest)
+%%   mainone     foreground #546E7A       background     #002626
+%%   maintwo     text       #90A4AE       second bg      #002E2E
+%%   mainthree   surface    #ECEFF1       disabled       #005454
+%%   mainfour    background #FAFAFA       foreground     #B2C2B0
+%%   mainfive    #B0BEC5                  border         #003838
+%%   mainsix     #CFD8DC                  text           #49694D
 
 \azsetupcolors
   {
     default import model = named,
-    mainone         = [HTML]{254336},
-    maintwo         = [HTML]{6B8A7A},
-    mainthree       = [HTML]{B7B597},
-    mainfour        = [HTML]{DAD3BE},
-    azblue          = [HTML]{1C5B8D}{074173},
-    azorange        = [HTML]{E7A339}{E7A339},
-    azyellow        = [HTML]{F9EC7E}{F9EC7E},
-    azred           = [HTML]{E26274}{E26274},
-    textcol         = {mainone}{mainfour},
+    mainone         = [HTML]{546E7A}{002626},
+    maintwo         = [HTML]{90A4AE}{002E2E},
+    mainthree       = [HTML]{ECEFF1}{005454},
+    mainfour        = [HTML]{FAFAFA}{B2C2B0},
+    mainfive        = [HTML]{B0BEC5}{003838},
+    mainsix         = [HTML]{CFD8DC}{49694D},
+    azred           = [HTML]{E53935}{f07178},
+    azgreen         = [HTML]{91B859}{c3e88d},
+    azyellow        = [HTML]{FFB62C}{ffcb6b},
+    azblue          = [HTML]{6182B8}{82aaff},
+    azmagenta       = [HTML]{7C4DFF}{c792ea},
+    azcyan          = [HTML]{39ADB5}{89ddff},
+    azorange        = [HTML]{F76D47}{f78c6c},
+    %% Le neutre ne suit pas {mainfive}{mainsix} : ces deux rangs tiennent le
+    %% filet des cadres, où Lighter veut un gris très pâle. Comme accent de
+    %% remarque, ce gris disparaissait sur #FAFAFA.
+    azneutral       = [HTML]{78909C}{49694D},
     pagecol         = {mainfour}{mainone},
+    textcol         = {mainone}{mainfour},
     strokecol       = {maintwo}{mainthree},
-    framebackcol    = {mainthree}{maintwo},
-    framestrokecol  = {maintwo}{mainthree},
     frametextcol    = {mainone}{mainfour},
-    titletextcol    = {maintwo!75!black}{maintwo!75},
-    titlestrokecol  = {maintwo!50!black}{maintwo!50},
-    titlebackcol    = {mainthree}{maintwo},
-    buttontextcol   = {maintwo!75!black}{mainthree!75},
-    buttonstrokecol = {mainthree!50!black}{maintwo!50},
-    buttonbackcol   = {mainthree}{maintwo},
+    framestrokecol  = {mainfive}{mainsix},
+    framebackcol    = {mainthree}{maintwo},
+    frameshadowcol  = {black}{white},
+    titletextcol    = {azcyan}{azcyan},
+    titlestrokecol  = {azgreen}{azgreen},
+    titlebackcol    = {mainfour}{mainone},
     linktextcol     = {azblue}{azblue},
     linkstrokecol   = {azblue}{azblue},
     linkbackcol     = {azblue}{azblue},
-    azneutral       = {mainthree}{maintwo},
-    importantcol    = {azred!80!black}{azred!90},
-    theoremcol      = {azorange}{azorange},
+    buttontextcol   = {mainfour}{mainone},
+    buttonstrokecol = {azcyan}{azcyan},
+    buttonbackcol   = {azcyan}{azcyan},
+    importantcol    = {azorange}{azorange},
+    alertcol        = {azred}{azred},
+    errorcol        = {azred}{azred},
+    theoremcol      = {azgreen}{azgreen},
     definitioncol   = {azblue}{azblue},
     remarkcol       = {azneutral}{azneutral},
     examplecol      = {azyellow}{azyellow},
-    exercisecol     = {azyellow}{azyellow},
-    class           = {azorange}{azyellow}{mainone!90},
+    exercisecol     = {azorange}{azorange},
+    class           = {azorange}{azyellow}{azgreen},
   }
 
 \endinput
