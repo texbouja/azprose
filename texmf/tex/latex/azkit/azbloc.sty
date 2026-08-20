@@ -66,7 +66,7 @@
 
 \dim_new:N \azblocarc      \dim_set:Nn \azblocarc      { 6pt }
 \dim_new:N \azblocrule     \dim_set:Nn \azblocrule     { .4pt }
-\dim_new:N \azblocaccent   \dim_set:Nn \azblocaccent   { 2.4pt }
+\dim_new:N \azblocaccent   \dim_set:Nn \azblocaccent   { 2.2pt }
 \dim_new:N \azblocsep      \dim_set:Nn \azblocsep      { 9pt }
 \dim_new:N \azblocvsep     \dim_set:Nn \azblocvsep     { 6pt }
 \skip_new:N \azblocskip    \skip_set:Nn \azblocskip    { \medskipamount }
@@ -144,9 +144,10 @@
 %%
 %% Trois formes, aucune superposition à découper :
 %%
+%%   l'ACCENT   — le contour RECOPIÉ, teint, décalé à gauche : le fond peint
+%%                par-dessus n'en laisse que le croissant qui dépasse ;
 %%   le CADRE   — contour complet, rempli de la teinte de corps et filé ;
-%%   le BANDEAU — même contour, hauteur du titre, bas TOUJOURS plat ;
-%%   l'ACCENT   — un rectangle nu, retiré de l'arrondi aux extrémités.
+%%   le BANDEAU — même contour, hauteur du titre, bas TOUJOURS plat.
 %%
 %% ⚠️ Le DÉTOURAGE a été essayé et retiré : `\pgfusepath{clip}` coûtait 34 ms
 %% par bloc — plus que tout le reste du dessin réuni. Faire épouser aux formes
@@ -186,39 +187,28 @@
       \pgfsetbaselinepointnow { \pgfpointorigin }
       %% L'ACCENT en premier, sous tout le reste.
       %%
-      %% C'est un TRAIT centré sur le bord gauche, pas un rectangle posé à
-      %% l'intérieur : le remplissage du cadre, peint juste après, en recouvre
-      %% la moitié, et il n'en dépasse qu'un demi-filet. Bouts ronds, retirés
-      %% de l'arrondi là où le coin est arrondi, affleurant le bord là où le
-      %% bloc est coupé — le cap arrondi comble exactement le demi-filet.
+      %% C'est le contour LUI-MÊME, recopié, teint de la couleur d'accent et
+      %% décalé vers la gauche. Le remplissage du corps, peint juste après, le
+      %% recouvre à l'identique : il n'en reste que le croissant qui dépasse.
       %%
-      %% L'ordre de peinture suffit : les calques pgf ne servent qu'à traverser
-      %% des scopes, et tout se joue ici dans une seule image.
-      \pgfsetroundcap
-      \pgfsetlinewidth { \azblocaccent }
-      \pgfsetstrokecolor { \l__az_bloc_accentcol_tl }
-      \pgfpathmoveto
-        {
-          \pgfpoint { 0pt }
-            {
-              \dim_eval:n
-                { \bool_if:nTF {#1} { -\azblocarc } { -.5\azblocaccent } }
-            }
-        }
-      \pgfpathlineto
-        {
-          \pgfpoint { 0pt }
-            {
-              \dim_eval:n
-                {
-                  -\l__az_bloc_h_dim
-                  + \bool_if:nTF {#2} { \azblocarc } { .5\azblocaccent }
-                }
-            }
-        }
-      \pgfusepath { stroke }
-      %% le fond du corps : il couvre toute la surface, donc la moitié
-      %% intérieure de l'accent
+      %% L'intérêt sur un simple trait : le croissant SUIT le contour. Il a
+      %% l'épaisseur du décalage le long du bord droit et s'affine jusqu'à
+      %% disparaître dans les coins arrondis — ce que rend précisément un
+      %% `border-left` sur une boîte à `border-radius`, et qu'un trait ne
+      %% saurait imiter.
+      %%
+      %% Aucun calque : les calques pgf ne servent qu'à dessiner À TRAVERS des
+      %% scopes, et tout se joue ici dans une seule image. L'ordre de peinture
+      %% suffit à mettre la copie dessous.
+      \pgfscope
+        \pgftransformxshift { -\azblocaccent }
+        \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
+        \az_bloc_path:nn {#1} {#2}
+        \pgfsetfillcolor { \l__az_bloc_accentcol_tl }
+        \pgfusepath { fill }
+      \endpgfscope
+      %% le fond du corps : il couvre toute la surface, donc la copie décalée
+      %% sauf le croissant de gauche
       \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
       \az_bloc_path:nn {#1} {#2}
       \pgfsetfillcolor { \l__az_bloc_tintcol_tl }
