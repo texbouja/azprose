@@ -350,6 +350,7 @@ pub async fn latex_build(
     max_runs: Option<u32>,
     out_dir: Option<String>,
     aux_dir: Option<String>,
+    texmf_trees: Option<Vec<String>>,
     app: AppHandle,
 ) -> Result<LatexBuildResult, String> {
     if !check_latexmk() {
@@ -442,11 +443,36 @@ pub async fn latex_build(
     }
     cmd_args.push(file_stem.into());
 
-    let mut child = Command::new("latexmk")
+    let mut command = Command::new("latexmk");
+    command
         .args(&cmd_args)
         .current_dir(dir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    // TEXMFAUXTREES lets kpathsea search extra trees without an ls-R database:
+    // the bundled azkit tree, plus the project's own `.azprose/texmf` where
+    // `user.def` lives. The trailing comma is REQUIRED — kpathsea silently
+    // ignores the list without it.
+    if let Some(trees) = texmf_trees {
+        let live: Vec<&str> = trees
+            .iter()
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty())
+            .collect();
+        if !live.is_empty() {
+            let value = format!("{},", live.join(","));
+            let _ = app.emit(
+                "latex://log",
+                LatexLogPayload {
+                    line: format!("info: TEXMFAUXTREES → {value}"),
+                },
+            );
+            command.env("TEXMFAUXTREES", value);
+        }
+    }
+
+    let mut child = command
         .spawn()
         .map_err(|e| format!("failed to run latexmk: {e}"))?;
 

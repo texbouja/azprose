@@ -6,6 +6,7 @@ import { logStore } from "@/components/console/log.svelte";
 import type { Diagnostic } from "@/lib/diagnostics";
 import { getRootPath } from "@/stores/root-path.svelte";
 import { joinPath } from "@/lib/files";
+import { texmfDirSync } from "@/texmf";
 
 // ── Texlab Singleton ────────────────────────────────────────────
 
@@ -75,10 +76,17 @@ export function getTexlabClient(
 
   _id = `texlab-${Date.now()}`;
 
-  // Set TEXMFHOME to .azprose/texmf so texlab finds local packages
+  // TEXMFAUXTREES plutôt que TEXMFHOME : l'éditeur doit voir les DEUX arbres
+  // que verra le compilateur — celui du kit azkit, livré avec l'application, et
+  // celui du projet où vit `user.def`. TEXMFHOME n'en porte qu'un.
+  // La virgule finale est obligatoire, kpathsea ignore la liste sans elle.
   const rp = getRootPath();
-  const env: Record<string, string> | undefined = rp
-    ? { TEXMFHOME: joinPath(joinPath(rp, ".azprose"), "texmf") }
+  const arbres = [
+    texmfDirSync(),
+    rp ? joinPath(joinPath(rp, ".azprose"), "texmf") : null,
+  ].filter((t): t is string => !!t);
+  const env: Record<string, string> | undefined = arbres.length > 0
+    ? { TEXMFAUXTREES: `${arbres.join(",")},` }
     : undefined;
 
   const transport = createTauriTransport(_id, "texlab", [], env);

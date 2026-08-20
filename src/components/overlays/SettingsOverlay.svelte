@@ -16,6 +16,7 @@ import {
   type OlType,
 } from "@/stores/markdown-settings.svelte";
 import { mathJaxPreamble, mathJaxPackages, mathJaxFont, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte";
+import { latexPreamble } from "@/stores/latex-preamble.svelte";
 import { MATHJAX_FONTS, policeValide } from "@/lib/mathjax-font";
 import { MATH_SPACINGS, espacementValide } from "@/lib/mathjax-spacing";
 import { MATHJAX_PACKAGES } from "@/lib/mathjax-packages";
@@ -1471,6 +1472,19 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               onchange={(ev) => latexSettings.patch({ bibtex: ev.value as BibtexMode })}
             />
             <p class="mdv-settings__hint">{t("settings.latexBibtexHint")}</p>
+
+            <p class="mdv-settings__section-title">{t("settings.latexPreamble")}</p>
+            <p class="mdv-settings__hint">{t("settings.latexPreambleHint")}</p>
+            <!-- Jumeau du préambule MathJax, pour l'autre moteur. Ce qui est
+                 saisi ici est déposé en `user.def` dans l'arbre texmf du projet
+                 à chaque compilation : l'utilisateur ne voit jamais le chemin. -->
+            <div class="mdv-settings__macros">
+              <TextArea
+                value={latexPreamble.current}
+                placeholder={t("settings.latexPreamblePlaceholder")}
+                onchange={(ev) => debounceInput("latex-preamble", String(ev.value), (v) => (latexPreamble.current = v))}
+              />
+            </div>
 
             <p class="mdv-settings__section-title">{t("settings.latexTexmf")}</p>
             <p class="mdv-settings__hint">{t("settings.latexTexmfHint")}</p>

@@ -3,8 +3,10 @@ import type { Diagnostic } from "@/lib/diagnostics";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { latexSettings } from "@/stores/latex-settings.svelte";
+import { latexPreamble } from "@/stores/latex-preamble.svelte";
 import type { LatexState } from "./types";
 import { applyLatexBuildResult, latexBuildTarget } from "./build-state";
+import { arbresTexmf, deposerUserDef } from "./texmf-trees";
 
 export { applyLatexBuildResult, latexBuildTarget } from "./build-state";
 
@@ -57,6 +59,11 @@ export async function handleLatexBuild(
 
   state.latexBuilding = true;
   try {
+    // `user.def` est réécrit à chaque compilation plutôt qu'à la modification
+    // du réglage : c'est ce qui le tient en phase après un changement de projet
+    // ou une saisie faite dans une autre fenêtre.
+    await deposerUserDef(latexPreamble.current);
+
     const res = await invoke<{
       pdf_path: string | null;
       diagnostics: Diagnostic[];
@@ -68,6 +75,7 @@ export async function handleLatexBuild(
       maxRuns: latexSettings.current.maxRuns,
       outDir: latexSettings.current.outputDir,
       auxDir: latexSettings.current.auxDir,
+      texmfTrees: await arbresTexmf(),
     });
     const diags = (res.diagnostics ?? []).map((d) => ({
       ...d,

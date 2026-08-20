@@ -494,6 +494,11 @@ onMount(() => {
   // Safety net: never trap the splash if config/theme load hangs.
   const splashSafety = setTimeout(() => { themeBootDone = true; }, 2000);
 
+  // L'arbre texmf du kit azkit, déposé dans le dossier applicatif. En import
+  // dynamique et sans await : la compilation LaTeX n'est jamais le premier
+  // geste après l'ouverture, et rien d'autre au démarrage n'en dépend.
+  void import("@/texmf").then(({ synchroniserTexmf }) => synchroniserTexmf());
+
   const myLabel = getCurrentWindow().label;
   const isProjectWindow = myLabel.startsWith("azprose-project-");
   // Folder already known from ?root= (see urlRoot) — just register this window so
