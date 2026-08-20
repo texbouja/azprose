@@ -36,7 +36,12 @@
 \tl_new:N \g_az_doc_moteur_tl
 \tl_gset:Nn \g_az_doc_class_tl { report }
 \tl_gset:Nn \g_az_doc_options_tl { 11pt }
-\tl_gset:Nn \g_az_doc_moteur_tl { azthm }
+%% azbloc par défaut depuis le 2026-08-20. Il compose le document de référence
+%% en 7,9 s là où azthm en demande 10,3, pour la même page — tcolorbox faisait
+%% de chaque bandeau de titre et de chaque badge une BOÎTE complète, mesurée et
+%% coupable, soit trois boîtes par théorème. `\documentclass[azthm]{azdoc}`
+%% ramène l'ancien moteur, qui reste maintenu.
+\tl_gset:Nn \g_az_doc_moteur_tl { azbloc }
 
 \bool_new:N \g_az_doc_solution_bool
 \bool_new:N \g_az_doc_solution_delayed_bool
