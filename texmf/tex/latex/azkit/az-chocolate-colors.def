@@ -1,0 +1,50 @@
+%% az-chocolate-colors.def — palette « chocolate »
+%%
+%% Portée de `chocolatecolors.tex` (cpgekit). Bruns et crème.
+%%
+%% ⚠️ L'original déclarait `class` DEUX FOIS, la seconde collée en fin de ligne
+%% au bloc des rôles sémantiques. Seule la seconde comptait ; c'est elle qui est
+%% reprise ici, la première — {azorange}{azyellow}{mainone!90} — est écartée.
+%%
+%% Cette palette ne pose ni magenta ni cyan : `azmagenta` et `azcyan` gardent
+%% donc les valeurs de la palette en place. C'est le fonctionnement voulu — une
+%% palette ne remplace que ce qu'elle énonce — mais cela vaut d'être su.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{422A18},
+    maintwo         = [HTML]{946541},
+    mainthree       = [HTML]{D0B49F},
+    mainfour        = [HTML]{F4E4D8},
+    azblue          = [HTML]{454A70}{252A50},
+    azgreen         = [HTML]{588157}{588157},
+    azorange        = [HTML]{eb5e28}{eb5e28},
+    azyellow        = [HTML]{fca311}{fca311},
+    azred           = [HTML]{e63946}{e63946},
+    textcol         = {mainone}{mainfour},
+    pagecol         = {mainfour}{mainone},
+    strokecol       = {maintwo}{mainthree},
+    framebackcol    = {mainthree}{maintwo},
+    framestrokecol  = {azred}{azyellow},
+    frametextcol    = {maintwo}{mainthree},
+    titletextcol    = {azred}{azyellow},
+    titlestrokecol  = {azred}{azyellow},
+    titlebackcol    = {mainthree}{maintwo},
+    buttontextcol   = {maintwo!75!black}{mainthree!75},
+    buttonstrokecol = {mainthree!50!black}{maintwo!50},
+    buttonbackcol   = {mainthree}{maintwo},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    azneutral       = {mainthree}{maintwo},
+    importantcol    = {azred!80!black}{azred!90},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azorange}{azorange},
+    exercisecol     = {azorange}{azorange},
+    class           = {azorange}{azyellow}{azgreen},
+  }
+
+\endinput

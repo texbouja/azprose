@@ -1,0 +1,57 @@
+%% az-default-colors.def — palette « default »
+%%
+%% Portée de `defaultcolors.tex` (cpgekit). Encres franches sur papier blanc,
+%% gris neutres : c'est la palette de référence, celle dont les autres
+%% s'écartent. Elle double celle qu'azcolor tient en dur, pour que
+%% \azcolors{default} soit un retour en arrière possible et pas un avertissement.
+%%
+%% Chaque rôle porte deux valeurs : claire, puis sombre.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{111111},
+    maintwo         = [HTML]{222222},
+    mainthree       = [HTML]{eeeeee},
+    mainfour        = [HTML]{ffffff},
+    mainfive        = [HTML]{666666},
+    mainsix         = [HTML]{fafafa},
+    azblue          = [HTML]{1c1681}{838ecc},
+    azred           = [HTML]{922d2d}{cb7777},
+    azgreen         = [HTML]{407d5d}{b2e6cb},
+    azyellow        = [HTML]{b8ab01}{e0db91},
+    azorange        = [HTML]{b2591d}{e4b18e},
+    azmagenta       = [HTML]{9e187a}{d79ac7},
+    azcyan          = [HTML]{116c7e}{85c9de},
+    azneutral       = {maintwo}{mainthree},
+    textcol         = {mainone}{mainfour},
+    strokecol       = {mainone}{mainfour},
+    pagecol         = {mainfour}{mainone},
+    frametextcol    = {mainone}{mainfour},
+    framestrokecol  = {mainone}{mainfour},
+    framebackcol    = {mainthree}{maintwo},
+    frameshadowcol  = {maintwo}{mainthree},
+    titletextcol    = {maintwo}{mainthree},
+    titlestrokecol  = {maintwo}{mainthree},
+    titlebackcol    = {mainfour}{mainone},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    buttontextcol   = {mainthree}{maintwo},
+    buttonstrokecol = {mainthree}{maintwo},
+    buttonbackcol   = {maintwo}{mainthree},
+    importantcol    = {azred}{azred},
+    alertcol        = {azred}{azred},
+    errorcol        = {azcyan}{azcyan},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azorange}{azorange},
+    exercisecol     = {azorange}{azorange},
+    proofcol        = {azneutral}{azneutral},
+    othercol        = {azneutral}{azneutral},
+    classcol        = {azorange}{azorange},
+    class           = {azorange}{azyellow}{azgreen},
+  }
+
+\endinput

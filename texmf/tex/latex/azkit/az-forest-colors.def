@@ -1,0 +1,45 @@
+%% az-forest-colors.def — palette « forest »
+%%
+%% Portée de `forestcolors.tex` (cpgekit). Verts sourds et sable.
+%% Elle ne pose ni vert nommé, ni magenta, ni cyan — les verts de la palette
+%% sont dans les `main*`, et les blocs sémantiques tirent leurs couleurs de
+%% l'orange et du jaune. `azgreen`, `azmagenta` et `azcyan` gardent donc les
+%% valeurs de la palette en place.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{254336},
+    maintwo         = [HTML]{6B8A7A},
+    mainthree       = [HTML]{B7B597},
+    mainfour        = [HTML]{DAD3BE},
+    azblue          = [HTML]{1C5B8D}{074173},
+    azorange        = [HTML]{E7A339}{E7A339},
+    azyellow        = [HTML]{F9EC7E}{F9EC7E},
+    azred           = [HTML]{E26274}{E26274},
+    textcol         = {mainone}{mainfour},
+    pagecol         = {mainfour}{mainone},
+    strokecol       = {maintwo}{mainthree},
+    framebackcol    = {mainthree}{maintwo},
+    framestrokecol  = {maintwo}{mainthree},
+    frametextcol    = {mainone}{mainfour},
+    titletextcol    = {maintwo!75!black}{maintwo!75},
+    titlestrokecol  = {maintwo!50!black}{maintwo!50},
+    titlebackcol    = {mainthree}{maintwo},
+    buttontextcol   = {maintwo!75!black}{mainthree!75},
+    buttonstrokecol = {mainthree!50!black}{maintwo!50},
+    buttonbackcol   = {mainthree}{maintwo},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    azneutral       = {mainthree}{maintwo},
+    importantcol    = {azred!80!black}{azred!90},
+    theoremcol      = {azorange}{azorange},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azyellow}{azyellow},
+    exercisecol     = {azyellow}{azyellow},
+    class           = {azorange}{azyellow}{mainone!90},
+  }
+
+\endinput

@@ -215,7 +215,60 @@
     %% réaffectent bloc par bloc, tout le reste du kit s'y réfère sans savoir
     %% dans quoi il se trouve.
     \colorlet { thmcol } { framestrokecol }
+    %% Les quatre noms du bloc courant doivent EXISTER avant le premier bloc :
+    %% une boîte posée sans genre (un \tcbox nu) les nomme quand même.
+    \az_color_bloc:n { othercol }
   }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Teintes d'un bloc sémantique — DÉRIVATION COMMUNE AUX DEUX MOTEURS
+%%
+%% azthm et azbloc dessinent différemment, mais ils ne doivent pas COLORER
+%% différemment : un « remarque » a la même teinte de fond quel que soit le
+%% moteur, seule sa décoration change. Le calcul vit donc ici, dans le module
+%% qui ne connaît que des rôles, et les deux moteurs y puisent quatre noms :
+%%
+%%   blocaccentcol   la couleur du type — theoremcol, exercisecol…
+%%   blocbackcol     le fond du bloc
+%%   blocbandcol     le fond du bandeau de titre
+%%   blocrulecol     le filet du cadre
+%%
+%% Les trois derniers sont l'accent DILUÉ DANS LA PAGE, à la manière des
+%% callouts. Diluer dans `pagecol` et non dans du blanc est ce qui fait tenir
+%% le mode sombre sans seconde série de valeurs : la même teinte se pose sur
+%% papier comme sur écran noir, et suit automatiquement `\azgeometry{print}`.
+%%
+%% ⚠️ C'est ce qui remplace `framebackcol` sur le chemin des blocs. Ce rôle
+%% n'a pas disparu — il reste le fond des zones encadrées SANS genre — mais il
+%% ne gouverne plus le fond d'un théorème. Le défaut qu'il portait était réel :
+%% cinq palettes du kit posent `framebackcol` et `azneutral` sur la MÊME
+%% valeur, et un bloc « remarque » y devenait rigoureusement invisible.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \g_az_bloc_tint_tl      \tl_gset:Nn \g_az_bloc_tint_tl     { 6 }
+\tl_new:N \g_az_bloc_bandtint_tl  \tl_gset:Nn \g_az_bloc_bandtint_tl { 14 }
+\tl_new:N \g_az_bloc_ruletint_tl  \tl_gset:Nn \g_az_bloc_ruletint_tl { 40 }
+
+\tl_new:N \l_az_bloc_accent_tl
+
+\keys_define:nn { az / colors }
+  {
+    bloc~tint       .tl_gset:N = \g_az_bloc_tint_tl ,
+    bloc~band~tint  .tl_gset:N = \g_az_bloc_bandtint_tl ,
+    bloc~rule~tint  .tl_gset:N = \g_az_bloc_ruletint_tl ,
+  }
+
+%% #1 = l'accent, sous forme de NOM de couleur (`theoremcol`) et non de valeur.
+\cs_new_protected:Npn \az_color_bloc:n #1
+  {
+    \tl_set:Nn \l_az_bloc_accent_tl {#1}
+    \colorlet { blocaccentcol } {#1}
+    \exp_args:Nnx \colorlet { blocbackcol } { #1 ! \g_az_bloc_tint_tl     ! pagecol }
+    \exp_args:Nnx \colorlet { blocbandcol } { #1 ! \g_az_bloc_bandtint_tl ! pagecol }
+    \exp_args:Nnx \colorlet { blocrulecol } { #1 ! \g_az_bloc_ruletint_tl ! pagecol }
+  }
+
+\cs_generate_variant:Nn \az_color_bloc:n { V }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Palettes

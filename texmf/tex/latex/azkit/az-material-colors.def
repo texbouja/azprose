@@ -1,0 +1,51 @@
+%% az-material-colors.def — palette « material »
+%%
+%% Portée de `materialcolors.tex` (cpgekit), d'après Material Theme (Palenight).
+%% ⚠️ Palette conçue POUR l'écran sombre : sa version claire pose des gris-bleus
+%% moyens (#B0BEC5) en fond de page, ce qui donne un papier gris. Le rendu est
+%% conforme à l'original ; le contraste texte/page y est le plus faible du lot.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{1E272C},
+    maintwo         = [HTML]{2A373E},
+    mainthree       = [HTML]{A0AEB5},
+    mainfour        = [HTML]{B0BEC5},
+    mainfive        = [HTML]{314549},
+    mainsix         = [HTML]{A1B5B9},
+    azgreen         = [HTML]{009688}{c3e88d},
+    azyellow        = [HTML]{ffcb6b}{ffcb6b},
+    azblue          = [HTML]{444267}{494F72},
+    azred           = [HTML]{f07178}{ff5370},
+    azmagenta       = [HTML]{c792ea}{c792ea},
+    azorange        = [HTML]{f78c6c}{f78c6c},
+    azcyan          = [HTML]{89ddff}{89ddff},
+    pagecol         = {mainfour}{mainone},
+    textcol         = {mainone}{mainfour},
+    strokecol       = {maintwo}{mainthree},
+    frametextcol    = {mainone}{mainfour},
+    framestrokecol  = {mainfive}{mainsix},
+    framebackcol    = {mainthree}{maintwo},
+    titletextcol    = {azgreen!66!black}{azgreen!66},
+    titlestrokecol  = {azgreen!66!black}{azgreen!66},
+    titlebackcol    = {maintwo}{mainthree},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    buttontextcol   = {mainone}{mainone},
+    buttonstrokecol = {azorange}{azorange},
+    buttonbackcol   = {azorange}{azorange},
+    importantcol    = {azred}{azred},
+    alertcol        = {azred}{azred},
+    azneutral       = {mainsix}{mainfive},
+    errorcol        = {azcyan}{azcyan},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azorange}{azorange},
+    exercisecol     = {azorange}{azorange},
+    class           = {azorange}{azyellow}{azgreen},
+  }
+
+\endinput

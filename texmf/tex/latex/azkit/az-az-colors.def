@@ -1,0 +1,51 @@
+%% az-az-colors.def — palette « az »
+%%
+%% Portée de `azcolors.tex` (cpgekit). Papier ivoire chaud sur base Gruvbox,
+%% mais avec un bleu franc et un cyan profond en accents : c'est la palette
+%% « maison », celle qui accompagnait le thème du même nom.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{282828},
+    maintwo         = [HTML]{32302f},
+    mainthree       = [HTML]{f4ebcc},
+    mainfour        = [HTML]{fff9e8},
+    mainfive        = [HTML]{7c6f64},
+    mainsix         = [HTML]{a89984},
+    azgreen         = [HTML]{657557}{A3BE8C},
+    azyellow        = [HTML]{c78d18}{EBCB8B},
+    azblue          = [HTML]{3F779C}{5a9ac4},
+    azred           = [HTML]{86171C}{AE1B36},
+    azmagenta       = [HTML]{E4233A}{E4233A},
+    azorange        = [HTML]{E07540}{a85228},
+    azcyan          = [HTML]{096D6B}{61babf},
+    pagecol         = {mainfour}{mainone},
+    textcol         = {mainone}{mainfour},
+    strokecol       = {maintwo}{mainthree},
+    frametextcol    = {mainone}{mainfour},
+    framestrokecol  = {mainfive}{mainsix},
+    framebackcol    = {mainthree!50}{maintwo},
+    frameshadowcol  = {black}{white},
+    titletextcol    = {azcyan}{azcyan},
+    titlestrokecol  = {azgreen}{azgreen},
+    titlebackcol    = {mainfour}{mainone},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    buttontextcol   = {mainone}{mainone},
+    buttonstrokecol = {azblue}{azblue},
+    buttonbackcol   = {azblue}{azblue},
+    importantcol    = {azorange}{azorange},
+    alertcol        = {azmagenta}{azmagenta},
+    azneutral       = {mainfive}{mainsix},
+    errorcol        = {azmagenta}{azmagenta},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    exercisecol     = {azred}{azred},
+    examplecol      = {azorange}{azorange},
+    class           = {azorange}{azyellow}{azgreen},
+  }
+
+\endinput

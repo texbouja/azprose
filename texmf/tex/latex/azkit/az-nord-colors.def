@@ -1,0 +1,52 @@
+%% az-nord-colors.def — palette « nord »
+%%
+%% Portée de `nordcolors.tex` (cpgekit). Les gris-bleus froids de Nord, dont la
+%% version claire n'est PAS la palette Nord officielle : ses teintes sont
+%% assombries à la main pour tenir sur papier, la version sombre gardant les
+%% valeurs d'origine. C'est ce qui explique les couples très écartés.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{282D38},
+    maintwo         = [HTML]{353B4A},
+    mainthree       = [HTML]{D8DEE9},
+    mainfour        = [HTML]{ECEFF4},
+    mainfive        = [HTML]{132C4E},
+    mainsix         = [HTML]{E5E9F0},
+    azgreen         = [HTML]{637852}{A3BE8C},
+    azyellow        = [HTML]{c78d18}{EBCB8B},
+    azblue          = [HTML]{324e71}{7083C8},
+    azred           = [HTML]{b11c1c}{ff5370},
+    azmagenta       = [HTML]{6f546a}{B48EAD},
+    azorange        = [HTML]{a46420}{D08770},
+    azcyan          = [HTML]{67929e}{8FBCBB},
+    pagecol         = {mainfour}{mainone},
+    textcol         = {mainone}{mainfour},
+    strokecol       = {maintwo}{mainthree},
+    frametextcol    = {mainone}{mainfour},
+    framestrokecol  = {mainfive}{mainsix},
+    framebackcol    = {mainthree}{maintwo},
+    frameshadowcol  = {black}{white},
+    titletextcol    = {azorange}{azorange},
+    titlestrokecol  = {azgreen!86!black}{azgreen!86},
+    titlebackcol    = {mainfour}{mainone},
+    linktextcol     = {azblue}{azblue!75!blue!65!white},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    buttontextcol   = {mainone}{mainone},
+    buttonstrokecol = {azblue}{azblue},
+    buttonbackcol   = {azblue}{azblue},
+    importantcol    = {azorange}{azorange},
+    alertcol        = {azred}{azred},
+    azneutral       = {mainfive}{mainsix},
+    errorcol        = {azcyan}{azcyan},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azorange}{azorange},
+    exercisecol     = {azorange}{azorange},
+    class           = {azorange}{azyellow}{azgreen},
+  }
+
+\endinput

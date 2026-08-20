@@ -1,0 +1,51 @@
+%% az-gruv-colors.def — palette « gruv »
+%%
+%% Portée de `gruvcolors.tex` (cpgekit), d'après Gruvbox. Papier crème et
+%% encres chaudes ; les deux versions viennent des variantes `light` et `dark`
+%% officielles, ce qui en fait la palette la mieux équilibrée du lot.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{282828},
+    maintwo         = [HTML]{32302f},
+    mainthree       = [HTML]{f2e5bc},
+    mainfour        = [HTML]{fbf1c7},
+    mainfive        = [HTML]{7c6f64},
+    mainsix         = [HTML]{a89984},
+    azred           = [HTML]{9d0006}{fb4934},
+    azgreen         = [HTML]{79740e}{b8bb26},
+    azyellow        = [HTML]{b57614}{fabd2f},
+    azblue          = [HTML]{076678}{83a598},
+    azmagenta       = [HTML]{8f3f71}{d3869b},
+    azcyan          = [HTML]{427b58}{8ec07c},
+    azorange        = [HTML]{af3a03}{d65d0e},
+    pagecol         = {mainfour!60}{mainone},
+    textcol         = {mainone!90!red}{mainfour},
+    strokecol       = {maintwo}{mainthree},
+    frametextcol    = {mainone}{mainfour},
+    framestrokecol  = {mainfive}{mainsix},
+    framebackcol    = {mainthree}{maintwo},
+    frameshadowcol  = {black}{white},
+    titletextcol    = {azorange}{azorange},
+    titlestrokecol  = {azgreen}{azgreen},
+    titlebackcol    = {mainfour}{mainone},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    buttontextcol   = {mainfour}{mainfour},
+    buttonstrokecol = {azred}{azred},
+    buttonbackcol   = {azred}{azred},
+    importantcol    = {azorange}{azorange},
+    alertcol        = {azred}{azred},
+    azneutral       = {mainfive}{mainsix},
+    errorcol        = {azcyan}{azcyan},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azorange!50!black}{azorange!50},
+    examplecol      = {azorange}{azorange},
+    exercisecol     = {azred}{azred},
+    class           = {azred}{azorange}{azblue},
+  }
+
+\endinput

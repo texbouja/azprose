@@ -155,25 +155,16 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \tl_new:N \l__az_bloc_accentcol_tl
-\tl_new:N \l__az_bloc_tintcol_tl
-\tl_new:N \l__az_bloc_ttltintcol_tl
-\tl_new:N \l__az_bloc_bordercol_tl
 
-%% Une seule couleur d'accent engendre les trois autres, comme dans les
-%% callouts : le fond est la même teinte à 6 %, le bandeau à 14 %, le filet à
-%% 40 %. Un thème n'aura donc qu'UNE valeur à poser par type.
-\cs_new_protected:Npn \az_bloc_teintes:
-  {
-    \tl_set:Nx \l__az_bloc_tintcol_tl    { \l__az_bloc_accentcol_tl !6!pagecol }
-    \tl_set:Nx \l__az_bloc_ttltintcol_tl { \l__az_bloc_accentcol_tl !14!pagecol }
-    \tl_set:Nx \l__az_bloc_bordercol_tl  { \l__az_bloc_accentcol_tl !40!pagecol }
-  }
-
+%% Une seule couleur d'accent engendre les trois autres — fond, bandeau, filet.
+%% Le calcul N'EST PLUS ICI : il vit dans azcolor, sous \az_color_bloc:n, parce
+%% qu'azthm doit produire exactement les mêmes teintes. Ce module ne fait plus
+%% que choisir l'accent d'après le genre et nommer le résultat.
 \cs_new_protected:Npn \az_bloc_couleurs:n #1
   {
     \prop_get:NnNF \g_az_bloc_couleur_prop {#1} \l__az_bloc_accentcol_tl
       { \tl_set:Nn \l__az_bloc_accentcol_tl { othercol } }
-    \az_bloc_teintes:
+    \az_color_bloc:V \l__az_bloc_accentcol_tl
   }
 \cs_generate_variant:Nn \az_bloc_couleurs:n { V }
 
@@ -204,27 +195,27 @@
         \pgftransformxshift { -\azblocaccent }
         \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
         \az_bloc_path:nn {#1} {#2}
-        \pgfsetfillcolor { \l__az_bloc_accentcol_tl }
+        \pgfsetfillcolor { blocaccentcol }
         \pgfusepath { fill }
       \endpgfscope
       %% le fond du corps : il couvre toute la surface, donc la copie décalée
       %% sauf le croissant de gauche
       \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
       \az_bloc_path:nn {#1} {#2}
-      \pgfsetfillcolor { \l__az_bloc_tintcol_tl }
+      \pgfsetfillcolor { blocbackcol }
       \pgfusepath { fill }
       %% le bandeau, sous le cadre : le filet du cadre passera par-dessus
       \dim_compare:nT { \l__az_bloc_ttlht_dim > 0pt }
         {
           \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_ttlht_dim
           \az_bloc_path:nn {#1} { \c_false_bool }
-          \pgfsetfillcolor { \l__az_bloc_ttltintcol_tl }
+          \pgfsetfillcolor { blocbandcol }
           \pgfusepath { fill }
         }
       %% le filet du cadre, en dernier pour rester entier
       \dim_set_eq:NN \l__az_bloc_ph_dim \l__az_bloc_h_dim
       \az_bloc_path:nn {#1} {#2}
-      \pgfsetstrokecolor { \l__az_bloc_bordercol_tl }
+      \pgfsetstrokecolor { blocrulecol }
       \pgfsetlinewidth { \azblocrule }
       \pgfusepath { stroke }
     \endpgfpicture
@@ -487,7 +478,7 @@
     \noindent
     \begingroup
       \azblocfonttitle
-      \color { \l__az_bloc_accentcol_tl }
+      \color { blocaccentcol }
       \tl_if_empty:NF \l__az_bloc_icone_tl
         { \l__az_bloc_icone_tl \hspace { .5em } }
       \l__az_bloc_Name_tl
@@ -582,7 +573,7 @@
     \tl_if_empty:NF \l__az_bloc_accent_tl
       {
         \tl_set_eq:NN \l__az_bloc_accentcol_tl \l__az_bloc_accent_tl
-        \az_bloc_teintes:
+        \az_color_bloc:V \l__az_bloc_accentcol_tl
       }
     %% Le nom peut être imposé par l'appelant — c'est ce que fait `genthm`,
     %% dont le nom est un argument et non une propriété du genre.
@@ -775,7 +766,7 @@
     \par \addvspace { \azblocvsep }
     \noindent
     \begingroup
-      \color { \l__az_bloc_accentcol_tl }
+      \color { blocaccentcol }
       \rule [ .3ex ] { 1.4em } { .8pt } \hspace { .5em }
       \azblocfonttitle \MakeUppercase { \use:c { #1 name } }
     \endgroup

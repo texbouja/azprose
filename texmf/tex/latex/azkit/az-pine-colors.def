@@ -1,0 +1,57 @@
+%% az-pine-colors.def — palette « pine »
+%%
+%% Portée de `pinecolors.tex` (cpgekit). Vert sapin.
+%%
+%% ⚠️ DEUX PARTICULARITÉS de l'original, conservées telles quelles.
+%%
+%% 1. `pagecol` et `textcol` sont INVERSÉS par rapport à toutes les autres
+%%    palettes : en mode clair la page est le vert foncé #31473A et le texte le
+%%    blanc cassé. C'est un thème sombre déguisé en thème clair — et son mode
+%%    sombre donne donc une page CLAIRE. Signalé, pas corrigé : retourner le
+%%    couple changerait l'identité de la palette, ce n'est pas une décision de
+%%    portage.
+%%
+%% 2. L'original écrivait `maintwo = [named]{mainthree!60!black}`. Ici l'ordre
+%%    de DÉFINITION est celui de la première DÉCLARATION, fixé par la palette
+%%    par défaut où `maintwo` précède `mainthree` : le renvoi serait résolu
+%%    contre l'ANCIEN mainthree. La valeur est donc posée en dur, #4A4F3B, qui
+%%    est ce que xcolor calculait — même teinte, indépendante de l'ordre.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{31473A},
+    mainthree       = [HTML]{7C8363},
+    maintwo         = [HTML]{4A4F3B},
+    mainfour        = [HTML]{EDF4F2},
+    azblue          = [HTML]{00246B}{00246B},
+    azorange        = [HTML]{E7A339}{E7A339},
+    azyellow        = [HTML]{F9EC7E}{F9EC7E},
+    azred           = [HTML]{E26274}{E26274},
+    azgreen         = [HTML]{93AE7C}{A3BE8C},
+    pagecol         = {mainone}{mainfour},
+    textcol         = {mainfour}{mainone},
+    strokecol       = {azorange!70!black}{azorange!70},
+    framebackcol    = {mainthree}{maintwo},
+    framestrokecol  = {maintwo}{mainthree},
+    frametextcol    = {mainone}{mainfour},
+    titletextcol    = {maintwo!75!black}{maintwo!75},
+    titlestrokecol  = {maintwo!50!black}{maintwo!50},
+    titlebackcol    = {mainthree}{maintwo},
+    buttontextcol   = {maintwo!75!black}{mainthree!75},
+    buttonstrokecol = {mainthree!50!black}{maintwo!50},
+    buttonbackcol   = {mainthree}{maintwo},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    azneutral       = {mainthree}{mainfour},
+    importantcol    = {azred!80!black}{azred!90},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azorange}{azorange},
+    exercisecol     = {azorange}{azorange},
+    class           = {azorange}{azyellow}{mainone!90},
+  }
+
+\endinput

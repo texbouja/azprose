@@ -1,0 +1,44 @@
+%% az-minimal-colors.def — palette « minimal »
+%%
+%% Portée de `minimalcolors.tex` (cpgekit). Bleus froids et papier presque
+%% blanc ; les cadres sont tous rouges, ce qui donne une page sobre traversée
+%% d'un seul accent. Ni magenta ni cyan.
+
+\azsetupcolors
+  {
+    default import model = named,
+    mainone         = [HTML]{1d3557},
+    maintwo         = [HTML]{457b9d},
+    mainthree       = [HTML]{a8dadc},
+    mainfour        = [HTML]{f1faee},
+    azblue          = [HTML]{003566}{003566},
+    azgreen         = [HTML]{588157}{588157},
+    azorange        = [HTML]{eb5e28}{eb5e28},
+    azyellow        = [HTML]{fca311}{fca311},
+    azred           = [HTML]{e63946}{e63946},
+    textcol         = {mainone}{mainfour},
+    pagecol         = {mainfour}{mainone},
+    strokecol       = {maintwo}{mainthree},
+    framebackcol    = {mainthree}{maintwo},
+    framestrokecol  = {azred}{azred},
+    frametextcol    = {azred}{azred},
+    titletextcol    = {azred}{azred},
+    titlestrokecol  = {azred}{azred},
+    titlebackcol    = {mainthree}{maintwo},
+    buttontextcol   = {maintwo!75!black}{mainthree!75},
+    buttonstrokecol = {mainthree!50!black}{maintwo!50},
+    buttonbackcol   = {mainthree}{maintwo},
+    linktextcol     = {azblue}{azblue},
+    linkstrokecol   = {azblue}{azblue},
+    linkbackcol     = {azblue}{azblue},
+    azneutral       = {mainthree}{maintwo},
+    importantcol    = {azred!80!black}{azred!90},
+    theoremcol      = {azgreen}{azgreen},
+    definitioncol   = {azblue}{azblue},
+    remarkcol       = {azneutral}{azneutral},
+    examplecol      = {azorange}{azorange},
+    exercisecol     = {azorange}{azorange},
+    class           = {azorange}{azyellow}{mainone!90},
+  }
+
+\endinput

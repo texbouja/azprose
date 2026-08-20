@@ -211,7 +211,12 @@
 
 \tcbset
   {
-    thmcol/.colorlet = thmcol ,
+    %% Poser l'accent d'un bloc, c'est du même coup poser son fond, son bandeau
+    %% et son filet : la dérivation est celle d'azcolor, la MÊME qu'azbloc
+    %% emprunte. C'est ce qui fait qu'un « remarque » a la même teinte sous les
+    %% deux moteurs, seule sa décoration changeant.
+    %% (Remplace `thmcol/.colorlet = thmcol`, qui ne nommait que l'accent.)
+    thmcol/.code = { \az_color_bloc:n {#1} \colorlet { thmcol } {#1} } ,
     every~box/.style =
       {
         before~title~pre = \az_footnote_restore: ,
@@ -232,7 +237,7 @@
         height~fixed~for = first~and~middle,
         az~title~after~break,
         fonttitle = \TitlingFont \footnotesize \vphantom{(} ,
-        colback = framebackcol, coltext = frametextcol,
+        colback = blocbackcol, coltext = frametextcol,
         drop~shadow/.default = frameshadowcol ,
         drop~fuzzy~shadow/.default = frameshadowcol ,
       } ,
@@ -257,9 +262,9 @@
             halign~title = left ,
             boxsep = 0pt, top = 0pt, bottom = 0pt, left = 3pt, right = 3pt,
             fonttitle = \fontsize{7}{7}\selectfont \mdseries \itshape ,
-            coltitle = frametextcol , colbacktitle = framebackcol ,
+            coltitle = frametextcol , colbacktitle = blocbandcol ,
           } ,
-        extras~middle~and~last = { coltitle = thmcol, colbacktitle = framebackcol } ,
+        extras~middle~and~last = { coltitle = thmcol, colbacktitle = blocbandcol } ,
         bottomrule = 1pt , bottomrule~at~break = 1pt ,
         toprule~at~break = 0pt , titlerule = 0pt ,
       } ,
@@ -571,7 +576,7 @@
   {
     simple/.style =
       {
-        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        colframe = thmcol, colback = blocbackcol, coltext = frametextcol,
         boxrule = .4pt, top = 3pt, bottom = 3pt, left = 5pt, right = 5pt,
       } ,
   }
@@ -581,7 +586,7 @@
     azdefault/.style =
       {
         spartan,
-        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        colframe = thmcol, colback = blocbackcol, coltext = frametextcol,
         colbacktitle = thmcol,
         top = 3pt, bottom = 3pt, left = 5pt, right = 5pt, boxrule = .4pt,
       } ,
@@ -610,7 +615,7 @@
     rounded/.style =
       {
         skin = enhanced, arc = 6pt,
-        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        colframe = thmcol, colback = blocbackcol, coltext = frametextcol,
         boxrule = -1pt, left = 5pt, right = 5pt, bottom = 5pt, bottomrule = 1.2pt,
       } ,
     roundedthm/.style =
@@ -645,7 +650,7 @@
     uphill/.style =
       {
         skin = enhanced,
-        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        colframe = thmcol, colback = blocbackcol, coltext = frametextcol,
         boxrule = -.1pt, rightrule = .6pt, bottomrule = .6pt, boxsep = 0pt,
         left = 5pt, right = 5pt, bottom = 5pt, top = 5pt,
         arc = 6pt, sharp~corners = uphill,
@@ -678,7 +683,7 @@
   {
     flag/.style =
       {
-        enhanced, colframe = thmcol, colback = framebackcol,
+        enhanced, colframe = thmcol, colback = blocbackcol,
         boxrule = 0pt, top = 3pt, bottom = 3pt, left = 5pt, right = 5pt,
         toprule = .6pt, bottomrule = 1.2pt, sharp~corners = north,
       } ,
@@ -730,7 +735,7 @@
     azbeamer/.style =
       {
         skin = beamer, no~shadow, arc = 6pt,
-        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        colframe = thmcol, colback = blocbackcol, coltext = frametextcol,
         boxrule = -2pt, left = 5pt, right = 5pt, bottom = 5pt, toptitle = 2pt,
       } ,
     beamerthm/.style =
