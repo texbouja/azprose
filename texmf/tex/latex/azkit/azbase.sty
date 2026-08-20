@@ -142,9 +142,17 @@
 \cs_new:cpn { az@cnt@q } #1 { \theenumii     }
 \cs_new:cpn { az@cnt@e } #1 { \theequation   }
 
-%% |X| ne rend rien : il sert de place réservée, notamment pour la numérotation
-%% des unités à l'intérieur d'un théorème, où le préfixe est fourni ailleurs.
-\cs_new:cpn { az@cnt@X } #1 { }
+%% |X| désigne « le numéro du bloc englobant ». Hors bloc, il vaut \use_none:n
+%% et AVALE le séparateur qui le suit : le gabarit |X|.|1| rend alors « 3 », et
+%% « 2.3 » dès qu'un théorème a renseigné \az@current@counter. C'est ce qui
+%% permet d'écrire un seul gabarit pour les deux situations.
+\cs_new_eq:NN \az@current@counter \use_none:n
+\cs_new:cpn { az@cnt@X } #1 { \az@current@counter }
+
+%% Le point d'entrée des blocs sémantiques : azthm l'appelle à l'ouverture de
+%% chaque théorème avec son propre numéro, \use_none:n pour n'en afficher aucun.
+\cs_new_protected:Npn \az_current_counter_set:n #1
+  { \cs_set:Npn \az@current@counter {#1} }
 
 %% \azdefshortcut{<lettre>}{<compteur>} — affecte une lettre à \the<compteur>.
 %% L'étoile en tête de la lettre force l'écrasement d'un raccourci déjà pris.

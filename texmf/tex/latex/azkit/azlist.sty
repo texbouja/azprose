@@ -1,0 +1,1443 @@
+%% azlist.sty — le système de listes du kit azkit
+%%
+%% C'est la plus grosse surface d'écriture du kit : \unite, \xit et \exit sont,
+%% de loin, les commandes les plus employées du corpus. Tout y tourne autour
+%% d'une idée : le rédacteur DÉCLARE une articulation — une unité de sens, un
+%% cas, une condition — et ne s'occupe jamais d'ouvrir ni de fermer un
+%% environnement de liste. \xit ouvre ce qu'il faut, \exit referme ce qui reste.
+%%
+%% Trois étages :
+%%
+%%   · les GABARITS d'étiquette et les DÉCORATIONS viennent de azbase ;
+%%   · les PROPRIÉTÉS d'espacement (marge, saut, alignement) sont accumulées
+%%     par niveau, et consommées seulement quand une liste s'ouvre ;
+%%   · les ENVIRONNEMENTS (xenum, xitem, tabenum, mini, condcons) s'appuient
+%%     sur les deux précédents.
+%%
+%% Les propriétés sont différées parce que la largeur d'étiquette ne peut être
+%% mesurée qu'avec la fonte courante, laquelle n'est connue qu'au moment où la
+%% liste commence — jamais au moment où on la règle.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azlist} {2026-08-20} {0.1}
+  {azkit — listes, unités, discussions et tableaux d'articulation}
+
+\RequirePackage { azbase }
+\RequirePackage { array }
+\RequirePackage { relsize }
+
+%% azlist se charge seul aussi bien qu'au sein d'une classe du kit : le drapeau
+%% de compacité est déclaré ici s'il ne l'a pas déjà été, faute de quoi
+%% `tabenum` ne saurait pas combien de colonnes composer.
+\cs_if_exist:NF \ifcompact { \newif \ifcompact }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Messages et registres
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\msg_new:nnnn { azkit } { liste-hors-contexte }
+  { «~#1~»~n'est~pas~réglable~depuis~\string\azsetuplists. }
+  {
+    Cette~clé~ne~vaut~que~pour~une~liste~EN~COURS.~Hors~liste,~passer~par~une~
+    famille~de~niveau~:~\string\azsetuplists{enumi={…}}.
+  }
+
+\box_new:N   \l__az_liste_box
+\dim_new:N   \l__az_liste_dim
+\skip_new:N  \l__az_liste_skip
+\dim_new:N   \az@maxlabelwidth
+\dim_new:N   \az@labelwidth
+\tl_new:N    \az@listctr
+\tl_new:N    \az@listlevel
+\tl_new:N    \az@listdepth
+\tl_new:N    \az@xlistenv
+\tl_new:N    \az@enumlabelprefix
+\clist_new:N \g__az_liste_opts_clist
+
+\bool_new:N \l__az_resume_bool
+\bool_new:N \l__az_restore_bool
+\bool_new:N \l__az_save_bool
+\bool_set_true:N \l__az_save_bool
+
+%% Les dimensions d'origine de la classe : les clés d'espacement s'y réfèrent
+%% quand on leur demande « la valeur normale » plutôt qu'une valeur explicite.
+\skip_new:N \az@topsep@origin
+\skip_new:N \az@itemsep@origin
+\AddToHook { begindocument/before }
+  {
+    \skip_set:Nn \az@topsep@origin  { \topsep }
+    \skip_set:Nn \az@itemsep@origin { \itemsep }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \item sans étiquette
+%%
+%% Copie du \@item du noyau, à deux gardes près : une étiquette VIDE ne doit
+%% produire ni numéro ni espacement vertical. C'est ce qui permet à \unite
+%% d'ouvrir une articulation sans marque visible, et à \xit d'enchaîner des
+%% éléments serrés là où le noyau imposerait un \itemsep.
+%%
+%% Restée en TeX du noyau, délibérément : c'est une variante d'une routine de
+%% latex.ltx, et la faire ressembler à autre chose la rendrait plus difficile à
+%% comparer à son original le jour où le noyau bougera.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az@item
+  {
+    \@inmatherr \item
+    \@ifnextchar [ \az@item@ques { \@noitemargtrue \az@item@ques [\@itemlabel] }
+  }
+
+\cs_new_protected:Npn \az@item@ques [#1]
+  {
+    \@hyper@itemtrue
+    \if@noparitem
+      \@donoparitem
+    \else
+      \if@inlabel \indent \par \fi
+      \ifhmode \unskip \unskip \par \fi
+      \if@newlist
+        \if@nobreak
+          \@nbitem
+        \else
+          \addpenalty \@beginparpenalty
+          \tl_if_blank:nF {#1} { \addvspace \@topsep \addvspace {-\parskip} }
+        \fi
+      \else
+        \addpenalty \@itempenalty
+        \tl_if_blank:nF {#1} { \addvspace \itemsep }
+      \fi
+      \global \@inlabeltrue
+    \fi
+    \everypar
+      {
+        \@minipagefalse
+        \global \@newlistfalse
+        \if@inlabel
+          \global \@inlabelfalse
+          { \setbox \z@ \lastbox \ifvoid \z@ \kern -\itemindent \fi }
+          \box \@labels
+          \penalty \z@
+        \fi
+        \if@nobreak
+          \@nobreakfalse
+          \clubpenalty \@M
+        \else
+          \clubpenalty \@clubpenalty
+          \everypar { }
+        \fi
+      }
+    \if@noitemarg
+      \@noitemargfalse
+      \if@nmbrlist \refstepcounter \@listctr \fi
+    \fi
+    \sbox \@tempboxa { \makelabel {#1} }
+    \global \setbox \@labels \hbox
+      {
+        \unhbox \@labels
+        \hskip \itemindent
+        \hskip -\labelwidth
+        \hskip -\labelsep
+        \ifdim \wd \@tempboxa > \labelwidth
+          \box \@tempboxa
+        \else
+          \hbox to \labelwidth { \unhbox \@tempboxa }
+        \fi
+        \hskip \labelsep
+      }
+    \ignorespaces
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Propriétés d'espacement
+%%
+%% Ces clés ne sont JAMAIS appliquées au moment où on les lit : elles se
+%% déposent dans des macros nommées d'après le compteur de la liste, et ne
+%% s'exécutent qu'une fois \@tempboxa chargée d'un échantillon d'étiquette.
+%% La première qui s'exécute verrouille sa catégorie — les suivantes de même
+%% nature sont ignorées, ce qui donne la priorité au réglage LOCAL sur le
+%% réglage global.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\dim_const:Nn \c_az_liste_maxwidth_dim { 30pt }
+
+%% marge  : la liste se cale sur la largeur d'étiquette, sans dépasser une
+%%          limite au-delà de laquelle le retrait deviendrait absurde ;
+%% marge+ : idem, sans la limite ;
+%% marge* : retrait fixe, étiquette débordant dans la marge.
+\cs_new_protected:Npn \az_liste_marge:nn #1#2
+  {
+    \cs_if_exist:cF { az@marge@ \az@listctr }
+      {
+        \dim_set:Nn \labelsep { .33em }
+        \dim_set:cn { leftmargin \az@listlevel }
+          { \az@labelwidth + \labelsep + #2 }
+        \int_compare:nT {#1 = 1}
+          {
+            \dim_compare:nT
+              { \dim_use:c { leftmargin \az@listlevel } > \c_az_liste_maxwidth_dim }
+              {
+                \dim_set:cn { leftmargin \az@listlevel }
+                  { .5 \az@labelwidth + #2 }
+              }
+          }
+        \cs_gset_protected:cpn { az@marge@ \az@listctr }
+          {
+            \dim_set:Nn \labelwidth
+              { \dim_use:c { leftmargin \az@listlevel } - \labelsep }
+            \dim_zero:N \itemindent
+            \dim_zero:N \listparindent
+          }
+      }
+  }
+
+\cs_new_protected:Npn \az_liste_margealt:n #1
+  {
+    \cs_if_exist:cF { az@marge@ \az@listctr }
+      {
+        \dim_set:Nn \labelsep { .5em }
+        \dim_set:cn { leftmargin \az@listlevel } {#1}
+        \cs_gset_protected:cpn { az@marge@ \az@listctr }
+          {
+            \dim_zero:N \labelwidth
+            \dim_set_eq:NN \itemindent \labelsep
+            \dim_zero:N \listparindent
+          }
+      }
+  }
+
+\cs_new_protected:Npn \az_liste_topsep:n #1
+  {
+    \cs_if_exist:cF { az@avant@ \az@listctr }
+      {
+        \cs_gset_protected:cpn { az@avant@ \az@listctr }
+          {
+            \skip_set:Nn \l__az_liste_skip {#1}
+            \dim_compare:nTF { \l__az_liste_skip = 0pt }
+              { \skip_zero:N \topsep \skip_zero:N \itemsep }
+              { \skip_set_eq:NN \topsep \l__az_liste_skip }
+          }
+      }
+  }
+
+\cs_new_protected:Npn \az_liste_sep:n #1
+  {
+    \cs_if_exist:cF { az@saut@ \az@listctr }
+      {
+        \cs_gset_protected:cpn { az@saut@ \az@listctr }
+          {
+            \skip_set:Nn \l__az_liste_skip {#1}
+            \skip_add:Nn \itemsep { .5 \l__az_liste_skip }
+            \skip_add:Nn \parsep  { .5 \l__az_liste_skip }
+          }
+      }
+  }
+
+\cs_new_eq:NN \az@left@listfil \hfil
+\cs_new_eq:NN \az@right@listfil \relax
+
+\cs_new_protected:Npn \az_liste_align:n #1
+  {
+    \cs_if_exist:cF { az@align@ \az@listctr }
+      {
+        \cs_gset_protected:cpn { az@align@ \az@listctr }
+          {
+            \str_case:nn {#1}
+              {
+                { r } { \cs_set_eq:NN \az@right@listfil \relax
+                        \cs_set_eq:NN \az@left@listfil  \hfil }
+                { l } { \cs_set_eq:NN \az@right@listfil \hfil
+                        \cs_set_eq:NN \az@left@listfil  \relax }
+                { c } { \cs_set_eq:NN \az@right@listfil \hfil
+                        \cs_set_eq:NN \az@left@listfil  \hfil }
+              }
+          }
+      }
+  }
+
+\keys_define:nn { az / lists / @props }
+  {
+    marge     .code:n    = { \az_liste_marge:nn {1} {#1} } ,
+    marge     .default:n = { 0pt } ,
+    marge+    .code:n    = { \az_liste_marge:nn {0} {#1} } ,
+    marge+    .default:n = { 0pt } ,
+    marge*    .code:n    = { \az_liste_margealt:n {#1} } ,
+    marge*    .default:n = { 0pt } ,
+    avant     .code:n    = { \az_liste_topsep:n {#1} } ,
+    avant     .default:n = { \az@topsep@origin } ,
+    saut      .code:n    = { \az_liste_sep:n {#1} } ,
+    saut      .default:n = { \az@itemsep@origin } ,
+    align     .code:n    = { \az_liste_align:n {#1} } ,
+    align     .default:n = { r } ,
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Accumulation par niveau
+%%
+%% \azsetenum{2}{marge*=1pc} n'agit pas : il ajoute la propriété EN TÊTE de la
+%% pile du niveau 2. La tête l'emporte au moment de la consommation, si bien
+%% qu'un réglage tardif prime sur un réglage ancien sans avoir à l'effacer.
+%% L'étoile vide la pile d'abord.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_liste_prop_add:nn #1#2
+  {
+    \cs_if_exist:cF { az@prop@ #1 } { \tl_new:c { az@prop@ #1 } }
+    \tl_put_left:cn { az@prop@ #1 } { #2 , }
+  }
+
+\cs_new_protected:Npn \az_liste_prop_clear:n #1
+  {
+    \cs_if_exist:cTF { az@prop@ #1 }
+      { \tl_clear:c { az@prop@ #1 } }
+      { \tl_new:c { az@prop@ #1 } }
+  }
+
+\NewDocumentCommand \azsetenum { s m m }
+  {
+    \IfBooleanT {#1} { \az_liste_niveaux:nn {#2} { \az_liste_prop_clear:n } }
+    \az_liste_niveaux:nn {#2} { \az_liste_prop_addto:nn {#3} }
+  }
+
+\NewDocumentCommand \azsetitem { s m m }
+  {
+    \IfBooleanT {#1} { \az_liste_niveaux:nn {#2} { \az_liste_prop_clear:n } [item] }
+    \az_liste_niveaux:nn {#2} { \az_liste_prop_addto:nn {#3} } [item]
+  }
+
+%% Niveau 0 = « tous les niveaux » : c'est le réglage courant quand on veut
+%% donner le même retrait à toute la profondeur d'un bloc.
+\NewDocumentCommand \az_liste_niveaux:nn { m m O{enum} }
+  {
+    \int_compare:nTF {#1 > 0}
+      { #2 { #3 \int_to_roman:n {#1} } }
+      {
+        \int_step_inline:nn {3}
+          { #2 { #3 \int_to_roman:n {##1} } }
+      }
+  }
+
+\cs_new_protected:Npn \az_liste_prop_addto:nn #1#2
+  { \az_liste_prop_add:nn {#2} {#1} }
+
+%% Réglages d'usine.
+\tl_new:c {az@prop@enumi}   \tl_set:cn {az@prop@enumi}   { marge }
+\tl_new:c {az@prop@enumii}  \tl_set:cn {az@prop@enumii}  { marge* }
+\tl_new:c {az@prop@enumiii} \tl_set:cn {az@prop@enumiii} { marge }
+\tl_new:c {az@prop@itemi}   \tl_set:cn {az@prop@itemi}   { marge=1pc }
+\tl_new:c {az@prop@itemii}  \tl_set:cn {az@prop@itemii}  { marge=1pc }
+\tl_new:c {az@prop@itemiii} \tl_set:cn {az@prop@itemiii} { marge=1pc }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Construction d'une liste
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az@outerdeco@list #1 {#1}
+\cs_new_protected:Npn \az@outeremptydeco@list #1 {#1}
+
+\cs_new_protected:Npn \az_liste_outerdeco_init:
+  {
+    \cs_set:Npn \az@outerdeco@list ##1 {##1}
+    \cs_set:Npn \az@outeremptydeco@list ##1 {##1}
+  }
+
+%% La largeur d'étiquette est MESURÉE, pas devinée : on compose l'étiquette du
+%% treizième élément — assez large pour couvrir les cas courants sans être un
+%% cas extrême — et on en tire le retrait.
+\cs_new_protected:Npn \az_liste_setprop:
+  {
+    \cs_if_exist:cT { c@ \az@listctr }
+      { \int_set:cn { c@ \az@listctr } {13} }
+    \hbox_set:Nn \l__az_liste_box
+      { \color@begingroup \az@outeremptydeco@list { } \color@endgroup }
+    \dim_set:Nn \l__az_liste_dim { \box_wd:N \l__az_liste_box }
+    \hbox_set:Nn \l__az_liste_box
+      {
+        \color@begingroup
+          \use:c { az@deco@ \az@listctr } { \use:c { az@label@ \az@listctr } }
+        \color@endgroup
+      }
+    \dim_set:Nn \az@labelwidth
+      { \box_wd:N \l__az_liste_box + \l__az_liste_dim }
+    \dim_compare:nT { \az@maxlabelwidth < \box_wd:N \l__az_liste_box }
+      { \dim_gset:Nn \az@maxlabelwidth { \box_wd:N \l__az_liste_box } }
+    \use:x
+      {
+        \exp_not:N \keys_set:nn { az / lists / @props }
+          { \exp_not:v { az@prop@ \az@listctr } }
+      }
+  }
+
+\cs_new_protected:Npn \az_liste_builder:
+  {
+    \az_liste_setprop:
+    \exp_args:Nc \list { az@label@ \az@listctr }
+      {
+        \usecounter { \az@listctr }
+        \use:c { az@avant@ \az@listctr }
+        \use:c { az@marge@ \az@listctr }
+        \use:c { az@saut@  \az@listctr }
+        \use:c { az@align@ \az@listctr }
+        \cs_set_eq:NN \makelabel \az_liste_makelabel:n
+      }
+  }
+
+%% Variante non numérotée (xitem) : pas de compteur, et les décorations
+%% externes sont neutralisées pour que la mesure porte sur la puce seule.
+\cs_new_protected:Npn \az_liste_builder_star:
+  {
+    \cs_set:Npn \az@outeremptydeco@list ##1 {##1}
+    \cs_set:Npn \az@outerdeco@list ##1 {##1}
+    \az_liste_setprop:
+    \exp_args:Nc \list { az@label@ \az@listctr }
+      {
+        \use:c { az@avant@ \az@listctr }
+        \use:c { az@marge@ \az@listctr }
+        \use:c { az@saut@  \az@listctr }
+        \use:c { az@align@ \az@listctr }
+        \cs_set_eq:NN \makelabel \az_liste_makelabel:n
+      }
+  }
+
+\cs_new_protected:Npn \az_liste_makelabel:n #1
+  {
+    \tl_if_blank:nF {#1}
+      {
+        \null \az@left@listfil
+          \az@outerdeco@list { \use:c { az@deco@ \az@listctr } {#1} }
+        \az@right@listfil \null
+      }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Clés d'une liste en cours
+%%
+%% Forme courte, parce qu'elles s'écrivent EN LIGNE dans le document :
+%%   n  numérotation        d  décoration       m  marge
+%%   s  saut                a  alignement       bs saut avant
+%%   cc compteur dédié      p  préfixe d'étiquette
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Les commandes xparse ne se prêtent pas à \exp_args:NV : leur premier
+%% argument est une étoile facultative, et une valeur développée nue s'y
+%% décomposerait token par token. On passe donc par une fonction :nn, dont la
+%% variante V met bien la valeur entre accolades.
+\cs_new_protected:Npn \az_liste_setlabel:nn #1#2 { \azsetlabel {#1} {#2} }
+\cs_new_protected:Npn \az_liste_setdeco:nn #1#2 { \azsetdeco {#1} {#2} }
+\cs_new_protected:Npn \az_liste_setdeco_star:nn #1#2 { \azsetdeco* {#1} {#2} }
+\cs_generate_variant:Nn \az_liste_setlabel:nn { V }
+\cs_generate_variant:Nn \az_liste_setdeco:nn { V }
+\cs_generate_variant:Nn \az_liste_setdeco_star:nn { V }
+\cs_generate_variant:Nn \az_liste_prop_add:nn { V }
+
+\cs_new_protected:Npn \az_liste_horslist:n #1
+  {
+    \tl_if_empty:NT \az@xlistenv
+      { \msg_warning:nnn { azkit } { liste-hors-contexte } {#1} }
+  }
+
+%% Mémorise les options pour un éventuel `restore` au niveau suivant.
+\cs_new_protected:Npn \az_liste_save:n #1
+  {
+    \bool_if:NF \l__az_restore_bool
+      { \clist_gput_right:Nn \g__az_liste_opts_clist {#1} }
+  }
+
+\cs_new_protected:Npn \az_liste_localprop:nn #1#2
+  {
+    \az_liste_horslist:n {#1}
+    \az_liste_prop_add:Vn \az@listctr {#2}
+  }
+
+\keys_define:nn { az / lists }
+  {
+    n  .code:n = { \az_liste_horslist:n {n}
+                   \az_liste_setlabel:Vn \az@listctr {#1}
+                   \az_liste_save:n { n={#1} } } ,
+    n* .code:n = { \az_liste_horslist:n {n*}
+                   \cs_set_eq:cN { az@deco@ \az@listctr } \use:n
+                   \az_liste_setlabel:Vn \az@listctr {#1}
+                   \az_liste_save:n { n*={#1} } } ,
+    d  .code:n = { \az_liste_horslist:n {d}
+                   \az_liste_setdeco:Vn \az@listctr {#1}
+                   \az_liste_save:n { d={#1} } } ,
+    d* .code:n = { \az_liste_horslist:n {d*}
+                   \az_liste_setdeco_star:Vn \az@listctr {#1}
+                   \az_liste_save:n { d*={#1} } } ,
+    m  .code:n = { \az_liste_localprop:nn {m}  { marge={#1} }  \az_liste_save:n { m={#1} } } ,
+    m+ .code:n = { \az_liste_localprop:nn {m+} { marge+={#1} } \az_liste_save:n { m+={#1} } } ,
+    m* .code:n = { \az_liste_localprop:nn {m*} { marge*={#1} } \az_liste_save:n { m*={#1} } } ,
+    bs .code:n = { \az_liste_localprop:nn {bs} { avant={#1} }  \az_liste_save:n { bs={#1} } } ,
+    bs* .code:n = { \az_liste_localprop:nn {bs*} { avant=0pt }  \az_liste_save:n { bs* } } ,
+    s  .code:n = { \az_liste_localprop:nn {s}  { saut={#1} }   \az_liste_save:n { s={#1} } } ,
+    a  .code:n = { \az_liste_localprop:nn {a}  { align={#1} }  \az_liste_save:n { a={#1} } } ,
+    m  .default:n = { 0pt } ,
+    m+ .default:n = { 0pt } ,
+    m* .default:n = { 0pt } ,
+    s  .default:n = { 0pt } ,
+    bs .default:n = { \az@topsep@origin } ,
+    a  .default:n = { r } ,
+    %% Un compteur DÉDIÉ : la liste ne partage plus enumi et peut donc être
+    %% reprise ailleurs sans que la numérotation générale n'en souffre.
+    custom~counter .code:n =
+      {
+        \az_liste_horslist:n { custom~counter }
+        \cs_if_exist:cF { c@ #1 } { \azdefcounter {#1} { } }
+        \tl_set:Nn \az@listctr {#1}
+      } ,
+    cc .meta:n = { custom~counter = #1 } ,
+    label~prefix .code:n = { \tl_set:Nn \az@enumlabelprefix {#1} } ,
+    p  .meta:n = { label~prefix = #1 } ,
+    item~label .code:n = { \az_liste_itemlabel:w #1 \q_stop } ,
+    c  .code:n = { } ,
+    %% Les clés de préchargement sont lues AVANT la construction ; ici elles ne
+    %% font rien, pour qu'un même jeu d'options traverse les deux passes.
+    resume .code:n = { } , restore .code:n = { } , save .code:n = { } ,
+    r .code:n = { } , r* .code:n = { } ,
+  }
+
+\cs_new_protected:Npn \az_liste_itemlabel:w #1#2 \q_stop
+  { \tl_set:cn { az@label@ item \int_to_roman:n {#1} } {#2} }
+
+\keys_define:nn { az / lists / preload }
+  {
+    save    .bool_set:N = \l__az_save_bool ,
+    restore .bool_set:N = \l__az_restore_bool ,
+    resume  .bool_set:N = \l__az_resume_bool ,
+    r  .meta:n = { resume, restore } ,
+    r* .meta:n = { resume = false, restore } ,
+    unknown .code:n = { } ,
+  }
+
+\NewDocumentCommand \azsetuplists { m } { \keys_set:nn { az / lists } {#1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Familles par niveau
+%%
+%% \azsetuplists{enumii={n=|a|, d=\bfseries #1)}} règle le DEUXIÈME niveau
+%% partout dans le document, sans qu'une liste soit ouverte.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_liste_famille:nnn #1#2#3
+  % #1 = enum|item, #2 = niveau romain, #3 = niveau arabe
+  {
+    \keys_define:nn { az / lists / #1 #2 }
+      {
+        n  .code:n = { \azsetlabel { #1 #2 } {##1} } ,
+        n* .code:n = { \cs_set_eq:cN { az@deco@ #1 #2 } \use:n
+                       \azsetlabel { #1 #2 } {##1} } ,
+        d  .code:n = { \azsetdeco  { #1 #2 } {##1} } ,
+        d* .code:n = { \azsetdeco* { #1 #2 } {##1} } ,
+        m  .code:n = { \az_liste_prop_add:nn { #1 #2 } { marge={##1} } } ,
+        m+ .code:n = { \az_liste_prop_add:nn { #1 #2 } { marge+={##1} } } ,
+        m* .code:n = { \az_liste_prop_add:nn { #1 #2 } { marge*={##1} } } ,
+        s  .code:n = { \az_liste_prop_add:nn { #1 #2 } { saut={##1} } } ,
+        b  .code:n = { \az_liste_prop_add:nn { #1 #2 } { avant={##1} } } ,
+        b* .code:n = { \az_liste_prop_add:nn { #1 #2 } { avant=0pt } } ,
+        a  .code:n = { \az_liste_prop_add:nn { #1 #2 } { align={##1} } } ,
+        a  .default:n = { r } ,
+        m  .default:n = { 0pt } , m+ .default:n = { 0pt } ,
+        m* .default:n = { 0pt } , s .default:n = { 0pt } ,
+      }
+    \keys_define:nn { az / lists }
+      { #1 #2 .code:n = { \keys_set:nn { az / lists / #1 #2 } {##1} } }
+  }
+
+\clist_map_inline:nn { i, ii, iii, iv }
+  {
+    \az_liste_famille:nnn { enum } {#1} { }
+    \az_liste_famille:nnn { item } {#1} { }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% xenum et xitem
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_liste_savecounter:
+  {
+    \cs_gset:cpx { az@last@ \az@listctr }
+      { \int_use:c { c@ \az@listctr } }
+  }
+
+\NewDocumentEnvironment { xenum } { e{\op} }
+  {
+    \tl_set:Nn \az@xlistenv { xenum }
+    \int_compare:nTF { \@enumdepth > 2 } { \@toodeep }
+      {
+        \int_incr:N \@enumdepth
+        \tl_set:Nx \az@listdepth { \int_use:N \@enumdepth }
+        \tl_set:Nx \az@listlevel { \int_to_roman:n { \@enumdepth } }
+        \tl_set:Nx \az@listctr  { enum \az@listlevel }
+      }
+    \az_liste_outerdeco_init:
+    \IfValueT {#1} { \az_liste_options:n {#1} }
+    \az_liste_builder:
+    \bool_if:NT \l__az_resume_bool
+      {
+        \int_set:cn { c@ \az@listctr } { \use:c { az@last@ \az@listctr } }
+        \bool_set_false:N \l__az_resume_bool
+      }
+  }
+  { \az_liste_savecounter: \endlist }
+
+%% Deux passes sur le même jeu d'options : la première ne retient que les clés
+%% de préchargement (reprendre la numérotation, restaurer le réglage
+%% précédent), la seconde applique le reste. Sans cette séparation, `restore`
+%% arriverait après les réglages qu'il est censé remplacer.
+\cs_new_protected:Npn \az_liste_options:n #1
+  {
+    \keys_set:nn { az / lists / preload } {#1}
+    \bool_if:NF \l__az_save_bool
+      {
+        \cs_set_eq:NN \az_liste_savecounter: \prg_do_nothing:
+        \cs_set_eq:NN \az_liste_save:n \use_none:n
+      }
+    \bool_if:NTF \l__az_restore_bool
+      {
+        \use:c { az@lastopts@ \az@listctr }
+        \bool_set_false:N \l__az_restore_bool
+      }
+      {
+        \clist_gclear:N \g__az_liste_opts_clist
+        \azsetuplists {#1}
+        \cs_gset:cpx { az@lastopts@ \az@listctr }
+          {
+            \exp_not:N \azsetuplists
+              { \exp_not:V \g__az_liste_opts_clist }
+          }
+      }
+  }
+
+\NewDocumentEnvironment { xitem } { e{\op} }
+  {
+    \tl_set:Nn \az@xlistenv { xitem }
+    \int_compare:nTF { \@itemdepth > 2 } { \@toodeep }
+      {
+        \int_incr:N \@itemdepth
+        \tl_set:Nx \az@listdepth { \int_use:N \@itemdepth }
+        \tl_set:Nx \az@listlevel { \int_to_roman:n { \@itemdepth } }
+        \tl_set:Nx \az@listctr  { item \az@listlevel }
+      }
+    \IfValueT {#1} { \azsetuplists {#1} }
+    \az_liste_builder_star:
+  }
+  { \endlist }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \xit — l'articulation
+%%
+%%   \xit          élément du niveau courant
+%%   \xit[3]       étiquette imposée
+%%   \xit[3*]      la numérotation REPART de 3
+%%   \xit[3+]      la numérotation AVANCE de 3
+%%   \xit(titre)   élément titré
+%%   \xit<clé>     élément référençable
+%%   \xit- - -     remonte d'autant de niveaux avant de poser l'élément
+%%
+%% La liste s'ouvre toute seule au premier \xit : c'est le point du kit qui
+%% dispense le rédacteur de \begin{enumerate}.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentCommand \az_liste_init:nn { m m !t\r !t+ !E{\op}{{}} }
+  {
+    \bool_set_false:N \l__az_init_bool
+    \IfBooleanTF {#3}
+      { \tl_set:Nn \l__az_init_tl { \begin {#1} \op { r, #5 } }
+        \bool_set_true:N \l__az_init_bool }
+      {
+        \IfBooleanTF {#4}
+          { \tl_set:Nn \l__az_init_tl { \begin {#1} \op {#5} }
+            \bool_set_true:N \l__az_init_bool }
+          {
+            \tl_if_empty:NT \az@xlistenv
+              { \tl_set:Nn \l__az_init_tl { \begin {#1} \op {#5} }
+                \bool_set_true:N \l__az_init_bool }
+          }
+      }
+    \bool_if:NF \l__az_init_bool
+      {
+        \tl_if_blank:nF {#5}
+          { \tl_set:Nn \l__az_init_tl { \begin {#1} \op {#5} }
+            \bool_set_true:N \l__az_init_bool }
+      }
+    \bool_if:NT \l__az_init_bool { \l__az_init_tl }
+    #2
+  }
+
+\bool_new:N \l__az_init_bool
+\tl_new:N   \l__az_init_tl
+
+%% Suffixe d'étiquette : `*` repart du numéro donné, `+` l'ajoute au courant.
+\cs_new_protected:Npn \az_liste_label:n #1
+  {
+    \str_case_e:nnF { \tl_item:nn {#1} {-1} }
+      {
+        { * } { \tl_set:Nx \l__az_liste_tmp_tl
+                  { \int_eval:n { \az_liste_sansfin:n {#1} - 1 } }
+                \az_setcounter_ref:VV \az@listctr \l__az_liste_tmp_tl \item }
+        { + } { \tl_set:Nx \l__az_liste_tmp_tl
+                  { \int_eval:n { \az_liste_sansfin:n {#1} - 1 } }
+                \az_addtocounter_ref:VV \az@listctr \l__az_liste_tmp_tl \item }
+      }
+      { \item [#1] }
+  }
+
+\cs_generate_variant:Nn \az_setcounter_ref:nn { VV }
+\cs_generate_variant:Nn \az_addtocounter_ref:nn { VV }
+\tl_new:N \l__az_liste_tmp_tl
+
+\cs_new:Npn \az_liste_sansfin:n #1
+  { \tl_range:nnn {#1} {1} {-2} }
+
+\NewDocumentCommand \az_liste_xit_enum:w { !t- !t- !t- !o !d() !d<> }
+  {
+    \az_liste_remonte:nnn {#1} {#2} {#3}
+    \IfValueTF {#4} { \az_liste_label:n {#4} } { \item }
+    \IfValueT {#5}
+      { \azusedeco { itemtitle } {#5}
+        \tl_set:Nx \@currentlabelname { \exp_not:n {#5} } }
+    \IfValueT {#6} { \label { \az@enumlabelprefix #6 } }
+  }
+
+\NewDocumentCommand \az_liste_xit_item:w { !t- !t- !t- !o !d() !d<> }
+  {
+    \az_liste_remonte:nnn {#1} {#2} {#3}
+    \IfValueTF {#4}
+      { \item [ \use:c { az@deco@ \az@listctr } {#4} ] }
+      { \item }
+    \IfValueT {#5} { \azusedeco { itemtitle } {#5} }
+    \IfValueT {#6}
+      {
+        \phantomsection
+        \tl_set:Nx \@currentlabelname { \exp_not:n {#5} }
+        \label { \az@enumlabelprefix #6 }
+      }
+  }
+
+\NewDocumentCommand \az_liste_xit_tab:w { !o !d() !d<> }
+  {
+    \tabitem
+    \IfValueT {#2} { \azusedeco { itemtitle } {#2} }
+    \IfValueT {#3} { \label { \az@enumlabelprefix #3 } }
+  }
+
+\NewDocumentCommand \az_liste_remonte:nnn { m m m }
+  {
+    \IfBooleanT {#1}
+      { \exit -
+        \IfBooleanT {#2}
+          { \exit -
+            \IfBooleanT {#3} { \exit - } } }
+  }
+
+\NewDocumentCommand \xitenum { } { \az_liste_init:nn { xenum } { \az_liste_xit_enum:w } }
+\NewDocumentCommand \xititem { } { \az_liste_init:nn { xitem } { \az_liste_xit_item:w } }
+\NewDocumentCommand \xittab  { } { \az_liste_init:nn { tabenum } { \az_liste_xit_tab:w } }
+
+\NewDocumentCommand \xit { t\i t\t }
+  {
+    \IfBooleanTF {#1}
+      { \xititem + }
+      { \IfBooleanTF {#2} { \xittab + } { \xitenum } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \exit — fermer ce qui reste ouvert
+%%
+%% Sans étoile ni tiret, \exit ferme TOUTE la pile de listes du bloc courant.
+%% Un tiret par niveau à remonter quand on veut n'en fermer qu'une partie.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_liste_end:
+  {
+    \tl_if_empty:NF \az@xlistenv
+      { \use:x { \exp_not:N \end { \az@xlistenv } } }
+  }
+
+\cs_new_protected:Npn \az_liste_end_rec:
+  {
+    \tl_if_empty:NF \az@xlistenv
+      {
+        \use:x { \exp_not:N \end { \az@xlistenv } }
+        \az_liste_end_rec:
+      }
+  }
+
+\NewDocumentCommand \exit { !t- !t- !t- !t- }
+  {
+    \IfBooleanTF {#1}
+      {
+        \az_liste_end:
+        \IfBooleanT {#2}
+          { \az_liste_end:
+            \IfBooleanT {#3}
+              { \az_liste_end:
+                \IfBooleanT {#4} { \az_liste_end: } } }
+      }
+      { \az_liste_end_rec: }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Créateur de listes
+%%
+%%   \aznewlist{cas}{\cas}{n=|1|, d=\textit{cas #1.}}
+%%
+%% L'étoile produit une liste NON numérotée (famille xitem).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Les options sont RANGÉES et non recopiées dans le corps de l'environnement :
+%% elles contiennent presque toujours un `d=…#1…`, et un #1 déposé tel quel
+%% dans un corps de définition y désignerait l'argument de l'ENVIRONNEMENT.
+\cs_new_protected:Npn \az_newlist_open:nnn #1#2#3
+  % #1 = xenum|xitem, #2 = nom de la liste, #3 = options en ligne
+  {
+    \use:x
+      {
+        \exp_not:c {#1} \exp_not:N \op
+          { \exp_not:v { az@newlist@opts@ #2 } , \exp_not:n {#3} }
+      }
+    \tl_set:Nn \az@xlistenv {#2}
+  }
+
+\NewDocumentCommand \aznewlist { s m m m }
+  {
+    \tl_gset:cn { az@newlist@opts@ #2 } {#4}
+    \IfBooleanTF {#1}
+      {
+        \NewDocumentEnvironment {#2} { E{\op}{{}} }
+          { \az_newlist_open:nnn { xitem } {#2} {##1} }
+          { \endlist }
+        \cs_set_protected:Npn #3 { \az_liste_init:nn {#2} { \az_liste_xit_item:w } }
+      }
+      {
+        \NewDocumentEnvironment {#2} { E{\op}{{}} }
+          { \az_newlist_open:nnn { xenum } {#2} {##1} }
+          { \az_liste_savecounter: \endlist }
+        \cs_set_protected:Npn #3 { \az_liste_init:nn {#2} { \az_liste_xit_enum:w } }
+      }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% tabenum — des éléments courts en colonnes
+%%
+%% Utile pour une série de calculs à répondre : la liste se répartit en
+%% colonnes dont la largeur s'ajuste au plus large élément rencontré.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\dim_new:N \l__az_tab_label_dim
+\dim_new:N \l__az_tab_line_dim
+\dim_new:N \l__az_tab_col_dim
+\dim_new:N \l__az_tab_width_dim
+\bool_new:N \l__az_tab_field_bool
+\tl_new:N \az@tabenum
+\tl_new:N \az@numtab
+
+\cs_new_protected:Npn \az_tab_addfield:
+  {
+    \@stopfield
+    \dim_compare:nF
+      { \l__az_tab_line_dim > \box_wd:N \@curfield + \box_wd:N \@curline }
+      { \az_tab_output: }
+    \dim_zero:N \l__az_tab_width_dim
+    \bool_while_do:nn { \dim_compare_p:n { \l__az_tab_width_dim < \box_wd:N \@curfield } }
+      { \dim_add:Nn \l__az_tab_width_dim { \l__az_tab_col_dim } }
+    \az_tab_addline:
+  }
+
+\cs_new_protected:Npn \az_tab_output:
+  {
+    \hbox_set:Nn \@curline { \strut \unhbox \@curline \unskip \unskip \unskip }
+    \noindent \box \@curline \par
+  }
+
+\cs_new_protected:Npn \az_tab_addline:
+  {
+    \hbox_set:Nn \@curline
+      {
+        \box \@curline
+        \copy \@curfield
+        \hskip \dim_eval:n { \l__az_tab_width_dim - \box_wd:N \@curfield }
+      }
+  }
+
+\cs_new_protected:Npn \az_tab_setup:
+  {
+    \hbox_set:Nn \l__az_liste_box
+      {
+        \int_set:cn { c@ \az@tabenum } {13}
+        \azusedeco { tabenum } { \use:c { az@label@ \az@tabenum } }
+      }
+    \dim_set:Nn \l__az_tab_label_dim { \box_wd:N \l__az_liste_box }
+    \dim_set:Nn \l__az_tab_line_dim { \columnwidth - \@totalleftmargin }
+    \dim_set:Nn \l__az_tab_col_dim { \l__az_tab_line_dim / \az@numtab }
+    \dim_set:Nn \l__az_tab_line_dim { \l__az_tab_col_dim * \az@numtab }
+  }
+
+\NewDocumentCommand \tabitem { }
+  {
+    \refstepcounter { \az@tabenum }
+    \bool_if:NT \l__az_tab_field_bool { \az_tab_addfield: }
+    \@startfield \bool_set_true:N \l__az_tab_field_bool
+    \hbox to \l__az_tab_label_dim
+      { \azusedeco { tabenum } { \use:c { az@label@ \az@tabenum } } \hss }
+    \hskip \labelsep \relax
+  }
+
+\azgsetdeco { tabenum } { \bfseries #1. }
+
+\keys_define:nn { az / lists / tabenum }
+  {
+    s .code:n = { \dim_set:Nn \parskip {#1} } ,
+    s .default:n = { 0pt } ,
+    n .code:n = { \az_liste_setlabel:Vn \az@tabenum {#1} } ,
+    d .code:n = { \azsetdeco* { tabenum } {#1} } ,
+    %% Deux nombres : le premier pour un document compact, le second sinon.
+    columns .code:n = { \az_tab_columns:w #1 \q_stop } ,
+    columns .default:n = { {2}{3} } ,
+    c .code:n = { \az_tab_columns:w #1 \q_stop } ,
+    unknown .code:n = { } ,
+  }
+
+\cs_new_protected:Npn \az_tab_columns:w #1#2 \q_stop
+  { \tl_set:Nx \az@numtab { \ifcompact #1 \else #2 \fi } }
+
+\NewDocumentCommand \azsetuptabenum { m }
+  { \keys_set:nn { az / lists / tabenum } {#1} }
+
+\NewDocumentEnvironment { tabenum } { E{\op}{{}} }
+  {
+    \int_incr:N \@enumdepth
+    \tl_set:Nx \az@listdepth { \int_use:N \@enumdepth }
+    \tl_set:Nx \az@listlevel { \int_to_roman:n { \@enumdepth } }
+    \tl_set:Nx \az@listctr  { enum \az@listlevel }
+    \tl_set_eq:NN \az@tabenum \az@listctr
+    \tl_set:Nn \az@xlistenv { tabenum }
+    \skip_zero:N \partopsep \skip_zero:N \topsep
+    \dim_set:Nn \labelsep { .33em }
+    \cs_set:Npn \\ { \intertab { } }
+    \azsetuptabenum { columns, #1 }
+    \az_tab_setup:
+    \int_zero:c { c@ \az@tabenum }
+    \trivlist \item [ ]
+    \cs_set_eq:NN \item \tabitem
+  }
+  {
+    \bool_if:NT \l__az_tab_field_bool
+      { \az_tab_addfield: \noindent \unhbox \@curline }
+    \endtrivlist
+  }
+
+\NewDocumentCommand \intertab { +m }
+  {
+    \az_tab_addfield:
+    \dim_compare:nF { \box_wd:N \@curline = 0pt } { \az_tab_output: }
+    \noindent #1
+    \par \vskip -\parskip
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \unite — l'unité de sens
+%%
+%% \unite ouvre une articulation à l'intérieur d'un théorème ou d'une
+%% définition, sans que le rédacteur ouvre quoi que ce soit : c'est
+%% l'environnement englobant qui a armé \unite avec \az_unite_first:.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\azdefcounter { unite } { |X|.|1| } (T)
+\azgsetdeco { unite } { \bfseries #1. }
+\azgsetdeco { unitetitle } { \textbf {#1~:~} }
+\azgsetdeco { itemtitle } { \bfseries \boldmath #1. \enskip }
+\azmakethetolabel* { unite }
+
+\bool_new:N \l__az_unite_bool
+
+\cs_new_protected:Npn \az_unite_env:
+  {
+    \int_zero:N \@enumdepth
+    \exp_args:Nc \list { az@label@unite }
+      {
+        \usecounter { unite }
+        \dim_zero:N \listparindent
+        \dim_zero:N \labelwidth
+        \dim_set_eq:NN \itemindent \labelsep
+        \dim_zero:N \leftmargin
+        \cs_set_eq:NN \makelabel \az_unite_label:n
+      }
+  }
+
+\cs_new_protected:Npn \az_unite_label:n #1
+  {
+    \tl_if_blank:nTF {#1}
+      { \hskip -\labelsep }
+      { \azusedeco { unite } {#1} }
+  }
+
+\cs_new_protected:Npn \closeunite
+  {
+    \bool_if:NT \l__az_unite_bool
+      {
+        \endlist
+        \cs_set_eq:NN \unite \relax
+        \bool_set_false:N \l__az_unite_bool
+      }
+  }
+
+\cs_new_protected:Npn \az_unite_first:
+  {
+    \bool_set_true:N \l__az_unite_bool
+    \cs_set_eq:NN \unite \az_unite_item:w
+    \az_unite_env: \unite
+  }
+
+\NewDocumentCommand \az_unite_item:w { !o !d() !d<> }
+  {
+    \IfValueTF {#1} { \az_liste_unitelabel:n {#1} } { \item }
+    \IfValueT {#2} { \azusedeco { unitetitle } {#2} }
+    \IfValueT {#3} { \IfValueF {#1} { \label {#3} } }
+  }
+
+\cs_new_protected:Npn \az_liste_unitelabel:n #1
+  {
+    \str_case_e:nnF { \tl_item:nn {#1} {-1} }
+      {
+        { * } { \exp_args:Nnx \az_setcounter_ref:nn { unite }
+                  { \int_eval:n { \az_liste_sansfin:n {#1} - 1 } } \item }
+        { + } { \exp_args:Nnx \az_addtocounter_ref:nn { unite }
+                  { \int_eval:n { \az_liste_sansfin:n {#1} - 1 } } \item }
+        %% (les deux branches ci-dessus partagent la forme de \az_liste_label:n)
+      }
+      { \item [#1] }
+  }
+
+%% Ce que l'on remet à zéro en entrant dans un bloc sémantique : à l'intérieur
+%% d'un théorème, les listes repartent d'un jeu de retraits serrés, et \unite
+%% redevient disponible.
+\cs_new_protected:Npn \az_liste_defaults_inside:
+  {
+    \azsetlabel { enumi }   { |1| }
+    \azsetlabel { enumii }  { |a| }
+    \azsetlabel { enumiii } { |i| }
+    \azsetenum* {1} { marge*=0pt }
+    \azsetenum* {2} { marge*=1pc }
+    \azsetenum* {3} { marge*=2pc }
+    \cs_set_eq:NN \unite \az_unite_first:
+  }
+
+\cs_new_eq:NN \unite \az_unite_first:
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% discussion — la disjonction de cas
+%%
+%% Un raisonnement par cas a une forme propre : « Si … : », « Cas où … : »,
+%% « Supposons que … : ». L'environnement les fournit toutes, alignées sur une
+%% même marge, pour que la structure logique se voie sans être décrite.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentCommand \az_disc_unite:nn { m m d() }
+  { \IfValueTF {#3} { \item [ #1 #3 #2 ] } { \item } }
+
+\NewDocumentCommand \az_disc_supp:w { s }
+  {
+    \IfBooleanTF {#1}
+      { \az_disc_unite:nn { Supposons~qu' } { ~:~ } }
+      { \az_disc_unite:nn { Supposons~que~ } { ~:~ } }
+  }
+
+\azgsetdeco { discuss } { $\bullet\;$ \bfseries \boldmath #1 }
+
+\cs_new_protected:Npn \az_disc_label:n #1
+  {
+    \hskip \labelsep
+    \tl_if_blank:nTF {#1}
+      { \makebox [ \leftmargin - \labelsep ] [l] { \azusedeco {discuss} { } } }
+      { \azusedeco {discuss} {#1} \hfil }
+  }
+
+\NewDocumentEnvironment { discussion } { e{\wd} }
+  {
+    \cs_set:Npn \unite { \az_disc_unite:nn { } { ~:~ } }
+    \cs_set:Npn \si    { \az_disc_unite:nn { Si~ } { ~:~ } }
+    \cs_set:Npn \cas   { \az_disc_unite:nn { Cas~où~ } { ~:~ } }
+    \cs_set_eq:NN \supp \az_disc_supp:w
+    \cs_set:Npn \imp ##1##2 { \item [ $##1 \Rightarrow ##2 \,)$ ] }
+    \cs_set:Npn \equ ##1##2 { \item [ $##1 \Leftrightarrow ##2 \,)$ ] }
+    \cs_set:Npn \cs { \item [ $\Leftarrow\,)$ ] }
+    \cs_set:Npn \cn { \item [ $\Rightarrow\,)$ ] }
+    \list { }
+      {
+        \IfNoValueTF {#1}
+          {
+            \dim_zero:N \labelwidth
+            \dim_set:Nn \leftmargin {1pc}
+            \dim_set:Nn \itemindent {-\leftmargin}
+          }
+          {
+            \settowidth \leftmargin {#1}
+            \dim_add:Nn \leftmargin { \labelsep }
+            \dim_set_eq:NN \labelwidth \leftmargin
+            \dim_zero:N \itemindent
+          }
+        \cs_set_eq:NN \makelabel \az_disc_label:n
+      }
+  }
+  { \endlist }
+
+\cs_new_eq:NN \disc \discussion
+\cs_new_eq:NN \enddisc \enddiscussion
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Conditions et conséquences
+%%
+%% `cond` et `cons` seuls composent un tableau à deux colonnes : la condition à
+%% gauche, ce qui la suit à droite. `condcons` les enveloppe et MESURE les
+%% deux colonnes latérales avant de composer, pour que toutes les lignes du
+%% bloc s'alignent — ce qu'un tableau ligne à ligne ne saurait faire.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\dim_new:N \ccleftmargin
+\dim_new:N \ccrightmargin
+\dim_new:N \ccsymbolwidth
+\dim_new:N \l__az_cc_left_max_dim
+\dim_new:N \l__az_cc_right_max_dim
+\tl_new:N  \ccjot
+\tl_set:Nn \ccjot { 3pt }
+\bool_new:N \l__az_cc_intab_bool
+\bool_new:N \l__az_cc_vline_bool
+
+\cs_new:Npn \ccsi     { \relsize{-2} $\xbullet\;$ }
+\cs_new:Npn \ccalors  { \relsize{-2} $\xdiamond\;$ }
+\cs_new:Npn \ccneutre { \relsize{-2} $\xbullet$ }
+\cs_new:Npn \blneutre { \relsize{-2} $\xsquare\;$ }
+
+\AddToHook { begindocument/before }
+  { \settowidth \ccleftmargin { Si } }
+
+\DeclareDocumentEnvironment { cond } { O{\ccleftmargin} O{l} }
+  {
+    \ifhmode \par \else \leavevmode \fi
+    \dim_set:Nn \extrarowheight {3pt}
+    \tabular [t] { @{} p{#1} @{\ccsi\enspace} #2 @{} }
+  }
+  { \endtabular \par \smallskip }
+
+\DeclareDocumentEnvironment { cons } { O{\ccleftmargin} O{l} }
+  {
+    \ifhmode \par \else \leavevmode \fi
+    \dim_set:Nn \extrarowheight {3pt}
+    \tabular [t] { @{} p{#1} @{\ccalors\enspace} #2 @{} }
+  }
+  { \endtabular \par \smallskip }
+
+\DeclareDocumentEnvironment { stab } { O{2cm} O{l} }
+  {
+    \dim_set:Nn \extrarowheight {3pt}
+    \tabular [t] { @{} p{#1} #2 @{} }
+  }
+  { \endtabular \par \smallskip }
+
+\NewDocumentCommand \az_cc_line:w { D(){\ccneutre} s o m o }
+  {
+    \az_cc_init:
+    \IfValueT {#3} {#3} & #1 \enskip \null & #4 & \IfValueT {#5} {#5}
+    \IfBooleanF {#2} { \cr }
+  }
+
+\cs_new_protected:Npn \az_cc_init:
+  {
+    \bool_if:NF \l__az_cc_intab_bool
+      {
+        \bool_if:NTF \l__az_cc_vline_bool
+          { \az_cc_opentab:n { | } }
+          { \az_cc_opentab:n { } }
+      }
+  }
+
+\cs_new_protected:Npn \az_cc_opentab:n #1
+  {
+    \ifhmode \hfill \par \fi
+    \addvspace { \smallskipamount }
+    \bool_set_true:N \l__az_cc_intab_bool
+    \use:c { tabular* } { \linewidth - \@totalleftmargin } [t]
+      {
+        @{} p{\ccleftmargin} #1 r@{}
+        p{
+            \linewidth - \ccleftmargin - \ccrightmargin - \ccsymbolwidth
+            - 2\tabcolsep - \fboxrule
+          } @{}
+        p{\ccrightmargin} @{}
+      }
+  }
+
+\cs_new_protected:Npn \az_cc_close:
+  {
+    \bool_if:NT \l__az_cc_intab_bool
+      {
+        \use:c { endtabular* } \par \addvspace { \medskipamount }
+        \bool_set_false:N \l__az_cc_intab_bool
+      }
+  }
+
+%% Passe de MESURE : le corps est composé dans une boîte jetée, uniquement pour
+%% relever la largeur des colonnes latérales. C'est le prix de l'alignement.
+\cs_new_protected:Npn \az_cc_measure_symbol:n #1
+  {
+    \hbox_set:Nn \l__az_liste_box { #1 \enskip }
+    \dim_compare:nT { \box_wd:N \l__az_liste_box > \ccsymbolwidth }
+      { \dim_gset:Nn \ccsymbolwidth { \box_wd:N \l__az_liste_box } }
+  }
+
+\NewDocumentCommand \az_cc_measure:w { d() s o m o }
+  {
+    \IfValueT {#3}
+      {
+        \hbox_set:Nn \l__az_liste_box {#3}
+        \dim_compare:nT { \box_wd:N \l__az_liste_box > \ccleftmargin }
+          { \dim_gset:Nn \ccleftmargin { \box_wd:N \l__az_liste_box } }
+      }
+    \IfValueT {#5}
+      {
+        \hbox_set:Nn \l__az_liste_box {#5}
+        \dim_compare:nT { \box_wd:N \l__az_liste_box > \ccrightmargin }
+          { \dim_gset:Nn \ccrightmargin { \box_wd:N \l__az_liste_box } }
+      }
+    \IfValueT {#1} { \az_cc_measure_symbol:n {#1} }
+  }
+
+\cs_new_protected:Npn \az_cc_measure_body:n #1
+  {
+    \@bsphack
+      \settowidth \ccsymbolwidth { \ccsi \enskip \null }
+      \dim_zero:N \ccleftmargin
+      \dim_zero:N \ccrightmargin
+      \cs_set_eq:NN \cond \az_cc_measure:w
+      \cs_set_eq:NN \cons \az_cc_measure:w
+      \cs_set:Npn \linetab { \@ifnextchar ( \az_cc_measure:w { \az_cc_measure:w (\ccneutre) } }
+      \cs_set_eq:NN \breaktab \relax
+      \cs_set:Npn \notab ##1 { }
+      \vbox_set:Nn \l__az_liste_box { \everypar { } #1 }
+    \@esphack
+  }
+
+\keys_define:nn { az / condcons }
+  {
+    l .code:n = { \dim_set:Nn \l__az_cc_left_max_dim {#1} } ,
+    r .code:n = { \dim_set:Nn \l__az_cc_right_max_dim {#1} } ,
+    s .code:n = { \tl_set:Nn \ccjot {#1} } ,
+    s .default:n = { 3pt } ,
+    f .bool_set:N = \l__az_cc_vline_bool ,
+  }
+
+\NewDocumentEnvironment { condcons } { O{} +b }
+  {
+    \dim_set:Nn \l__az_cc_left_max_dim  { .28\linewidth }
+    \dim_set:Nn \l__az_cc_right_max_dim { .17\linewidth }
+    \az_cc_measure_symbol:n { \ccsi }
+    \az_cc_measure_symbol:n { \ccalors }
+    \keys_set:nn { az / condcons } {#1}
+    \az_cc_measure_body:n {#2}
+    \dim_compare:nT { \ccleftmargin > \l__az_cc_left_max_dim }
+      { \dim_set_eq:NN \ccleftmargin \l__az_cc_left_max_dim }
+    \dim_compare:nT { \ccrightmargin > \l__az_cc_right_max_dim }
+      { \dim_set_eq:NN \ccrightmargin \l__az_cc_right_max_dim }
+    \dim_set:Nn \extrarowheight { \ccjot }
+    \everymath { \displaystyle }
+    \cs_set_eq:NN \breaktab \az_cc_break:
+    \cs_set_eq:NN \notab \az_cc_notab:n
+    \cs_set:Npn \linetab { \az_cc_first:nn { linetab } { \ccneutre } }
+    \cs_set:Npn \cond    { \az_cc_first:nn { cond }    { \ccsi } }
+    \cs_set:Npn \cons    { \az_cc_first:nn { cons }    { \ccalors } }
+    #2
+    \az_cc_close:
+  }
+  { }
+
+%% La PREMIÈRE occurrence ferme un tableau resté ouvert puis se redéfinit :
+%% les suivantes entrent directement dans le tableau courant.
+\cs_new_protected:Npn \az_cc_first:nn #1#2
+  {
+    \az_cc_close:
+    \str_if_eq:nnTF {#1} { linetab }
+      { \cs_set_eq:NN \linetab \az_cc_line:w }
+      { \cs_set:cpn {#1} { \az_cc_line:w (#2) } }
+    \use:c {#1}
+  }
+
+\cs_new_protected:Npn \az_cc_break:
+  {
+    \az_cc_close:
+    \bool_if:NTF \l__az_cc_vline_bool
+      { \az_cc_opentab:n { | } } { \az_cc_opentab:n { } }
+  }
+
+\cs_new_protected:Npn \az_cc_notab:n #1 { \az_cc_close: #1 }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% lrmargin et mini
+%%
+%% `mini` est le commentaire en retrait : une note, une démonstration, une
+%% indication. Le nom du bloc sert d'étiquette (« n.b », « dem », « solution »)
+%% et le contenu est composé plus serré, en corps réduit.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\skip_new:N \mini@skip
+\dim_new:N  \lrmarginleft
+\dim_new:N  \lrmarginright
+\tl_new:N   \mini@font
+\tl_new:N   \mini@label@font
+\tl_new:N   \mini@punct
+\bool_new:N \insidemini
+
+\azgsetdeco { lrmargin } { \textbf {#1} }
+
+\cs_new_protected:Npn \az_lrmargin_label:n #1
+  {
+    \tl_if_blank:nF {#1}
+      { \azusedeco { lrmargin } { #1 \mini@punct } }
+  }
+
+\NewDocumentEnvironment { lrmargin } { O{} m m }
+  {
+    \ifhmode \@par \fi
+    \list \relax
+      {
+        \skip_set:Nn \topsep { \smallskipamount }
+        \skip_add:Nn \topsep { \mini@skip }
+        \dim_set_eq:NN \listparindent \parindent
+        \skip_set_eq:NN \parsep \parskip
+        \dim_zero:N \itemindent
+        \dim_zero:N \labelwidth
+        \dim_set_eq:NN \itemindent \labelsep
+        \int_compare:nTF { \@listdepth > 3 }
+          { \dim_zero:N \leftmargin \dim_zero:N \rightmargin }
+          {
+            \tl_if_blank:nTF {#2} { \dim_zero:N \leftmargin }
+              { \dim_set:Nn \leftmargin {#2} }
+            \tl_if_blank:nTF {#3} { \dim_zero:N \rightmargin }
+              { \dim_set:Nn \rightmargin {#3} }
+          }
+        \cs_set_eq:NN \makelabel \az_lrmargin_label:n
+      }
+    \item [#1] \ignorespaces
+    \az_liste_defaults_inside:
+  }
+  { \closeunite \endlist }
+
+\keys_define:nn { az / mini }
+  {
+    before~skip  .code:n = { \skip_set:Nn \mini@skip {#1} } ,
+    beforeskip   .meta:n = { before~skip = #1 } ,
+    left~margin  .code:n = { \dim_set:Nn \lrmarginleft {#1} } ,
+    right~margin .code:n = { \dim_set:Nn \lrmarginright {#1} } ,
+    lm .meta:n = { left~margin = #1 } ,
+    rm .meta:n = { right~margin = #1 } ,
+    font       .code:n = { \tl_set:Nn \mini@font {#1} } ,
+    label~font .code:n = { \tl_set:Nn \mini@label@font { #1 \vphantom{(} } } ,
+    punct      .code:n = { \tl_set:Nn \mini@punct {#1} } ,
+    deco       .code:n = { \azsetdeco { lrmargin } { \mini@label@font #1 } } ,
+  }
+
+\keys_set:nn { az / mini }
+  {
+    font = \sffamily \small ,
+    label~font = \sffamily \small \scshape \bfseries ,
+    punct = . ,
+    deco = #1 ,
+  }
+
+\keys_define:nn { az / minitem }
+  {
+    label~font .code:n = { \tl_set:Nn \mini@label@font { #1 \vphantom{(} } } ,
+    punct      .code:n = { \tl_set:Nn \mini@punct {#1} } ,
+    unknown    .code:n = { } ,
+  }
+
+\tl_new:N \g_az_minitem_font_tl
+\tl_new:N \g_az_minitem_punct_tl
+\tl_gset:Nn \g_az_minitem_font_tl { \sffamily \small \scshape \bfseries }
+\tl_gset:Nn \g_az_minitem_punct_tl { . }
+
+\NewDocumentCommand \az_mini_item:w { O{} m d() }
+  {
+    \keys_set:nn { az / minitem } {#1}
+    \item [ \MakeLowercase {#2} \IfValueT {#3} { ~:~#3 } ]
+    %% Les réglages d'un \minitem ne valent que pour LUI : la valeur d'usine
+    %% revient aussitôt, sinon le premier élément habillé contaminerait tous
+    %% les suivants du même bloc.
+    \tl_set_eq:NN \mini@label@font \g_az_minitem_font_tl
+    \tl_set_eq:NN \mini@punct \g_az_minitem_punct_tl
+  }
+
+\NewDocumentEnvironment { mini } { O{} m d() }
+  {
+    \keys_set:nn { az / mini } {#1}
+    \dim_compare:nT { \@totalleftmargin > 3.4em } { \dim_zero:N \lrmarginleft }
+    \cs_set_eq:NN \minitem \az_mini_item:w
+    \mini@font
+    \ifhmode \@par \fi
+    \begin { lrmargin }
+      [ \MakeLowercase {#2} \IfValueT {#3} { ~:~#3 } ]
+      { \lrmarginleft } { }
+    \ignorespaces
+    \bool_set_true:N \insidemini
+  }
+  { \end { lrmargin } }
+
+%% Les blocs courants, nommés par ce qu'ils sont.
+\NewDocumentCommand \aznewmini { m m }
+  {
+    \cs_gset_protected:cpn {#1} { \begin {mini} {#2} }
+    \cs_gset_protected:cpn { end #1 } { \end {mini} }
+  }
+
+\aznewmini {nb}   {n.b}
+\aznewmini {dem}  {dem}
+\aznewmini {sol}  {solution}
+\aznewmini {ind}  {indication}
+\aznewmini {synt} {synthèse}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Puces
+%%
+%% FdSymbol fournit des formes géométriques d'un dessin plus fin que celles du
+%% romain courant, et qui s'accordent à la taille du texte plutôt qu'à celle
+%% des mathématiques.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\DeclareFontFamily { U } { FdSymbolA } { }
+\DeclareFontShape  { U } { FdSymbolA } { m } { n } { <-> s * [1] FdSymbolA-Book } { }
+\DeclareFontShape  { U } { FdSymbolA } { m } { b } { <-> s * [1] FdSymbolA-Medium } { }
+\DeclareSymbolFont { fdsymbols } { U } { FdSymbolA } { m } { n }
+\SetSymbolFont     { fdsymbols } { bold } { U } { FdSymbolA } { m } { b }
+
+\cs_new_protected:Npn \az_symbol_new:nn #1#2
+  { \exp_args:Nc \DeclareMathSymbol {#1} { \mathord } { fdsymbols } {#2} }
+
+\clist_map_inline:nn
+  {
+    { xdottriangleright } {9} , { xdottriangleup } {10} ,
+    { xdottriangleleft } {11} , { xdottriangledown } {12} ,
+    { xdotsquare } {13} ,
+    { xtrianglerightL } {86} , { xtriangleupL } {87} ,
+    { xtriangleleftL } {88} , { xtriangledownL } {89} ,
+    { xtriangleright } {90} , { xtriangleup } {91} ,
+    { xtriangleleft } {92} , { xtriangledown } {93} ,
+    { xcircle } {98} , { xbullet } {99} ,
+    { xsquareL } {117} , { xsquare } {118} ,
+    { xdiamondL } {131} , { xdiamond } {132} ,
+    { xstarL } {148} , { xstar } {149} ,
+    { xheart } {118} , { xspad } {185} , { xsuit } {186} ,
+  }
+  { \az_symbol_new:nn #1 }
+
+\RequirePackage { adforn }
+\NewDocumentCommand \xheadarrowright { } { \adforn {43} }
+\NewDocumentCommand \xheadarrowleft  { } { \adforn {42} }
+\NewDocumentCommand \xaltarrow       { } { \adforn {2} }
+
+\tl_set:cn { az@label@itemi }   { \relsize{-2} $\xdiamond$ }
+\tl_set:cn { az@label@itemii }  { \relsize{-2} $\xsquare$ }
+\tl_set:cn { az@label@itemiii } { \relsize{-2} $\xcircle$ }
+
+\endinput
