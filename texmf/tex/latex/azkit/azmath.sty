@@ -101,7 +101,7 @@
 }
 %%%%% Commandes utilitaires
 %% \azsetdeco vient de azbase, et de nulle part ailleurs. cpgemath en portait
-%% une definition de repli qui rangeait ses decorations sous \deco@<nom>, la ou
+%% une definition de repli qui rangeait ses decorations sous \az@deco@<nom>, la ou
 %% le socle les range sous \az@deco@<nom> : les deux vues divergeaient des que
 %% le module etait charge seul, et \azusedeco ne trouvait plus rien.
 %% Le repli est donc supprime au profit de la dependance explicite.
@@ -436,8 +436,8 @@
 	formula=\fbox{#1},
 	result=\fancyb@x{#1},
 }
-\def\deco@r{\deco@result}
-\def\decof{\deco@formula}
+\def\az@deco@r{\az@deco@result}
+\def\decof{\az@deco@formula}
 
 %%%% Nouveaux environnement pour les maths %%%%
 %%%%  	Les commandes butineuses 	        %%%%
@@ -491,7 +491,7 @@
 %% esp. vert. et pénalités de rupture de page
 
 \let\eqn@fakecmd\@iden
-\let\eqnframecmd\eqn@fakecmd
+\let\eqnframecmd\@iden
 \def\azframe@err#1{\azmath@err
 			{Aucune décoration #1 trouvée. 
 			\MessageBreak Appuyez sur entrée pour l'ignorer}
@@ -629,7 +629,7 @@
 	\ifeqn@number%
 		\refstepcounter{equation}%
 		\setbox\azm@boxc\hbox{%
-			\tag@kern\deco@tag{\theequation}%
+			\tag@kern\az@deco@tag{\theequation}%
 		}%
 		\unless\ifx\@empty\az@tmpl%
 			\Make@Link%
@@ -639,7 +639,7 @@
 		\ifx\@empty\az@tmpl%
 			\setbox\azm@boxc\hbox{}%
 		\else%
-			\setbox\azm@boxc\hbox{\tag@kern\deco@tag{\az@tmpl}}%
+			\setbox\azm@boxc\hbox{\tag@kern\az@deco@tag{\az@tmpl}}%
 		\fi%
 	\fi%
 	\ifdim\wd\azm@boxc>\z@\relax%
@@ -722,16 +722,16 @@
 		{}
 		{%
 			\ifblank{#5}
-				{\let\eqnframecmd\deco@formula}
+				{\let\eqnframecmd\az@deco@formula}
 				{%
-					\ifcsundef{deco@#5}
+					\ifcsundef{az@deco@#5}
 						{\azframe@err{#5}}
-						{\letcs\eqnframecmd{deco@#5}}%
+						{\letcs\eqnframecmd{az@deco@#5}}%
 				}%
 		}%
 	\ifis@result%
 		\textmodetrue%
-		\let\eqnframecmd\deco@result%
+		\let\eqnframecmd\az@deco@result%
 	\fi%
 	\iftextmode%
 		\ifblank{#7}{}{\def\minipage@wd{#7}}%
@@ -857,7 +857,7 @@
 }
 \let\az@plural\relax
 \def\def@autorefname#1#2{\csdef{#1autorefname}~##1\null
-	{#2\az@plural\space\deco@tag{##1}\null}}
+	{#2\az@plural\space\az@deco@tag{##1}\null}}
 \def@autorefname{equation}{équation}
 \def@autorefname{formule}{formule}
 \def@autorefname{relation}{relation}
@@ -880,7 +880,7 @@
 			{\eq@ref*{eq:\problem@id:#6}}
 			{\eq@ref{eq:\problem@id:#6}}%
 		\IfBooleanT{#4}
-			{\deco@pageref{\pageref*{eq:\problem@id:#6}}}%
+			{\az@deco@pageref{\pageref*{eq:\problem@id:#6}}}%
 }
 \NewDocumentCommand\xeqpageref{s O{@} m}{
 	\ifstrequal{#2}{@}
@@ -1186,7 +1186,15 @@
 		{%
 			\parshape=2	\z@				\linewidth
 						\leftmargin		\dimexpr\linewidth-\leftmargin\relax%
-			\noindent\deco@unit{#2}\enskip\ignorespaces
+			%% `unite` et non `unit` : la decoration s'appelle ainsi partout
+			%% ailleurs, et le commentaire ci-dessus dit l'intention — rendre
+			%% un \cas comme il se rend hors alignement. Ce chemin appelait
+			%% \deco@unit, jamais declaree : il ne produisait rien.
+			%%
+			%% Par \azusedeco et non par la macro nue : c'est azlist qui declare
+			%% cette decoration, et azmath se charge aussi tout seul. L'accesseur
+			%% du socle rend alors l'identite au lieu d'echouer.
+			\noindent\azusedeco{unite}{#2}\enskip\ignorespaces
 		} 
 }
 \def\set@goodies{%
@@ -1209,7 +1217,7 @@
 
 \def\tag@kern{\kern\eqn@tagkern}
 \azsetdeco{tag}{(\hskip1\p@#1\hskip1\p@)}
-\newtagform{az}[\deco@tag]{}{}
+\newtagform{az}[\az@deco@tag]{}{}
 \DeclareListParser\doorloop\or
 \DeclareListParser*\fororloop\or
 
@@ -1356,11 +1364,11 @@
 }
 \def\find@maxtagwidth#1{%
 	\begingroup%
-		\settowidth\az@dima{\tag@kern\deco@tag{#1}}
+		\settowidth\az@dima{\tag@kern\az@deco@tag{#1}}
 		\ifdim\az@dima>\aztag@width
 			\global\aztag@width\az@dima
 		\fi
-		\setbox\z@\hbox{\tag@kern\deco@tag{}}
+		\setbox\z@\hbox{\tag@kern\az@deco@tag{}}
 		\ifdim\az@dima>\wd\z@
 			\save@entry1\tag@presence
 		\else
@@ -1380,7 +1388,7 @@
 	\ifeqn@number
 		\refstepcounter{equation}%
 		\setbox\azm@boxa\hbox{%
-			\tag@kern\deco@tag{\theequation}%
+			\tag@kern\az@deco@tag{\theequation}%
 		}
 		\ifblank{#1}{}{\label{#1}}
 	\else
@@ -1388,7 +1396,7 @@
 			{\setbox\azm@boxa\hbox{}}
 			{%
 				\setbox\azm@boxa\hbox{%
-					\tag@kern\deco@tag{#1}
+					\tag@kern\az@deco@tag{#1}
 				}
 			}
 	\fi
@@ -1683,9 +1691,9 @@
 % }
 % \def\az@nonumber#1{%
 % 	\ifst@rred
-% 		\ifblank{#1}{}{\tag*{\deco@tag{#1}}}
+% 		\ifblank{#1}{}{\tag*{\az@deco@tag{#1}}}
 % 	\else
-% 		\ifblank{#1}{\nonumber}{\tag*{\deco@tag{#1}}}
+% 		\ifblank{#1}{\nonumber}{\tag*{\az@deco@tag{#1}}}
 % 	\fi
 % }	
 % \def\Let@ig{%
@@ -1745,19 +1753,19 @@
 			}%
   }
 }	
-\MakeXboxedCommand\xboxed\deco@formula
-\MakeXboxedCommand\xdeco@formula\deco@formula
-\MakeXboxedCommand\xdeco@result\deco@result
-\def\xdeco@r{\xdeco@result}
+\MakeXboxedCommand\xboxed\az@deco@formula
+\MakeXboxedCommand\az@xdeco@formula\az@deco@formula
+\MakeXboxedCommand\az@xdeco@result\az@deco@result
+\def\az@xdeco@r{\az@xdeco@result}
 
 %%%% \Xboxed, version récursive de \xboxed
 \NewDocumentCommand\Xboxed
 {
 	O{formula} >{\SplitList{&}} m
 }{
-	\ifcsundef{xdeco@#1}
+	\ifcsundef{az@xdeco@#1}
 		{\azframe@err{#1}}
-		{\gdef\eqnframecmd{\csname xdeco@#1\endcsname}}
+		{\gdef\eqnframecmd{\csname az@xdeco@#1\endcsname}}
 	\xboxed@rec@#2@@\frame@nil%
 }
 \def\xboxed@rec@#1#2#3\frame@nil{%
