@@ -530,6 +530,25 @@
 \tl_new:N \l__az_bloc_typ_tl
 \box_new:N \l__az_bloc_ttl_box
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% L'identité PUBLIÉE du bloc courant
+%%
+%% La seule chose que ce module expose de son état interne, et elle est nommée
+%% pour ça — nom simple, pas `__`. azsolution la lit pour composer ses
+%% commandes de rejeu ; il n'a ainsi rien à savoir de la machinerie de dessin,
+%% et azbloc rien à savoir des solutions.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \l_az_bloc_env_tl    % le genre : theo, exer…
+\tl_new:N \l_az_bloc_num_tl    % le numéro composé : 1.4
+\tl_new:N \l_az_bloc_key_tl    % la clef de renvoi : l'étiquette, ou le numéro
+\tl_new:N \l_az_bloc_name_tl   % le nom préfixé : « de l'exercice »
+\tl_new:N \l_az_bloc_desc_tl   % l'intitulé, entre parenthèses
+
+%% Point d'accroche des solutions. Vide ici : azsolution s'y branche, et un
+%% document sans lui compile sans rien savoir de tout cela.
+\cs_new_protected:Npn \az_bloc_sol_arm: { }
+
 \cs_new_protected:Npn \az_bloc_begin:nnnnn #1#2#3#4#5
   % #1 = genre, #2 = cles, #3 = intitule, #4 = etiquette, #5 = nom impose
   {
@@ -575,6 +594,21 @@
 
     \IfValueT {#4} { \label {#4} }
     \az_bloc_listing:nn {#1} {#4}
+
+    %% L'identité publiée. La clef de renvoi est l'étiquette si le rédacteur en
+    %% a posé une, le numéro sinon : un bloc sans <étiquette> doit rester
+    %% atteignable par ce qui le référence.
+    \tl_set:Nn \l_az_bloc_env_tl {#1}
+    \tl_set_eq:NN \l_az_bloc_num_tl \l__az_bloc_numero_tl
+    \tl_set_eq:NN \l_az_bloc_desc_tl \l__az_bloc_titre_tl
+    \tl_set:Nx \l_az_bloc_key_tl
+      { \IfValueTF {#4} { \exp_not:n {#4} } { \l__az_bloc_numero_tl } }
+    \tl_set:Nx \l_az_bloc_name_tl
+      {
+        \prop_item:Nn \g_az_bloc_prefix_prop {#1}
+        \prop_item:Nn \g_az_bloc_name_prop {#1}
+      }
+    \az_bloc_sol_arm:
 
     %% Le numéro du bloc, mis à disposition des gabarits |X| de azlist : c'est
     %% ainsi qu'une \unite à l'intérieur se numérote « 2.3 ».

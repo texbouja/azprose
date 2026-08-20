@@ -1,10 +1,36 @@
 %% azsolution.sty — solutions et démonstrations différées
 %%
-%% C'est la seule refonte FONCTIONNELLE du kit. cpgedoc et cpgedev répondaient
-%% au même besoin sans partager une ligne ; il n'y a plus qu'une implémentation,
-%% paramétrée par le GENRE — `solution` ou `proof`. Les deux se comportent mot
-%% pour mot pareil ; seuls changent leur nom, le préfixe de leurs fichiers et
-%% la section qui les rassemble.
+%% ⚠️ RECTIFICATION. Ce module a d'abord été présenté comme la fusion de deux
+%% implémentations redondantes. C'était faux, et l'auteur du kit d'origine l'a
+%% corrigé : cpgedoc et cpgedev ne faisaient PAS la même chose deux fois.
+%%
+%%   cpgedoc — \solution absorbe jusqu'à la fin de l'environnement ; le corps
+%%             part dans un fichier PAR BLOC, désigné par le compteur de
+%%             l'environnement, et une entrée s'ajoute à un registre relu plus
+%%             tard ;
+%%   cpgedev — un environnement {solution} AUTONOME ; le corps s'ajoute à un
+%%             fichier COMMUN à tout l'exercice, et le numéro de la question
+%%             part dans une liste de tokens.
+%%
+%% Deux conceptions distinctes, pas une duplication. L'isolement de ce module
+%% ne peut donc pas se justifier par un partage entre classes.
+%%
+%% ── Ce qui le justifie ──────────────────────────────────────────────────────
+%%
+%% Le kit a maintenant DEUX moteurs de blocs — azthm sur tcolorbox, azbloc sur
+%% framed+pgf — et le déport des solutions n'est propre ni à l'un ni à l'autre.
+%% C'est une POLITIQUE : où va une solution, quand, et comment on y renvoie.
+%% Le MÉCANISME, lui, dépend du moteur : détourner un corps, s'accrocher à un
+%% bloc, dessiner une pastille de lien.
+%%
+%% Ce module tient la politique et ne connaît du mécanisme que des NOMS, liés
+%% au chargement au moteur actif. Les deux jeux de liaisons vivent ici, en bas
+%% de fichier : c'est le seul endroit du kit qui connaisse les deux moteurs, et
+%% c'est ce qui permet à azthm et azbloc de tout ignorer des solutions.
+%%
+%% Le module est par ailleurs paramétré par le GENRE — `solution` ou `proof` —
+%% qui se comportent mot pour mot pareil ; seuls changent leur nom, le préfixe
+%% de leurs fichiers et la section qui les rassemble.
 %%
 %% ── Les trois placements ────────────────────────────────────────────────────
 %%
@@ -20,11 +46,12 @@
 %%
 %% ── Comment ─────────────────────────────────────────────────────────────────
 %%
-%% Le corps de la solution est la partie basse de la boîte (\tcblower) et part
-%% dans un fichier par la clé publique `savelowerto`. Une commande de REJEU —
-%% \solu ou \preuve — portant tout ce qu'il faut pour reconstruire titre, lien
-%% et étiquette, est soit exécutée aussitôt, soit accumulée puis déposée au
-%% carnet de azrecord, relu à la compilation suivante.
+%% Le corps de la solution est DÉTOURNÉ vers un fichier — par `savelowerto`
+%% avec azthm, par \azwriteonce avec azbloc, et ce module ne sait pas lequel.
+%% Une commande de REJEU — \solu ou \preuve — portant tout ce qu'il faut pour
+%% reconstruire titre, lien et étiquette, est soit exécutée aussitôt, soit
+%% accumulée puis déposée au carnet de azrecord, relu à la compilation
+%% suivante.
 %%
 %% Sadik Boujaida — licence LPPL 1.3c
 
@@ -33,8 +60,11 @@
   {azkit — solutions et démonstrations, sur place ou différées}
 
 \RequirePackage { azbase }
-\RequirePackage { azthm }
 \RequirePackage { azrecord }
+
+%% AUCUN moteur n'est chargé ici : c'est l'appelant qui en a choisi un, et ce
+%% module se lie à celui qu'il trouve. Le charger reviendrait à imposer
+%% tcolorbox à un document qui l'a précisément écarté.
 
 \cs_if_exist:NF \ifdraft   { \newif \ifdraft }
 \cs_if_exist:NF \ifprint   { \newif \ifprint }
@@ -48,8 +78,10 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Dossier des corps mis de cote. Declare avant les cles, qui l'affectent.
-\tl_new:N \azauxdir
-\tl_set:Nn \azauxdir { tmp }
+%% azbloc en pose un aussi, faute de quoi il ne saurait ou ecrire seul : on ne
+%% le redeclare donc pas, on s'en sert.
+\cs_if_exist:NF \azauxdir
+  { \tl_new:N \azauxdir \tl_set:Nn \azauxdir { tmp } }
 
 \clist_const:Nn \c_az_sol_genres_clist { solution, proof }
 
@@ -72,8 +104,12 @@
 \tl_gset:cn { g_az_proof_section_tl }    { \section }
 \tl_gset:cn { g_az_proof_title_tl }      { Démonstrations~des~résultats }
 
-\newrobustcmd \solutionname { solution }
-\newrobustcmd \proofname    { démonstration }
+%% \NewDocumentCommand et non \newrobustcmd : etoolbox arrivait par tcolorbox,
+%% que ce module ne charge plus.
+\cs_if_exist:NF \solutionname
+  { \NewDocumentCommand \solutionname { } { solution } }
+\cs_if_exist:NF \proofname
+  { \NewDocumentCommand \proofname { } { démonstration } }
 
 \cs_new:Npn \solutionautorefname { \solutionname }
 \cs_new:Npn \proofautorefname    { \proofname }
@@ -95,6 +131,58 @@
     \bool_if:cTF { g_az_proof_delayed_bool }
       { \global\proofdelayedtrue } { \global\proofdelayedfalse }
   }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% LE JOINT
+%%
+%% Sept noms, et l'identité du bloc courant. C'est tout ce que ce module
+%% connaît du moteur de blocs ; les liaisons vers le vrai travail sont posées
+%% en bas de fichier, selon celui qui est chargé.
+%%
+%% Aucun de ces noms n'a d'implémentation ici : sans moteur, la première
+%% solution rencontrée le dit clairement plutôt que d'échouer obscurément
+%% quinze appels plus loin.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\msg_new:nnnn { azkit } { sol-sans-moteur }
+  { Aucun~moteur~de~blocs~pour~les~solutions. }
+  {
+    azsolution~se~lie~à~azthm~ou~à~azbloc,~et~n'en~charge~aucun~lui-même.~
+    Charger~l'un~des~deux~AVANT~lui.
+  }
+
+%% L'identité du bloc courant, renseignée par la liaison `arm` du moteur.
+%% Le relevé ne lit que ces cinq variables — c'est ce qui le rend indépendant.
+\tl_new:N \l_az_sol_env_tl     % le genre du bloc : theo, exer…
+\tl_new:N \l_az_sol_num_tl     % son numéro composé
+\tl_new:N \l_az_sol_key_tl     % la clef de renvoi
+\tl_new:N \l_az_sol_name_tl    % le nom préfixé : « de l'exercice »
+\tl_new:N \l_az_sol_desc_tl    % l'intitulé
+
+%% Quel moteur est là ? Décidé une fois, au chargement.
+\bool_new:N \g_az_sol_thm_bool
+\bool_new:N \g_az_sol_bloc_bool
+\@ifpackageloaded { azthm }  { \bool_gset_true:N \g_az_sol_thm_bool }  { }
+\@ifpackageloaded { azbloc } { \bool_gset_true:N \g_az_sol_bloc_bool } { }
+
+\cs_new_protected:Npn \az_sol_no_engine:
+  { \msg_error:nn { azkit } { sol-sans-moteur } }
+
+%% Déclarer qu'un GENRE de bloc porte une solution. Reçoit le genre de solution.
+\cs_new_protected:Npn \az_sol_do_attach:n     #1 { \az_sol_no_engine: }
+%% À l'ouverture d'un bloc : publier l'identité et armer \solution / \proof.
+\cs_new_protected:Npn \az_sol_do_arm:n        #1 { \az_sol_no_engine: }
+%% Détourner le reste du corps vers le fichier nommé.
+\cs_new_protected:Npn \az_sol_do_divert:n     #1 { \az_sol_no_engine: }
+%% Clore le détournement.
+\cs_new_protected:Npn \az_sol_do_divert_end:     { }
+%% La pastille sous l'énoncé, qui mène à la solution.
+\cs_new_protected:Npn \az_sol_do_linkdown:nn #1#2 { }
+%% Le sous-titre sur place, en brouillon ou en placement immédiat.
+\cs_new_protected:Npn \az_sol_do_subtitle:n   #1 { }
+
+%% Le bandeau de tête du rejeu. Étoilé = sans lien ni ancre (brouillon).
+\NewDocumentCommand \az_sol_do_linkup:w { s m m m m m m } { }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Réglages
@@ -163,6 +251,10 @@
       { \sys_shell_now:x { mkdir ~ -p ~ \azauxdir } }
   }
 
+
+%% ── LIAISON azthm ─────────────────────────────────────────────────────────
+%% Tout ce qui suit ne vaut que pour le moteur tcolorbox.
+\bool_if:NT \g_az_sol_thm_bool {
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Liens entre énoncé et solution
 %%
@@ -262,6 +354,7 @@
     \par \penalty \@M
   }
 
+}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Le rejeu
 %%
@@ -275,12 +368,16 @@
   % #6 intitulé, #7 fichier
   {
     \begin { trivlist }
-      \tl_set:Nn \az@sol@labelkey {#4}
+      %% La clef de renvoi vient de la commande de rejeu, pas de l'état courant :
+      %% au moment ou l'on rejoue, le bloc d'origine est loin derriere.
+      \tl_set:Nn \l_az_sol_key_tl {#4}
+      \tl_set:Nn \l_az_sol_num_tl {#3}
+      \cs_if_exist:NT \az@sol@labelkey { \tl_set:Nn \az@sol@labelkey {#4} }
       \item [ ]
       \ifdraft
-        \az_sol_link_up:w * {#2}{#3}{#5}{#1}{ \use:c { #1 name } }{#6}
+        \az_sol_do_linkup:w * {#2}{#3}{#5}{#1}{ \use:c { #1 name } }{#6}
       \else
-        \az_sol_link_up:w   {#2}{#3}{#5}{#1}{ \use:c { #1 name } }{#6}
+        \az_sol_do_linkup:w   {#2}{#3}{#5}{#1}{ \use:c { #1 name } }{#6}
       \fi
       \az_current_counter_set:n {#3}
       \az_liste_defaults_inside:
@@ -315,9 +412,9 @@
     \tl_set:cx { l_az_ #1 _replay_tl }
       {
         \exp_not:c { \az_sol_cmdname:n {#1} }
-          { \az@thm@envname } { \thetcbcounter } { \az@sol@labelkey }
-          { \az@thm@prefixedname } { \az@thm@title }
-          { \azauxdir / \az_sol_prefixe:n {#1} - \thetcbcounter }
+          { \l_az_sol_env_tl } { \l_az_sol_num_tl } { \l_az_sol_key_tl }
+          { \l_az_sol_name_tl } { \l_az_sol_desc_tl }
+          { \azauxdir / \az_sol_prefixe:n {#1} - \l_az_sol_num_tl }
       }
     \bool_if:cTF { g_az_ #1 _delayed_bool }
       {
@@ -327,7 +424,7 @@
       {
         %% Sur place : la commande est rangée sous le numéro du bloc et
         %% déclenchée juste après lui par la clé `after app`.
-        \cs_gset:cpx { az@ #1 @imm@ \az@sol@counter }
+        \cs_gset:cpx { az@ #1 @imm@ \l_az_sol_num_tl }
           { \exp_not:v { l_az_ #1 _replay_tl } }
       }
   }
@@ -335,6 +432,8 @@
 \cs_new:Npn \az_sol_cmdname:n #1
   { \str_case:nn {#1} { { solution } { solu } { proof } { preuve } } }
 
+%% ── LIAISON azthm (suite) ─────────────────────────────────────────────────
+\bool_if:NT \g_az_sol_thm_bool {
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Attache aux blocs
 %%
@@ -370,10 +469,25 @@
           { \thetcbcounter } { \exp_not:V \az@thm@label }
       }
     \tl_gset:Nx \az@sol@counter { \thetcbcounter }
+    %% L'identité publiée, que le relevé est le seul à lire. C'est ce qui lui
+    %% permet d'ignorer lequel des deux moteurs l'a renseignée.
+    \tl_set_eq:NN \l_az_sol_env_tl  \az@thm@envname
+    \tl_set:Nx    \l_az_sol_num_tl  { \thetcbcounter }
+    \tl_set_eq:NN \l_az_sol_key_tl  \az@sol@labelkey
+    \tl_set_eq:NN \l_az_sol_name_tl \az@thm@prefixedname
+    \tl_set_eq:NN \l_az_sol_desc_tl \az@thm@title
+    %% Le relevé n'a lieu QUE si le genre est demandé. Sans cette garde, la
+    %% partie basse était relevée et rejouée par `after app` quoi qu'il arrive :
+    %% `solution=false` ne cachait rien, et un cours tiré sans corrigés les
+    %% composait quand même. (Le second défaut du même symptôme était côté
+    %% azdoc, où la valeur du drapeau n'était pas développée avant lecture.)
     \cs_set:cpn { \az_sol_inline:n {#1} }
       {
-        \az_sol_link_down:nn {#1} { \use:c { #1 name } }
-        \az_sol_record:n {#1}
+        \bool_if:cT { g_az_ #1 _on_bool }
+          {
+            \az_sol_do_linkdown:nn {#1} { \use:c { #1 name } }
+            \az_sol_record:n {#1}
+          }
         \tcblower
       }
   }
@@ -398,6 +512,7 @@
         boxrule = 0pt, boxsep = 0pt, top = .8pt, bottom = .8pt,
       } ,
   }
+}
 
 \AddToHook { begindocument/before }
   {
@@ -486,9 +601,157 @@
       }
   }
 
-\NewDocumentCommand \solutions { } { \az_sol_emit:n { solution } }
-\NewDocumentCommand \proofs    { } { \az_sol_emit:n { proof } }
+%% \Declare et non \New : azbloc en pose des versions muettes pour qu'un
+%% document ecrit pour azthm compile sans ce module. Ici on les remplace.
+\DeclareDocumentCommand \solutions { } { \az_sol_emit:n { solution } }
+\DeclareDocumentCommand \proofs    { } { \az_sol_emit:n { proof } }
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Ce qui se passe quand le rédacteur écrit \solution
+%%
+%% La POLITIQUE, en un seul endroit : produire sur place, mettre de côté, ou
+%% ne rien composer du tout. Le moteur n'intervient que par les trois noms du
+%% joint appelés ici.
+%%
+%% ⚠️ Seule la liaison azbloc emprunte ce chemin pour l'instant. azthm garde
+%% son \az_sol_arm:n historique, qui ne consulte PAS les drapeaux `solution` et
+%% `proof` : un document qui ne les demande pas voit malgré tout ses corrigés
+%% composés. Le défaut est réel et connu ; le corriger revient à faire passer
+%% azthm par ici, ce qui change la sortie de tous les documents existants —
+%% décision de l'utilisateur, en attente.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bool_new:N \l_az_sol_diverted_bool
+
+\cs_new_protected:Npn \az_sol_engage:n #1
+  {
+    \bool_if:cTF { g_az_ #1 _on_bool }
+      {
+        \bool_if:cTF { g_az_ #1 _delayed_bool }
+          {
+            \az_sol_do_linkdown:nn {#1} { \use:c { #1 name } }
+            \az_sol_record:n {#1}
+            %% Le drapeau AVANT le détournement : la capture verbatim est active
+            %% dès l'appel, et tout ce qui suit partirait dans le fichier.
+            \bool_set_true:N \l_az_sol_diverted_bool
+            \az_sol_do_divert:n
+              { \azauxdir / \az_sol_prefixe:n {#1} - \l_az_sol_num_tl }
+          }
+          { \az_sol_do_subtitle:n {#1} }
+      }
+      {
+        %% Éteint : le corps part vers un fichier que personne ne relira. C'est
+        %% le seul moyen de ne pas le composer sans le conditionner ligne à
+        %% ligne dans la source.
+        \bool_set_true:N \l_az_sol_diverted_bool
+        \az_sol_do_divert:n { \azauxdir / az-rebut }
+      }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% LES LIAISONS
+%%
+%% Les sept noms du joint pointent ici vers le vrai travail. C'est le seul
+%% endroit du kit qui connaisse les deux moteurs — et c'est ce qui permet à
+%% azthm et à azbloc de tout ignorer des solutions.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bool_if:NT \g_az_sol_thm_bool
+  {
+    %% azthm — tcolorbox fait presque tout : `savelowerto` détourne le corps
+    %% dès que \tcblower est atteint, il n'y a donc rien à ouvrir ni à fermer.
+    \cs_gset_protected:Npn \az_sol_do_attach:n #1
+      { \tcbset { az@sol@attach = #1 } }
+    \cs_gset_protected:Npn \az_sol_do_arm:n #1 { \az_sol_arm:n {#1} }
+    \cs_gset_protected:Npn \az_sol_do_divert:n #1 { \tcblower }
+    \cs_gset_protected:Npn \az_sol_do_divert_end: { }
+    \cs_gset_protected:Npn \az_sol_do_linkdown:nn #1#2
+      { \az_sol_link_down:nn {#1} {#2} }
+    \cs_gset_protected:Npn \az_sol_do_subtitle:n #1
+      { \az_sol_draft_block:n {#1} }
+    \cs_gset_eq:NN \az_sol_do_linkup:w \az_sol_link_up:w
+  }
+
+\bool_if:NT \g_az_sol_bloc_bool
+  {
+    %% azbloc — rien n'est fait pour nous : il faut ouvrir la capture verbatim,
+    %% la refermer, et dessiner les attaches. Elles suivent l'idiome du moteur —
+    %% filet et petites capitales, aucune boîte — plutôt que d'imiter les
+    %% pastilles de tcolorbox, qui y coûteraient ce qu'on est venu y gagner.
+    \cs_gset_protected:Npn \az_sol_do_attach:n #1 { }
+    \cs_gset_protected:Npn \az_sol_do_arm:n #1
+      {
+        \tl_set_eq:NN \l_az_sol_env_tl  \l_az_bloc_env_tl
+        \tl_set_eq:NN \l_az_sol_num_tl  \l_az_bloc_num_tl
+        \tl_set_eq:NN \l_az_sol_key_tl  \l_az_bloc_key_tl
+        \tl_set_eq:NN \l_az_sol_name_tl \l_az_bloc_name_tl
+        \tl_set_eq:NN \l_az_sol_desc_tl \l_az_bloc_desc_tl
+      }
+    %% Le drapeau de capture d'azbloc est posé au passage : c'est SA fin
+    %% d'environnement qui referme le détournement, et elle le consulte.
+    \cs_gset_protected:Npn \az_sol_do_divert:n #1
+      { \bool_set_true:N \l__az_bloc_capturing_bool \azwriteonce {#1} }
+    \cs_gset_protected:Npn \az_sol_do_divert_end:
+      { \endazwriteonce }
+    \cs_gset_protected:Npn \az_sol_do_subtitle:n #1
+      { \az_bloc_subtitle:n {#1} }
+
+    %% La pastille sous l'énoncé : une mention en bout de ligne, alignée à
+    %% droite, cliquable. Pas de boîte — le bloc en est déjà une.
+    \cs_gset_protected:Npn \az_sol_do_linkdown:nn #1#2
+      {
+        \par \nopagebreak \vskip -.4\baselineskip
+        \hbox_to_wd:nn { \linewidth }
+          {
+            \hfill
+            \hyperlink { #1 @ \l_az_sol_num_tl }
+              {
+                \color { linktextcol }
+                \sffamily \scriptsize \scshape
+                #2 ~ \ref* { #1 : \l_az_sol_key_tl } ,~
+                p.~ \pageref* { #1 : \l_az_sol_key_tl }
+              }
+          }
+        \par
+      }
+
+    %% Le bandeau de tête du rejeu : le sous-titre du moteur, suivi du renvoi
+    %% vers l'énoncé. Étoilé — en brouillon — il perd son lien et son ancre.
+    \RenewDocumentCommand \az_sol_do_linkup:w { s m m m m m m }
+      % #2 envname, #3 numéro, #4 nom préfixé, #5 genre, #6 nom du genre, #7 intitulé
+      {
+        %% Le rejeu a lieu HORS du bloc : sa couleur d'accent n'existe plus.
+        %% On la refait dire par azbloc à partir du genre, que la commande de
+        %% rejeu porte justement pour cela.
+        \exp_args:Nx \az_bloc_couleurs:n
+          { \prop_item:Nn \g_az_bloc_type_prop {#2} }
+        \IfBooleanF {#1}
+          { \Hy@raisedlink { \hypertarget { #5 @ #3 } { } } }
+        \noindent
+        \begingroup
+          \color { \l__az_bloc_accentcol_tl }
+          \rule [ .3ex ] { 1.4em } { .8pt } \hspace { .5em }
+          \azblocfonttitle \MakeUppercase {#6} \hspace { .35em }
+          \IfBooleanTF {#1}
+            { #4 ~ #3 }
+            { \hyperlink { #2 @ #3 } { #4 ~ #3 } }
+          \tl_if_blank:nF {#7}
+            { \hspace { .6em } { \normalfont \itshape \footnotesize #7 } }
+        \endgroup
+        \IfBooleanF {#1}
+          {
+            \tl_set:Nx \@currentlabel {#3}
+            \label { #5 : \l_az_sol_key_tl }
+          }
+        \par \nobreak \vspace { .3\azblocvsep }
+      }
+
+    %% \solution et \proof d'azbloc cèdent la place : c'est désormais ce module
+    %% qui décide où va le corps.
+    \cs_gset_protected:Npn \az_bloc_sol:n #1 { \az_sol_engage:n {#1} }
+    \cs_gset_protected:Npn \az_bloc_sol_arm: { \az_sol_do_arm:n { } }
+  }
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Raccord avec azinclude
 %%

@@ -38,13 +38,6 @@
 \tl_gset:Nn \g_az_doc_options_tl { 11pt }
 \tl_gset:Nn \g_az_doc_moteur_tl { azthm }
 
-\msg_new:nnnn { azkit } { solutions-sans-tcolorbox }
-  { Les~solutions~déportées~demandent~le~moteur~azthm. }
-  {
-    azsolution~est~bâti~sur~tcolorbox~;~avec~moteur=azbloc~il~n'est~pas~
-    chargé,~et~les~options~`solution*`~et~`proof*`~restent~sans~effet.
-  }
-
 \bool_new:N \g_az_doc_solution_bool
 \bool_new:N \g_az_doc_solution_delayed_bool
 \bool_new:N \g_az_doc_proof_bool
@@ -161,20 +154,17 @@
 %% mémoire pour rien et laisserait le second écraser le premier en silence.
 \exp_args:NV \RequirePackage \g_az_doc_moteur_tl
 
-\str_if_eq:VnTF \g_az_doc_moteur_tl { azthm }
-  { \RequirePackage { azsolution } }
+%% azsolution se lie au moteur qu'il trouve : il vient donc APRÈS, et pour les
+%% deux voies. C'est ce qui justifie qu'il soit un module à part — il tient la
+%% politique du déport, dont aucun des deux moteurs n'a à connaître.
+\RequirePackage { azsolution }
+
+%% Par copie de booléen et non par \keys_set : une valeur calculée n'est pas
+%% développée avant que l3keys ne la lise, et `.bool_gset:N` la refuserait.
+\str_if_eq:VnT \g_az_doc_moteur_tl { azbloc }
   {
-    %% azbloc ne connaît que le placement SUR PLACE. Les options de classe s'y
-    %% transmettent quand même : `solution=false` doit continuer d'éteindre les
-    %% corrigés, c'est le tirage le plus courant.
-    %% Par copie de booléen et non par \keys_set : une valeur calculée n'est pas
-    %% développée avant que l3keys ne la lise, et `.bool_gset:N` la refuserait.
     \bool_gset_eq:NN \g_az_bloc_solution_bool \g_az_doc_solution_bool
     \bool_gset_eq:NN \g_az_bloc_proof_bool    \g_az_doc_proof_bool
-    \bool_lazy_or:nnT
-      { \bool_if_p:N \g_az_doc_solution_delayed_bool }
-      { \bool_if_p:N \g_az_doc_proof_delayed_bool }
-      { \msg_warning:nn { azkit } { solutions-sans-tcolorbox } }
   }
 
 %% Les options de titlesec ne sont pas negociables ici : `explicit` rend #1
@@ -199,16 +189,18 @@
 
 %% Les placements retenus en option de classe sont transmis à azsolution une
 %% fois celui-ci chargé — la classe ne fait que porter la décision.
-\cs_if_exist:NT \azsetupsolutions
-  {
-    \azsetupsolutions
-      {
-        solution = \bool_if:NTF \g_az_doc_solution_bool { true } { false } ,
-        proof    = \bool_if:NTF \g_az_doc_proof_bool { true } { false } ,
-      }
-    \bool_if:NT \g_az_doc_solution_delayed_bool { \azsetupsolutions { solution* } }
-    \bool_if:NT \g_az_doc_proof_delayed_bool    { \azsetupsolutions { proof* } }
-  }
+%% ⚠️ Par COPIE de booléen, et non par \keys_set. La forme
+%%
+%%     \azsetupsolutions { solution = \bool_if:NTF \g_… {true}{false} }
+%%
+%% ne marchait pas : l3keys lit la valeur SANS la développer, la compare à
+%% « false », n'y trouve pas ce mot et allume le drapeau. `solution=false`
+%% n'éteignait donc jamais rien — un document qui ne demandait pas ses
+%% corrigés les voyait composés quand même.
+\bool_gset_eq:NN \g_az_solution_on_bool \g_az_doc_solution_bool
+\bool_gset_eq:NN \g_az_proof_on_bool    \g_az_doc_proof_bool
+\bool_if:NT \g_az_doc_solution_delayed_bool { \azsetupsolutions { solution* } }
+\bool_if:NT \g_az_doc_proof_delayed_bool    { \azsetupsolutions { proof* } }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Numérotation et retraits
