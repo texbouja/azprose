@@ -1,0 +1,119 @@
+%% azacro.sty — abréviations de discipline
+%%
+%%   \usepackage[math]{azacro}
+%%
+%% Un enseignant écrit « \sev » et lit « sous-espace vectoriel » : c'est une
+%% abréviation de SAISIE, dont la forme longue doit sortir en toutes lettres à
+%% la première occurrence puis se réduire ensuite.
+%%
+%% Chaque discipline a son vocabulaire, et un seul pack est chargé. Charger les
+%% quatre reviendrait à peupler l'espace de noms de commandes de deux
+%% cents entrées dont l'auteur n'emploie qu'un quart — avec des collisions
+%% garanties, `\va` ne désignant pas la même chose en maths et en physique.
+%%
+%% Le chargement est EXPLICITE, jamais fait par une classe : c'est un choix de
+%% rédacteur, pas de document.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azacro} {2026-08-20} {0.1}
+  {azkit — abréviations de discipline}
+
+\RequirePackage { l3keys2e }
+\RequirePackage { acronym }
+\RequirePackage { xspace }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Messages
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\msg_new:nnnn { azkit } { acro-pack-absent }
+  { Pack~d'abréviations~«~#1~»~introuvable. }
+  {
+    Les~disciplines~prévues~sont~math,~phys,~scii~et~info.~
+    Seul~le~pack~math~est~constitué~à~ce~jour~;~les~autres~restent~à~écrire.
+  }
+
+\msg_new:nnnn { azkit } { acro-sans-matiere }
+  { azacro~chargé~sans~discipline. }
+  {
+    Indiquer~la~discipline~en~option~:~\string\usepackage[math]{azacro}.~
+    Sans~elle,~aucune~abréviation~n'est~définie.
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Options
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \g_az_acro_matiere_tl
+
+\keys_define:nn { az / acro }
+  {
+    matiere .tl_gset:N = \g_az_acro_matiere_tl ,
+    unknown .code:n = { \tl_gset:Nx \g_az_acro_matiere_tl { \l_keys_key_str } } ,
+  }
+
+\ProcessKeysOptions { az / acro }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Habillage
+%%
+%% La forme courte en petites capitales, la forme longue en italique : c'est ce
+%% qui distingue une abréviation d'un sigle ordinaire dans le corps du texte.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\RenewDocumentCommand \acsfont { m } { \textsc {#1} }
+\RenewDocumentCommand \acffont { m } { \emph {#1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Déclaration
+%%
+%%   \aznewacro {sev}{sous-espace vectoriel}[sous-espaces vectoriels]
+%%   \aznewacro*{ts}{triangulaire supérieure}
+%%   \aznewacroas{uce}{uc}{uniformément continue}
+%%
+%% La forme nue crée du même coup la commande de saisie : \sev. \xspace lui rend
+%% l'espace qui suit, sans quoi « un \sev de E » perdrait le sien.
+%%
+%% L'ÉTOILE ne crée pas la commande : pour les entrées dont le nom entrerait en
+%% conflit avec une macro mathématique courante — \sp, \va, \de.
+%%
+%% \aznewacroas impose la forme COURTE : deux entrées peuvent alors partager
+%% leur abréviation en gardant chacune sa formulation longue, comme le verbe et
+%% le nom d'une même notion (« converge simplement » / « convergence simple »).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentCommand \aznewacro { s m m o }
+  {
+    \newacro {#2} {#3}
+    \IfValueT {#4} { \newacroplural {#2} {#4} }
+    \IfBooleanF {#1} { \cs_gset_protected:cpn {#2} { \ac {#2} \xspace } }
+  }
+
+\NewDocumentCommand \aznewacroas { s m m m }
+  {
+    \newacro {#2} [#3] {#4}
+    \IfBooleanF {#1} { \cs_gset_protected:cpn {#2} { \ac {#2} \xspace } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Chargement du pack
+%%
+%% Le pack est du CONTENU — des tournures françaises, pas du code. Il se lit
+%% donc avec les catcodes ordinaires : sous syntaxe expl3, « sous-espace
+%% vectoriel » deviendrait « sous-espacevectoriel ».
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_acro_input:n #1
+  { \ExplSyntaxOff \InputIfFileExists {#1} { } { } \ExplSyntaxOn }
+
+\tl_if_empty:NTF \g_az_acro_matiere_tl
+  { \msg_warning:nn { azkit } { acro-sans-matiere } }
+  {
+    \exp_args:Nx \file_if_exist:nTF { az-acro- \g_az_acro_matiere_tl .def }
+      { \exp_args:Nx \az_acro_input:n { az-acro- \g_az_acro_matiere_tl .def } }
+      { \msg_warning:nnV { azkit } { acro-pack-absent } \g_az_acro_matiere_tl }
+  }
+
+\endinput

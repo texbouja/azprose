@@ -1,0 +1,514 @@
+%% azsolution.sty — solutions et démonstrations différées
+%%
+%% C'est la seule refonte FONCTIONNELLE du kit. cpgedoc et cpgedev répondaient
+%% au même besoin sans partager une ligne ; il n'y a plus qu'une implémentation,
+%% paramétrée par le GENRE — `solution` ou `proof`. Les deux se comportent mot
+%% pour mot pareil ; seuls changent leur nom, le préfixe de leurs fichiers et
+%% la section qui les rassemble.
+%%
+%% ── Les trois placements ────────────────────────────────────────────────────
+%%
+%%   SUR PLACE   la solution suit son énoncé, dans la même boîte ;
+%%   DIFFÉRÉ     elle est mise de côté et sort en fin de fragment, précédée
+%%               d'un titre de section ;
+%%   PLACÉ       elle est mise de côté et n'apparaît qu'où le rédacteur écrit
+%%               \solutions — fin de volume, annexe, ou nulle part.
+%%
+%% Le rédacteur écrit la même chose dans les trois cas. Ce qui change est une
+%% option de classe, et c'est tout le propos : la place d'une solution est une
+%% décision de TIRAGE, pas de rédaction.
+%%
+%% ── Comment ─────────────────────────────────────────────────────────────────
+%%
+%% Le corps de la solution est la partie basse de la boîte (\tcblower) et part
+%% dans un fichier par la clé publique `savelowerto`. Une commande de REJEU —
+%% \solu ou \preuve — portant tout ce qu'il faut pour reconstruire titre, lien
+%% et étiquette, est soit exécutée aussitôt, soit accumulée puis déposée au
+%% carnet de azrecord, relu à la compilation suivante.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azsolution} {2026-08-20} {0.1}
+  {azkit — solutions et démonstrations, sur place ou différées}
+
+\RequirePackage { azbase }
+\RequirePackage { azthm }
+\RequirePackage { azrecord }
+
+\cs_if_exist:NF \ifdraft   { \newif \ifdraft }
+\cs_if_exist:NF \ifprint   { \newif \ifprint }
+\cs_if_exist:NF \ifcompact { \newif \ifcompact }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Les deux genres
+%%
+%% Toute la suite est écrite pour un genre quelconque. Les seules données qui
+%% les distinguent tiennent dans cette table.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Dossier des corps mis de cote. Declare avant les cles, qui l'affectent.
+\tl_new:N \azauxdir
+\tl_set:Nn \azauxdir { tmp }
+
+\clist_const:Nn \c_az_sol_genres_clist { solution, proof }
+
+\prop_const_from_keyval:Nn \c_az_sol_prefixe_prop { solution = sol , proof = prv }
+
+\cs_new:Npn \az_sol_prefixe:n #1 { \prop_item:Nn \c_az_sol_prefixe_prop {#1} }
+
+\clist_map_inline:Nn \c_az_sol_genres_clist
+  {
+    \bool_new:c { g_az_ #1 _on_bool }
+    \bool_new:c { g_az_ #1 _delayed_bool }
+    \tl_new:c   { g_az_ #1 _buffer_tl }
+    \tl_new:c   { g_az_ #1 _section_tl }
+    \tl_new:c   { g_az_ #1 _title_tl }
+    \tl_new:c   { l_az_ #1 _replay_tl }
+  }
+
+\tl_gset:cn { g_az_solution_section_tl } { \section }
+\tl_gset:cn { g_az_solution_title_tl }   { Solutions~des~exercices }
+\tl_gset:cn { g_az_proof_section_tl }    { \section }
+\tl_gset:cn { g_az_proof_title_tl }      { Démonstrations~des~résultats }
+
+\newrobustcmd \solutionname { solution }
+\newrobustcmd \proofname    { démonstration }
+
+\cs_new:Npn \solutionautorefname { \solutionname }
+\cs_new:Npn \proofautorefname    { \proofname }
+
+%% Drapeaux hérités, tenus en phase avec les booléens : le CONTENU les consulte
+%% (« \ifsolution … \fi » se rencontre dans les documents), le kit ne lit que
+%% les booléens.
+\cs_if_exist:NF \ifsolution        { \newif \ifsolution }
+\cs_if_exist:NF \ifsolutiondelayed { \newif \ifsolutiondelayed }
+\cs_if_exist:NF \ifproof           { \newif \ifproof }
+\cs_if_exist:NF \ifproofdelayed    { \newif \ifproofdelayed }
+
+\cs_new_protected:Npn \az_sol_flags_sync:
+  {
+    \bool_if:cTF { g_az_solution_on_bool } { \global\solutiontrue } { \global\solutionfalse }
+    \bool_if:cTF { g_az_solution_delayed_bool }
+      { \global\solutiondelayedtrue } { \global\solutiondelayedfalse }
+    \bool_if:cTF { g_az_proof_on_bool } { \global\prooftrue } { \global\prooffalse }
+    \bool_if:cTF { g_az_proof_delayed_bool }
+      { \global\proofdelayedtrue } { \global\proofdelayedfalse }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Réglages
+%%
+%%   solution        les solutions sortent sur place
+%%   solution*       les solutions sont mises de côté
+%%   solution section = {\chapter}{Corrigés}
+%%
+%% Différer IMPLIQUE produire : demander `solution*` sans `solution` serait
+%% mettre de côté ce qu'on a choisi de ne pas composer.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\keys_define:nn { az / solution }
+  {
+    solution      .code:n =
+      { \az_sol_mode:nn { solution } {#1} } ,
+    solution      .default:n = { true } ,
+    solution*     .code:n =
+      { \bool_gset_true:c { g_az_solution_on_bool }
+        \bool_gset_true:c { g_az_solution_delayed_bool } } ,
+    proof         .code:n =
+      { \az_sol_mode:nn { proof } {#1} } ,
+    proof         .default:n = { true } ,
+    proof*        .code:n =
+      { \bool_gset_true:c { g_az_proof_on_bool }
+        \bool_gset_true:c { g_az_proof_delayed_bool } } ,
+    solution~section .code:n = { \az_sol_section:nw { solution } #1 \q_stop } ,
+    proof~section    .code:n = { \az_sol_section:nw { proof } #1 \q_stop } ,
+    before~solutions .tl_gset:N = \g_az_sol_hook_tl ,
+    aux~dir       .tl_set:N = \azauxdir ,
+    unknown       .code:n = { } ,
+  }
+
+\cs_new_protected:Npn \az_sol_mode:nn #1#2
+  {
+    \str_if_eq:nnTF {#2} { false }
+      { \bool_gset_false:c { g_az_ #1 _on_bool } }
+      { \bool_gset_true:c  { g_az_ #1 _on_bool } }
+    %% Poser `solution` après `solution*` remet le placement SUR PLACE : la
+    %% forme nue est la plus explicite des deux, elle l'emporte.
+    \bool_gset_false:c { g_az_ #1 _delayed_bool }
+  }
+
+\cs_new_protected:Npn \az_sol_section:nw #1#2#3 \q_stop
+  {
+    \tl_gset:cn { g_az_ #1 _section_tl } {#2}
+    \tl_gset:cn { g_az_ #1 _title_tl }   {#3}
+  }
+
+\NewDocumentCommand \azsetupsolutions { m } { \keys_set:nn { az / solution } {#1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Dossier de travail
+%%
+%% Un corps mis de côté est un fichier, un par bloc. Ils atterrissent dans un
+%% sous-dossier pour ne pas noyer celui du document — un chapitre de cinquante
+%% exercices en produit cinquante.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% \openout ne crée pas le dossier. On tente un mkdir quand l'échappement vers
+%% le shell est ouvert ; sinon c'est à la chaîne de compilation de l'avoir
+%% préparé — latexmk le fait avec -auxdir.
+\AddToHook { begindocument/before }
+  {
+    \sys_if_shell_unrestricted:T
+      { \sys_shell_now:x { mkdir ~ -p ~ \azauxdir } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Liens entre énoncé et solution
+%%
+%% Une solution différée est LOIN de son énoncé : sans lien dans les deux sens,
+%% le document devient impraticable à l'écran. D'où deux attaches — une pastille
+%% sous l'énoncé qui mène à la solution, un bandeau au-dessus de la solution qui
+%% ramène à l'énoncé.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \az@sol@labelkey
+\tl_new:N \az@sol@counter
+
+\tcbset
+  {
+    demolink/.style = { } ,
+    az@demolink/.style~n~args = {3}
+      {
+        size = #1 , arc = #2 , demolink , colframe = linkstrokecol , #3 ,
+      } ,
+    az@demolink@colors/.style = { coltext = white , colback = linkbackcol } ,
+  }
+
+%% À l'impression il n'y a pas d'hyperlien à suggérer : la pastille redevient
+%% une simple mention, encadrée mais pas remplie.
+\AddToHook { begindocument/before }
+  {
+    \ifprint
+      \tcbset { az@demolink@colors/.style =
+        { coltext = linktextcol , colback = pagecol } }
+    \fi
+  }
+
+\cs_new_protected:Npn \az_sol_link_down:nn #1#2
+  {
+    \par \nopagebreak \vskip -\baselineskip
+    \vbox to \c_zero_dim
+      {
+        \null \hfill
+        \tcbox
+          [
+            enhanced, nobeforeafter,
+            az@demolink = {tight}{\c_zero_dim}
+              { az@demolink@colors, top = .25ex, bottom = .25ex } ,
+            hyperlink = { #1 @ \thetcbcounter } ,
+          ]
+          {
+            \sffamily \footnotesize \scshape \vphantom{(} \enskip
+            #2 ~ \ref* { #1 : \az@sol@labelkey } ,~
+            page ~ \pageref* { #1 : \az@sol@labelkey }
+            \enskip \null
+          }
+      }
+  }
+
+%% Bandeau de tête de la solution rejouée. La forme étoilée est celle du mode
+%% brouillon : ni lien ni ancre, juste le titre.
+\NewDocumentCommand \az_sol_link_up:w { s m m m m m m }
+  % #2 envname, #3 numéro, #4 nom préfixé, #5 genre, #6 nom du genre, #7 intitulé
+  {
+    \breakifnospace [4]
+    \@hangfrom
+      {
+        \IfBooleanTF {#1}
+          {
+            \tcbox
+              [
+                enhanced, tcbox~raise~base,
+                enlarge~left~by = -1em, left = 6pt, right = 6pt,
+                az@demolink = {small}{8pt}
+                  { colframe = strokecol, colback = pagecol, coltext = textcol } ,
+              ]
+              { \sffamily \scshape \small \vphantom{)} \enskip
+                #6 ~ #4 ~ #3 \enskip \null }
+          }
+          {
+            \tcbox
+              [
+                enhanced, tcbox~raise~base,
+                enlarge~left~by = -1em, left = 6pt, right = 6pt,
+                az@demolink = {small}{0.75em}{ az@demolink@colors } ,
+                hyperlink = { #2 @ #3 } ,
+                hypertarget = { #5 @ #3 } ,
+              ]
+              { \sffamily \scshape \small \vphantom{)} \enskip
+                #6 ~ #4 ~ #3 \enskip \null }
+          }
+        \enskip
+      }
+    \IfBooleanF {#1}
+      {
+        \tl_if_blank:nF {#7} { ( { \scshape \footnotesize #7 } ) }
+        \tl_set:Nx \@currentlabel {#3}
+        \tl_if_blank:nF {#7} { \tl_set:Nx \@currentlabelname { \exp_not:n {#7} } }
+        \label { #5 : \az@sol@labelkey }
+      }
+    \vrule width \c_zero_dim depth \bigskipamount
+    \par \penalty \@M
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le rejeu
+%%
+%% \solu et \preuve sont les commandes ÉCRITES AU CARNET. Elles portent tout ce
+%% qu'il faut pour se recomposer seules, puisqu'elles seront relues ailleurs
+%% dans le document — voire à la compilation suivante.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_sol_replay:nnnnnnn #1#2#3#4#5#6#7
+  % #1 genre, #2 envname, #3 numéro, #4 étiquette, #5 nom préfixé,
+  % #6 intitulé, #7 fichier
+  {
+    \begin { trivlist }
+      \tl_set:Nn \az@sol@labelkey {#4}
+      \item [ ]
+      \ifdraft
+        \az_sol_link_up:w * {#2}{#3}{#5}{#1}{ \use:c { #1 name } }{#6}
+      \else
+        \az_sol_link_up:w   {#2}{#3}{#5}{#1}{ \use:c { #1 name } }{#6}
+      \fi
+      \az_current_counter_set:n {#3}
+      \az_liste_defaults_inside:
+      \input {#7}
+      \exit
+      \closeunite
+    \end { trivlist }
+  }
+
+%% Le carnet est relu une fois par genre : chaque passe doit ignorer ce qui ne
+%% la concerne pas, d'où un rejeu neutre de même signature.
+\NewDocumentCommand \az_sol_gobble:w { m m m m m m } { }
+
+\NewDocumentCommand \solu   { m m m m m m }
+  { \az_sol_replay:nnnnnnn { solution } {#1}{#2}{#3}{#4}{#5}{#6} }
+\NewDocumentCommand \preuve { m m m m m m }
+  { \az_sol_replay:nnnnnnn { proof } {#1}{#2}{#3}{#4}{#5}{#6} }
+
+\cs_new_eq:NN \az@solu@live \solu
+\cs_new_eq:NN \az@preuve@live \preuve
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Relevé
+%%
+%% Appelé au moment où la partie basse du bloc part dans son fichier. Il
+%% construit la commande de rejeu ; selon le placement, il la joue tout de
+%% suite ou la met en réserve.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_sol_record:n #1
+  {
+    \tl_set:cx { l_az_ #1 _replay_tl }
+      {
+        \exp_not:c { \az_sol_cmdname:n {#1} }
+          { \az@thm@envname } { \thetcbcounter } { \az@sol@labelkey }
+          { \az@thm@prefixedname } { \az@thm@title }
+          { \azauxdir / \az_sol_prefixe:n {#1} - \thetcbcounter }
+      }
+    \bool_if:cTF { g_az_ #1 _delayed_bool }
+      {
+        \tl_gput_right:cx { g_az_ #1 _buffer_tl }
+          { ^^J \exp_not:v { l_az_ #1 _replay_tl } }
+      }
+      {
+        %% Sur place : la commande est rangée sous le numéro du bloc et
+        %% déclenchée juste après lui par la clé `after app`.
+        \cs_gset:cpx { az@ #1 @imm@ \az@sol@counter }
+          { \exp_not:v { l_az_ #1 _replay_tl } }
+      }
+  }
+
+\cs_new:Npn \az_sol_cmdname:n #1
+  { \str_case:nn {#1} { { solution } { solu } { proof } { preuve } } }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Attache aux blocs
+%%
+%% `with solution` et `with proof` étaient définis vides par azthm : ils
+%% prennent ici leur contenu. Un bloc qui les porte accepte \solution (resp.
+%% \proof) dans son corps, et bascule tout ce qui suit en partie basse.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tcbset
+  {
+    az@sol@attach/.code =
+      {
+        \tcbset
+          {
+            lowerbox = ignored ,
+            before~upper~app = { \az_sol_arm:n {#1} } ,
+            savelowerto =
+              { \azauxdir / \az_sol_prefixe:n {#1} - \thetcbcounter .tex } ,
+            after~app = { \use:c { az@ #1 @imm@ \az@sol@counter } } ,
+          }
+      } ,
+    with~solution/.style = { az@sol@attach = solution } ,
+    with~proof/.style    = { az@sol@attach = proof } ,
+  }
+
+%% L'étiquette du bloc sert de clef de renvoi. Absente, le numéro en tient lieu :
+%% un exercice sans <étiquette> doit rester atteignable.
+\cs_new_protected:Npn \az_sol_arm:n #1
+  {
+    \tl_set:Nx \az@sol@labelkey
+      {
+        \tl_if_empty:NTF \az@thm@label
+          { \thetcbcounter } { \exp_not:V \az@thm@label }
+      }
+    \tl_gset:Nx \az@sol@counter { \thetcbcounter }
+    \cs_set:cpn { \az_sol_inline:n {#1} }
+      {
+        \az_sol_link_down:nn {#1} { \use:c { #1 name } }
+        \az_sol_record:n {#1}
+        \tcblower
+      }
+  }
+
+\cs_new:Npn \az_sol_inline:n #1
+  { \str_case:nn {#1} { { solution } { solution } { proof } { proof } } }
+
+%% En brouillon, rien n'est mis de côté : la solution devient un simple
+%% sous-titre dans la boîte. C'est ce qui rend la relecture immédiate.
+\cs_new_protected:Npn \az_sol_draft_block:n #1
+  {
+    \exit \closeunite
+    \tcbsubtitle [ az@sol@subtitle ] { \use:c { #1 name } }
+    \az_liste_defaults_inside:
+  }
+
+\tcbset
+  {
+    az@sol@subtitle/.style =
+      {
+        spartan, coltext = white, colback = thmcol, colbacktitle = thmcol,
+        boxrule = 0pt, boxsep = 0pt, top = .8pt, bottom = .8pt,
+      } ,
+  }
+
+\AddToHook { begindocument/before }
+  {
+    \ifdraft
+      \tcbset { with~solution/.style = { } , with~proof/.style = { } }
+      \cs_set:Npn \solution { \az_sol_draft_block:n { solution } }
+      \cs_set:Npn \proof    { \az_sol_draft_block:n { proof } }
+    \fi
+    \az_sol_flags_sync:
+    \az_sol_arm_record:
+  }
+
+%% Un placement différé ou placé demande un carnet : autant l'ouvrir dès le
+%% départ, plutôt qu'au premier bloc rencontré.
+\cs_new_protected:Npn \az_sol_arm_record:
+  {
+    \bool_lazy_or:nnT
+      { \bool_if_p:c { g_az_solution_delayed_bool } }
+      { \bool_if_p:c { g_az_proof_delayed_bool } }
+      { \ifazrecordopen \else \azstartrecording \fi }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Vidange
+%%
+%% Ce qui a été mis en réserve pendant un fragment part au carnet, précédé de
+%% son titre de section. Le titre n'est écrit QUE si la réserve n'est pas vide :
+%% un chapitre sans exercice ne doit pas hériter d'une section « Solutions »
+%% vide.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_sol_flush:n #1
+  {
+    \bool_if:cT { g_az_ #1 _delayed_bool }
+      {
+        \tl_if_empty:cF { g_az_ #1 _buffer_tl }
+          {
+            \ifazrecordopen \else \azstartrecording \fi
+            \use:x
+              {
+                \exp_not:N \azrecord
+                  {
+                    \exp_not:v { g_az_ #1 _section_tl }
+                      { \exp_not:v { g_az_ #1 _title_tl } }
+                  }
+              }
+            \use:x
+              { \exp_not:N \azrecord { \exp_not:v { g_az_ #1 _buffer_tl } } }
+            \tl_gclear:c { g_az_ #1 _buffer_tl }
+          }
+      }
+  }
+
+\cs_new_protected:Npn \az_sol_flush_all:
+  { \clist_map_inline:Nn \c_az_sol_genres_clist { \az_sol_flush:n {##1} } }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Points de dépôt
+%%
+%% \solutions et \proofs relisent le carnet en ne laissant vivre que le genre
+%% demandé. C'est ce qui permet d'écrire les deux à des endroits différents
+%% alors qu'ils partagent un seul carnet.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_sol_emit:n #1
+  {
+    \bool_if:cT { g_az_ #1 _delayed_bool }
+      {
+        \az_sol_flush:n {#1}
+        \azstoprecording
+        %% L'autre genre est neutralisé le temps de la lecture, puis rendu.
+        \clist_map_inline:Nn \c_az_sol_genres_clist
+          {
+            \str_if_eq:nnF {##1} {#1}
+              {
+                \cs_set_eq:cN { \az_sol_cmdname:n {##1} } \az_sol_gobble:w
+              }
+          }
+        \g_az_sol_hook_tl
+        \azreadrecord
+        \clist_map_inline:Nn \c_az_sol_genres_clist
+          {
+            \cs_set_eq:cc { \az_sol_cmdname:n {##1} }
+              { az@ \az_sol_cmdname:n {##1} @live }
+          }
+      }
+  }
+
+\NewDocumentCommand \solutions { } { \az_sol_emit:n { solution } }
+\NewDocumentCommand \proofs    { } { \az_sol_emit:n { proof } }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Raccord avec azinclude
+%%
+%% Un fragment inclus vide sa réserve à sa sortie : les solutions d'un chapitre
+%% restent avec leur chapitre, même si elles sont composées plus loin.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_if_exist:NT \azinclude
+  {
+    \tl_gput_right:Nn \g_az_include_after_tl { \az_sol_flush_all: }
+    \keys_define:nn { az / include }
+      {
+        unknown .code:n =
+          {
+            \tl_if_novalue:nTF {#1}
+              { \use:x { \exp_not:N \azsetupsolutions { \l_keys_key_str } } }
+              { \use:x { \exp_not:N \azsetupsolutions
+                  { \l_keys_key_str = { \exp_not:n {#1} } } } }
+          } ,
+      }
+  }
+
+\endinput

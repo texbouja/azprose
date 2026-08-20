@@ -1,0 +1,196 @@
+%% azrecord.sty — écriture différée en fichier
+%%
+%% Certaines parties d'un document ne se composent pas là où elles s'écrivent :
+%% une solution rédigée sous son exercice peut devoir sortir en fin de chapitre,
+%% ou en fin de volume. Il faut donc pouvoir METTRE DE CÔTÉ du contenu et le
+%% rejouer plus tard — éventuellement à la compilation suivante.
+%%
+%% Deux mécanismes, qui ne servent pas au même moment :
+%%
+%%   · le CARNET (\azstartrecording…\azstoprecording) accumule des commandes
+%%     dans `\jobname.rec`, relu par \azreadrecord. C'est le report d'une passe
+%%     à l'autre ;
+%%   · les FLUX NOMMÉS (\azopenfile, \azwritetofile…) écrivent dans un fichier
+%%     désigné, ouvert et fermé à volonté. C'est le report vers un fichier tiers.
+%%
+%% Emprunté à answers.sty et à tcolorbox.sty, dont il reprend le principe.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azrecord} {2026-08-20} {0.1}
+  {azkit — écriture différée en fichier}
+
+\RequirePackage { azbase }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le carnet
+%%
+%% \azrecord ne fait RIEN tant que le carnet n'est pas ouvert : les modules
+%% appelants n'ont donc pas à savoir si un report est en cours. C'est ce qui
+%% permet à azsolution d'écrire sans condition.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\iow_new:N \g_az_record_iow
+\tl_new:N  \g_az_record_file_tl
+
+\cs_if_exist:NF \ifazrecordopen { \newif \ifazrecordopen }
+
+\cs_new_protected:Npn \az_record_write:n #1
+  { \iow_now:Nn \g_az_record_iow {#1} }
+
+\cs_new_eq:NN \azrecord \use_none:n
+
+\NewDocumentCommand \azstartrecording { O{\jobname} }
+  {
+    \ifazrecordopen \else
+      \cs_gset_eq:NN \azrecord \az_record_write:n
+      \tl_gset:Nx \g_az_record_file_tl { #1 .rec }
+      \global \azrecordopentrue
+      \exp_args:NNV \iow_open:Nn \g_az_record_iow \g_az_record_file_tl
+    \fi
+  }
+
+\NewDocumentCommand \azstoprecording { }
+  {
+    \ifazrecordopen
+      \iow_close:N \g_az_record_iow
+      \global \azrecordopenfalse
+      \cs_gset_eq:NN \azrecord \use_none:n
+    \fi
+  }
+
+%% Relire le carnet, s'il existe. Un carnet absent — première compilation — est
+%% le cas NORMAL, pas une anomalie : le document sort simplement sans ce qui
+%% n'a pas encore été relevé.
+\NewDocumentCommand \azreadrecord { O{\jobname} }
+  { \InputIfFileExists { #1 .rec } { } { } }
+
+%% Un carnet laissé ouvert perdrait sa dernière écriture, jamais vidée.
+\AddToHook { enddocument } { \azstoprecording }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Flux nommés
+%%
+%%   \azopenfile{solutions}[chap3-sol]   ouvre le flux « solutions » sur
+%%                                       chap3-sol.tex
+%%   \azwritetofile{solutions}{…}        y écrit
+%%   \azclosefile{solutions}             le ferme
+%%   \azreadfile{solutions}              relit le fichier associé
+%%
+%% Un flux se referme et se rouvre : les écritures s'accumulent dans le même
+%% fichier. Changer le fichier associé est permis entre deux ouvertures.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\prop_new:N \g_az_file_nom_prop
+\bool_new:N \g_az_file_actif_bool
+\bool_gset_true:N \g_az_file_actif_bool
+
+\msg_new:nnnn { azkit } { flux-inconnu }
+  { Flux~«~#1~»~inconnu. }
+  { L'ouvrir~avec~\string\azopenfile\ avant~d'y~écrire. }
+
+\msg_new:nnnn { azkit } { flux-ouvert }
+  { Le~flux~«~#1~»~est~déjà~ouvert. }
+  { Le~fermer~avant~de~le~relire. }
+
+\prg_new_conditional:Npnn \az_file_if_open:n #1 { T, F, TF }
+  {
+    \cs_if_exist:cTF { g_az_file_ #1 _open_bool }
+      {
+        \bool_if:cTF { g_az_file_ #1 _open_bool }
+          { \prg_return_true: } { \prg_return_false: }
+      }
+      { \prg_return_false: }
+  }
+
+\NewDocumentCommand \azopenfile { m O{#1} }
+  {
+    \cs_if_exist:cF { g_az_file_ #1 _iow } { \iow_new:c { g_az_file_ #1 _iow } }
+    \cs_if_exist:cF { g_az_file_ #1 _open_bool }
+      { \bool_new:c { g_az_file_ #1 _open_bool } }
+    \prop_gput:Nnn \g_az_file_nom_prop {#1} { #2 .tex }
+    \az_file_if_open:nTF {#1}
+      { \msg_warning:nnn { azkit } { flux-ouvert } {#1} }
+      {
+        \bool_if:NT \g_az_file_actif_bool
+          {
+            \exp_args:Ncx \iow_open:Nn { g_az_file_ #1 _iow } { #2 .tex }
+            \bool_gset_true:c { g_az_file_ #1 _open_bool }
+          }
+      }
+  }
+
+\NewDocumentCommand \azclosefile { m }
+  {
+    \az_file_if_open:nT {#1}
+      {
+        \iow_close:c { g_az_file_ #1 _iow }
+        \bool_gset_false:c { g_az_file_ #1 _open_bool }
+      }
+  }
+
+\NewDocumentCommand \azwritetofile { m +m }
+  {
+    \az_file_if_open:nTF {#1}
+      { \iow_now:cn { g_az_file_ #1 _iow } {#2} }
+      { \msg_warning:nnn { azkit } { flux-inconnu } {#1} }
+  }
+
+\NewDocumentCommand \azreadfile { m }
+  {
+    \az_file_if_open:nTF {#1}
+      { \msg_warning:nnn { azkit } { flux-ouvert } {#1} }
+      {
+        \prop_get:NnNT \g_az_file_nom_prop {#1} \l__az_file_nom_tl
+          { \exp_args:NV \InputIfFileExists \l__az_file_nom_tl { } { } }
+      }
+  }
+
+\tl_new:N \l__az_file_nom_tl
+
+%% Un interrupteur global : quand l'écriture est coupée, les flux s'ouvrent
+%% sans rien recevoir. C'est ainsi qu'un tirage « sans solutions » se compile
+%% sans que le contenu ait à être conditionné ligne à ligne.
+\NewDocumentCommand \azfilewritingoff { } { \bool_gset_false:N \g_az_file_actif_bool }
+\NewDocumentCommand \azfilewritingon  { } { \bool_gset_true:N  \g_az_file_actif_bool }
+
+\AddToHook { enddocument }
+  {
+    \prop_map_inline:Nn \g_az_file_nom_prop { \azclosefile {#1} }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Recopie verbatim
+%%
+%%   \begin{azwriteonce}{fichier} … \end{azwriteonce}
+%%
+%% Recopie le contenu TEL QUEL dans `fichier.tex`, sans l'interpréter. Utile
+%% quand ce que l'on met de côté doit rester du source — une solution à
+%% recomposer plus tard dans un autre contexte, par exemple.
+%%
+%% En TeX du noyau : la lecture verbatim repose sur des changements de catcode
+%% que la syntaxe expl3 rendrait illisibles.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\RequirePackage { verbatim }
+
+\ExplSyntaxOff
+
+\newwrite\az@once@file
+
+\def\azwriteonce#1{%
+  \@bsphack
+  \immediate\openout\az@once@file #1.tex
+  \let\do\@makeother\dospecials
+  \catcode`\^^M\active \catcode`\^^I=12
+  \def\verbatim@processline{%
+    \immediate\write\az@once@file{\the\verbatim@line}}%
+  \verbatim@start}
+\def\endazwriteonce{%
+  \immediate\closeout\az@once@file
+  \@esphack
+}
+
+\ExplSyntaxOn
+\endinput

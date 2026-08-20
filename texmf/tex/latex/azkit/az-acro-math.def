@@ -1,0 +1,87 @@
+%% az-acro-math.def — abréviations de mathématiques
+%%
+%% Chargé par \usepackage[math]{azacro}. Repris tel quel du dictionnaire de
+%% cpgecommon : ce sont des tournures d'usage, pas des choix de conception, et
+%% elles n'avaient aucune raison de changer.
+%%
+%% Les entrées étoilées ne créent PAS de commande de saisie : soit elles
+%% partagent leur forme courte avec une autre (la forme nominale d'un verbe),
+%% soit leur nom entrerait en conflit avec une macro mathématique courante.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+%% ── Algèbre linéaire ────────────────────────────────────────────────────────
+\aznewacro  {vap}  {valeur propre}            [valeurs propres]
+\aznewacro  {vep}  {vecteur propre}           [vecteurs propres]
+\aznewacro  {sep}  {sous-espace propre}       [sous-espaces propres]
+\aznewacro  {sev}  {sous-espace vectoriel}    [sous-espaces vectoriels]
+\aznewacro* {ts}   {triangulaire supérieure}
+\aznewacro* {tss}  {triangulaire supérieure stricte}
+\aznewacro* {sp}   {symétrique positive}
+\aznewacro* {sdp}  {symétrique définie positive}
+\aznewacro  {bon}  {base orthonorm\'ee}       [bases orthonorm\'ees]
+
+%% ── Topologie ───────────────────────────────────────────────────────────────
+\aznewacro  {evn}  {espace vectoriel norm\'e} [espaces vectoriels norm\'es]
+\aznewacro* {cpa}  {connexe par arcs}
+\aznewacro* {uc}   {uniform\'ement continue}
+\aznewacroas* {uce} {uc} {uniform\'ement continue}
+
+%% ── Arithmétique ────────────────────────────────────────────────────────────
+\aznewacro* {pgcd} {plus grand diviseur commun}
+\aznewacro* {ppcm} {plus petit multiple commun}
+\aznewacro* {de}   {division euclidienne}
+
+%% ── Suites et séries ────────────────────────────────────────────────────────
+\aznewacro  {cvs}  {converge simplement}
+\aznewacroas* {cves} {cvs} {convergence simple}
+\aznewacro* {cva}  {converge absolument}
+\aznewacroas* {cvea} {cva} {convergence absolue}
+\aznewacro  {cvu}  {converge uniform\'ement}
+\aznewacroas* {cveu} {cvu} {convergence uniforme}
+\aznewacro  {cvuc} {converge uniformément sur tout compact}
+\aznewacroas* {cveuc} {cvuc} {convergence uniforme sur tout compact}
+\aznewacro  {cvn}  {converge normalement}
+\aznewacroas* {cven} {cvn} {convergence normale}
+\aznewacro* {dse}  {d\'eveloppable en s\'erie enti\`ere}
+\aznewacro  {rc}   {rayon de convergence}     [rayons de convergence]
+
+%% ── Intégration ─────────────────────────────────────────────────────────────
+\aznewacro  {cpm}  {continue par morceaux}    [continues par morceaux]
+\aznewacro* {cepm} {continuit\'e par morceaux}
+
+%% ── Probabilités ────────────────────────────────────────────────────────────
+\aznewacro* {va}   {variable al\'eatoire}
+\aznewacro  {var}  {variable al\'eatoire r\'eelle}
+                                              [variables al\'eatoires r\'eelles]
+\aznewacro  {vad}  {variable al\'eatoire discrète}
+                                              [variables al\'eatoires discrètes]
+\aznewacro  {vadr} {variable al\'eatoire discr\`ete r\'eelle}
+                                              [variables al\'eatoires discr\`etes r\'eelles]
+\aznewacro  {iid}  {ind\'ependantes et identiquement distribu\'ees}
+
+%% ── Théorèmes nommés ────────────────────────────────────────────────────────
+\aznewacro* {eaf}  {\'egalit\'e des accroissements finis}
+\aznewacro* {iaf}  {in\'egalit\'e des accroissements finis}
+\aznewacro* {ics}  {in\'egalit\'e de Cauchy-Schwarz}
+\aznewacro* {ipp}  {int\'egration par parties}
+\aznewacro* {itt}  {int\'egration terme \`a terme}
+\aznewacro* {dtt}  {d\'erivation terme \`a terme}
+\aznewacro* {il}   {interversion de limites}
+\aznewacro* {cvd}  {convergence domin\'ee}
+\aznewacro* {tdn}  {th\'eor\`eme de la d\'ecomposition des noyaux}
+\aznewacro* {tch}  {th\'eor\`eme de Cayley-Hamilton}
+\aznewacro* {tsp}  {th\'eor\`eme spectral}
+\aznewacro* {tcd}  {th\'eor\`eme de la convergence domin\'ee}
+\aznewacro* {til}  {th\'eor\`eme d'interversion de limites}
+\aznewacro* {tdtt} {th\'eor\`eme de d\'erivation terme \`a terme}
+\aznewacro* {titt} {th\'eor\`eme d'int\'egration terme \`a terme}
+\aznewacro* {tvi}  {th\'eor\`eme des valeurs interm\'ediaires}
+\aznewacro* {ticc} {th\'eor\`eme de l'image continue d'un compact}
+\aznewacro* {cscsa} {critère spécial de convergence des séries alternées}
+
+%% ── Équations différentielles ───────────────────────────────────────────────
+\aznewacro* {edl}  {équation différentielle linéaire}
+\aznewacro* {sfs}  {système fondamental de solutions}
+
+\endinput

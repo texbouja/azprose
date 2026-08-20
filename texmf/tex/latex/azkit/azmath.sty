@@ -1,0 +1,3702 @@
+%% azmath.sty — le kit du matheux
+%%
+%% Portage de cpgemath.sty, a l'identique. Ce module est un CHANTIER A PART :
+%% il n'a pas ete refondu, seulement renomme — prefixe \cpge devenu \az,
+%% \cpgesetup devenu \azmathsetup pour ne pas revendiquer un nom generique.
+%% Il garde donc pgfkeys, que le reste du kit a quitte.
+%%
+%% OPTIONNEL et charge par le REDACTEUR : \usepackage{azmath}. Aucune classe du
+%% kit ne le charge — un devoir de physique n'a que faire des notations de
+%% l'algebre lineaire.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{azmath}[2026-08-20 v0.1 azkit — notations mathematiques]
+
+\RequirePackage{etoolbox}
+\RequirePackage{pgfkeys}
+\RequirePackage{calc}
+\RequirePackage{xparse}
+\RequirePackage{mathtools}
+\RequirePackage{varwidth}
+\RequirePackage{mleftright}
+
+\def\azmath@err#1{\PackageError{azmath}{\MessageBreak#1}}
+\def\azmath@warn#1{\PackageWarning{azmath}{\MessageBreak#1}}
+
+\AtEndPreamble{
+\ifundef{\iftx@sbc}{}
+	{\iftx@sbc\azmath@err
+		{azmath est incompatible avec l'option subscriptcorrection de newtxmath}
+		{azmath offre une alternative à l'option subscriptcorrection, 
+		\MessageBreak voir le manuel}
+	\fi}
+\if@fleqn
+	\azmath@err
+		{azmath n'est pas compatible (pour l'instant) avec l'option 
+		\MessageBreak fleqn d'amsmath}
+		{Vous pouvez continuer à utiliser azmath avec l'option 
+		\MessageBreak fleqn d'amsmath si vous n'utilisez pas 
+		\MessageBreak l'environnement xalign}
+\fi	
+}
+
+%%%% Si certains caracteres ne sont pas encore definis a 
+%%%% la fin du preambule, emprunter a fourier.sty 
+\AtEndPreamble{
+	\@ifundefined{lVERT}{
+		\DeclareFontEncoding{FMS}{}{}
+  		\DeclareFontSubstitution{FMS}{futm}{m}{n}
+		\DeclareFontEncoding{FMX}{}{}
+ 			\DeclareFontSubstitution{FMX}{futm}{m}{n}
+		\DeclareSymbolFont{futsymbols}{FMS}{futm}{m}{n}
+		\DeclareSymbolFont{futlargesymbols}{FMX}{futm}{m}{n}
+		\DeclareSymbolFont{futoperators}{T1}{futs}{m}{n}%
+		\DeclareMathDelimiter{\lBrack}
+				{\mathopen}{futsymbols}{153}{futlargesymbols}{133}
+		\DeclareMathDelimiter{\rBrack}
+				{\mathclose}{futsymbols}{154}{futlargesymbols}{134}
+		\DeclareMathDelimiter{\Vert}
+   			{\mathord}{futsymbols}{107}{futlargesymbols}{176}
+		\DeclareMathDelimiter{\VERT}
+   			{\mathord}{futsymbols}{152}{futlargesymbols}{147}
+		\DeclareMathDelimiter{\vert}
+   			{\mathord}{futsymbols}{106}{futlargesymbols}{175}
+		\DeclareMathDelimiter{\lvert}
+    		{\mathopen}{futsymbols}{106}{futlargesymbols}{175}
+		\DeclareMathDelimiter{\rvert}
+    		{\mathclose}{futsymbols}{106}{futlargesymbols}{175}
+		\DeclareMathDelimiter{\lVert}
+  			{\mathopen}{futsymbols}{107}{futlargesymbols}{176}
+		\DeclareMathDelimiter{\rVert}
+    		{\mathclose}{futsymbols}{107}{futlargesymbols}{176}
+		\DeclareMathDelimiter{\lVERT}
+  			{\mathopen}{futsymbols}{152}{futlargesymbols}{147}
+		\DeclareMathDelimiter{\rVERT}
+    		{\mathclose}{futsymbols}{152}{futlargesymbols}{147}
+		\DeclareMathAccent{\mathring}{\mathalpha}{futoperators}{6}
+		\DeclareMathAccent{\wideparen}{\mathord}{futlargesymbols}{148}
+		\DeclareMathAccent{\widearc}{\mathord}{futlargesymbols}{216}
+		\DeclareMathAccent{\wideOarc}{\mathord}{futlargesymbols}{228}
+		\let\widehat\undefined
+    	\DeclareMathAccent{\widehat}{\mathord}{futlargesymbols}{98}
+    	\let\widetilde\undefined
+    	\DeclareMathAccent{\widetilde}{\mathord}{futlargesymbols}{101}
+	}{}%
+	\@ifundefined{leqslant}{\RequirePackage{amssymb}}{}
+	\let\leq\leqslant
+	\let\geq\geqslant
+	\def\setminus{\!\smallsetminus\!}
+	\@ifundefined{mathscr}
+		{\RequirePackage[scr=boondoxo,frak=boondox,bb=boondox]{mathalfa}}
+		{}
+}
+\AtBeginDocument{
+	\ifundef{\widering}{
+			\DeclareDocumentCommand{\widering}{m}{\overset{\smash{\vbox to .2ex{%
+    			\hbox{$\mathring{}$}}}}{\wideparen{#1}}}%
+		}{}%
+}
+%%%%% Commandes utilitaires
+\ifcsundef{azsetdeco}{
+	\def\azsetdeco{\@ifstar\az@deco@\az@deco}
+	\long\def\@az@deco#1#2{
+ 	 	\csdef{deco@#2}##1{\begingroup#1\endgroup}}
+	\long\def\@az@deco@#1#2{
+ 	 \csdef{deco@#2}{#1}}
+	\long\def\az@deco#1#2{\forcsvlist{\@az@deco{#2}}{#1}}
+	\long\def\az@deco@#1#2{\forcsvlist{\@az@deco@{#2}}{#1}}
+}{}
+\let\fake@cmd\@iden
+\newcommand\@ifisnumber[1]{%
+        \begingroup
+        \edef\temp@{#1}%
+        \@xp\ifstrempty\@xp{\temp@}
+                {\endgroup\@secondoftwo}
+                {\@xp\if@number@i\temp@\@nnil}%
+}
+\def\if@number@i#1#2\@nnil{%
+        \if-#1%
+                \gdef\temp@s{-}
+                \ifstrempty{#2}
+                        {\def\temp@{X}}
+                        {\def\temp@{#2}}%
+        \else
+                \gdef\temp@s{+}
+                \def\temp@{#1#2}%
+        \fi
+        \xdef\temp@n{\temp@}
+        \afterassignment\if@numhelper
+        \count@0\temp@\relax\@nnil
+        \endgroup
+}
+
+\def\num@relax{\relax}%
+\def\if@numhelper#1\@nnil{%
+        \def\temp@{#1}%
+        \ifx\temp@\num@relax
+                \aftergroup\@firstoftwo
+        \else
+                \aftergroup\@secondoftwo
+        \fi
+}
+
+\def\is@num#1#2#3{%
+  \if!\ifnum9<1#1!\else_\fi
+    #3\else#2\fi
+  }
+  
+%%%%% Interface de configuration pgfkeys
+\ifundef\azmathsetup
+    {
+		\pgfkeysifdefined{/az/.is family}{}{\pgfkeys{/az/.is family}}
+		\NewDocumentCommand\azmathsetup{o}{%
+    	\IfValueT{#1}
+    		{\pgfkeysifdefined{/az/#1/.is family}{}
+				{\pgfkeys{/az/#1/.is family}}}%
+    	\IfValueTF{#1}{\pgfqkeys{/az/#1}}{\pgfqkeys{/az}}%
+    	}
+	}{}
+
+\azmathsetup{math/.is family}
+\NewDocumentCommand\azsetupmath{o}{%
+    	\IfValueT{#1}
+    		{\pgfkeysifdefined{/az/math/#1/.is family}{}
+				{\pgfkeys{/az/math/#1/.is family}}}%
+    	\IfValueTF{#1}{\pgfqkeys{/az/math/#1}}{\pgfqkeys{/az/math}}%
+    	}
+\azmathsetup{math/symbols/.is family}
+
+%transpose/l/.style={transpose/position=l},
+
+\azsetupmath{
+	@interval/.is family,
+	@interval/separator/.code		= \def\IntSep{#1},
+	@interval/space/.code 			= \def\IntSpace{#1},
+	@inner product/.is family,
+	@inner product/space/.code		= \def\SprodSpace{#1},
+	@inner product/separator/.code	= \def\SprodSep{#1},
+	@given/.is family,
+	@given/separator/.code			= \def\GivenSep{#1},
+	@given/space/.code				= \def\GivSpace{#1},			
+	@transpose/.is family,
+	@transpose/position/.is choice,
+	@transpose/position/left/.code	= \def\trans{\ltrans},
+	@transpose/position/right/.code	= \def\trans{\rtrans},
+	@transpose/l/.style				= {position=left},
+	@transpose/r/.style				= {position=right},
+	@transpose/left kern/.code 		= \def\transpose@leftkern{#1},
+	@transpose/right kern/.code 	= \def\transpose@rightkern{#1},
+	interval/.code					= \pgfqkeys{/az/math/@interval}{#1},
+	inner product/.code				= \pgfqkeys{/az/math/@inner product}{#1},
+	given/.code						= \pgfqkeys{/az/math/@given}{#1},
+	transpose/.code					= \pgfqkeys{/az/math/@transpose}{#1}
+}
+
+\def\azsetsymbol#1#2{
+	\ifcsundef{#1symb}
+		{\azsetupmath[symbols]{#1/.code=\csdef{#1symb}{{##1}}}}
+		{}%
+	\azsetupmath[symbols]{#1=#2}
+}
+
+\azsetupmath{%
+	symbols/.is family,
+	symbol/.code = \pgfqkeys{/az/math/symbols}{#1},
+	symbols/.cd, 
+	M/.code	= \def\Msymb{{#1}},
+	B/.code = \def\Bsymb{{#1}},
+	S/.code	= \def\Ssymb{{#1}},
+	L/.code	= \def\Lsymb{{#1}},
+	P/.code	= \def\Psymb{{#1}},
+	E/.code	= \def\Esymb{{#1}},
+	V/.code	= \def\Vsymb{{#1}},
+	Cov/.code = \def\COVsymb{{#1}},
+	O/.code	= \def\Osymb{{#1}},
+	o/.code	= \def\osymb{{#1}},
+	Cl/.code= \def\Clsymb{{#1}},
+	lt/.code= \def\ltsymb{{#1}},
+	rt/.code= \def\rtsymb{{#1}},
+	e/.code	= \def\esymb{{#1}},
+	i/.code	= \def\isymb{{#1}},
+	d/.code	= \def\dsymb{{#1}},
+	D/.code	= \def\Dsymb{{#1}},
+	N/.code	= \def\Nsymb{{#1}},
+	Z/.code	= \def\Zsymb{{#1}},
+	Q/.code	= \def\Qsymb{{#1}},
+	R/.code	= \def\Rsymb{{#1}},
+	C/.code	= \def\Csymb{{#1}},
+	U/.code	= \def\Usymb{{#1}},
+	K/.code	= \def\Ksymb{{#1}},
+	1/.code= \csdef{1symb}{{#1}},
+	corps/.code =\def\corpssymb{\csuse{#1symb}},
+	dim/.code = \def\dimsymb{{#1}},
+}
+\azsetupmath{
+	interval={separator={;}},
+	inner product={separator={;}},
+	given={separator=\vert},
+	given={space=9mu},
+%	transpose/position=left,
+	transpose={left kern=0},
+	transpose={right kern=0},
+}
+\azsetupmath{symbol={
+	M=\mathcal M,
+	B=\mathscr B,
+	S=\mathcal S,
+	L=\mathcal L,
+	P=\mathbf P,
+	E=\mathbf E,
+	V=\mathbf V,
+	Cov=\mathbf{Cov},	
+	O=\mathcal O,
+	o=\mathrm o,
+	Cl=\mathscr C,
+	lt=\mathsf t,
+	rt=\top,
+	e={\operator@font e},
+	d={\operator@font d},
+	D={\operator@font D},
+	i=\mathbf{i},
+	N=\mathbb{N},
+	Z=\mathbb{Z},
+	Q=\mathbb{Q},
+	R=\mathbb{R},
+	C=\mathbb{C},
+	U=\mathbb{U},
+	K=\mathbb{K},
+	corps=K,
+	dim=n,
+	1=\mathbf{1}
+}}
+%%%% Raccourcis 
+
+\DeclareRobustCommand{\opn}{\operatorname}
+\def\symb#1{\opn{\csuse{#1symb}}}
+\DeclareRobustCommand\diff{\mkern2.4mu\dsymb}
+\DeclareRobustCommand\Diff{\opn{\Dsymb}}
+\DeclareRobustCommand\e{\opn{\esymb}}
+\def\vnabla{\boldsymbol\nabla}
+\DeclareRobustCommand{\N}{\Nsymb}
+\DeclareRobustCommand{\Z}{\Zsymb}
+\DeclareRobustCommand{\Q}{\Qsymb}
+\DeclareRobustCommand{\R}{\Rsymb}
+\DeclareRobustCommand{\C}{\Csymb}
+\DeclareRobustCommand{\U}{\Usymb}
+\DeclareRobustCommand{\K}{\Ksymb}
+\DeclareMathSymbol{\vphi}{\mathord}{letters}{"27}
+\DeclareMathSymbol{\veps}{\mathord}{letters}{"22}
+\DeclareRobustCommand{\Chi}{{\mathpalette\c@chi\relax}}
+\newcommand{\c@chi}[2]{\raisebox{\depth}{$#1\chi$}}
+\DeclareRobustCommand\bfone{\opn{\csname 1symb\endcsname}}
+
+\NewDocumentCommand\ltrans{sO{\transpose@leftkern} m}
+	{\vphantom{#3}^{\ltsymb}\mkern#2mu#3}
+\NewDocumentCommand\rtrans{sO{\transpose@rightkern} m}
+	{#3\mkern#2mu^{\rtsymb}}
+\NewDocumentCommand\trans{som}{%
+	\IfBooleanTF{#1}
+		{\IfValueTF{#2}{\rtrans[#2]{#3}}{\rtrans{#3}}}
+		{\IfValueTF{#2}{\ltrans[#2]{#3}}{\ltrans{#3}}}
+}
+\def\grad{\vnabla}
+\NewDocumentCommand\B{O{B}}{\mathcal #1}
+\NewDocumentCommand\Id{o}{\IfValueTF{#1}{\opn{id}_{#1}}{\opn{id}}}
+\NewDocumentCommand\diag{sm}{%
+	\IfBooleanFT{#1}
+		{\begingroup\let\dots\ldots\opn{diag}{\left(#2\right)}\endgroup}
+		{\begingroup\let\dots\ddots%
+			\begin{pmatrix}\matrix@construct{#2}\end{pmatrix}%
+		\endgroup}
+}
+
+%%%%% Déclarations
+
+\newbox\azm@boxa
+\newbox\azm@boxb
+\newbox\azm@boxc
+
+\newdimen\az@dima
+\newdimen\az@dimb
+\newdimen\az@dimc
+\newcount\az@count
+\newcount\az@loop
+\newcount\eqn@count@
+\newcount\dlm@count@
+
+\newif\iftextmode
+\newif\ifeqn@number 
+\newif\ifis@result
+\newif\ifcpge@minipage
+\newif\ifcpge@indisplay
+\ifundef{\ifcompact}{\newif\ifcompact}{}
+
+%%%%%%%%%
+%%% le système \xsave
+\listadd\azsaved@list{@@@}
+\NewDocumentCommand\x@save{sm+m}{#3}
+\NewDocumentCommand\xsave{sm+m}{%
+	\begingroup
+	\def\xsave{\x@save}
+	\ifmeasuring@\else
+		\ifcsdef{saved@#2}
+			{\azsave@err{#2}{déjà utilisé}}
+			{%
+				\csgdef{saved@#2}{#3}%
+				\listgadd\azsaved@list{#2}%
+			}
+	\fi
+	\IfBooleanF{#1}{#3}%
+	\endgroup
+}
+\NewDocumentCommand\xsaved{m}{%
+	\ifmeasuring@
+		\csuse{saved@#1}
+	\else
+		\ifcsundef{saved@#1}
+			{\azsave@err{#1}{non trouvé}}
+			{\csuse{saved@#1}}
+	\fi
+}
+\NewDocumentCommand\DeleteSaved{o}{%
+	\begingroup%
+	\def\do##1{%
+		\csgundef{saved@##1}%
+		\listgremove\azsaved@list{##1}%
+	}%
+	\IfValueTF{#1}
+		{%
+			\forcsvlist{\listadd\aztmpsaved@list}{#1}
+			\dolistloop\aztmpsaved@list
+		}
+		{\dolistloop\azsaved@list}
+	\makeatletter
+		\listgadd\azsaved@list{@@@}
+	\makeatother
+	\endgroup
+}
+\def\azsave@err#1#2{\azmath@err{enregistrement #1\space #2}{}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%g%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%% Formules mathématiques %%%%%%%%%%%%%%%%%%%%%
+
+% registres permanents pour la famille \formula
+\newbox\midbox % boite qui contient le texte central dans \@center@
+\newdimen\midwidth % largeur de cette boite
+\newskip\bigcenterskip %grand espace vertical avant et après \@center@
+\newskip\medcenterskip % espace vertical moyen avant et après \@center@
+\newskip\smallcenterskip %petit espace, si \@center@ imbriqué
+\newcount\precenterpenalty 
+\newcount\postcenterpenalty
+\newdimen\fadjwidth % reçoit l'excédent de largeur ajouté par le cadre
+
+\def\numvskip{\dimexpr\medcenterskip*1/2\relax}
+\AtBeginDocument{
+	\bigcenterskip=8\p@ \@plus 2\p@ \@minus 4\p@
+	\medcenterskip=6\p@ \@plus 2\p@ \@minus 3\p@
+	\smallcenterskip=\z@  \@plus 3\p@
+	\abovedisplayskip\bigcenterskip\relax%
+	\belowdisplayskip\bigcenterskip\relax%
+	\abovedisplayshortskip\medcenterskip\relax%
+	\belowdisplayshortskip\medcenterskip\relax
+}
+\def\compressdisplay{%
+	\bigcenterskip=\medcenterskip
+	\abovedisplayskip\bigcenterskip\relax%
+	\belowdisplayskip\bigcenterskip\relax%
+	\abovedisplayshortskip\smallcenterskip\relax%
+	\belowdisplayshortskip\smallcenterskip\relax
+}
+\precenterpenalty\@highpenalty 
+\postcenterpenalty\z@
+
+
+%%%% Quelques commandes utilitaires %%%%
+\def\m@az@stop{\vrule\@width\z@}
+\def\m@az@par{\par\nointerlineskip}
+\def\endpar{\ifhmode\unskip\nobreak\hfill\m@az@stop\fi}
+\newcommand\xtag[1][]{%
+	\tag*{(\theequation)}\refstepcounter{equation}%
+	\ifblank{#1}{}{\label{#1}}%
+	}
+\@ifpackageloaded{xcolor}{}{\RequirePackage{xcolor}}{}
+\colorlet{framecol}{black!66}
+\colorlet{backcol}{black!18}
+\long\def\fancyb@x#1{%
+	\fboxsep\z@\fboxrule1.2\p@%
+	\fcolorbox{framecol}{white}{%
+		\fboxsep3\p@\fboxrule0.8\p@\fcolorbox{white}{backcol}
+		{\kern1em#1\kern1em}%
+	}%
+}
+\azsetupmath{
+	formula/.code=\azsetdeco{formula}{#1},
+	result/.code=\azsetdeco{result}{#1},
+	r/.code=\azsetdeco{result}{#1},
+	formula=\fbox{#1},
+	result=\fancyb@x{#1},
+}
+\def\deco@r{\deco@result}
+\def\decof{\deco@formula}
+
+%%%% Nouveaux environnement pour les maths %%%%
+%%%%  	Les commandes butineuses 	        %%%%
+%%%% 	backends pour l'environnement xmath  et \< ... \> %%%%
+
+%%%%% Triming space, from trimspaces.sty
+%%%%% tribute to Will Robertson
+\catcode`\Q=3
+\newcommand\xtrimspaces[1]{%
+  \romannumeral-`\q\xtrim@trim@\noexpand#1Q Q%
+}
+\long\def\xtrim@trim@#1 Q{\xtrim@trim@@#1Q}
+\long\def\xtrim@trim@@#1Q#2{#1}
+\catcode`\Q=11
+\def\xtrimspaces@noexp#1{%
+  \unexpanded\@xp\@xp\@xp
+    {\xtrimspaces{#1}}%
+}
+\def\xtrimspaces@in#1{%
+  \edef#1{\@xp\xtrimspaces@noexp\@xp{#1}}%
+}
+% Trimming preceding spaces:
+\def\xtrim@pre@space#1{%
+  \romannumeral-`\.\@xp\noexpand#1%
+}
+\def\xtrim@pre@space@noexp#1{%
+  \unexpanded\@xp{%
+    \romannumeral-`\.\@xp\noexpand#1%
+  }%
+}
+\def\xtrim@pre@space@in#1{%
+  \@xp\def\@xp#1\@xp{%
+    \romannumeral-`\.\@xp\noexpand#1%
+  }%
+}
+% Trimming trailing space:
+\catcode`\Q=3
+\def\xtrim@post@space#1{\xtrim@trim@#1Q Q}
+\catcode`\Q=11
+
+\def\xtrim@post@space@noexp#1{%
+  \unexpanded\@xp\@xp\@xp
+  \@xp\@xp\@xp\@xp
+    {\xtrim@post@space{#1}}%
+}
+\def\xtrim@post@space@in#1{%
+  \edef#1{\@xp\xtrim@post@space@noexp\@xp{#1}}%
+}
+
+%% \@center@ s'occupe du placement des éléments, 
+%% esp. vert. et pénalités de rupture de page
+
+\let\eqn@fakecmd\@iden
+\let\eqnframecmd\eqn@fakecmd
+\def\azframe@err#1{\azmath@err
+			{Aucune décoration #1 trouvée. 
+			\MessageBreak Appuyez sur entrée pour l'ignorer}
+			{les valeurs possibles sont formula (par défaut), \MessageBreak 
+				result ou simplement r.}
+		}
+
+\long\def\eqn@prepareboxes#1#2#3{%
+\@bsphack
+	\setbox\z@\hbox{\eqnframecmd{}}
+	\fadjwidth\wd\z@
+	\setbox\azm@boxa\hbox{%
+		\color@begingroup#2\color@endgroup%
+	}
+	\iftextmode
+		\eqn@preparemidbox{#1}{#3}
+		\setbox\azm@boxb\hbox{\az@indisplaytrue%
+			\eqnframecmd{$\m@th
+				\vcenter{
+					\hsize\midwidth\@parboxrestore\box\midbox
+			}$}
+		}
+	\else
+		\setbox\azm@boxb\hbox{\az@indisplaytrue%
+			\eqnframecmd{#3}%
+	}
+	\fi
+	\setlength\az@dima{(\linewidth-\wd\azm@boxb)/2}
+	\unless\ifdim\az@dima<\z@
+		\setlength\az@dimb{\az@dima*(\l@qnshift-\r@qnshift)/10}
+		\setlength\az@dima{\az@dima+\az@dimb}
+		\setlength\az@dimc{\az@dima-\az@dimb}
+	\fi
+\@esphack%
+}
+\ifundef\az@removestar{%
+	\def\az@removestar#1*{#1}%
+	\def\az@removeplus#1+{#1}%
+	\def\az@erasestar*#1+{#1}%
+	\def\if@staratend#1{%
+		\def\in@@{\in@{*!}}%
+		\@xp\in@@\@xp{#1!}%
+		\ifin@%
+			\edef\x@arg{\az@removestar#1}\expandafter\@firstoftwo%
+		\else%
+			\def\x@arg{#1}\expandafter\@secondoftwo%
+		\fi%
+	}
+	\def\if@plusatend#1{%
+		\def\in@@{\in@{+!}}%
+		\@xp\in@@\@xp{#1!}%
+		\ifin@%
+			\edef\x@arg{\az@removeplus#1}\expandafter\@firstoftwo%
+		\else%
+			\def\x@arg{#1}\expandafter\@secondoftwo%
+		\fi%
+	}%
+}{}
+\long\def\eqn@preparemidbox#1#2{%
+\@bsphack
+	\if@staratend{#1}{\def\@renderer{varwidth}}{\def\@renderer{minipage}}
+	\edef\num@pt{\x@arg}
+	\ifnum\numexpr\num@pt<50\relax
+		\ifnum\numexpr\num@pt=0\relax
+			\midwidth\hsize
+		\else
+			\midwidth.5\hsize
+		\fi
+	\else
+		\setlength\midwidth{\hsize*\ratio{\num@pt\p@}{100\p@}}
+	\fi
+	\midwidth=\dimexpr\midwidth-\fadjwidth\relax
+	\eqn@setmidbox{#2}
+	\setlength\midwidth{\wd\midbox+\fadjwidth}
+\@esphack%
+}
+\long\def\eqn@setmidbox#1{%
+	\setbox\midbox\hbox{%
+		\hbadness\@M\az@count\z@%
+		\begin{\@renderer}\midwidth%
+			\az@minipagetrue%
+			\everymath{\displaystyle}%
+			\abovedisplayskip\medcenterskip%
+			\belowdisplayskip\medcenterskip%	
+		 		#1%
+		\end{\@renderer}%
+	}%
+}
+\def\hacked@item{%
+	% \if@inlabel
+	% 	\vskip\bigcenterskip%
+	% \fi%
+	\ifcpge@minipage%
+		\topsep\medcenterskip%
+	\else%
+		\topsep\bigcenterskip%
+	\fi%
+	\itemsep\medcenterskip%
+	\trivlist%
+		\@topsep\topsep%
+		\partopsep\topsep%
+		\@topsepadd\topsep%
+		\parsep\z@skip%
+		\@beginparpenalty\precenterpenalty%
+		\@endparpenalty\postcenterpenalty%
+	\item[]\leavevmode%
+}
+\def\begin@center@{}
+\long\def\eqn@item#1#2#3#4#5{%
+	%\begingroup%
+	\eqn@prepareboxes{#1}{#2}{#3}%
+	\ifdim\wd\azm@boxa>\az@dima\relax%
+		% \ifhmode%
+		% 	\unskip\par\nobreak\vskip-\parskip\noindent%
+		% \fi%
+		%\unskip\unskip\unskip%
+		\ignorespaces\unhbox\azm@boxa\hfill\par%
+		\vskip-\lineskiplimit%
+        \vskip\normallineskiplimit%
+		\vskip\medcenterskip%
+	\fi%
+	\hacked@item%
+	\hb@xt@\z@{\unhcopy\azm@boxa\hss}%
+	\setbox\azm@boxb\hbox{\kern\az@dimb\box\azm@boxb}%
+	\ifdim\wd\azm@boxb>\linewidth%
+		\hskip-\@totalleftmargin%
+		\setbox\azm@boxb\hb@xt@\linewidth{\unhbox\azm@boxb}%
+	\fi%
+	\m@az@stop%
+	\hskip\z@\@plus .5fill%
+	\box\azm@boxb%
+	\hskip\z@\@plus .5fill%
+	\m@az@stop%
+	\protected@edef\az@tmpl{#5}%
+	\ifeqn@number%
+		\refstepcounter{equation}%
+		\setbox\azm@boxc\hbox{%
+			\tag@kern\deco@tag{\theequation}%
+		}%
+		\unless\ifx\@empty\az@tmpl%
+			\Make@Link%
+			\label{eq:\az@problem@id:\az@tmpl}%
+		\fi%
+	\else%
+		\ifx\@empty\az@tmpl%
+			\setbox\azm@boxc\hbox{}%
+		\else%
+			\setbox\azm@boxc\hbox{\tag@kern\deco@tag{\az@tmpl}}%
+		\fi%
+	\fi%
+	\ifdim\wd\azm@boxc>\z@\relax%
+		\ifdim\az@dimc>\wd\azm@boxc\relax%
+			\hb@xt@\z@{\hss\box\azm@boxc}%
+			\setbox\azm@boxc\hbox{\xtrimspaces{#4}}%
+			\ifdim\wd\azm@boxc>\z@%
+				\m@az@par\nobreak\vskip\numvskip\hfill%
+			\fi%
+		\else%
+			\setbox\azm@boxc\hbox{%
+				\xtrimspaces{#4}\unhbox\azm@boxc%
+			}%
+			\m@az@par\nobreak\vskip\numvskip\hfill%
+		\fi%\x@hackitem
+	\else%
+		\setbox\azm@boxc\hbox{\xtrimspaces{#4}}%
+		\ifdim\wd\azm@boxc>\az@dimc%
+			\m@az@par\nobreak\vskip\numvskip\hfill%
+		\fi%
+	\fi%
+	\ifdim\wd\azm@boxc>\z@%
+		\hb@xt@\z@{\hss\box\azm@boxc}%
+	\fi%
+	\ifcpge@minipage%
+		\aftergroup\leavevmode\aftergroup\par%
+	\fi%
+	\endtrivlist%
+}
+\def\@center@#1#2#3#4#5{%
+\begingroup
+	\eqn@item%
+		{#1}% width argument, used only if \iftextmode is true
+		{#2}% left text
+		{#3}% middle text
+		{#4}% right text
+		{#5}%% \label used only if \ifeqn@number is true
+\endgroup%
+}
+
+	
+%%% Interfacce utilisateur (xparse) pour \@center@
+
+\NewDocumentCommand\xmath@init{
+		t\n % numbered or not 
+		t\r % framed text mode for the mid part
+		t\t % unframed text mode for the mid part
+}{
+	\let\eqnframecmd\eqn@fakecmd%
+	\IfBooleanTF{#1}%
+		{\eqn@numbertrue}%
+		{\eqn@numberfalse}%
+	\IfBooleanTF{#2}%
+		{\is@resulttrue}%
+		{\is@resultfalse}%
+	\IfBooleanTF{#3}%
+		{\textmodetrue}%
+		{\textmodefalse}%
+	\xmath@preprocess%
+}
+\NewDocumentCommand\xmath@preprocess{
+	E{
+		\lt % #1 : left text
+		\rt % #2 : right text
+		\ls % #3 : left shift
+		\rs % #4 : right shift 
+		\fr % #5 : framed or not 
+		\al % #6 : aligned or not 
+		\wd % #7 : minipage width, sets \textmodetrue
+		\lb % #8 : \label, if numbered
+		\vs % #9 : skip to add to \bigcenterskip
+	}{{}{}{}{}{@}{@}{}{@}{}}
+}{%
+	\def\minipage@wd{100*}%
+	\def\az@tmpl{#1}%
+	\def\az@tmpr{#2}%
+	\ifblank{#3}{}{\eqn@shift{l}{#3}}%
+	\ifblank{#4}{}{\eqn@shift{r}{#4}}%
+	\ifstrequal{#5}{@}
+		{}
+		{%
+			\ifblank{#5}
+				{\let\eqnframecmd\deco@formula}
+				{%
+					\ifcsundef{deco@#5}
+						{\azframe@err{#5}}
+						{\letcs\eqnframecmd{deco@#5}}%
+				}%
+		}%
+	\ifis@result%
+		\textmodetrue%
+		\let\eqnframecmd\deco@result%
+	\fi%
+	\iftextmode%
+		\ifblank{#7}{}{\def\minipage@wd{#7}}%
+	\fi%
+	\ifstrequal{#6}{@}
+		{\let\@ligned\relax}
+		{%
+			\ifblank{#6}%
+				{\def\@ligned{\aligned[t]}}%
+				{\def\@ligned{\aligned[#6]}}%
+		}%
+	\ifstrequal{#8}{@}%
+		{\def\Make@Link{}\def\az@tmplb{}}%
+		{\label@parts{#8}}%
+	\ifblank{#9}{}{\setlength\bigcenterskip{\bigcenterskip*\real{#9}}}%
+	\xmath@process%
+}
+\long\def\xmath@process#1\end@xmath{%
+	\ifx\relax\@ligned%
+		\iftextmode%
+			\long\def\az@tmpm{#1}%
+		\else%
+			\def\az@tmpm{$\m@th\displaystyle#1$}%
+		\fi%
+	\else%
+		\def\az@tmpm{$\m@th\displaystyle\@ligned#1\endaligned$}%
+	\fi%
+	\@xp\@center@\@xp
+		{\minipage@wd}
+		{\az@tmpl}
+		{\az@tmpm}
+		{\az@tmpr}
+		{\az@tmplb}%
+}
+\def\set@xmatherror{%
+	\let\xmath@orig\<%
+	\long\def\<{%
+		\ifmmode
+			\azmath@err
+				{Commandes \string\< imbriquées}
+				{deux séquences \string\< ...\string \> 
+					ne peuvent être imbriquées ^^Jsauf si
+					la première utilise le modificateur \r 
+				}%
+		\else%
+			\@xp\xmath@orig%
+		\fi%
+	}%
+}
+\NewDocumentEnvironment{xmath}{ t\a +b}
+	{%
+		\set@xmatherror%
+		\xmath@init#2\end@xmath%
+	}{}
+
+\NewDocumentCommand\xmath@single{+r\<\>}
+	{\begin{xmath}#1\end{xmath}}
+\long\def\<{\xmath@single\<}
+
+% \NewDocumentCommand\formule{somo}{%
+% 	\begingroup%
+% 	\long\def\az@tmp{\endgroup\<}%
+% 	\IfBooleanT{#1}{\appto\az@tmp{\n}}%
+% 	\IfValueT{#2}{\appto\az@tmp{\lt{#2}}}%
+% 	\IfValueT{#4}{\IfBooleanTF{#1}{\appto\az@tmp{\lb{#4}}}{\appto\az@tmp{\rt{#4}}}}%
+% 	\appto\az@tmp{#3\>}%
+% 	\az@tmp%
+% }
+% \NewDocumentCommand\resultat{somo}{%
+% 	\begingroup%
+% 	\long\def\az@tmp{\endgroup\<}%
+% 	\IfBooleanTF{#1}{\appto\az@tmp{\n\r}}{\appto\az@tmp{\r}}
+% 	\IfValueT{#2}{\appto\az@tmp{\lt{#2}}}%
+% 	\IfValueT{#4}{\IfBooleanTF{#1}{\appto\az@tmp{\lb{#4}}}{\appto\az@tmp{\rt{#4}}}}%
+% 	\appto\az@tmp{#3\>}%
+% 	\az@tmp%
+% }
+% \NewDocumentEnvironment{mFormule}{oob}{\formule[#1]{#3}[#2]}
+
+%%% Système des références croisées pour les équations
+\ProvideDocumentCommand\MakeLinkTarget{sO{}m}{}
+\ProvideDocumentCommand\LinkTargetOn{}{}
+\ProvideDocumentCommand\LinkTargetOff{}{}
+\ProvideDocumentCommand\NextLinkTarget{m}{}
+\def\set@label@#1#2{%
+	\def\az@tmplb{#2}%
+	\ifstrequal{#1}{f}
+		{\def\Make@Link{\MakeLinkTarget[formule]{equation}}}
+		{%
+			\ifstrequal{#1}{e}
+				{\def\Make@Link{\MakeLinkTarget[egalite]{equation}}}
+				{%
+					\ifstrequal{#1}{i}
+						{\def\Make@Link{\MakeLinkTarget[inegalite]{equation}}}
+						{%
+							\ifstrequal{#1}{m}
+								{\def\Make@Link{\MakeLinkTarget[majoration]{equation}}}
+								{%
+									\ifstrequal{#1}{r}
+										{\def\Make@Link{\MakeLinkTarget[relation]{equation}}}
+										{%
+											\ifstrequal{#1}{p}
+												{\def\Make@Link{\MakeLinkTarget[propriete]{equation}}}
+												{
+													\ifstrequal{#1}{q}
+														{\def\Make@Link{\MakeLinkTarget[equivalence]{equation}}}
+														{\def\Make@Link{\MakeLinkTarget[#1]{equation}}}%
+												}
+										}%
+								}%
+						}%
+				}%
+		}% 
+}
+\def\label@parts#1{%
+	\in@{&}{#1}%
+	\ifin@%
+		\label@parts@#1\az@nil%
+	\else%
+		\def\az@tmplb{#1}%
+		\def\Make@Link{}%
+	\fi%
+}
+\let\az@plural\relax
+\def\def@autorefname#1#2{\csdef{#1autorefname}~##1\null
+	{#2\az@plural\space\deco@tag{##1}\null}}
+\def@autorefname{equation}{équation}
+\def@autorefname{formule}{formule}
+\def@autorefname{relation}{relation}
+\def@autorefname{egalite}{égalité}
+\def@autorefname{inegalite}{inégalité}
+\def@autorefname{propriete}{propriété}
+\def@autorefname{majoration}{majoration}
+\def@autorefname{equivalence}{équivalence}
+\def\label@parts@#1&#2\az@nil{\set@label@{#1}{#2}}%
+\def\az@problem@id{Unnamed}
+\NewDocumentCommand\xeqref{s t\n t\s t\p O{@} m}{%
+		\IfBooleanT{#3}{\def\az@plural{s\global\let\az@plural\relax}}%
+		\ifstrequal{#5}{@}
+			{\let\problem@id\az@problem@id}
+			{\ifblank{#5}{\def\problem@id{Unnamed}}{\def\problem@id{#5}}}%
+		\IfBooleanTF{#2}
+			{\def\eq@ref{\eqref}}
+			{\def\eq@ref{\autoref}}%
+		\IfBooleanTF{#1}
+			{\eq@ref*{eq:\problem@id:#6}}
+			{\eq@ref{eq:\problem@id:#6}}%
+		\IfBooleanT{#4}
+			{\deco@pageref{\pageref*{eq:\problem@id:#6}}}%
+}
+\NewDocumentCommand\xeqpageref{s O{@} m}{
+	\ifstrequal{#2}{@}
+			{\let\problem@id\az@problem@id}
+			{\ifblank{#2}{\def\problem@id{Unnamed}}{\def\problem@id{#2}}}%
+	\IfBooleanTF{#1}
+			{\pageref*{eq:\problem@id:#3}}
+			{\pageref{eq:\problem@id:#3}}
+}
+\azsetdeco{pageref}{\sffamily\smaller{}[p. #1]}
+
+
+%%%%% Interfaces utilisateur pour \@center@ et \begin@center@
+
+%%%% Parsing d'une ligne dans une suite d'équations dans xdevel ou xalign
+\def\eqline@parser@err#1{%
+	\azmath@err{\string #1\space  n'a pas sa place 
+	dans l'argument de \@xp\noexpand
+	\csname eqnline@\romannumeral \eqn@count@ @\endcsname
+	}{
+	équilibrez la ligne \the\eqn@count@\space en plaçant correctement 
+	\string\<, \string\>\space et \string\eline}
+}
+\def\eqline@oneline@err{%
+	\azmath@err{\@xp\string\@currenvir\space 
+	traite une seule ligne
+	}{utilisez xdevel ou xalign pour traiter plusieurs lignes}
+}
+\def\set@eqnerrors{%
+	\let\eqline\relax%
+	\def\<{\eqline@parser@err\<}%
+	\def\>{\eqline@parser@err\>}%
+	\def\eline{\eqline@parser@err\eline}%
+}
+\NewDocumentCommand\eqn@graber{+u\eline}{
+	\lr@textgraber#1\"\"\grab@nil
+}
+\long\def\lr@textgraber#1\"#2\"#3\grab@nil{%
+	\ifblank{#2}
+		{\textmodefalse\lr@graber#1\grab@nil}
+		{
+			\textmodetrue%
+			\eqn@graber@i@{#1}%
+			\eqn@graber@ii@{#2}%
+			\eqn@graber@iii@{#3}%
+			\shipout@eqline%
+		}%
+}
+\long\def\lr@graber#1\<#2\>#3\grab@nil{%
+		\eqn@graber@i@{#1}%
+		\eqn@graber@ii@{#2}%
+		\eqn@graber@iii@{#3}%
+		\shipout@eqline%
+}
+
+\def\endin@graber#1#2{%
+	\endin@graber@#1\end{#2}\grab@nil%
+}
+\def\endin@graber@#1\end#2#3\grab@nil{%
+	\ifdefstring{\@currenvir}{#2}
+		{\azmath@err{\string\eline\space en dehors de #2.
+		La compilation va probablement échouer}{}}%
+}
+\long\def\eqn@graber@i@#1{%
+	\@bsphack
+	\ifblank{#1}{\let\az@tmpx\@empty}
+	{\edef\az@tmpx{%
+		\unexpanded{\def\eqn@num@{i}}%
+		\expandonce\eqn@ltextfunc{%
+			\unexpanded{\xtrimspaces{#1}}%
+		}%
+	}}%
+	\@esphack
+}
+\def\eqn@graber@ii@#1{%
+	\ifblank{#1}{\global\let\az@tmpy\@empty}%
+	{\fake@eqn@mtextfunc{#1\math@nil}%
+		\xdef\az@tmpy{%
+		\unexpanded{\def\eqn@num@{ii}}%
+		\expandonce\eqn@mtextfunc%
+			\unexpanded{#1\math@nil}%
+	}}%
+}
+\def\eqn@graber@iii@#1{%
+	\@bsphack
+	\ifblank{#1}{\let\az@tmpz\@empty}
+	{\edef\az@tmpz{%
+		\unexpanded{\def\eqn@num@{iii}}%
+		\expandonce\eqn@rtextfunc{%
+			\unexpanded{\xtrimspaces{#1}}%
+		}%
+	}}%
+}
+\def\shipout@eqline{%\show\az@tmpz
+	\edef\az@tmpe{%
+		\expandonce\eqn@exec
+			{\expandonce\az@tmpx}
+			{\expandonce\az@tmpy}
+			{\expandonce\az@tmpz}%
+	}%
+	\@esphack%
+	%\show\az@tmpe
+	\az@tmpe%
+	\eqn@finalizer%
+}
+\def\renew@graber#1{%
+	\advance\eqn@count\@ne%
+	\@xp\NewDocumentCommand
+		\csname eqline@\romannumeral\eqn@count\endcsname
+		{u\eline}
+		{%
+		   %\endin@graber{##1}{#1}%
+		   \lr@graber##1\<\>\grab@nil%
+		}%
+	}
+\def\eqn@initgrabers{%
+	\global\advance\eqn@count@\@ne%
+	\cslet{eqline@\romannumeral\eqn@count@ @i}\eqn@graber@i%
+	\cslet{eqline@\romannumeral\eqn@count@ @ii}\eqn@graber@ii%
+	\cslet{eqline@\romannumeral\eqn@count@ @iii}\eqn@graber@iii%
+	\csname eqline@\romannumeral\eqn@count@ @i\endcsname%
+	}
+\def\eqn@initgrabers@{%
+	\eqn@count@\@ne%
+	\let\eqline@i@i\eqn@graber@i%
+	\let\eqline@i@ii\eqn@graber@ii%
+	\let\eqline@i@iii\eqn@graber@iii%
+	\def\eqn@initgrabers{\eqline@oneline@err}%
+	\eqline@i@i%
+	}
+\long\def\eqn@graber@i#1\<{%
+	\@bsphack
+	\edef\az@tmpx{%
+		\unexpanded{\def\eqn@num@{i}}%
+		\expandonce\eqn@ltextfunc{%
+			\unexpanded{\xtrimspaces{#1}}%
+		}%
+	}%
+	\@esphack%
+	%\show\az@tmpx%
+	\csname eqline@\romannumeral\eqn@count@ @ii\endcsname%
+}
+\def\eqn@graber@ii#1\>{%
+	\fake@eqn@mtextfunc#1\math@nil%sets \az@tmpx and \az@tmpz with the \lt and \rt flags 
+	\xdef\az@tmpy{%
+		\unexpanded{\def\eqn@num@{ii}}%
+		\expandonce\eqn@mtextfunc%
+			\unexpanded{#1\math@nil}%
+	}%
+	%\show\az@tmpy
+	\csname eqline@\romannumeral\eqn@count@ @iii\endcsname%
+}
+\def\eqn@graber@iii#1\eline{%
+	\@bsphack
+	\ifundef{\az@tmpz}{
+	\edef\az@tmpz{%
+		\unexpanded{\def\eqn@num@{iii}}%
+		\expandonce\eqn@rtextfunc{%
+			\unexpanded{\xtrimspaces{#1}}%
+		}%
+	}}{}%
+	%\show\az@tmpz
+	\edef\az@tmpe{%
+		\expandonce\eqn@exec
+			{\expandonce\az@tmpx}
+			{\expandonce\az@tmpy}
+			{\expandonce\az@tmpz}%
+	}%
+	\@esphack%
+	%\show\az@tmpe
+	\az@tmpe%
+	\eqn@finalizer%
+}
+\NewDocumentCommand\eqn@finalizer{%
+	s
+	o
+	t\eline 
+	t\xxx@eline
+	+e\end
+}{
+	\IfValueTF{#5}
+		{\end{#5}}%
+		{%
+			\IfBooleanF{#4}
+				{%
+					\IfBooleanT{#1}{\endpar}%
+					\IfValueT{#2}{\vskip#2}%
+					\eqn@initgrabers%
+				}%
+		}%
+}
+\let\l@qnshift\z@
+\let\r@qnshift\z@
+\azsetupmath{%
+	left shift/.code	= \eqn@shift{l}{#1},
+	right shift/.code	= \eqn@shift{r}{#1},
+	rs/.style			= {right shift=#1},
+	ls/.style			= {left shift=#1},
+}
+\def\eqn@shift#1#2{%
+	\ifnumgreater{#2}{10}%
+		{\csdef{#1@qnshift}{10}}%
+		{\csdef{#1@qnshift}{#2}}%
+}
+
+\def\set@eqnparsers#1#2{%
+	\def\do##1{%
+		\ifcsdef{#1@##1}
+			{\csedef{eqn@##1}{\@xp\@nx\csname#1@##1\endcsname}}
+			{}%
+	}%
+	\def\az@tmpe{#2}%
+	\ifblank{#2}
+		{%
+			\def\az@tmpe{%
+				exec,
+				ltextfunc,
+				mtextfunc,
+				rtextfunc,
+				finalizer,
+				shift}%
+		}{}%
+	\@xp\docsvlist\@xp{\az@tmpe}%
+}
+
+%%% generic commands
+\NewDocumentCommand\fake@eqn@mtextfunc{
+	t\n
+	t\r
+	E{\fr\lb\al\wd\lt\rt}{{@}{}{@}{@}{}{}}
+	u\math@nil
+}{%
+	\undef\az@tmpz%
+	\ifblank{#7}{}
+		{%
+			\edef\az@tmpx{%
+				\unexpanded{\def\eqn@num@{i}}%
+				\expandonce\eqn@ltextfunc{%
+					\unexpanded{\xtrimspaces{#7}}%
+				}%
+			}%
+		}%
+	\ifblank{#8}{}
+		{%\def\eqn@num@{iii}
+			\edef\az@tmpz{%
+				\unexpanded{\def\eqn@num@{iii}}%
+				\expandonce\eqn@rtextfunc{%
+					\unexpanded{\xtrimspaces{#8}}%
+				}%
+		}}%
+}
+
+
+%%% Goodies
+\newif\ifeqn@break
+
+\NewDocumentCommand\xbreak{O{t} m}{%
+	\global\eqn@breaktrue%
+	\begin{multlined}[#1]
+		#2
+	\end{multlined}
+}
+\NewDocumentCommand\compactbreak{O{t} m}{%
+	\global\eqn@breaktrue%
+	\ifcompact
+		\begin{multlined}[#1]
+			#2
+		\end{multlined}
+	\else
+		#2
+	\fi
+}
+\NewDocumentCommand\xaligned{O{t} m}{%
+	\begin{aligned}[#1]
+		#2
+	\end{aligned}
+}
+\NewDocumentCommand\xsplit{O{t} m}{%
+	\begin{split}[#1]
+		#2
+	\end{split}
+}
+\NewDocumentCommand\compactsplit{O{t} m}{%
+	\ifcompact
+		\begin{split}[#1]
+			#2
+		\end{split}
+	\else
+		#2
+	\fi
+}
+%% Pour maintenir une compatibilité visuelle lorsque des \cas figurent
+%% dans un environnement {xalign} ou {xdevel} de azmath.sty
+\NewDocumentCommand\math@unit{ s O{} }{%
+	\ifdim\leftmargin=\z@
+		\leftmargin=\leftmargini%
+	\fi
+	\IfBooleanTF{#1}
+		{%
+			\parshape=1 \leftmargin \dimexpr\linewidth-\leftmargin\relax%
+			\ignorespaces
+		}
+		{%
+			\parshape=2	\z@				\linewidth
+						\leftmargin		\dimexpr\linewidth-\leftmargin\relax%
+			\noindent\deco@unit{#2}\enskip\ignorespaces
+		} 
+}
+\def\set@goodies{%
+	\@bsphack
+		\def\unit{\math@unit}
+		\def\xbrk{\xbreak}%
+		\def\xald{\xaligned}%
+		\def\xspl{\xsplit}%
+		\def\xvar{\intvar}%
+		\def\xsavedff{\saved@@@@}%
+		\def\sff{\saved@@@@}%
+	\@esphack%
+}
+
+%%%%%%%% Alignement À la AMSmath
+\newdimen\largetextabove \largetextabove=3\p@
+\newdimen\largetextbelow \largetextbelow=\z@
+\newbox\aztag@box
+\newdimen\aztag@width
+
+\def\tag@kern{\kern\eqn@tagkern}
+\azsetdeco{tag}{(\hskip1\p@#1\hskip1\p@)}
+\newtagform{az}[\deco@tag]{}{}
+\DeclareListParser\doorloop\or
+\DeclareListParser*\fororloop\or
+
+\azsetupmath[math]{%
+	big space/.code 		= \bigcenterskip\glueexpr#1\relax,
+	med space/.code			= \medcenterskip\glueexpr#1\relax,
+	small space/.code		= \smallcenterskip\glueexpr#1\relax,
+	large text above/.code 	= \largetextabove=#1,
+	large text below/.code 	= \largetextbelow=#1,
+	tag sep/.code 			= \dimdef{\eqn@tagkern}{#1},
+	tag sep					= .5em,
+	allow break/.code 		= \allowsdisplaybreak,
+	} 
+	
+%%%% \largetext,  variant of mathools's \shortintertext
+\def\largetext#1{%
+	\ifvmode\else
+		\crcr
+	\fi
+	\noalign{%
+		\vskip-\ht\strutbox%
+		\vskip-\dp\strutbox%
+		\vskip-\lineskiplimit%
+		\unless\ifnum\row@=\z@\relax%
+			\penalty\postdisplaypenalty%
+			\vskip\abovedisplayshortskip%
+			\vskip\normallineskiplimit%
+			\vskip\largetextabove%
+		\fi%
+		\vbox{%
+			\normalbaselines
+			\ifdim
+				\ifdim
+					\@totalleftmargin=\z@\linewidth%
+				\else
+					-\maxdimen%
+				\fi
+				=\columnwidth%
+			\else
+				\parshape\@ne \@totalleftmargin \linewidth%
+			\fi%
+			\noindent\ignorespaces #1\par%
+		}%
+		\penalty\predisplaypenalty%
+		\vskip\abovedisplayshortskip%
+		\vskip-\lineskiplimit%
+		\vskip\normallineskiplimit%
+		\vskip\largetextbelow%
+	}%
+}
+
+%%%%%% Environnement xalign
+%%%%%% generated lists by amsmath's mesuring
+%% \field@lengths : 
+%%		\or/csv list, \or seprating lines and comma the width of every 
+%% 		field in the line. 
+%%			Queue order
+%% 			\fieldlengths@ for the extraction of a line
+%% \tag@lengths : 
+%%		\or list with the width of the tags on every line.
+%% 			Queue order
+%% 			\tag@width for the extraction
+%% \tag@shifts : 
+%%		\or list of 0 and 1, 1 indicating à tag shift of the 
+%% 		corresponding line. 
+%%			Stack order. 
+%% 			\shift@tag for the extraction
+%% \maxcolumn@widths : 
+%%		\or list of the max width on every column. 
+%%			Stack order
+%% 			\maxcol@width for the extraction
+
+
+
+%%%%% Macros pour le traitement des données générées par 
+%%%%% la phase measuring d'amsmath
+\let\tag@presence\@empty	% \or list of 0 and 1 indicating lines with tag
+\let\lastfields@\@empty		% \or list of the indices of the last non empty columns
+\let\firstfields@\@empty	% same thing for the first non empty fields
+\let\ltext@widths\@empty	% \or list of the left text widths
+\let\rtext@widths\@empty	% \or list of the text text widths	
+\let\left@shifts\@empty		% \or list of 0 and 1 indicating shifts for the left 
+							% text. there's no \right@shifts, amsmath's native 
+							% \tag@shifts is used instead 
+
+\def\save@entry#1#2{%
+    \begingroup
+        \let\or\relax
+        \xdef#2{#2\or #1}%
+    \endgroup
+}
+\def\save@csentry#1#2{%
+    \begingroup
+        \let\or\relax
+        \csxdef{#2}{\csname#2\endcsname \or #1}%
+    \endgroup
+}
+\def\get@entry#1#2{%
+	\ifcase\@xp#1#2\fi
+}
+\def\text@mesuring#1#2{%
+	\begingroup%
+		\settowidth\az@dima{#2}
+		\save@csentry{\the\az@dima}{#1@widths}
+	\endgroup
+}
+\def\get@fieldwidth#1#2#3{
+	\begingroup
+	\az@loop\z@
+	\edef\az@tmpb{\fieldlengths@#1}%
+	\@for\az@tmpa:=\az@tmpb\do{%
+            \advance\az@loop\@ne
+            \ifnum\az@loop=#2\relax
+            	\edef\az@tmpc{\az@tmpa}
+			\fi
+	}
+	\xdef#3{\az@tmpc}
+	\endgroup
+}
+\def\save@firstlastfields{
+	\begingroup
+	\def\do@row##1{	
+		\column@\z@
+		\docsvlist{##1}
+		\ifundef\az@tmpfirst
+			{
+				\save@entry0\firstfields@
+				\save@entry0\lastfields@
+			}{
+				\save@entry\az@tmpfirst\firstfields@
+				\save@entry\az@tmplast\lastfields@
+			}
+		\undef\az@tmpfirst
+	}
+	\def\do##1{%
+		\advance\column@\@ne
+		\ifdim##1>\z@\relax
+			\ifundef\az@tmpfirst{\edef\az@tmpfirst{\the\column@}}{}
+			\edef\az@tmplast{\the\column@}
+		\fi
+	}
+	\@xp\fororloop\@xp\do@row\@xp{\field@lengths}
+	\endgroup
+}
+\def\find@maxtagwidth#1{%
+	\begingroup%
+		\settowidth\az@dima{\tag@kern\deco@tag{#1}}
+		\ifdim\az@dima>\aztag@width
+			\global\aztag@width\az@dima
+		\fi
+		\setbox\z@\hbox{\tag@kern\deco@tag{}}
+		\ifdim\az@dima>\wd\z@
+			\save@entry1\tag@presence
+		\else
+			\save@entry0\tag@presence
+		\fi
+	\endgroup
+}
+\def\tag@measuring#1{%
+	\ifeqn@number
+		\stepcounter{equation}%
+		\find@maxtagwidth{\theequation}
+	\else
+		\find@maxtagwidth{#1}
+	\fi
+}
+\def\set@tag#1{%
+	\ifeqn@number
+		\refstepcounter{equation}%
+		\setbox\azm@boxa\hbox{%
+			\tag@kern\deco@tag{\theequation}%
+		}
+		\ifblank{#1}{}{\label{#1}}
+	\else
+		\ifblank{#1}
+			{\setbox\azm@boxa\hbox{}}
+			{%
+				\setbox\azm@boxa\hbox{%
+					\tag@kern\deco@tag{#1}
+				}
+			}
+	\fi
+	\ifdim\wd\azm@boxa>\z@
+		\global\setbox\azm@boxa\hb@xt@\aztag@width{%
+			\hss\unhbox\azm@boxa
+		}
+	\fi
+}
+%%%% Main macro. Prepare the shift tables for left and right text 
+%%%% after amsmath's measuring is done.
+\def\after@measuring{\begingroup
+	\numdef\rows@number{\row@}
+	\save@firstlastfields
+	\row@\z@
+	\column@\z@	
+	\let\left@shifts\@empty
+	\let\tag@shifts\@empty
+	\whileboolexpr{ test {\ifnumless\row@\rows@number} }
+		{
+			\advance\row@\@ne
+			\edef\az@tmpf{\get@entry\row@\firstfields@}
+			\get@fieldwidth\row@\az@tmpf\az@tmpd
+			\az@dimb=\dimexpr-\mintagsep-\az@tmpd\relax
+			\column@\z@
+			\whileboolexpr{ test {\ifnumless\column@{\az@tmpf}} }
+				{
+					\advance\column@\@ne
+					\advance\az@dimb\maxcol@width\column@\relax
+					\unless\ifodd\column@
+						\advance\az@dimb\alignsep@
+					\fi
+				}
+			\az@dimc\get@entry\row@\ltext@widths\relax
+			\ifdim\az@dimb<\az@dimc
+				\save@entry1\left@shifts
+			\else
+				\save@entry0\left@shifts
+			\fi
+		}
+	\row@\z@	\column@\z@
+	\whileboolexpr{ test {\ifnumless\row@\rows@number} }
+		{
+			\advance\row@\@ne
+			\column@\get@entry\row@\lastfields@\relax
+			\get@fieldwidth\row@\column@\az@tmpd
+			\az@dimb=-\az@tmpd
+			\whileboolexpr{ test {\ifnumless\column@{\maxfields@+1}} }
+				{
+					\advance\az@dimb\maxcol@width\column@\relax
+					\unless\ifodd\column@
+						\advance\az@dimb\alignsep@
+					\fi
+					\advance\column@\@ne
+				}
+			\advance\az@dimb-\alignsep@\relax
+			\advance\az@dimb-\mintagsep\relax
+			\az@dimc\get@entry\row@\rtext@widths\relax
+			\if1\get@entry\row@\tag@presence\relax
+				\advance\az@dimc\aztag@width
+			\fi
+			\ifdim\az@dimc<\az@dimb
+				\save@entry0\tag@shifts
+			\else
+				\save@entry1\tag@shifts
+			\fi
+		}
+	\global\let\ltext@widths\@empty
+	\global\let\rtext@widths\@empty
+	\global\let\firstfields@\@empty
+	\global\let\lastfields@\@empty
+	\global\let\tag@presence\@empty
+\endgroup}
+
+\long\def\start@xalign#1#2{%
+    \let\xatlevel@\tw@
+    \maxfields@\m@ne\relax
+    \ifingather@
+        \iffalse{\fi\ifnum0=`}\fi
+        \DN@{\vcenter\bgroup\savealignstate@\xalign@}%
+    \else
+        \ifmmode
+          \if@display
+             \DN@{\align@recover}%
+          \else
+            \nomath@env
+            \DN@{\@namedef{end\az@currenvir}{}\@gobble}%
+          \fi
+        \else
+            $$%
+            \let\split\insplit@
+            \DN@{\xalign@{#1}{#2}}%
+        \fi
+    \fi
+    \collect@body\next@
+}
+\iffalse $$\fi% Hack benin pour interrompre la coloration syntaxique causée par $$ dans l'éditeur . 
+\def\xalign@#1#2#3{%
+	\inalign@true
+	\az@indisplaytrue
+	\chardef\dspbrk@context\z@
+	\ifingather@\else\displ@y@\fi
+	\let\math@cr@@@\math@cr@@@align
+	\let\tag\tag@in@align
+	\let\invalid@tag\xalign@tag@err
+	\let\label\label@in@display
+	\st@rredtrue% set st@r
+	\def\xalign@BODY{#3}
+	\preto\xalign@BODY{#1}
+	\appto\xalign@BODY{#2}
+%	\show\xalign@BODY
+	\xalign@BODY
+	\@xp\def\@xp\xalign@BODY\@xp{\az@tmpw}
+%	\show\xalign@BODY
+	\measure@{\xalign@BODY}%
+	\after@measuring
+	\global\row@\z@
+	\tabskip\eqnshift@
+	\halign\bgroup
+		\span\align@preamble\crcr
+		\xalign@BODY%
+}
+%%%
+\NewDocumentCommand\xalign@finalizer{%
+	s
+	o
+	t\eline 
+	t\xxx@eline
+	+e\end
+}{
+	\IfValueTF{#5}
+		{\end{#5}}
+		{%
+			\IfBooleanF{#4}
+				{%
+					\IfBooleanTF{#1}
+						{\IfValueTF{#2}
+							{\appto\az@tmpw{\math@cr*[#2]}}
+							{\appto\az@tmpw{\math@cr*}}
+						}
+						{\IfValueTF{#2}
+							{\appto\az@tmpw{\math@cr[#2]}}
+							{\appto\az@tmpw{\math@cr}}
+						}
+					\eqn@initgrabers%
+				}%
+		}%
+}
+%%%%
+\long\def\xalign@ltextfunc#1{%
+	\az@indisplayfalse
+	\ifmeasuring@ 
+		\hbox{}
+		\text@mesuring{ltext}{#1}
+	\else
+		\advance\row@\@ne
+		\if0\get@entry\row@\left@shifts\relax
+			\rlap{#1}
+		\else
+			\largetext{#1}
+		\fi
+	\fi
+}
+\def\xalign@rtextfunc#1{%
+	\az@indisplayfalse
+	\ifmeasuring@
+		\hbox{}
+		\tag@measuring{\az@tmpl}
+		\text@mesuring{rtext}{#1}
+		\tag@in@align*{}
+	\else
+		\@xp\set@tag\@xp{\az@tmpl}
+		\global\shifttag@true
+		\raisetag{-\numvskip}
+		\tag@in@align*{#1\box\azm@boxa}
+	\fi
+}
+\NewDocumentCommand\get@firstfield{ u& u\az@nil }{#1}
+\NewDocumentCommand\xalign@mtextfunc{
+	t\n
+	E{\fr\lb\lt\rt\al}{{@}{}{}{}{}}
+	u\math@nil
+}{%
+	\IfBooleanTF{#1}
+		{\global\eqn@numbertrue}
+		{\global\eqn@numberfalse}
+	\ifstrequal{#2}{@}{}
+		{%
+			\ifblank{#2}
+				{\gdef\eqn@framecmd{\Xboxed[formula]}}
+				{\gdef\eqn@framecmd{\Xboxed[#2]}}
+		}
+	\ifundef\saved@@@@
+		{\gdef\saved@@@@{\get@firstfield#7&\az@nil}}
+		{}
+	\gdef\az@tmpl{#3}
+	\eqn@framecmd{#7}
+	\global\let\eqn@framecmd\eqn@fakecmd
+}
+\let\eqn@framecmd\eqn@fakecmd
+\def\xalign@exec#1#2#3{%
+	\appto\az@tmpw{#1 \l@mpshift #2 \r@mpshift #3}
+}
+%%% 
+\def\xalign@shift#1#2{
+	\ifcase\numexpr#2\relax
+		  \or \csdef{#1@mpshift}{&&&&&&}
+		   \or \csdef{#1@mpshift}{&&&&&&&&}
+		    \or \csdef{#1@mpshift}{&&&&&&&&&&}
+		     \or \csdef{#1@mpshift}{&&&&&&&&&&&&}
+		      \or \csdef{#1@mpshift}{&&&&&&&&&&&&&&}
+		       \or \csdef{#1@mpshift}{&&&&&&&&&&&&&&&&}
+		        \or \csdef{#1@mpshift}{&&&&&&&&&&&&&&&&&&}
+		         \or \csdef{#1@mpshift}{&&&&&&&&&&&&&&&&&&&&}
+		          \or \csdef{#1@mpshift}{&&&&&&&&&&&&&&&&&&&&&&}
+		           \or \csdef{#1@mpshift}{&&&&&&&&&&&&&&&&&&&&&&&&}
+	\fi
+}
+\def\l@mpshift{&&&&}
+\def\r@mpshift{&&&&}
+\def\set@eqnskips{%
+	\@bsphack
+		\abovedisplayskip\bigcenterskip\relax%
+		\belowdisplayskip\bigcenterskip\relax%
+		\abovedisplayshortskip\medcenterskip\relax%
+		\belowdisplayshortskip\medcenterskip\relax%
+	\@esphack%
+}
+\NewDocumentEnvironment{xalign}{O{}}{%
+	\aztag@width\z@%
+	\eqn@count@\z@%
+	\let\az@tmpw\@empty%
+	\def\az@currenvir{xalign}%
+	\set@eqnskips%
+	\set@goodies%
+	\set@eqnparsers{xalign}{}%
+	\set@eqnerrors%
+	\azsetupmath{#1}%
+	\start@xalign{\eqn@initgrabers}{\eline\xxx@eline}
+}{%
+	\unset@goodies%
+	\endalign%
+}
+\def\unset@goodies{%
+	\@bsphack%
+		\global\let\eqnframecmd\eqn@fakecmd%
+		\gundef\saved@@@@%
+	\@esphack%
+}
+% % patch for the usual alignement env of AMSmath to support the \< \> syntax
+% \NewDocumentCommand\az@eline{
+% 	s
+% 	O{\z@}
+% 	t\eline
+% 	e\end
+% }{
+% 	\IfValueTF{#4}
+% 		{\end{#4}}
+% 		{
+% 			\IfBooleanTF{#1}
+% 				{\math@cr*[#2]}
+% 				{\math@cr[#2]}
+% 		}
+% }
+% \NewDocumentCommand\az@bline{
+% 	 t{\n}
+% 	 E{\fr\lb}{{@}{}}
+% 	 u{\>}
+% }{%
+% 	\IfBooleanTF{#1}
+% 		{\eqn@number{#3}}
+% 		{\az@nonumber{#3}}
+% 	\ifstrequal{#2}{@}
+% 		{\global\let\eqn@framecmd\eqn@fakecmd}	
+% 		{%
+% 			\ifblank{#2}
+% 				{\gdef\eqn@framecmd{\Xboxed[formula]}}
+% 				{\gdef\eqn@framecmd{\Xboxed[#2]}}
+% 		}
+% 	\ifundef\saved@@@@
+% 		{\gdef\saved@@@@{\get@firstfield#4&\az@nil}}
+% 		{}
+% 	\eqn@framecmd{#4}
+% }
+% \def\eqn@number#1{%
+% 	\ifst@rred
+% 		\st@rredfalse\global\@eqnswtrue
+% 		\ifblank{#1}{}{\label{#1}}
+% 	\else
+% 		\ifblank{#1}{}{\label{#1}}
+% 	\fi
+% }
+% \def\az@nonumber#1{%
+% 	\ifst@rred
+% 		\ifblank{#1}{}{\tag*{\deco@tag{#1}}}
+% 	\else
+% 		\ifblank{#1}{\nonumber}{\tag*{\deco@tag{#1}}}
+% 	\fi
+% }	
+% \def\Let@ig{%
+% 	\let\az@currenvir\@currenvir%
+% 	\set@eqnskips%
+% 	\set@goodies
+% 	\def\eline{\az@eline}%
+% 	\def\<{\az@bline}%
+% 	\let\eqnline\@empty%
+% 	\def\xsavedff{\saved@@@@}%
+% 	\def\sff{\saved@@@@}%
+% 	\az@indisplaytrue%
+% 	\ignorespaces
+% }
+%%% Tag's style and patching
+\def\tagform@err{%
+	\azmath@err{%
+		\string\usetagform\space n'est pas disponible
+		\MessageBreak utilisez \string\azsetdeco\string{tag\string}
+		pour modifier le style des tags.
+	}{Voir le manuel}
+}
+\AtBeginDocument{%
+	%\preto\align{\Let@ig}%
+	%\preto\flalign{\Let@ig}%
+	%\preto\aligned{\Let@ig}%
+	%\preto\equation{\Let@ig}%
+	%\cspreto{align*}{\Let@ig}%
+	%\cspreto{flalign*}{\Let@ig}%
+	%\cspreto{equation*}{\Let@ig}%
+	%\appto\endalign{\unset@goodies}
+    \usetagform{az}
+    \makeatletter
+    	\def\usetagform{\tagform@err}
+	\makeatother
+}
+
+%%%% 
+%% \xboxed normale
+
+\NewDocumentCommand\MakeXboxedCommand{mm}{
+	\newcommand#1[1]{%
+		\let\bgroup{\romannumeral-`}%
+		\csuse{xbxd\@xp\@gobble\string#1}##1&&\az@nil
+	}
+	\csdef{xbxd\@xp\@gobble\string#1}##1&##2&##3\az@nil{%
+		\settowidth\az@dimc{#2{}}%
+		\ifnum0=`{}\fi%
+		\setbox\z@\hbox{#2{$\displaystyle##1{}\m@th$\kern-.5\az@dimc}}%
+		\edef\az@tmpa{%
+			\kern\wd\z@&\kern-\the\wd\z@%
+		}%
+		\ifblank{##1##2}{}
+			{%
+				\az@tmpa%
+				#2{\m@th$\displaystyle ##1##2$}%
+			}%
+  }
+}	
+\MakeXboxedCommand\xboxed\deco@formula
+\MakeXboxedCommand\xdeco@formula\deco@formula
+\MakeXboxedCommand\xdeco@result\deco@result
+\def\xdeco@r{\xdeco@result}
+
+%%%% \Xboxed, version récursive de \xboxed
+\NewDocumentCommand\Xboxed
+{
+	O{formula} >{\SplitList{&}} m
+}{
+	\ifcsundef{xdeco@#1}
+		{\azframe@err{#1}}
+		{\gdef\eqnframecmd{\csname xdeco@#1\endcsname}}
+	\xboxed@rec@#2@@\frame@nil%
+}
+\def\xboxed@rec@#1#2#3\frame@nil{%
+	\gdef\@tmpa{#3}%
+	\ifstrequal{#1}{@}{}
+	{
+		\ifstrequal{#2}{@}
+			{\eqnframecmd{#1}}
+			{%
+				\eqnframecmd{#1&#2}%
+				\@xp\@ifnc@t\@tmpa\frame@nil%
+			}%
+	}%
+}
+\def\@ifnc@t#1#2\frame@nil{%
+	\ifstrequal{#1}{@}{}{&\@xp\xboxed@rec@#1#2\frame@nil}%
+}			
+
+%%% AMSmath end %%%%%%%
+
+
+    
+%%% Quantificateurs 
+\azsetupmath{%
+	forall sep/.code 2 args	= \def\forall@sep{#1}\def\forall@dsep{#2},
+	exists sep/.code 2 args	= \def\exists@sep{#1}\def\exists@dsep{#2},
+	forall sep				= {,\ }{\quad},
+	exists sep				= {\ ;\ }{\enskip;\enskip},
+}
+
+\NewDocumentCommand\xforall{
+	s
+	t\M
+	t\p
+	u{\;} 
+}{%
+	\mathchoice 
+		{\forall #4 \forall@dsep}
+		{%
+			\IfBooleanTF{#1}
+				{\forall #4 \forall@sep}
+				{
+					\text{%
+						\IfBooleanTF{#2}{Pour tou}{pour tou}%
+			 			\IfBooleanTF{#3}{s\ }{t\ }%
+					}
+					#4 \text{,\ }
+				}
+		}{\text{\text{Hoho ! c'est trop sérré ici}}}{}
+}
+\NewDocumentCommand\xexists{%
+	s
+	t!
+	t\M
+	t\f
+	t\p
+	u{\;}
+	%E{\tq}{{ tel que }}
+}{%
+	\mathchoice
+		{\exists \IfBooleanT{#2}{!} #6 \exists@dsep}
+		{\IfBooleanTF{#1}
+			{\exists \IfBooleanT{#2}{!} #6 \exists@sep}
+			{
+				\text{\IfBooleanTF{#3}{I}{i}l existe\ }
+				#6 \IfBooleanT{#2}{\text{ unique\IfBooleanT{#5}{s} }} \text{ tel\IfBooleanT{#4}{le}\IfBooleanT{#5}{s} que\ }
+			}
+		}{\text{Hoho ! c'est trop sérré ici}}{}
+}
+
+
+%%% Fractions
+%%% originated from nicefrac.sty
+%%% tribute to  Axel Reichert
+
+\azsetupmath[fractions]{%
+	delimiter/.code 	= \def\xfrac@dlm{#1},
+	d/.style			= {delimiter = #1},
+	d/.default			=\prt,
+}
+\def\azmathset@frac{\azsetupmath[fractions]}
+\newlength{\az@RaiseD}
+\newlength{\az@RaiseT}
+\newlength{\az@RaiseS}
+
+\def\cst@D{\displaystyle\def\cst@D{\cst@T}}
+\def\cst@T{\textstyle\def\cst@T{\cst@S}}
+\def\cst@S{\scriptstyle\def\cst@S{\cst@SS}}
+\def\cst@SS{\scriptscriptstyle}
+\def\just@netoken#1{\just@netoken@#1&\az@nil}
+\def\just@netoken@#1#2\az@nil{%
+	\ifstrequal{#2}{&}
+		{\def\xfrac@dlm##1{##1}}
+		{}
+}
+\def\xfrac@slash{\mkern-1mu/\mkern-1mu}
+\newcommand\xfrac@[3][]{%
+	%\delimiterfactor701%\relax\delimitershortfall2pt\relax
+	\azmathset@frac{#1}
+	\settoheight{\az@RaiseD}
+		{\ensuremath{\displaystyle M}}%
+	\settoheight{\az@RaiseT}
+		{\ensuremath{\textstyle M}}%
+	\settoheight{\az@RaiseS}
+		{\ensuremath{\scriptstyle M}}%
+	\settoheight{\@tempdima}
+		{\ensuremath{\scriptscriptstyle M}}%
+	\addtolength{\az@RaiseD}
+		{-\az@RaiseS}%
+	\addtolength{\az@RaiseT}
+		{-\az@RaiseS}%
+	\addtolength{\az@RaiseS}
+		{-\@tempdima}%
+	\mathchoice
+		{\frac{#2}{#3}}%
+		{\raisebox{\az@RaiseT}
+			{%
+				$\m@th\cst@T\just@netoken{#2}
+				\xfrac@dlm{#2}\xfrac@slash$%
+			}%
+		}%
+		{\raisebox{\az@RaiseS}
+			{%
+				$\m@th\cst@S\just@netoken{#2}
+				\xfrac@dlm{#2}\xfrac@slash$%
+			}%
+		}%
+		{\raisebox{\az@RaiseS}
+			{%
+				$\m@th\cst@SS\just@netoken{#2}
+				\xfrac@dlm{#2}\xfrac@slash$%
+			}%
+		}%
+	\bgroup
+	\mathchoice
+		{}%
+		{\cst@T\just@netoken{#3}\cramped{\xfrac@dlm{#3}}}%
+		{\cst@S\just@netoken{#3}\cramped{\xfrac@dlm{#3}}}%
+		{\cst@SS\just@netoken{#3}\cramped{\xfrac@dlm{#3}}}%
+	\egroup
+}
+\NewDocumentCommand\xfrac{s O{d}mm}{%
+		\IfBooleanTF{#1}
+			{\frac{#3}{#4}}
+			{\xfrac@[#2]{#3}{#4}}
+} 
+    
+%%%%%% Délimitateurs
+
+%% Some ideas borrowed from mathtools and physics.sty
+
+%%%for test needs, \prr defined a la mathtools 
+%\AtBeginDocument{
+	%\delimiterfactor850
+	%\delimitershortfall-1sp
+%}
+\DeclarePairedDelimiter\pr()
+
+%% Sub/Sup Stacking and Cramping
+
+\let\mathnlap\@iden
+\newenvironment{xsubarray}[1]{%
+	\vcenter\bgroup
+		\Let@ \restore@math@cr \default@tag
+		\baselineskip\fontdimen10 
+		\scriptfont\tw@
+		\advance\baselineskip\fontdimen12 
+		\scriptfont\tw@
+		\lineskip\thr@@\fontdimen8 
+		\scriptfont\thr@@
+		\lineskiplimit\lineskip
+		\ialign\bgroup\ifx c#1\hfil\fi
+			$	
+				\m@th\scriptstyle
+				\kern-\nulldelimiterspace
+				\radical\z@{##}
+			$%
+		\hfil\crcr
+}{%
+	\crcr\egroup\egroup
+}
+\newenvironment{xssubarray}[1]{%
+  \vcenter\bgroup
+		\Let@ \restore@math@cr \default@tag
+		\baselineskip\fontdimen10 
+		\scriptscriptfont\tw@
+		\advance\baselineskip\fontdimen12 
+		\scriptscriptfont\tw@
+		\lineskip\thr@@\fontdimen8 
+		\scriptscriptfont\thr@@
+		\lineskiplimit\lineskip
+		\ialign\bgroup\ifx c#1\hfil\fi
+			$%	
+				\m@th\scriptscriptstyle
+				\kern-\nulldelimiterspace
+				\radical\z@{##}
+			$%
+		\hfil\crcr
+}{%
+	\crcr\egroup\egroup
+}
+\newcommand{\xcsubstack}[2][]{
+	\azsetupmath[supsub]{#1}
+	\xsubarray{c}#2\endxsubarray
+}
+\newcommand{\xlsubstack}[2][]{
+	\azsetupmath[supsub]{#1}
+	\xsubarray{l}#2\endxsubarray
+}
+\let\xnsubstack\fake@cmd
+\newcommand{\xscsubstack}[2][]{
+	\azsetupmath[supsub]{#1}
+	\xssubarray{c}#2\endxssubarray
+}
+\newcommand{\xslsubstack}[2][]{
+	\azsetupmath[supsub]{#1}
+	\xssubarray{l}#2\endxssubarray
+}
+\let\xsnsubstack\fake@cmd
+
+\azsetupmath[supsub]{
+	.unknown/.code=\relax,
+	l/.code				= \def\lsp@s{l},
+	c/.code				= \def\lsp@s{c},
+	r/.code				= \def\lsp@s{r}, 
+	position/.is choice,
+	position/l/.style	= l,
+	position/c/.style	= c,
+	position/r/.style	= r,
+	s/.code				= \let\ss@style\scriptstyle,
+	ss/.code			= \let\ss@style\scriptscriptstyle,
+	style/.is choice,
+	style/s/.style		= s
+	style/ss/.style		= ss,
+	style/empty/.code	= \let\ss@style\@empty,
+	style/empty,
+	lap/.code			= \ifcsdef{math#1lap}
+							{\letcs\ss@lap{math#1lap}}
+						   	{\let\ss@lap\mathnlap},
+	ll/.style			= {lap=l},
+	cl/.style			= {lap=c},
+	rl/.style			= {lap=r},
+	nl/.style			= {lap=n},
+	stack/.code			= \ifx\ss@style\scriptscriptstyle
+							\ifcsdef{xs#1substack}
+						  		{\letcs\ss@stack{xs#1substack}}
+								{\let\ss@stack\xnsubstack}
+						  \else
+						   	\ifcsdef{x#1substack}
+						  		{\letcs\ss@stack{x#1substack}}
+								{\let\ss@stack\xnsubstack}  	
+						 \fi,
+	ls/.style			= {stack=l},
+	cs/.style			= {stack=c},
+	ns/.style			= {stack=n},
+	smash/.code			= \def\ss@smashb{\smash[b]}
+							\def\ss@smasht{\smash[t]},
+	sm/.style			= smash,
+	limits/.code		= \ifcsdef{#1limits}{\letcs\ss@limits{#1limits}}
+						   {\let\ss@limits\@empty},
+	lim/.style			={limits={}},
+	nolim/.style		={limits=no},
+	h/.code				= \def\cramp@h{#1mu},
+	t/.code				= \def\cramp@t{#1ex/10},
+	b/.code				= \def\cramp@b{#1ex/10},
+	h/.default		=3,
+	t/.default		=1,
+	b/.default		=1,
+	.save/.code			= \edef\h@backup{\cramp@h}
+						  \edef\b@backup{\cramp@b}
+						  \edef\t@backup{\cramp@t}
+						  \let\last@stack\ss@stack
+						  \let\last@lap\ss@lap,
+	.restore/.code		= \edef\cramp@h{\h@backup}
+						  \edef\cramp@b{\b@backup}
+						  \edef\cramp@t{\t@backup}
+						  \let\ss@style\@empty
+						  \let\ss@stack\last@stack
+						  \let\ss@lap\last@lap,
+	noadjust/.style		= {h=0,t=0,b=0},
+}
+\azsetupmath[supsub]{%
+	h=3,
+	t=2.5,
+	b=2.5,
+	.save,
+	lap=n,
+	stack=n,
+	limits={},
+	style=empty
+}
+\let\ss@style\@empty
+\let\ss@smasht\fake@cmd
+\let\ss@smashb\fake@cmd
+
+\NewDocumentCommand{\raisemath}{m}{\mathpalette{\raise@math{#1}}}
+\def\raise@math#1#2#3{
+	\let\cur@style#2
+	\raisebox{#1}{%
+		$\m@th\cur@style\ss@style{#3}$%
+	}
+}
+\NewDocumentCommand\xsubsup{%
+	o 
+	E{_^}{{}{}}
+}{%
+	\IfValueT{#1}{\azsetupmath[supsub]{.save,#1}}%
+	\ifblank{#2}{}
+		{%
+			_{{}\raisemath{\cramp@b}
+				{\mkern-\cramp@h\ss@lap{\ss@smashb{\ss@stack{\ss@style#2}}}}
+			}
+		}%
+	\ifblank{#3}{}
+		{%
+			^{{}\raisemath{-\cramp@t}
+				{\mkern-\cramp@h\ss@lap{\ss@smasht{\ss@stack{\ss@style#3}}}}
+			}
+		}%
+	\IfValueT{#1}{\azsetupmath[supsub]{.restore}}
+}
+\NewDocumentCommand\fake@subsup{%
+	o 
+	E{_^}{{}{}}
+}{%
+	\ifblank{#2}{}{_{#2}}
+	\ifblank{#3}{}{^{#3}}
+}
+\def\x@subsup{\fake@subsup}
+\def\xss{\xsubsup}
+
+%%% Pushing
+
+\NewDocumentCommand\xpush{ m }{%
+	\begingroup
+	\@ifisnumber{#1}
+		{%
+			\edef\@push{\endgroup%
+				\noexpand\@xp\tmspace\temp@s{\temp@n mu}% 
+					{\dimexpr\temp@n em/18}
+			}
+		}
+		{\azsetupmath[pushing]{#1}}
+	\@push%
+}
+\azsetupmath[pushing]{
+	s/.code		= \def\@push{\endgroup\,},
+	-s/.code	= \def\@push{\endgroup\!},
+	m/.code		= \def\@push{\endgroup\:},
+	-m/.code	= \def\@push{\endgroup\tmspace-\medmuskip{.2222em}},
+	b/.code		= \def\@push{\endgroup\;},
+	-b/.code	= \def\@push{\endgroup\tmspace-\thickmuskip{.2777em}},
+	q/.code		= \def\@push{\endgroup\quad},
+	-q/.code	= \def\@push{\endgroup\hskip-1em\relax},
+	qq/.code	= \def\@push{\endgroup\qquad},
+	-qq/.code	= \def\@push{\endgroup\hskip-2em\relax},
+}
+	
+%% Préprocesseur des arguments
+\newif\ifbr@@k
+\def\set@dlmbig#1{%
+	\ifcase#1   \set@dlmsize@
+		   \or \set@dlmsize\big
+	  		\or \set@dlmsize\Big
+	    	 \or \set@dlmsize\bigg
+	      	  \or \set@dlmsize\Bigg
+	\else
+		\set@dlmsize@lr
+	\fi
+}
+\def\set@dlmoutbigggg#1{%
+	\numdef\@tmpx{\dlm@count@}
+	\ifnum\@tmpx<1
+		\def\@tmpx{1}
+	\else
+		\aftergroup\dlm@aftergroup@
+	\fi
+	\ifnumgreater{#1}{4}{}{
+	\xdef\az@tmpti{%
+		\def\@xp\@nx\csname 
+				dlm@\romannumeral\@tmpx @outsize%
+			\endcsname{#1}
+		\numdef\@xp\@nx\csname 
+				dlm@\romannumeral\numexpr\@tmpx+1 @outsize%
+			\endcsname{\ifnumgreater{#1}{1}{#1-1}{0}}
+		\numdef\@xp\@nx\csname 
+				dlm@\romannumeral\numexpr\@tmpx+2 @outsize%
+			\endcsname{\ifnumgreater{#1}{2}{#1-2}{0}}
+		\numdef\@xp\@nx\csname 
+				dlm@\romannumeral\numexpr\@tmpx+3 @outsize%
+			\endcsname{\ifnumgreater{#1}{3}{#1-3}{0}}
+	}
+	\az@tmpti
+}}
+\def\dlm@aftergroup@{\aftergroup\az@tmpti}
+\azsetupmath{%
+	max delim size/.code	= \set@dlmoutbigggg{#1},
+	mds/.style				={max delim size=#1}
+}
+\def\dlm@i@outsize		{5}
+\def\dlm@ii@outsize		{5}
+\def\dlm@iii@outsize	{5}
+\def\dlm@iv@outsize		{5}
+\def\dlm@v@outsize		{5}
+% \es :  espace 
+% \sa :  la taille se propage à tous les délimiteurs de même niveau.
+% \sz :  effet valable pour le délimiteur suivant
+\NewDocumentCommand\dlm@PREPROCESS{
+	s
+	m
+	t\l
+	t\r
+	E{\es\sa\sz\br}{{@}{@}{@}{@}}
+}{%
+	\advance\dlm@count@\@ne
+	\IfBooleanF{#1}{%
+		\def\dlmpr@c@{\dlmpr@c}%
+		\IfBooleanT{#3}{\def\dlmpr@c@{\dlmpr@cl}}%
+		\IfBooleanT{#4}{\def\dlmpr@c@{\dlmpr@cr}}%
+	}
+	\ifstrequal{#8}{@}
+		{\br@@kfalse}
+		{
+			\br@@ktrue%
+			\ifblank{#8}
+				{\def\vert@br@@k{t}}
+				{\def\vert@br@@k{#8}}%
+		}%
+	\ifstrequal{#5}{@}{}
+		{\ifblank{#5}
+			{\xpush{3}}
+			{\xpush{#5}}%
+		}%
+	\begingroup%
+	\@ifisnumber{#6}{\set@dlmoutbigggg{#6}}{}%
+	\@ifisnumber{#7}
+		{\set@dlmbig{#7}}
+		{\set@dlmbig{\csuse{dlm@\romannumeral\dlm@count@ @outsize}}}%
+	#2%
+}
+
+%%%%%%%%%%%% Les réglages essentiels sont là %%%%%%%%%%
+\def\kill@mp#1{%
+	\begingroup\catcode`\&=9\let\\\relax\scantokens{#1}\endgroup
+}
+\newcommand\ldelimsize[2][]{\relax}
+\newcommand\rdelimsize[2][]{\relax}
+\def\set@dlmsize#1{%
+	\edef\@taille{\@xp\@gobble\string#1}
+	\renewcommand\ldelimsize[2][]{%
+		\ifstrequal{##2}{.}
+		{\mathopen{}}
+		{\mathopen{\@nameuse{\@taille l}##2}}
+	}%
+	\renewcommand\rdelimsize[2][]{%
+		\ifstrequal{##2}{.}
+		{\mathclose{}}
+		{\mathclose{\@nameuse{\@taille r}##2}}
+	}%
+	\letcs\msize{mdelimesize@\@taille}%
+	\def\tq{\given}
+}
+\def\set@dlmsize@lr{%
+	\renewcommand\ldelimsize[2][]{%
+		\ifbr@@k
+			\mathopen{\mleft##2\vphantom{\kill@mp{##1}}\mright.}
+		\else
+			%\mathopen{}\mathclose\bgroup\left##2
+			\mleft##2
+		\fi
+	}
+	\renewcommand\rdelimsize[2][]{%
+		\ifbr@@k
+			\mathopen{\mleft.\vphantom{\kill@mp{##1}}\mright##2}
+		\else
+			%\aftergroup\egroup\right##2
+			\mright##2
+		\fi
+	}
+	\def\msize##1{%
+		\mkern\GivSpace\middle##1
+		\mkern\GivSpace\mathopen{}
+	}
+	\def\tq{\given}
+}
+\def\set@dlmsize@{%
+	\renewcommand\ldelimsize[2][]{
+		\ifstrequal{##2}{.}
+			{\mathopen{}}
+			{\mathopen{##2}}
+	}% 
+	\renewcommand\rdelimsize[2][]{
+		\ifstrequal{##2}{.}
+			{\mathclose{}}
+			{\mathclose{##2}}
+	}%
+	\let\msize\relax
+	\def\given##1{\:\GivenSep\:\mathopen{}}
+	\let\tq\given
+	}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\mdelimesize@#1{%
+	\mkern\GivSpace
+		#1
+	\mkern\GivSpace\mathopen{}
+}
+\def\mdelimesize@big#1{%
+	\mkern\GivSpace
+		\big#1
+	\mkern\GivSpace\mathopen{}
+}
+\def\mdelimesize@Big#1{%
+	\mkern\GivSpace
+		\Big#1
+	\mkern\GivSpace\mathopen{}
+}
+\def\mdelimesize@bigg#1{%
+	\mkern\GivSpace
+		\bigg#1
+	\mkern\GivSpace\mathopen{}
+}
+\def\mdelimesize@Bigg#1{%
+	\mkern\GivSpace
+		\Bigg#1
+	\mkern\GivSpace\mathopen{}
+}
+
+\NewDocumentCommand\given{ m }{%
+	\ifblank{#1}{\msize\GivenSep}
+	{\ifcase#1 
+		    \mdelimesize@\GivenSep
+		 \or \mdelimesize@big\GivenSep
+		  \or \mdelimesize@Big\GivenSep
+		   \or \mdelimesize@bigg\GivenSep
+		    \or \mdelimesize@Bigg\GivenSep
+	\else
+		\msize\GivenSep
+	\fi}
+}
+
+%% méta-commandes internes pour construire des macros avec gestion 
+%% des délimiteurs.
+
+\def\dlm@last@arg{}
+\let\dlm@mid@func\@iden
+\def\after@xsubsup#1{\endgroup#1\endgroup}
+\def\midProc#1{%
+	\def\ProcessedArgument{\mid@lefthook#1\mid@righthook}
+}
+\def\mid@Proc#1{%
+	\def\ProcessedArgument{#1}
+}
+\def\reset@Proc{\let\midProc\mid@Proc}
+\let\mid@lefthook\@empty
+\let\mid@righthook\@empty
+\def\delimafterhook{}
+\def\delimbeforehook{}
+\NewDocumentCommand\dlm@lasthook@
+	{
+		m
+		D""{\dlm@last@arg}
+		t\stop
+	}{
+			\kern-2\nulldelimiterspace
+			\mleft.
+				\vphantom{\dlm@mid@func{\kill@mp{#1}}}
+				\delimafterhook
+			\mright.
+			\@xp\after@xsubsup\@xp{#2}
+			\IfBooleanF{#3}\delim
+	}
+\def\renew@delim#1#2#3#4{%
+	\@xp\NewDocumentCommand\csname 
+			delim@\romannumeral\dlm@count@%
+		\endcsname
+		{%
+			>{\midProc}r#1#2 
+			e{\ss} 
+			E{_^}{{}{}} 
+		}{
+			\delimbeforehook
+			\ifbr@@k
+				\begin{multlined}[\vert@br@@k]
+					\ldelimsize[##1]{#3}
+					##1
+					\rdelimsize[##1]{#4}
+				\end{multlined}
+			\else
+				\ldelimsize{#3}\dlm@mid@func{##1}\rdelimsize{#4}
+			\fi
+			\IfValueTF{##2}
+				{\def\x@subsup{\xsubsup[##2]}}
+				{\def\x@subsup{\fake@subsup}}
+			\x@subsup_{##3}^{##4}
+			\dlm@lasthook@{##1}
+		}
+}
+\def\renew@deliml#1#2{%
+	\@xp\NewDocumentCommand\csname
+			delim@\romannumeral\dlm@count@%
+		\endcsname
+		{%
+			>{\midProc}r#1\. 
+			e{\ss} 
+			E{_^}{{}{}} 
+		}{
+	  		\delimbeforehook
+			\ifbr@@k
+				\begin{multlined}[\vert@br@@k]
+					\ldelimsize[##1]{#2}##1\rdelimsize[##1].
+				\end{multlined}
+			\else
+				\ldelimsize{#2} \dlm@mid@func{##1} \rdelimsize.
+			\fi
+			\IfValueTF{##2}
+				{\def\x@subsup{\xsubsup[##2]}}
+				{\def\x@subsup{\fake@subsup}}
+			\x@subsup_{##3}^{##4}
+			\dlm@lasthook@{##1}
+		}
+}
+\def\renew@delimr#1#2{%
+	\@xp\NewDocumentCommand\csname
+			delim@\romannumeral\dlm@count@%
+		\endcsname
+		{%
+			>{\midProc}r\.#1 
+			e{\ss} 
+			E{_^}{{}{}}
+		}{
+	  		\delimbeforehook
+			\ifbr@@k
+				\begin{multlined}[\vert@br@@k]
+					\ldelimsize[##1]. ##1 \rdelimsize[##1]{#2}
+				\end{multlined}
+			\else
+				\ldelimsize. \dlm@mid@func{##1} \rdelimsize{#2}
+			\fi
+			\IfValueTF{##2}
+				{\def\x@subsup{\xsubsup[##2]}}
+				{\def\x@subsup{\fake@subsup}}
+			\x@subsup_{##3}^{##4}
+			\dlm@lasthook@{##1}
+		}
+}
+\def\renew@fdelim#1#2#3#4{%
+	\@xp\NewDocumentCommand\csname
+			delim@\romannumeral\dlm@count@%
+		\endcsname
+		{%
+			>{\midProc}r#1#2 
+			e{\ss} 
+			E{_^}{{}{}} 
+		}{
+	  		\delimbeforehook
+			\ifblank{##3}
+				{\ifblank{##4}{{}##1{}}{\ldelimsize{#3}##1\rdelimsize{#4}}}
+				{\ldelimsize{#3}##1\rdelimsize{#4}}
+			%\ldelimsize{#3}##1\rdelimsize{#4}
+			\IfValueTF{##2}
+				{\def\x@subsup{\xsubsup[##2]}}
+				{\def\x@subsup{\fake@subsup}}
+			\x@subsup_{##3}^{##4}
+			\delimafterhook
+			\dlm@lasthook@
+		}
+}
+\def\renew@normal@delim{%
+	\@xp\NewDocumentCommand\csname
+			delim@\romannumeral\dlm@count@%
+		\endcsname
+		{%
+			>{\midProc}m 
+			e{\ss} 
+			E{_^}{{}{}} 
+		}{
+			\delimbeforehook
+			\ifbr@@k
+				\begin{multlined}[\vert@br@@k]
+					##1
+				\end{multlined}
+			\else
+				\dlm@mid@func{##1}
+			\fi
+			\IfValueTF{##2}
+				{\def\x@subsup{\xsubsup[##2]}}
+				{\def\x@subsup{\fake@subsup}}
+			\x@subsup_{##3}^{##4}
+			\dlm@lasthook@{##1}
+		}
+}
+\def\renew@normal@fdelim{%
+	\@xp\NewDocumentCommand\csname
+			delim@\romannumeral\dlm@count@%
+		\endcsname
+		{%
+			>{\midProc}m 
+			e{\ss} 
+			E{_^}{{}{}} 
+		}{
+			\delimbeforehook
+			##1
+			\delimafterhook
+			\IfValueTF{##2}
+				{\def\x@subsup{\xsubsup[##2]}}
+				{\def\x@subsup{\fake@subsup}}
+			\x@subsup_{##3}^{##4}
+			\mleft.\vphantom{##1}\delimafterhook\mright.
+			\dlm@lasthook@
+		}
+}
+\def\dlm@dummy@{\dlm@lasthook@{\delimafterhook}\stop}
+\NewDocumentCommand\create@basic@delim{
+	m
+	mm 
+	O{#1}
+}{
+	\@xp\@xp\@xp\NewDocumentCommand\@xp
+		\csname dlm@#1\endcsname
+		{%
+			>{\midProc}m 
+			e{\ss} 
+			E{_^}{{}{}}  
+		}{
+			\delimbeforehook
+			\ifbr@@k
+				\begin{multlined}[\vert@br@@k]
+					\ldelimsize[##1]{#2}
+					##1
+					\rdelimsize[##1]{#3}
+				\end{multlined}
+			\else
+				\ldelimsize{#2}\dlm@mid@func{##1}\rdelimsize{#3}
+			\fi
+			\IfValueTF{##2}
+				{\def\x@subsup{\xsubsup[##2]}}
+				{\def\x@subsup{\fake@subsup}}
+			\x@subsup_{##3}^{##4}
+			\dlm@lasthook@{##1}
+		}
+	\ifblank{#4}{}
+		{\create@userdelim{#4}{#1}}
+}
+\def\create@userdelim#1#2{
+	% #1 = user command name without \
+	% #2 = backend shortcut to use 
+	\@xp\@ifdefinable\csname #1\endcsname{
+		\@xp\def
+			\csname#1\@xp\endcsname\@xp{\csname dlm@#2\endcsname}
+		\protected\cspreto{#1}{\begingroup\dlm@PREPROCESS}
+	}
+}
+
+%% construction des délimiteurs génériques
+
+\create@basic@delim{prt}()
+\create@basic@delim{brk}[]
+\create@basic@delim{brc}\{\}
+\create@basic@delim{abs}||
+\create@basic@delim{norm}\|\|
+\create@basic@delim{mnorm}\lVERT\rVERT
+\create@basic@delim{ang}\langle\rangle
+\create@basic@delim{flr}\lfloor\rfloor[floor]
+\create@basic@delim{cil}\lceil\rceil[ceil]
+
+\def\create@basic@delimbackend#1#2#3{
+	% #1 = command name
+	% #2 = left delim char
+	% #3 = right delim char
+	% #1=\prt, #2=(, #3=)  create \delim@prt : {} -> \dlm@PREPROCESS\dlm@prt
+	\edef\dlm@name@@{\@xp\@gobble\string#1}
+	\@xp\create@basic@delim\@xp{\dlm@name@@}#2#3[]
+	\csedef{delim@\dlm@name@@}{
+		\@xp\noexpand\csname dlm@\dlm@name@@\endcsname}
+	\cspreto{delim@\dlm@name@@}{\dlm@PREPROCESS}
+}
+\def\declare@delimfrontend#1#2#3#4{
+	% #1 = frontend command name
+	% #2 = xparse arg specs 
+	% #3 = defining code for \dlm@mid@func and \dlm@last@arg
+	% #4 = backend command name
+	\NewDocumentCommand#1{#2}{\begingroup#3#4}
+}
+\def\declare@delimfrontendcs#1#2#3#4{
+	% #1 = frontend command name
+	% #2 = xparse arg specs 
+	% #3 = defining code for \dlm@mid@func and \dlm@last@arg
+	% #4 = backend command name without \
+	\def\N@D@C{\NewDocumentCommand#1{#2}}
+	\begingroup
+	\edef\az@tempd{\endgroup
+		\expandonce\N@D@C{%
+			\begingroup\unexpanded{#3}\@xp\noexpand\csname#4\endcsname
+		}
+	}
+	\az@tempd
+}
+
+%%% ReNewDelim is used to have error messages with the cmd name.
+%%% Too bad that xparse definitions are not patchable
+\def\dlmpr@c{%
+	\@ifnextchar({\renew@delim()()\next@delim}
+	 {\@ifnextchar\{{\renew@delim\{\}\{\}\next@delim}
+	  {\@ifnextchar[{\renew@delim[][]\next@delim}
+	  {\@ifnextchar\lb{\renew@delim\lb\rb[]\next@delim}
+	   {\@ifnextchar|{\renew@delim||||\next@delim}
+	    {\@ifnextchar\|{\renew@delim\|\|\|\|\next@delim}
+	     {\@ifnextchar\lV{\renew@delim\lV\rV\lVert\rVert\next@delim}
+	       {\@ifnextchar\la{\renew@delim\la\ra\langle\rangle\next@delim}
+	        {\@ifnextchar\lf{\renew@delim\lf\rf\lfoor\rfloor\next@delim}
+	         {\@ifnextchar\lc{\renew@delim\lc\rc\lceil\rceil\next@delim}
+	          {\@ifnextchar\bgroup{\renew@normal@delim\next@delim}
+	           {\let\next@delim\dlm@dummy@\next@delim}
+	}}}}}}}}}}
+}
+\def\dlm@fproc{%
+	\@ifnextchar({\renew@fdelim()()\next@delim}
+	 {\@ifnextchar\{{\renew@fdelim\{\}\{\}\next@delim}
+	  {\@ifnextchar[{\renew@fdelim[][]\next@delim}
+	   {\@ifnextchar|{\renew@fdelim||||\next@delim}
+	    {\@ifnextchar\|{\renew@fdelim\|\|\|\|\next@delim}
+	     {\@ifnextchar\lV{\renew@fdelim\lV\rV\lVert\rVert\next@delim}
+	       {\@ifnextchar\la{\renew@fdelim\la\ra\langle\rangle\next@delim}
+	        {\@ifnextchar\lf{\renew@fdelim\lf\rf\lfoor\rfloor\next@delim}
+	         {\@ifnextchar\lc{\renew@fdelim\lc\rc\lceil\rceil\next@delim}
+	          {\@ifnextchar\bgroup{\renew@normal@fdelim\next@delim}
+	           {\let\next@delim\dlm@dummy@\next@delim}
+	}}}}}}}}}
+}
+\def\dlmpr@cl{%
+	\@ifnextchar({\renew@deliml((\next@delim}
+	 {\@ifnextchar\{{\renew@deliml\{\{\next@delim}
+	  {\@ifnextchar[{\renew@deliml[[\next@delim}
+	   {\@ifnextchar|{\renew@deliml||\next@delim}
+	    {\@ifnextchar\|{\renew@deliml\|\|\next@delim}
+	     {\@ifnextchar\lV{\renew@deliml\lV\lVert\next@delim}
+	       {\@ifnextchar\la{\renew@deliml\la\langle\next@delim}
+	        {\@ifnextchar\lf{\renew@deliml\lf\lfoor\next@delim}
+	         {\@ifnextchar\lc{\renew@deliml\lc\lceil\next@delim}
+	          {\@ifnextchar\bgroup{\renew@normal@delim\next@delim}
+	           {\let\next@delim\dlm@dummy@\next@delim}
+	}}}}}}}}}
+}
+\def\dlmpr@cr{%
+	\@ifnextchar({\renew@delimr((\next@delim}
+	 {\@ifnextchar\{{\renew@delimr\{\{\next@delim}
+	  {\@ifnextchar[{\renew@delimr[[\next@delim}
+	   {\@ifnextchar|{\renew@delimr||\next@delim}
+	    {\@ifnextchar\|{\renew@delimr\|\|\next@delim}
+	     {\@ifnextchar\lV{\renew@delimr\lV\lVert\next@delim}
+	       {\@ifnextchar\la{\renew@delimr\la\langle\next@delim}
+	        {\@ifnextchar\lf{\renew@delimr\lf\lfoor\next@delim}
+	         {\@ifnextchar\lc{\renew@delimr\lc\lceil\next@delim}
+	          {\@ifnextchar\bgroup{\renew@normal@delim\next@delim}
+	           {\let\next@delim\dlm@dummy@\next@delim}
+	}}}}}}}}}
+}
+\def\next@delim{%
+	\csname delim@\romannumeral\dlm@count@\endcsname
+}
+\NewDocumentCommand\AddProcDelim{mmmm}{
+	\begingroup
+	\edef\az@tmpa{%
+		\unexpanded{\@ifnextchar#1{\renew@delim#1#2#3#4\next@delim}}
+		 {\expandonce\dlmpr@c}
+	}
+	\@xp\gdef\@xp\dlmpr@c\@xp{\az@tmpa}
+	\endgroup
+}
+\NewDocumentCommand\fAddProcDelim{mmmm}{
+	\begingroup
+	\edef\az@tmpa{%
+		\unexpanded{\@ifnextchar#1{\renew@fdelim#1#2#3#4\next@delim}}
+		 {\expandonce\dlm@fproc}
+	}
+	\@xp\gdef\@xp\dlm@fproc\@xp{\az@tmpa}
+	\endgroup
+}
+\def\fdelim@{\dlm@PREPROCESS\dlm@fproc}
+\def\delim@{\@ifstar{\dlm@PREPROCESS*\dlmpr@c@}{\dlm@PREPROCESS\dlmpr@c@}}
+\DeclareRobustCommand\delim{%
+	\begingroup
+	\def\dlm@last@arg{}
+	\def\dlm@mid@func##1{##1}
+	\delim@
+}
+\DeclareRobustCommand\fulldelim[2][]{%
+	\begingroup
+	\@ifisnumber{#1}{\azsetupmath{max delim size=#1}}{}
+	\noexpandarg\exploregroups
+	\StrSubstitute{#2}{(}{\delim(}[\az@tmp]
+	\@xp\StrSubstitute\@xp{\az@tmp}{[}{\delim[}[\az@tmp]
+	\@xp\StrSubstitute\@xp{\az@tmp}{\{}{\delim\{}[\az@tmp]
+	\@xp\StrSubstitute\@xp{\az@tmp}{\[}{[}[\az@tmp]
+	\@xp\StrSubstitute\@xp{\az@tmp}{\]}{]}[\az@tmp]
+	\az@tmp
+	\endgroup
+}
+\DeclareRobustCommand\recdelim[2][]{%
+	\begingroup
+	\@ifisnumber{#1}{\azsetupmath{max delim size=#1}}{}
+	\def\mid@lefthook{\delim}
+	\def\fake@subsup{\xsubsup}
+	\delim#2
+	\endgroup
+}
+\NewDocumentCommand\fdelim{}{%
+	\begingroup
+	\def\dlm@last@arg{}
+	\def\dlm@mid@func##1{##1}
+	\fdelim@
+}	
+%%%% méta-commandes utilisateur pour construire des macros  gèrant les délimiteurs
+%%%% 
+%% Cree un synonyme de \delim
+\def\dec@xdelim#1{%
+	% #1 = user name of the command to become a synonym of \delim 
+	\NewDocumentCommand#1{}{
+		\begingroup
+		\def\dlm@last@arg{}
+		\def\dlm@mid@func####1{####1}
+		\delim@
+	}
+}
+%% prend en charge des arguments avant et apres le contenu a delimiter dynamiquement 
+\def\xdec@xdelim#1#2#3{%
+	% #1 = user command name
+	% #2 = explicit left contents
+	% #3 = explicit right contents
+	\NewDocumentCommand#1{}{
+		\begingroup
+		\def\dlm@last@arg{#3}
+		\def\dlm@mid@func####1{####1}
+		#2\delim@
+	}
+}
+%%% Meme chose mais permet des specifier le traitement du contenu a delimiter 
+\def\Xdec@xdelim#1#2#3#4#5{%
+	% #1 = user command name
+	% #2 = xparse arg specs
+	% #3 = left contents code
+	% #4 = mid contents code, ##1 represents the contents between the delimiters
+	% #5 = right contents code, 
+	\NewDocumentCommand#1{#2}{%
+		\begingroup
+		 \def\dlm@last@arg{#5}
+		 \ifblank{#4}
+		 	{\def\dlm@mid@func####1{####1}}
+			{\def\dlm@mid@func####1{#4}}
+		 #3\delim@
+	}
+}
+\def\Xdec@xdelim@star#1#2#3#4#5{%
+	% #1 = user command name
+	% #2 = xparse arg specs
+	% #3 = left contents code
+	% #4 = mid contents code, ##1 represents the contents between the delimiters
+	% #5 = right contents code, 
+	\NewDocumentCommand#1{#2}{%
+		\begingroup
+		 \def\dlm@last@arg{#5}
+		 \ifblank{#4}
+		 	{\def\dlm@mid@func####1{####1}}
+			{\def\dlm@mid@func####1{#4}}
+		 #3\delim@*
+	}
+}
+\def\dec@delim#1#2#3{%
+	% #1 = user command name
+	% #2 = left delim
+	% #3 = right delim
+	\@ifdefinable{#1}{
+		\create@basic@delimbackend{#1}{#2}{#3}
+		\declare@delimfrontendcs{#1}{}
+			{\def\dlm@last@arg{}\def\dlm@mid@func####1{####1}}
+			{delim@\dlm@name@@}
+	}
+}
+\def\xdec@delim#1#2#3#4#5{%
+	% #1 = user command name, 
+	% #2 = explicit left contents,
+	% #3 = left delim, 
+	% #4 = right delim, 
+	% #5 = explicit right contents
+	\@ifdefinable{#1}{
+		\create@basic@delimbackend{#1}{#3}{#4}
+		\declare@delimfrontendcs{#1}{}
+			{\def\dlm@last@arg{#5}
+				\def\dlm@mid@func####1{####1}#2}
+			{delim@\dlm@name@@}
+	}
+}
+\def\Xdec@delim#1#2#3#4#5#6#7{%
+	% #1 = user command name, 
+	% #2 = xparse arg specs for #1,
+	% #3 = left contents code,
+	% #4 = left delim, 
+	% #5 = mid contents code, 
+	% #6 = right delim
+	% #7 = right contents code
+	\@ifdefinable{#1}{
+		\create@basic@delimbackend{#1}{#4}{#6}
+		\declare@delimfrontendcs{#1}{#2}
+			{\def\dlm@last@arg{#7}
+				\ifblank{#5}
+		 			{\def\dlm@mid@func####1{####1}}
+					{\def\dlm@mid@func####1{#5}}
+			#3}
+			{delim@\dlm@name@@}
+	}
+}
+
+\NewDocumentCommand\NewDelimiters{s}{%
+	\IfBooleanTF{#1}{\dec@delim}{\dec@xdelim}}
+\NewDocumentCommand\xDeclareDelimiters{s}{%
+	\IfBooleanTF{#1}{\xdec@delim}{\xdec@xdelim}}
+\NewDocumentCommand\XDeclareDelimiters{s}{%
+	\IfBooleanTF{#1}{\Xdec@delim}{\Xdec@xdelim}}
+
+\NewDocumentCommand\splittwoargs{
+	m
+	>{\SplitArgument{1}{,}}m
+}{
+	\split@func#1#2
+}
+\def\split@func#1#2#3{%
+	\def\arg@one{#2}\def\arg@two{#3}%
+	\ifdefvoid\arg@one{\def\arg@one{\cdot}}{}%
+	\ifdefvoid\arg@two{\def\arg@two{\cdot}}{}%
+	\IfNoValueTF{#3}
+		{\cdot\,#1\,\cdot}
+		{\arg@one\,#1\,\arg@two}%
+}
+\NewDocumentCommand\splitargsrec{
+	m
+	>{\SplitArgument{10}{,}}m
+}{
+	\split@funcrec#1#2
+}
+\def\split@funcrec#1#2#3{%
+	\ifblank{#2}
+		{\ifblank{#3}{\cdot\,#1\,\cdot}{\cdot\,#1\,#3}}
+		{\ifblank{#3}{#2\,#1\,\cdot}{#2\,#1\,#3}}%
+}
+
+%% définitions des macros utilisateurs génériques
+
+\XDeclareDelimiters*\iic{}{}\lBrack{\splittwoargs\IntSep{##1}}\rBrack{}
+\XDeclareDelimiters*\icc{}{}[{\splittwoargs\IntSep{##1}}]{}
+\XDeclareDelimiters*\ico{}{}[{\splittwoargs\IntSep{##1}}[{}
+\XDeclareDelimiters*\ioc{}{}]{\splittwoargs\IntSep{##1}}]{}
+\XDeclareDelimiters*\ioo{}{}]{\splittwoargs\IntSep{##1}}[{}
+\XDeclareDelimiters*\sprod{}{\reset@Proc}\langle{\splittwoargs\SprodSep{##1}}\rangle{}
+
+%%%% \interv macros plus pratique pour les intervalles
+\newif\ifdouble@fence
+\let\interv@tok\@empty
+\forcsvlist{\listadd\i@fences}{[,]}
+\csdef{[@}{\ldelimsize{[}}
+\csdef{]@}{\ldelimsize{]}}
+\csdef{[@double}{\ldelimsize{\lBrack}}
+\csdef{]@double}{\ldelimsize{\rBrack}}
+\csdef{@[}{\rdelimsize{[}}
+\csdef{@]}{\rdelimsize{]}}
+\csdef{double@[}{\rdelimsize{\lBrack}}
+\csdef{double@]}{\rdelimsize{\rBrack}}
+\def\interv@#1{
+	\ifinlist#1\i@fences
+		{%
+			\@xp\splittwoargs\@xp\IntSep\@xp{\inter@tok}
+			\csuse{\ifdouble@fence double\fi @#1}
+			\endgroup\endgroup
+		}{
+			\appto\inter@tok{#1}
+			%\show\inter@tok
+			\interv@	
+		}
+}
+\def\@interv#1#2{
+	\ifinlist#1\i@fences
+		{
+			\ifstrequal{#1}{#2}
+				{\csuse{#1@double}\double@fencetrue\interv@}
+				{\csuse{#1@}\appto\inter@tok{#2}\interv@}
+		}{%
+			\azmath@err
+				{\string\interv\space:\space
+				#1 n'est pas un délimiteur valide}
+				{}
+		}
+}
+\newcommand\interv{%
+	\begingroup
+	\dlm@PREPROCESS\@interv
+}
+\newcommand\ii{%
+	\begingroup
+	\dlm@PREPROCESS\@interv
+}	
+
+\XDeclareDelimiters*\xnorm{}{\reset@Proc}\lVert{\ifblank{##1}{\,\cdot\,}{##1}}\rVert{}
+\XDeclareDelimiters*\xmnorm{}{\reset@Proc}\lVERT{\ifblank{##1}{\,\cdot\,}{##1}}\rVERT{}
+\XDeclareDelimiters*\ippc{}{\def\x@subsup{\xsubsup}}[{##1}]{}
+\XDeclareDelimiters*\class{E{^}{{}}}{\Clsymb\ifblank{#1}{}{^{#1}}}({##1}){}
+
+\newcommand\ens{}
+\def\ens{\brc}
+
+\XDeclareDelimiters\xPr{e{_}}
+	{\IfValueTF{#1}{\opn{\Psymb}_{#1}}{\opn{\Psymb}}}
+	{##1}
+	{}
+\XDeclareDelimiters\xEs{e{_}}
+	{\IfValueTF{#1}{\opn{\Esymb}_{#1}}{\opn{\Esymb}}}
+	{##1}
+	{}
+\XDeclareDelimiters\xVa{e{_}}
+	{\IfValueTF{#1}{\opn{\Vsymb}\xsubsup[h=4,b=-3]_{#1}}{\opn{\Vsymb}}}
+	{##1}
+	{}
+\XDeclareDelimiters\xCov{}
+	{\opn{\COVsymb}}
+	{##1}
+	{}
+\XDeclareDelimiters\xgo{e{_}}
+	{\IfValueTF{#1}{\opn{\Osymb}_{#1}}{\opn{\Osymb}}}
+	{##1}
+	{}
+\XDeclareDelimiters\xpo{E{\ss}{{}} e{_}}
+	{\IfValueTF{#2}{\opn{\osymb}\xsubsup[ss,b=-3,h=3,#1]_{#2}}{\opn{\osymb}}}
+	{##1}
+	{}
+	
+%% intégrale, sommes, produits et grands opérateurs
+
+\newcount\var@count
+\newcount\int@count
+
+\newcommand\bigopind[1]{%
+	\ifblank{#1}{}
+		{
+			\var@count\z@
+			\def\do##1{
+				\advance\var@count\@ne
+				\csdef{k\romannumeral \var@count}{##1}
+			}
+			\docsvlist{#1}
+		}
+}
+\bigopind{k,n,p}
+\azsetupmath{
+	big operator indices/.code	= \bigopind{#1},
+	boi/.style					= {big operator indices={#1}}
+}
+\NewDocumentCommand\XDeclareBigOperator{mm}{%
+	\XDeclareDelimiters#1
+	{
+		s
+		e{\ss} 
+		E{_^}{{}{}} 
+		e{\es\vr} 
+	}{
+		\IfValueT{##6}{
+			\bigopind{##6}
+		}
+		\IfValueTF{##2}
+			{\def\x@subsup{\xsubsup[noadjust,##2]}}
+			{\def\x@subsup{\fake@subsup}}
+		\IfBooleanT{##1}{\let\ss@limits\limits}
+		\@xp#2\ss@limits
+			\x@subsup_{##3}^{##4}
+		\IfValueT{##5}{\ifblank{##5}{\xpush{m}}{\xpush{##5}}}
+	}
+	{}{\var@count\z@}
+	\@xp\XDeclareDelimiters\csname\@xp\@gobble\string#1d\endcsname
+		{}
+		{\reset@Proc}
+		{#1 ####1}
+		{}
+}
+\XDeclareBigOperator\xsum\sum
+\XDeclareBigOperator\xprod\prod
+\XDeclareBigOperator\xcup\bigcup
+\XDeclareBigOperator\xcap\bigcap
+\XDeclareBigOperator\xoplus\bigoplus
+
+
+%%% Integrales 
+\newcommand\intvar[1]{%
+	\ifblank{#1}
+		{}
+		{
+			\var@count\z@
+			\def\do##1{
+				\advance\var@count\@ne
+				\csdef{t\romannumeral \var@count}{##1}
+				\csdef{dt\romannumeral \var@count}{\diff##1}
+			}
+			\docsvlist{#1}
+		}
+}
+\intvar{t,x,u}
+\azsetupmath{
+	integrale variables/.code	= \intvar{#1},
+	iv/.style					= {integrale variables={#1}}
+}
+\XDeclareDelimiters\xint
+{
+	s 
+	e{\ss} 
+	E{_^}{{}{}} 
+	E{\es\vr}{{@}{@}} 
+}{%
+	\advance\int@count by \@ne\relax
+	\ifstrequal{#6}{@}{}{\intvar{#6}}
+	\IfValueTF{#2}
+		{\def\x@subsup{\xsubsup[noadjust,nl,ns,#2]}}
+		{\def\x@subsup{\fake@subsup}}
+	\IfBooleanTF{#1}
+		{\let\ss@limits\limits}
+		{\let\ss@limits\nolimits}
+	\@xp\int\ss@limits
+	\x@subsup_{#3}^{#4}
+	\ifstrequal{#5}{@}{}
+		{\ifblank{#5}{\xpush{b}}{\xpush{#5}}}
+}{\xint@diffint ##1}
+{\csuse{dt\romannumeral\int@count}}
+
+\def\xint@diffint{%
+	\csappto{dt\romannumeral\int@count}{\csgundef{dt\romannumeral\int@count}}
+}
+\XDeclareDelimiters\xintd{}{}{\xint ##1}{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%% cases %%%%%%%%%
+%%% emprunts à mathtools.sty
+\def\dsts@cases#1#2#3{
+	\vcenter{
+		\Let@ \chardef\dspbrk@context\@ne \restore@math@cr
+		\let  \math@cr@@\AMS@math@cr@@
+		\spread@equation
+		\ialign{
+			\;\strut@#1\hfil &\quad \strut@#2\hfil
+		  	\crcr
+				#3
+			\crcr}
+		\restorecolumn@
+		}
+}
+\def\cmd@cases{\dsts@cases{$\m@th\displaystyle##$}{$\m@th\displaystyle##$}}
+\Xdec@xdelim@star\xcases{s}{%
+	\IfBooleanT{#1}
+		{\def\cmd@cases{\dsts@cases{$\m@th####$}{$\m@th####$}}}
+	\def\dlmpr@c@{\dlmpr@cl}
+}{\cmd@cases{##1}}{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% Les matrices %%%%%%
+
+%% Emprunt des fonctions essentielles a mathtools.sty
+\MHInternalSyntaxOn
+	\def\n@matrix@in{\MT_matrix_begin:N}
+	\def\n@matrix@out{\MT_matrix_end:}
+	\def\s@matrix@in{\MT_smallmatrix_begin:N}
+	\def\s@matrix@out{\MT_smallmatrix_end:}
+\MHInternalSyntaxOff
+\def\matrix@in{\n@matrix@in}
+\def\matrix@out{\n@matrix@out}
+\XDeclareDelimiters\xmatrix
+	{
+		t\s 
+		E{\al}{c} 
+	}{%
+		\IfBooleanT{#1}{%
+			\def\matrix@in{\s@matrix@in}%
+			\def\matrix@out{\s@matrix@out}%
+		}%
+		\def\coeff@align{#2}%
+	}
+	{\@xp\matrix@in\coeff@align ##1 \matrix@out}
+	{}
+\NewDocumentEnvironment{Xmatrix}{b}{\xmatrix#1}{}
+%%%%%%%%% Petits opérateurs
+
+%%% les petites fonctions qui manquent en français
+\def\card{\qopname\relax o{card}}
+\def\codim{\qopname\relax o{codim}}
+\def\cotan{\qopname\relax o{cotan}}
+\def\cotanh{\qopname\relax o{cotanh}}
+\def\det{\qopname\relax o{det}} % indice/exposant normaux
+\def\Es{\qopname\relax o{\Esymb}}
+\def\Cov{\qopname\relax o{\COVsymb}}
+\def\im{\qopname\relax o{Im}}
+\def\ker{\qopname\relax o{Ker}}
+\def\pgcd{\qopname\relax m{pgcd}}
+\def\ppcm{\qopname\relax m{ppcm}}
+\def\Pr{\qopname\relax o{\Psymb}}
+\def\rang{\qopname\relax o{rang}}
+\def\re{\qopname\relax o{Re}}
+\def\rg{\qopname\relax o{rg}}
+\def\sign{\qopname\relax o{sign}}
+\def\tr{\qopname\relax o{tr}}
+\def\val{\qopname\relax o{val}}
+\def\vect{\qopname\relax o{vect}}
+\def\com{\qopname\relax o{Com}}
+\let\Com\com
+\def\id{\qopname\relax o{id}}
+\def\diag{\qopname\relax o{diag}}
+\def\Va{\qopname\relax o{\Vsymb}}
+
+%%% équivalent de \operatorname mais qui gère les délimiteurs
+\XDeclareDelimiters\xoperatorname{s e{\ss} m E{_^}{{}{}}}
+	{
+		\IfValueT{#2}{\def\x@subsup{\xsubsup[#2]}}
+		\IfBooleanTF{#1}
+			{\qopname\newmcodes@ m{#3}}
+			{\qopname\newmcodes@ o{#3}}
+		\x@subsup_{#4}^{#5}
+	}{}{}
+\DeclareRobustCommand{\xopn}{\@ifstar{\xoperatorname*}{\xoperatorname}}
+
+%%% équivalent de \NewMathOperator mais qui crée des commandes 
+%%% capable de gérer les délimiteurs
+
+\def\declare@mathoperator#1#2#3{%
+	\if #1m
+		\XDeclareDelimiters#2{s e{\ss} E{_^}{{}{}}}
+			{
+				\IfValueTF{##2}
+					{\def\x@subsup{\xsubsup[h=-2,b=5,##2]}}
+					{\def\x@subsup{\fake@subsup}}
+				\qopname\newmcodes@ m{#3}
+				\IfBooleanT{##1}{\limits}
+				\x@subsup_{##3}^{##4}
+			}{}{}
+	\else 
+		\XDeclareDelimiters#2{s e{\ss} E{_^}{{}{}}}
+			{
+				\IfValueT{##2}{\def\x@subsup{\xsubsup[h=-2,t=0,##2]}}
+				\qopname\newmcodes@ o{#3}
+				\IfBooleanT{##1}{\displaylimits\limits}
+				\x@subsup_{##3}^{##4}
+			}{}{}
+	\fi
+}
+
+\NewDocumentCommand\XDeclareMathOperator{s}{
+	\IfBooleanTF{#1}{\declare@mathoperator m}{\declare@mathoperator o}
+}
+\@onlypreamble\XDeclareMathOperator
+
+\def\xopn@for#1{%
+	\@xp\XDeclareMathOperator\csname x#1\endcsname{#1}}
+\forcsvlist\xopn@for{%
+    arccos,
+    arcsin,
+    arctan,
+    arg,
+    card,
+    codim,
+    cos,
+    cosh,
+    cotan,
+    cotanh,
+    deg,
+    det,
+    dim,
+    exp,
+    id,
+    Im,
+    ln,
+    log,
+    rg,
+    rang,
+    sign,
+    sin,
+    sinh,
+    tan,
+    tanh,
+    tr,
+	val 
+}
+\XDeclareMathOperator\xker{Ker}
+\XDeclareMathOperator\xim{Im}
+\XDeclareMathOperator\xcom{Com}
+\XDeclareMathOperator\xre{Re}
+\XDeclareMathOperator\xvect{Vect}
+\XDeclareMathOperator*\xpgcd{pgcd}
+\XDeclareMathOperator*\xppcm{ppcm}
+\XDeclareMathOperator*\xmax{max}
+\XDeclareMathOperator*\xmin{min}
+\XDeclareMathOperator*\xlim{lim}
+\XDeclareMathOperator*\xliminf{lim\,inf}
+\XDeclareMathOperator*\xlimsup{lim\,sup}
+\XDeclareMathOperator*\xinf{inf}
+\XDeclareMathOperator*\xsup{sup}
+
+\NewDocumentCommand\OV{O{2}m}{%
+	{}\mkern#1mu
+	\overline{
+		\cramped{\mkern-#1mu#2}
+	}
+}
+%%%%% fonctions
+%%% \fct obsolète, maintenue pour compatibilité avec mes anciens documents
+\newcommand{\fct}[5][rcl]{%
+	\begin{array}[t]{#1}
+		#2 & \longrightarrow & #3 \\
+		#4 & \longmapsto     & #5
+	\end{array}
+}
+\NewDocumentCommand\func{s}{%
+	\IfBooleanTF{#1}
+		{\az@func}
+		{\az@Func}
+}
+\def\az@func#1#2#3{%
+	\@ifempty{#1}
+		{}
+		{#1\::\:}%
+	#2\longmapsto#3%
+}
+\def\az@Func{%
+	\@ifnextchar[
+		{\az@Func@}
+		{\az@Func@[rcl]}
+}
+\def\az@Func@[#1]#2#3#4#5#6{%
+	\begingroup%
+		\@ifempty{#2}
+			{\def\ar@opt{t}}
+			{\def\ar@opt{t}#2\::\:}%
+	\begin{array}[\ar@opt]{#1}
+		#3&\longrightarrow& #4\\ 
+		#5&\longmapsto&#6
+	\end{array}%
+	\endgroup
+}
+\NewDocumentCommand\funcalt{O{rcl}}{%
+	\az@funcalt[#1]
+}
+\def\az@funcalt[#1]#2#3#4#5#6{%
+	\begingroup%
+		\@ifempty{#2}
+			{}
+			{#2\::\:}%
+		\left\{\begin{array}{#1}
+			#3&\longrightarrow& #4\\
+			#5&\longmapsto&#6
+		\end{array}\right.%
+	\endgroup
+}	
+%%%%% Dérivation
+
+%%%%% Impressive code from diffcoef.sty
+%%%%% tribute to Andrew Parsloe
+\ExplSyntaxOn
+\tl_const:Nn \c__cpgemath_digits_tl { 1234567890 }
+\seq_new:N \l__cpgemath_orders_seq
+\seq_new:N \l__cpgemath_vars_seq
+\seq_new:N \l__cpgemath_denom_seq
+\seq_new:N \l__cpgemath_paren_seq
+\prop_new:N \l__cpgemath_vars_prop
+\int_new:N \l__cpgemath_curr_tok_int
+\int_new:N \l__cpgemath_curr_state_int
+\int_new:N \l__cpgemath_nos_int
+\int_new:N \l__cpgemath_parenvar_int
+
+\msg_new:nnn { azmath } { order-specification } 
+  {
+    \iow_newline:
+    charactère~#3~suivi~de~#2~dans~les~spécifications~des~ordres
+    ~[#1]~\msg_line_context:.~
+    azmath~ne~peut~pas~calculer~l'ordre~total~dans~ce~cas.
+  }
+
+%%%%
+\cs_new:Npn \__cpgemath_calc_tot_order:NN #1 #2
+  {
+    \tl_clear:N \l__cpgemath_nos_tl
+    \exp_args:Nx\__cpgemath_digest_expr:n { \seq_use:Nn #1 { + } }
+    \prop_if_empty:NTF \l__cpgemath_vars_prop
+      { \tl_set:NV #2 \l__cpgemath_nos_tl }
+      { \__cpgemath_evaluate:NN \l__cpgemath_vars_prop #2 }
+  }
+%%%%%
+\cs_new:Npn \__cpgemath_digest_expr:n #1
+  {
+    \tl_set:Nn \l__cpgemath_curr_num_tl { + }
+    \tl_set:Nn \l__cpgemath_paren_tl { +1 }
+    \tl_set:Nn \l__cpgemath_nos_tl { 0 }
+    \int_zero:N \l__cpgemath_curr_state_int
+    \int_zero:N \l__cpgemath_curr_tok_int
+    \tl_map_inline:nn { #1+ }
+      { 
+        \__cpgemath_get_curr_ndx:nN { ##1 } \l__cpgemath_curr_tok_int
+        \__cpgemath_transitions:nNN { ##1 } 
+            \l__cpgemath_curr_state_int \l__cpgemath_curr_tok_int 
+      }
+    \int_set:Nn \l__cpgemath_nos_int { \l__cpgemath_nos_tl }
+    \tl_set:Nx \l__cpgemath_nos_tl { \int_use:N \l__cpgemath_nos_int }
+    \int_compare:nNnT { \l__cpgemath_nos_int } = { 0 }
+      { \tl_clear:N \l__cpgemath_nos_tl }
+  }
+% #1 curr tok (tl); #2 <== curr tok ndx (int)
+%%%%%%%
+\cs_new_protected:Npn \__cpgemath_get_curr_ndx:nN #1#2
+  { 
+    \tl_if_in:NnTF \c__cpgemath_digits_tl { #1 }
+      { \int_set:Nn #2 { 1 } } % digit
+      { 
+        \str_case:nnF { #1 }
+          {
+            { + } { \int_set:Nn #2 { 0 } }
+            { - } { \int_set:Nn #2 { 0 } }
+            { ( } { \int_set:Nn #2 { 3 } }
+            { ) } { \int_set:Nn #2 { 4 } }
+          }
+          { \int_set:Nn #2 { 2 } }  % var
+      }
+  }
+% #1(tl) curr tok; #2(int) curr state; #3(int) curr tok ndx
+%%%%%%%%
+\cs_new:Npn \__cpgemath_transitions:nNN #1#2#3
+  { 
+    \int_case:nn { #2 }
+      { 
+        { 0 } % sgn + -
+          { \__cpgemath_sgn_transitions:nNN { #1 }#2#3 }
+        { 1 } % num 
+          { \__cpgemath_num_transitions:nNN { #1 }#2#3 }
+        { 2 } % alg
+          { \__cpgemath_alg_transitions:nNN { #1 }#2#3 }
+        { 4 } % )
+          { \__cpgemath_rpar_transitions:nNN { #1 }#2#3 }
+      }
+  }
+% transitions from the signed state
+% #1(tl) curr tok; #2(int) 0, curr state; #3 curr tok ndx
+%%%%%%
+\cs_new_protected:Npn \__cpgemath_sgn_transitions:nNN #1#2#3
+  {
+    \int_case:nnT { #3 }
+      {
+        { 0 } % tok = s
+          {
+            \tl_if_eq:nVTF { #1 } \l__cpgemath_curr_num_tl
+              { \tl_set:Nn \l__cpgemath_curr_num_tl { + } }
+              { \tl_set:Nn \l__cpgemath_curr_num_tl { - } }
+          }
+        { 1 } % tok = d
+          { \tl_put_right:Nn \l__cpgemath_curr_num_tl { #1 } }
+        { 2 } % tok = v
+          {
+            \tl_put_right:Nn \l__cpgemath_curr_num_tl { 1 }
+            \tl_set:Nn \l__cpgemath_curr_var_tl { #1 }
+          }
+        { 3 } % tok = (
+          {
+            \seq_push:NV \l__cpgemath_paren_seq \l__cpgemath_paren_tl
+            \tl_put_left:NV \l__cpgemath_paren_tl \l__cpgemath_curr_num_tl
+            \tl_set:Nn \l__cpgemath_curr_num_tl { + }
+            \int_set:Nn #3 { 0 }
+          }
+      }
+      { \int_set_eq:NN #2 #3 }
+  }
+% transitions from the numeric state
+% #1 = curr. tok.; #2 = 0, curr. state; #3 curr. tok. index
+%%%%%%%%
+\cs_new_protected:Npn \__cpgemath_num_transitions:nNN #1#2#3
+  {
+    \int_case:nnT { #3 }
+      {
+        { 0 } % tok = s
+          {
+            \tl_put_right:NV\l__cpgemath_nos_tl 
+              { \l__cpgemath_paren_tl * \l__cpgemath_curr_num_tl }
+            \tl_set:Nn \l__cpgemath_curr_num_tl { #1 } 
+          }
+        { 1 } % tok = d
+          { \tl_put_right:Nn \l__cpgemath_curr_num_tl { #1 } }
+        { 2 } % tok = v
+          {
+            \tl_if_in:nnTF { ^ \times * / \div } { #1 }
+              {
+                \msg_error:nnxxx { azmath } { order-specification } 
+                { \seq_use:Nn \l__cpgemath_orders_seq { , } } 
+                { #1 } { number }
+              }
+              { \tl_set:Nn \l__cpgemath_curr_var_tl { #1 } }
+          }
+        { 3 } % tok = (
+          { 
+            \seq_push:NV \l__cpgemath_paren_seq \l__cpgemath_paren_tl
+            \tl_put_left:Nn \l__cpgemath_paren_tl { * }
+            \tl_put_left:NV \l__cpgemath_paren_tl \l__cpgemath_curr_num_tl
+             \tl_set:Nn \l__cpgemath_curr_num_tl { + }
+            \int_set:Nn #3 { 0 } 
+          }
+        { 4 } % tok = )
+          {
+            \tl_put_right:NV \l__cpgemath_nos_tl 
+                { \l__cpgemath_paren_tl * \l__cpgemath_curr_num_tl }
+          }
+      }
+      { 
+        \int_set_eq:NN #2 #3 }
+  }
+% transitions from the algebraic state
+% #1 = curr. tok.; #2 = 2, curr. state; #3 curr. tok. index
+%%%%%%%%%
+\cs_new:Npn \__cpgemath_alg_transitions:nNN #1#2#3
+  { 
+    \int_case:nnT { #3 }
+      {
+        { 0 } % tok = s
+          { 
+            \int_compare:nNnTF { \l__cpgemath_parenvar_int } = { 0 }
+              {
+                \__cpgemath_store_var:NNN \l__cpgemath_curr_var_tl
+                    \l__cpgemath_paren_tl \l__cpgemath_curr_num_tl
+                \tl_clear:N \l__cpgemath_curr_var_tl
+                \tl_set:Nn \l__cpgemath_curr_num_tl { #1 }
+              }
+              {
+                \tl_put_right:Nn \l__cpgemath_curr_var_tl { #1 }
+                \int_set:Nn #3 { 2 }
+              }
+          }
+        { 1 } % tok = d
+          { 
+            \tl_put_right:Nn \l__cpgemath_curr_var_tl { #1 } 
+            \int_set:Nn #3 { 2 }
+          }
+        { 2 } % tok = v
+          { \tl_put_right:Nn \l__cpgemath_curr_var_tl { #1 } }
+        { 3 } % tok = (
+          {
+            \tl_put_right:Nn \l__cpgemath_curr_var_tl { #1 }
+            \int_set:Nn #3 { 2 }
+            \int_incr:N \l__cpgemath_parenvar_int
+          }
+        { 4 } % tok = )
+          {
+            \int_compare:nNnTF { \l__cpgemath_parenvar_int } = { 0 }
+              {
+                \__cpgemath_store_var:NNN \l__cpgemath_curr_var_tl
+                    \l__cpgemath_paren_tl \l__cpgemath_curr_num_tl
+                \tl_clear:N \l__cpgemath_curr_var_tl
+              }
+              {
+                \tl_put_right:Nn \l__cpgemath_curr_var_tl { #1 }
+                \int_set:Nn #3 { 2 }
+                \int_decr:N \l__cpgemath_parenvar_int
+              }
+          }
+      }
+      { \int_set_eq:NN #2 #3 }
+  }
+% transitions from the ) state
+% #1 = curr. tok.; #2 = 4, curr. state; #3 curr. tok. index
+%%%%%%%%%%%
+\cs_new:Npn \__cpgemath_rpar_transitions:nNN #1#2#3
+  {
+    \int_compare:nNnTF { \int_mod:nn { #3 } { 4} } = { 0 }
+      { 
+        \tl_set:Nn \l__cpgemath_curr_num_tl { #1 }
+        \seq_pop:NN \l__cpgemath_paren_seq \l__cpgemath_paren_tl
+        \int_set_eq:NN #2 #3
+      }
+      {
+        \msg_error:nnxxx { azmath } { order-specification } 
+            { \seq_use:Nn \l__cpgemath_orders_seq { , } } { #1 } { ) }
+      }
+  }
+% #1 is var. (tlvar); #2 is num. (tlvar); #3 num. coeff. (tlvar)
+\cs_new:Npn \__cpgemath_store_var:NNN #1#2#3
+  {
+    \prop_get:NVNF \l__cpgemath_vars_prop #1 \l_tmpa_tl
+      { \tl_clear:N \l_tmpa_tl }
+    \tl_put_right:NV \l_tmpa_tl { #2 * #3 }
+    \prop_put:NVV \l__cpgemath_vars_prop #1 \l_tmpa_tl
+  }
+% #1 (propv) key=var, val=coeff; #2 <= total order
+%%%%%%
+\cs_new_protected:Npn \__cpgemath_evaluate:NN #1#2
+  {
+    \prop_map_inline:Nn #1 { \seq_put_left:Nn \l_tmpa_seq { ##1 } }
+    \seq_sort:Nn \l_tmpa_seq
+      {
+        \int_compare:nNnTF { \tl_count:n { ##1 } } < { \tl_count:n { ##2 } }
+          { \sort_return_same: } { \sort_return_swapped: }
+      }
+    \seq_map_inline:Nn \l_tmpa_seq
+      {
+        \prop_pop:NnN #1 { ##1 } \l_tmpb_tl
+        \seq_put_right:Nx \l_tmpb_seq { \int_eval:n \l_tmpb_tl }
+       }
+    \tl_clear:N \l_tmpa_tl
+    \seq_mapthread_function:NNN \l_tmpa_seq \l_tmpb_seq 
+        \__cpgemath_tot_order:nn
+    \exp_args:NV \tl_if_head_eq_charcode:nNTF \l_tmpa_tl +
+      { 
+        \tl_set:Nx \l_tmpb_tl { \tl_tail:N \l_tmpa_tl }
+        \int_compare:nNnT { \l__cpgemath_nos_int } > { 0 }
+          { \tl_put_left:Nn \l__cpgemath_nos_tl { + } }
+         \tl_concat:NNN #2 \l_tmpb_tl \l__cpgemath_nos_tl
+      }
+      { 
+        \int_compare:nNnTF { \l__cpgemath_nos_int } > { 0 }
+          { \tl_concat:NNN #2 \l__cpgemath_nos_tl \l_tmpa_tl }
+          { \tl_concat:NNN #2 \l_tmpa_tl \l__cpgemath_nos_tl }
+      }
+    \tl_set_rescan:Nno #2 { } #2
+  }
+%%%%%%
+\cs_new:Npn \__cpgemath_tot_order:nn #1#2
+  { 
+    \int_compare:nNnTF { #2 } > { 0 }
+      { 
+        \int_compare:nNnTF { #2 } = { 1 }
+          { \tl_put_left:Nn \l_tmpa_tl { +#1 } }
+          { \tl_put_left:Nn \l_tmpa_tl { +#2#1 } }
+      }
+      {
+        \int_compare:nNnT { #2 } < { 0 }
+          { 
+            \int_compare:nNnTF { #2 } = { -1 }
+              { \tl_put_right:Nn \l_tmpa_tl { -#1 } }
+              { \tl_put_right:Nn \l_tmpa_tl { #2#1 } }
+          }
+      }
+  }
+
+\NewDocumentCommand\calc@totorder{ mm }
+	{
+		\seq_set_from_clist:Nn \l__cpgemath_orders_seq { #2 }
+		\__cpgemath_calc_tot_order:NN  \l__cpgemath_orders_seq #1
+	}
+
+\ExplSyntaxOff
+
+\def\get@arg#1^{#1}
+\def\get@var#1{\get@var@#1^\az@nil}
+\let\der@var\@empty
+\let\order@csv\@empty
+\def\get@var@#1^#2\az@nil{%
+	\ifblank{#2}
+		{%
+			\def\az@tmpo{1}
+			\appto\order@csv{, 1}
+			\eappto\der@var{\@nx\diff@sym #1}
+		}{%
+			\edef\az@tmpo{\get@arg #2}
+			\eappto\order@csv{, \az@tmpo}
+			\eappto\der@var{\@nx\diff@sym #1\@nx\xsubsup[h=0,t=0]^{\az@tmpo}}
+		}
+}
+\XDeclareDelimiters\xder{s e{\or\vl} mm }
+	{%	
+		\def\diff@sym{\dsymb}
+		\get@var{#5}
+		\ifdefstring{\az@tmpo}{1}
+			{\def\der@func{\diff@sym #4}}
+			{\def\der@func{\diff@sym\xsubsup[h=-2]^{\az@tmpo}#4}}
+		\def\der@frac{%
+			\IfBooleanTF{#1}
+				{\xfrac*{\der@func}{\der@var}}
+				{\xfrac[d=\fake@cmd]{\der@func}{\der@var}}
+		}
+		\IfValueT{#3}
+			{\def\delimafterhook{\vphantom{\der@frac}\,\vrule}}
+		\der@frac
+	}
+	{##1}
+	{\IfValueT{#3}{\xsubsup[h=0,cs]_{#3}}}
+	
+\XDeclareDelimiters\xderp{s e{\or\vl} mm }
+	{%	
+		\let\der@var\@empty
+		\let\order@csv\@empty
+		\def\diff@sym{\partial}
+		\forcsvlist\get@var{#5}
+		\@xp\calc@totorder\@xp\az@tmpo\@xp{\order@csv}
+		\IfValueT{#2}{\def\az@tmpo{#2}}
+		\ifdefstring{\az@tmpo}{1}
+			{\def\der@func{\diff@sym #4}}
+			{\def\der@func{\diff@sym\xsubsup[h=-2,t=0]^{\az@tmpo}#4}}
+		\def\der@frac{%
+			\IfBooleanTF{#1}
+				{\xfrac*{\der@func}{\der@var}}
+				{\xfrac[d=\fake@cmd]{\der@func}{\der@var}}
+		}
+		\IfValueT{#3}
+			{\def\delimafterhook{\vphantom{\der@frac}\,\vrule}}
+		\der@frac
+	}
+	{##1}
+	{\IfValueT{#3}{\xsubsup[h=0,cs]_{#3}}}
+
+\XDeclareDelimiters\xdiff{E{^_}{{}{}} m}
+	{
+		\opn{\dsymb}
+		\xsubsup[h=0,b=-2]^{#1}_{#2}
+		\xpush{-1}#3
+	}{##1}{}
+\XDeclareDelimiters\xDiff{E{^_}{{}{}} m}
+	{
+		\opn{\Dsymb}
+		\xsubsup[h=0]^{#1}_{#2}
+		\xpush{-1}#3
+	}{##1}{}
+	
+	
+%%% Matrices
+
+
+%%%%% Vieilles macros (obsolete)
+
+\let\opn\operatorname
+
+%% Probas
+\DeclareRobustCommand\lrfloor[1]{\lfloor#1\rfloor}
+\DeclareRobustCommand\PP{\opn{\Psymb}}
+\DeclareRobustCommand\EE{\opn{\Esymb}}
+\DeclareRobustCommand\VV{\opn{\Vsymb}}
+\DeclareRobustCommand\tsprod{\mathop{\mathchar"1351}}
+\DeclareRobustCommand\tssum{\mathop{\mathchar"1350}}
+\DeclareRobustCommand\lsum{\sum\limits}
+\DeclareRobustCommand\lprod{\prod\limits}
+\DeclareRobustCommand\lcap{\bigcap\limits}
+\DeclareRobustCommand\lcup{\bigcup\limits}
+\DeclareRobustCommand\llim{\lim\limits}
+\DeclareRobustCommand\sim{\mathop{\mathchar"3218}}
+\DeclareRobustCommand\lsim{\sim\limits}
+% \let\@longleftarrow\longleftarrow
+% \DeclareRobustCommand\longleftarrow{\mathop{\@longleftarrow}}
+% \let\@longrightarrow\longrightarrow
+% \DeclareRobustCommand\longrightarrow{\mathop{\@longrightarrow}}
+
+%% algèbre et arithmétique
+\def\sgpe#1{\langle #1\rangle}
+\def\ntr#1#2{\mathbf{#1}_{#2}}
+\let\xtor\texorpdfstring
+\let\divise\mid
+\let\nodivise\nmid
+\DeclareRobustCommand\modulo[3]{#1\equiv#2\quad[#3]}
+\DeclareRobustCommand\OV{\@ifnextchar[\OVC\OVN}
+\let\OVN\overline
+\NewDocumentCommand\OVC{om}{\cramped{\OVN{#2}^{[#1]}}}
+\DeclareRobustCommand\sign{\opn{sign}}
+\DeclareRobustCommand\downeq{\underset{\smash{\downarrow}}=}
+\DeclareRobustCommand\upeq{\overset{\smash{\uparrow}}=}
+
+
+%% normes,
+\newcommand\nm[1]{\left\Vert#1\right\Vert}
+\newcommand\nmm[1]{|\!|\!|#1|\!|\!|}
+\newcommand\pds[1]{\langle #1\rangle}
+
+%% constante
+
+%%%%%%%% raccourcis très utilisés, 
+%%%%%%%% conservé pour compatibilté
+\def\set@legacyshorthcuts{%
+	\let\ds\displaystyle
+	\let\ts\textstyle
+	\let\leq\leqslant
+	\let\geq\geqslant
+	\DeclareRobustCommand\setminus{\mathbin{\smallsetminus}}
+	\let\ssi\Longleftrightarrow
+	\let\lra\longrightarrow
+	\let\Lra\Longrightarrow
+	\let\Llra\Longleftrightarrow
+	\let\cqfd\qed
+	\def\qtext##1{\quad\text{##1}\quad}
+	\newcommand\be{\begin{xenum}}
+	\newcommand\ee{\end{xenum}}
+	\newcommand\bi{\begin{xitem}}
+	\newcommand\ei{\end{xitem}}
+	\newcommand\bca{\begin{dcases}}
+	\newcommand\eca{\end{dcases}}
+	\def\dt{{\operator@font d}}
+	\def\d{{\operator@font d}}
+	\def\dd##1##2{
+		\frac{\partial##1}{\partial##2}
+	}
+	\def\ddeux##1##2##3{
+		\def\a{##2}\def\b{##3} 
+		\ifx\a\b \frac{\partial^{2}##1}{\partial\a^{2}}
+		\else \frac{\partial^{2}##1}{\partial\a\partial\b}
+		\fi
+	}
+	\DeclareRobustCommand\Mn[2][\K]{\mathcal M_{##2}(##1)}
+	\def\Pmatrix##1{\begin{pmatrix}##1\end{pmatrix}}
+}
+\AtBeginDocument{\set@legacyshorthcuts}
+
+
+
+%%%%%% Alternatives plus modernes 
+\NewDocumentCommand\MN{E{_}{\dimsymb}D(){\corpssymb}}{%
+	\opn{\Msymb}_{#1}(#2)%
+}
+\NewDocumentCommand\GL{sE{_}{\dimsymb} D(){\corpssymb}}{%
+	\IfBooleanTF{#1}
+		{\opn{\mathrm{GL}}(#3)}
+		{\opn{\mathrm{GL}}_{#2}(#3)}%
+}
+\def\map@mathcal#1#2{%
+	\ifblank{#2}{\cal@ #1}{\cal@ #1,\cal@ #2}%
+}
+\NewDocumentCommand\MAT{s>{\SplitList{,}}E{_}{B} D(){u}}{%
+	\IfBooleanTF{#1}{\let\cal@\relax}{\let\cal@\mathcal}
+	\opn{Mat}_{\map@mathcal #1}(#2)
+}
+\NewDocumentCommand\PASS{s E{_^}{{B}{B'}}}{
+	\IfBooleanTF{#1}{\let\cal@\relax}{\let\cal@\mathcal}
+	P_{\mathcal #1}^{\mathcal #2}
+}
+\NewDocumentCommand\DET{s E{_}{{B}} d()}{}
+
+
+%% fonction
+%\newcommand{\fct}[4]{\begin{array}[t]{rcl}
+%   #1 & \longrightarrow & #2 \\
+%   #3 & \longmapsto     & #4 
+%   \end{array}}
+%
+
+
+
+
+
+
+    
+\endinput

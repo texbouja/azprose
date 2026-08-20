@@ -1,0 +1,841 @@
+%% azthm.sty — théorèmes, définitions, exercices
+%%
+%% Le cœur du kit. Un « théorème » y est un BLOC SÉMANTIQUE : il porte un type
+%% (theorem, definition, exercise, remark, example, proof, other), un nom, un
+%% numéro, éventuellement un intitulé et une étiquette. Le type détermine la
+%% couleur et le style ; le nom et le numéro font le titre ; l'intitulé va en
+%% marge du titre et dans la liste des résultats.
+%%
+%% ── Rupture avec cpgethm ────────────────────────────────────────────────────
+%%
+%% Aucun interne de tcolorbox n'est touché. Les huit points de contact d'hier
+%% passent tous par l'interface publique :
+%%
+%%   \tcb@addcontentsline  →  add to list={theo}{tcolorbox}, posée seulement
+%%                            quand le bloc a un intitulé — ce qui obtient
+%%                            l'effet recherché (ne lister que les résultats
+%%                            nommés) sans détourner la routine ;
+%%   \tcb@theo@form        →  le titre est composé ici, par \az_thm_title:nn ;
+%%   \kvtcb@title          →  \az@thm@name, que ce module renseigne lui-même ;
+%%   \kvtcb@listentry      →  la clé publique `list entry` ;
+%%   \kvtcb@fonttitle      →  un habillage propre au kit ;
+%%   \kvtcb@new@counter    →  la clé publique `label` remplace le montage
+%%                            phantom+\MakeLinkTarget ;
+%%   \csappto{kvtcb@font…} →  `fonttitle` posée entière ;
+%%   \pgfqkeys{/tcb}       →  \tcbset.
+%%
+%% `phantom` ACCUMULE (tcolorbox l'ajoute, ne l'écrase pas) : c'est ce qui
+%% permet à `label`, `add to list` et `hypertarget` de coexister sur un même
+%% bloc là où cpgethm devait les fondre à la main.
+%%
+%% ── .search also et .unknown ────────────────────────────────────────────────
+%%
+%% Les deux mécanismes pgfkeys sans équivalent l3keys sont résolus ici, et la
+%% solution vaut pour tout le kit :
+%%
+%%   .search also=/tcb  →  un `unknown` qui relaie vers \tcbset ;
+%%   .unknown (ignorer) →  un `unknown` vide dans une famille l3keys dédiée.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azthm} {2026-08-20} {0.1}
+  {azkit — blocs sémantiques : théorèmes, définitions, exercices}
+
+\RequirePackage { azbase }
+\RequirePackage { azcolor }
+\RequirePackage { azlist }
+\RequirePackage { tcolorbox }
+\tcbuselibrary { skins, breakable, hooks, xparse }
+%% L'intitule se pose par un noeud tikz relatif au titre : `calc` pour la
+%% construction `let`, `positioning` pour le `right=… of …`.
+%% \usetikzlibrary lit ses fichiers par \input, sans normaliser les catcodes :
+%% sous syntaxe expl3 les espaces des noms de cles y disparaitraient.
+\ExplSyntaxOff
+\usetikzlibrary{calc,positioning}
+\ExplSyntaxOn
+
+\cs_if_exist:NF \ifdraft { \newif \ifdraft }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Surface publique
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_eq:NN \azsetuptcb \tcbset
+
+\tl_new:N \az@thm@envname
+\tl_new:N \az@thm@Name
+\tl_new:N \az@thm@name
+\tl_new:N \az@thm@prefixedname
+\tl_new:N \az@thm@type
+\tl_new:N \az@thm@title
+\tl_new:N \az@thm@label
+\tl_new:N \az@thm@style
+
+\bool_new:N \l_az_thm_exercise_bool
+\bool_new:N \l_az_thm_theorem_bool
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Propriétés d'un bloc
+%%
+%% Renseignées à l'ouverture de chaque boîte. Elles servent au titre, aux
+%% renvois croisés et aux liens vers les solutions — trois consommateurs qui
+%% ont besoin de la même information à des moments différents.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\keys_define:nn { az / thm / prop }
+  {
+    envname .code:n =
+      { \tl_set:Nn \az@thm@envname {#1} } ,
+    Name    .code:n =
+      { \tl_set:Nn \az@thm@Name {#1} } ,
+    %% Le nom en minuscule sert aussi de nom d'autoréférence : « voir le
+    %% théorème 3 » se compose tout seul.
+    name    .code:n =
+      { \tl_set:Nn \az@thm@name {#1}
+        \cs_gset:cpn { \az@thm@envname autorefname } {#1} } ,
+    prefix  .code:n =
+      { \tl_set:Nx \az@thm@prefixedname { \exp_not:n {#1} \az@thm@name } } ,
+    type    .code:n =
+      {
+        \tl_set:Nn \az@thm@type {#1}
+        \tl_set:Nn \az@thm@style { #1 style }
+        \str_case:nn {#1}
+          {
+            { exercise } { \bool_set_true:N \l_az_thm_exercise_bool }
+            { theorem }  { \bool_set_true:N \l_az_thm_theorem_bool }
+          }
+      } ,
+  }
+
+\tcbset
+  {
+    az~thm~prop/.code = { \keys_set:nn { az / thm / prop } {#1} } ,
+    %% Le numéro du bloc, mis à disposition des gabarits |X| de azlist : c'est
+    %% ainsi qu'une unité à l'intérieur d'un théorème se numérote « 2.3 ».
+    current~counter/.code = { \az_current_counter_set:n {#1} } ,
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Réglages des théorèmes
+%%
+%% \azsetuptheorems{theorem style = roundedthm, global style = rounded}
+%%
+%% Une clé inconnue est relayée à \tcbset : c'est l'équivalent l3keys du
+%% `.search also=/tcb` de pgfkeys, et il n'y en a qu'un dans tout le kit.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\clist_const:Nn \c_az_thm_types_clist
+  { theorem, definition, exercise, remark, example, proof, other }
+
+\cs_new_protected:Npn \az_thm_style_set:nn #1#2
+  { \tcbset { az@style@ #1 /.style = {#2} } }
+
+\keys_define:nn { az / thm }
+  {
+    unknown .code:n =
+      {
+        \tl_if_novalue:nTF {#1}
+          { \use:x { \exp_not:N \tcbset { \l_keys_key_str } } }
+          { \use:x { \exp_not:N \tcbset
+              { \l_keys_key_str = { \exp_not:n {#1} } } } }
+      } ,
+  }
+
+\clist_map_inline:Nn \c_az_thm_types_clist
+  {
+    \keys_define:nn { az / thm }
+      { #1 ~ style .code:n = { \az_thm_style_set:nn {#1} {##1} } }
+  }
+
+%% Un seul jeu par famille : les blocs « à démontrer » d'un côté, les blocs
+%% « en marge du discours » de l'autre. Les thèmes étant ajournés, c'est le
+%% seul point d'entrée pour changer l'allure de tout un document.
+\keys_define:nn { az / thm }
+  {
+    global~style .meta:n =
+      {
+        theorem~style    = #1 thm ,
+        definition~style = #1 thm ,
+        exercise~style   = #1 thm ,
+        proof~style      = #1 rmk ,
+        remark~style     = #1 rmk ,
+        example~style    = #1 rmk ,
+        other~style      = #1 rmk ,
+      } ,
+  }
+
+\NewDocumentCommand \azsetuptheorems { m } { \keys_set:nn { az / thm } {#1} }
+
+%% Application : le style du TYPE, puis le style LOCAL de l'environnement,
+%% puis le numéro courant. Cet ordre est le contrat — un style local doit
+%% pouvoir corriger le style du type, jamais l'inverse.
+\clist_map_inline:Nn \c_az_thm_types_clist
+  {
+    \tcbset
+      {
+        az@style@ #1 /.style = { } ,
+        az~apply~ #1 /.style =
+          { az@style@ #1 , az@local@style , current~counter = \thetcbcounter } ,
+      }
+  }
+
+\tcbset { az@local@style/.style = { } }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Options d'instance — la passe préalable
+%%
+%% \begin{theo}\op{important} … \op{style={…}}
+%%
+%% Deux clés seulement sont lues AVANT le style du type, parce qu'elles en
+%% changent les données d'entrée : `important` bascule la couleur du bloc, et
+%% `style` remplace le style du type pour cette instance. Tout le reste est
+%% ignoré ici et repassera en style local — c'est l'équivalent l3keys du
+%% `.unknown/.code=\relax` de pgfkeys.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\keys_define:nn { az / thm / pre }
+  {
+    style     .code:n =
+      { \use:x { \exp_not:N \az_thm_style_set:nn { \az@thm@type }
+          { \exp_not:n {#1} } } } ,
+    important .code:n = { \tcbset { thmcol = importantcol } } ,
+    unknown   .code:n = { } ,
+  }
+
+\tcbset { az~prestyle/.code = { \keys_set:nn { az / thm / pre } {#1} } }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Notes de bas de page et couches
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tcbset
+  {
+    thmcol/.colorlet = thmcol ,
+    every~box/.style =
+      {
+        before~title~pre = \az_footnote_restore: ,
+        before~upper~pre = \az_footnote_restore: ,
+        before~lower~pre = \az_footnote_restore: ,
+      } ,
+    every~box~on~layer~1/.append~style = { after~pre = \az_footnote_use: } ,
+  }
+
+%% Une boîte de premier plan porte le cadre et le titre ; les boîtes
+%% imbriquées ne sont que des aplats, sans quoi trois cadres se superposeraient
+%% dès qu'une solution s'ouvre dans un exercice.
+\tcbset
+  {
+    primary~box/.style =
+      {
+        breakable, lines~before~break = 1,
+        height~fixed~for = first~and~middle,
+        az~title~after~break,
+        fonttitle = \TitlingFont \footnotesize \vphantom{(} ,
+        colback = framebackcol, coltext = frametextcol,
+        drop~shadow/.default = frameshadowcol ,
+        drop~fuzzy~shadow/.default = frameshadowcol ,
+      } ,
+    secondary~box/.style =
+      { reset, blank, notitle, colback = buttonbackcol, coltext = buttontextcol } ,
+    every~box~on~layer~1/.append~style = { primary~box } ,
+    every~box~on~layer~2/.prefix~style = { secondary~box } ,
+    every~box~on~layer~3/.prefix~style = { secondary~box } ,
+    every~box~on~layer~4/.prefix~style = { secondary~box } ,
+  }
+
+%% Un bloc scindé sur deux pages reprend son titre en minuscules, suivi de
+%% « (suite) ». Le nom est repris de \az@thm@name, que ce module tient : c'est
+%% ce qui remplace la lecture de \kvtcb@title.
+\tcbset
+  {
+    az~title~after~break/.style =
+      {
+        title~after~break = { \MakeLowercase { \az@thm@Name } ~(suite) } ,
+        extras~title~after~break =
+          {
+            halign~title = left ,
+            boxsep = 0pt, top = 0pt, bottom = 0pt, left = 3pt, right = 3pt,
+            fonttitle = \fontsize{7}{7}\selectfont \mdseries \itshape ,
+            coltitle = frametextcol , colbacktitle = framebackcol ,
+          } ,
+        extras~middle~and~last = { coltitle = thmcol, colbacktitle = framebackcol } ,
+        bottomrule = 1pt , bottomrule~at~break = 1pt ,
+        toprule~at~break = 0pt , titlerule = 0pt ,
+      } ,
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Intitulé
+%%
+%% L'intitulé — l'argument entre parenthèses — ne fait pas partie du titre :
+%% il se pose À CÔTÉ, dans l'espace resté libre à droite du bandeau. En
+%% brouillon, où l'on ne veut pas payer le prix d'un tracé tikz, il se contente
+%% de suivre le titre entre parenthèses.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\dim_new:N \az@description@offset
+\tl_new:N  \az@descriptionfont
+
+\cs_new:Npn \az@deco@description@ #1 {#1}
+
+\tcbset
+  {
+    description~offset/.code = { \dim_set:Nn \az@description@offset {#1} } ,
+    description~offset = 0.5em ,
+    description~deco/.code = { \cs_set:Npn \az@deco@description@ ##1 {#1} } ,
+    description~parenthesis/.style = { description~deco = { (##1) } } ,
+    description~font/.code = { \tl_set:Nn \az@descriptionfont {#1} } ,
+    description~font =
+      \TitlingFont \footnotesize \mdseries \itshape \smaller \vphantom{(} ,
+    description~draft/.code =
+      { \tcbset { after~title = { \enskip \az@descriptionfont (#1) } } } ,
+    description~overlay/.style =
+      {
+        overlay~unbroken~and~first =
+          {
+            \path
+              let \p1 = (title.east), \p2 = (frame.east) in
+                node (description)
+                  [
+                    description~path~style ,
+                    text~width = \x2-\x1-0.5em-\az@description@offset ,
+                    right = 0.5em~of~title ,
+                  ]
+                  { \az@deco@description@ {#1} } ;
+          }
+      } ,
+    description~path~style/.code =
+      { \tikzset { description~path~style/.append~style = {#1} } } ,
+  }
+
+\tikzset
+  {
+    description~path~style/.style = { font = \az@descriptionfont, text = thmcol } ,
+    reserved~style/.style =
+      {
+        fill = pagecol, draw = thmcol, rounded~corners = 1ex,
+        xshift = -3pt, inner~ysep = 1pt
+      } ,
+  }
+
+\AddToHook { begindocument/before }
+  {
+    \ifdraft
+      \tcbset { description~path/.style = { description~draft = {#1} } }
+    \else
+      \tcbset { description~path/.style = { description~overlay = {#1} } }
+    \fi
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Marque d'importance
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new:Npn \az@important@message
+  { \bool_if:NTF \l_az_thm_exercise_bool { exercice } { résultat } ~important }
+
+\tcbset
+  {
+    important/.style =
+      {
+        thmcol = importantcol , bottom = 10pt ,
+        underlay~unbroken~and~last =
+          {
+            \node at (frame.south~west)
+              [
+                text = thmcol , font = \fontsize{7}{8}\selectfont ,
+                anchor = south~west , yshift = 2pt
+              ]
+              {#1} ;
+          }
+      } ,
+    important/.default = \az@important@message ,
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Composition du titre
+%%
+%% Trois dispositions : nom puis numéro, numéro puis nom, nom seul. Le kit
+%% compose lui-même, ce qui rend \tcb@theo@form inutile.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\azgsetdeco { number } { \tcbox [ az~number~deco ] {#1} }
+
+\tcbset
+  {
+    az~number~deco/.style =
+      {
+        on~line, size = small,
+        colback = thmcol!85!black, coltext = white,
+        fontupper = \bfseries \footnotesize ,
+        arc = 2pt, boxrule = 0pt, boxsep = 2pt, left = 5pt, right = 5pt,
+      } ,
+  }
+
+\tl_new:N \g_az_thm_form_tl
+\tl_gset:Nn \g_az_thm_form_tl { numbername }
+\tl_new:N \l_az_thm_form_tl
+
+\tcbset
+  {
+    theorem~name~and~number/.code = { \tl_set:Nn \l_az_thm_form_tl { namenumber } } ,
+    theorem~number~and~name/.code = { \tl_set:Nn \l_az_thm_form_tl { numbername } } ,
+    theorem~name/.code            = { \tl_set:Nn \l_az_thm_form_tl { name } } ,
+    theorem~number~position/.is~choice ,
+    theorem~number~position/left/.code  = { \tl_gset:Nn \g_az_thm_form_tl { numbername } } ,
+    theorem~number~position/right/.code = { \tl_gset:Nn \g_az_thm_form_tl { namenumber } } ,
+    default~number~position/.code = { \tl_set_eq:NN \l_az_thm_form_tl \g_az_thm_form_tl } ,
+  }
+
+\cs_new:Npn \az_thm_title:nn #1#2
+  {
+    \tl_if_empty:nTF {#2}
+      { \hbox:n { #1 ~ } }
+      {
+        \str_case_e:nn { \l_az_thm_form_tl }
+          {
+            { namenumber } { \hbox:n { #1 ~ #2 } }
+            { numbername } { \hbox:n { \azusedeco {number} {#2} ~ #1 } }
+            { name }       { \hbox:n { #1 } }
+          }
+      }
+  }
+
+%% Numérotation adossée à la structure : par chapitre s'il y en a, par section
+%% sinon. Un même \aznewtheorem sert alors dans un livre et dans un article.
+\tcbset
+  {
+    new/within~chapter~or~section/.code =
+      {
+        \cs_if_exist:cTF { c@chapter }
+          { \tcbset { new/number~within = chapter } }
+          { \tcbset { new/number~within = section } }
+      } ,
+    new/within~chapter~or~none/.code =
+      {
+        \cs_if_exist:cT { c@chapter }
+          { \tcbset { new/number~within = chapter } }
+      } ,
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Blocs à articulations
+%%
+%% « titled items » arme \unite dans le bloc et referme la liste au sortir du
+%% corps : c'est ce qui permet d'écrire \unite sans jamais ouvrir de liste.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tcbset
+  {
+    titled~items/.code =
+      {
+        \tcbset { after~upper~pre = \closeunite }
+        \az_liste_defaults_inside:
+      } ,
+    %% Définis vides ici : azsolution les remplace. azthm ne sait rien des
+    %% solutions, et un document sans azsolution doit compiler quand même.
+    with~solution/.style = { } ,
+    with~proof/.style    = { } ,
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Création d'un type de bloc
+%%
+%%   \aznewtheorem[<création>]{<env>}{<Nom>}{<nom>}{<préfixe>}{<type>}{<style>}
+%%
+%% <préfixe> est l'article qui précède le nom dans un renvoi : « du théorème »,
+%% « de la proposition ». <type> choisit la couleur et le style de famille.
+%%
+%% L'environnement obtenu a la signature du kit :
+%%
+%%   \begin{theo}\op{clés}(intitulé)<étiquette>
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_thm_close_lists:n #1
+  {
+    \cs_set_eq:cc { az@endorig@ #1 } { end #1 }
+    \cs_set:cpn { end #1 } { \exit \use:c { az@endorig@ #1 } }
+  }
+
+\NewDocumentCommand \az_thm_new:w { O{} m m m m m m }
+  {
+    \az@thm@newbox [ auto~counter, #1 ] {#2} { E{\op}{{}} d() d<> }
+      {
+        az~thm~prop =
+          {
+            envname = #2 , Name = {#3} , name = {#4} ,
+            prefix = {#5} , type = #6 ,
+          } ,
+        default~number~position ,
+        thmcol = #6 col ,
+        az~prestyle = {##1} ,
+        az@local@style/.style = {#7} ,
+        az@local@style/.append~style = {##1} ,
+        az~apply~ #6 ,
+        title = { \az_thm_title:nn {#3} { \thetcbcounter } } ,
+        IfValueT = {##2}
+          {
+            code = { \tl_set:Nn \az@thm@title {##2} } ,
+            description~path = {##2} ,
+            add~to~list = {theo}{tcolorbox} ,
+            list~entry = { \protect \numberline { \thetcbcounter } #3~:~##2 } ,
+          } ,
+        IfValueT = {##3}
+          {
+            code = { \tl_set:Nn \az@thm@label {##3} } ,
+            label = {##3} ,
+            IfValueT = {##2} { nameref = {##2} } ,
+          } ,
+        hypertarget = { #2 @ \thetcbcounter } ,
+      }
+    \az_thm_close_lists:n {#2}
+    %% La variante étoilée : même bloc, sans numéro. Elle délègue plutôt que de
+    %% se redéfinir, pour qu'un \azrenewtheorem sur la forme nue suffise.
+    \DeclareDocumentEnvironment {#2*} { E{\op}{{}} d() d<> }
+      { \use:c {#2} \op { ##1, theorem~name } (##2) <##3> }
+      { \use:c { end #2 } }
+  }
+
+\NewDocumentCommand \aznewtheorem { }
+  { \cs_set_eq:NN \az@thm@newbox \NewTColorBox \az_thm_new:w }
+
+\NewDocumentCommand \azrenewtheorem { }
+  { \cs_set_eq:NN \az@thm@newbox \RenewTColorBox \az_thm_new:w }
+
+%% \azrenewtheorem redéfinit l'environnement nu ; sa variante étoilée existe
+%% déjà et \DeclareDocumentEnvironment la remplace sans se plaindre.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% genthm — le bloc à nom libre
+%%
+%% Pour ce qui ne relève d'aucun type déclaré : les données d'un document, un
+%% encadré de rappel, une convention de notation.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewTColorBox [ use~counter = genthm, within~chapter~or~section ] { genthm }
+  { m E{\op}{{}} d() d<> }
+  {
+    az~thm~prop = { type = other } ,
+    default~number~position ,
+    thmcol = azneutral ,
+    az~prestyle = {#2} ,
+    az@local@style/.append~style = {#2} ,
+    az~apply~other ,
+    IfValueT = {#1} { title = { \az_thm_title:nn {#1} { \thetcbcounter } } } ,
+    IfValueT = {#3}
+      {
+        description~path = {#3} ,
+        add~to~list = {theo}{tcolorbox} ,
+        list~entry = { \protect \numberline { \thetcbcounter } #1~:~#3 } ,
+      } ,
+    IfValueT = {#4} { label = {#4} , IfValueT = {#3} { nameref = {#3} } } ,
+    titled~items ,
+  }
+
+\NewTColorBox [ no~counter ] { genthm* } { m E{\op}{{}} d() }
+  {
+    az~thm~prop = { type = other } ,
+    thmcol = azneutral ,
+    theorem~name ,
+    az~prestyle = {#2} ,
+    az@local@style/.append~style = {#2} ,
+    az~apply~other ,
+    IfValueT = {#1} { title = { #1 ~ } } ,
+    IfValueT = {#3} { description~path = {#3} } ,
+    titled~items ,
+  }
+
+\az_thm_close_lists:n { genthm }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Liste des résultats
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\ProvideDocumentCommand \tableofresults
+  { O{\section*} D(){Liste~des~résultats~remarquables} }
+  { \tcblistof [#1] {theo} {#2} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Jeu de styles
+%%
+%% Un style de famille se décline en deux : la variante « thm », encadrée et
+%% titrée, pour ce qui s'énonce ; la variante « rmk », adossée à un filet, pour
+%% ce qui commente. C'est la seule distinction qui compte visuellement, et elle
+%% suffit aux sept types.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tcbset { minimal/.style = blanker }
+
+\tcbset
+  {
+    simple/.style =
+      {
+        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        boxrule = .4pt, top = 3pt, bottom = 3pt, left = 5pt, right = 5pt,
+      } ,
+  }
+
+\tcbset
+  {
+    azdefault/.style =
+      {
+        spartan,
+        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        colbacktitle = thmcol,
+        top = 3pt, bottom = 3pt, left = 5pt, right = 5pt, boxrule = .4pt,
+      } ,
+    azdefaultthm/.style =
+      {
+        azdefault,
+        attach~boxed~title~to~top~left =
+          { xshift = 6.2pt, yshift* = -\tcboxedtitleheight+3.2pt } ,
+        boxed~title~style =
+          {
+            boxrule = 1.2pt, colframe = pagecol, boxsep = 0pt,
+            top = 2pt, bottom = 1pt, left = 3pt, right = 3pt,
+          } ,
+        coltitle = white, colbacktitle = thmcol,
+      } ,
+    azdefaultrmk/.style =
+      {
+        blankest, top = 0pt, bottom = 0pt, bottomtitle = 8pt,
+        borderline~west = {.6pt}{.6pt}{thmcol} ,
+        coltitle = thmcol, left = 5pt,
+      } ,
+  }
+
+\tcbset
+  {
+    rounded/.style =
+      {
+        skin = enhanced, arc = 6pt,
+        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        boxrule = -1pt, left = 5pt, right = 5pt, bottom = 5pt, bottomrule = 1.2pt,
+      } ,
+    roundedthm/.style =
+      {
+        rounded,
+        attach~boxed~title~to~top~left =
+          { yshift = -\tcboxedtitleheight/2, xshift = 5pt } ,
+        boxed~title~style =
+          {
+            arc = (\fntht D+7pt)/2 , boxsep = 0pt,
+            top = 2pt, bottom = 3pt, left = 6pt, right = 6pt,
+            boxrule = 1.2pt, coltext = white,
+            colframe = pagecol, colback = thmcol,
+          } ,
+        description~path~style = { reserved~style } ,
+        description~offset = 1.5em ,
+        top = \tcboxedtitleheight/2 ,
+      } ,
+    roundedrmk/.style =
+      {
+        rounded,
+        attach~boxed~title~to~top~left =
+          { yshift = -\tcboxedtitleheight-5pt, xshift = 7pt } ,
+        boxed~title~style = { blank } ,
+        coltitle = thmcol,
+        top = \tcboxedtitleheight+10pt, bottom = 5pt,
+      } ,
+  }
+
+\tcbset
+  {
+    uphill/.style =
+      {
+        skin = enhanced,
+        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        boxrule = -.1pt, rightrule = .6pt, bottomrule = .6pt, boxsep = 0pt,
+        left = 5pt, right = 5pt, bottom = 5pt, top = 5pt,
+        arc = 6pt, sharp~corners = uphill,
+      } ,
+    uphillthm/.style =
+      {
+        uphill,
+        attach~boxed~title~to~top~left =
+          { yshift = -\tcboxedtitleheight+1.2pt, xshift = -1.2pt } ,
+        boxed~title~style =
+          {
+            boxsep = 0pt, top = 2pt, bottom = 1pt, left = 6pt, right = 6pt,
+            arc = 6pt, sharp~corners = uphill, boxrule = 1.2pt,
+            colframe = pagecol, colback = thmcol, coltext = white,
+          } ,
+        top = \tcboxedtitleheight+6.2pt ,
+      } ,
+    uphillrmk/.style =
+      {
+        uphill,
+        attach~boxed~title~to~top~left =
+          { yshift = -\tcboxedtitleheight-3pt, xshift = 7pt } ,
+        boxed~title~style = { blank } ,
+        coltitle = thmcol,
+        top = \tcboxedtitleheight+8pt, bottom = 5pt,
+      } ,
+  }
+
+\tcbset
+  {
+    flag/.style =
+      {
+        enhanced, colframe = thmcol, colback = framebackcol,
+        boxrule = 0pt, top = 3pt, bottom = 3pt, left = 5pt, right = 5pt,
+        toprule = .6pt, bottomrule = 1.2pt, sharp~corners = north,
+      } ,
+    flagthm/.style =
+      {
+        flag,
+        attach~boxed~title~to~top~left =
+          { xshift = 12pt, yshift* = 1mm-\tcboxedtitleheight } ,
+        varwidth~boxed~title* = -3cm ,
+        boxed~title~style =
+          {
+            size = small ,
+            frame~code =
+              {
+                \path [ fill = thmcol!50!black ]
+                  ([yshift=-1mm,xshift=-1mm]frame.north~west)
+                  arc [start~angle=0,end~angle=180,radius=1mm]
+                  ([yshift=-1mm,xshift=1mm]frame.north~east)
+                  arc [start~angle=180,end~angle=0,radius=1mm];
+                \path
+                  [
+                    top~color = thmcol!75!black ,
+                    bottom~color = thmcol!75!black ,
+                    middle~color = thmcol
+                  ]
+                  ([xshift=-2mm]frame.north~west) --
+                  ([xshift=2mm]frame.north~east) [rounded~corners=1mm] --
+                  ([xshift=1mm,yshift=-1mm]frame.north~east) --
+                  (frame.south~east) -- (frame.south~west)
+                    -- ([xshift=-1mm,yshift=-1mm]frame.north~west)
+                    [sharp~corners] -- cycle;
+              } ,
+            interior~engine = empty , no~underlay ,
+          } ,
+      } ,
+    flagrmk/.style =
+      {
+        flag,
+        attach~boxed~title~to~top~left =
+          { yshift = -\tcboxedtitleheight-3pt, xshift = 7pt } ,
+        boxed~title~style = { blank } ,
+        coltitle = thmcol,
+        top = \tcboxedtitleheight+8pt, bottom = 5pt,
+      } ,
+  }
+
+\tcbset
+  {
+    azbeamer/.style =
+      {
+        skin = beamer, no~shadow, arc = 6pt,
+        colframe = thmcol, colback = framebackcol, coltext = frametextcol,
+        boxrule = -2pt, left = 5pt, right = 5pt, bottom = 5pt, toptitle = 2pt,
+      } ,
+    beamerthm/.style =
+      {
+        azbeamer, bottomtitle = -2pt, titlerule = 3pt,
+        description~path/.style = { description~draft = {##1} } ,
+        before~skip = 1\baselineskip~plus~2pt~minus~3pt ,
+        after~skip  = 1\baselineskip~plus~2pt~minus~3pt ,
+      } ,
+    beamerrmk/.style =
+      {
+        azbeamer, sharp~corners = west, leftrule = 1.2pt,
+        attach~boxed~title~to~top~left =
+          { yshift = -\tcboxedtitleheight-2pt, xshift = 9pt } ,
+        boxed~title~style = { blank } ,
+        coltitle = thmcol,
+        top = \tcboxedtitleheight+7pt, bottom = 3pt,
+        before~skip = 1\baselineskip~plus~2pt~minus~3pt ,
+        after~skip  = 1\baselineskip~plus~2pt~minus~3pt ,
+      } ,
+  }
+
+\azsetuptheorems { global~style = rounded }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Compteurs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_if_exist:cTF { c@chapter }
+  {
+    \clist_map_inline:nn { theo, defi, rema, exem, exer, genthm }
+      { \azdefcounter {#1} { |C|.|1| } [chapter] }
+  }
+  {
+    \clist_map_inline:nn { theo, defi, rema, exem, exer, genthm }
+      { \azdefcounter {#1} { |1| } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Vocabulaire de base
+%%
+%% Ce que tout document du kit connaît. Les classes en ajoutent — azdoc
+%% redéclare les mêmes noms avec `with proof` et `with solution` une fois
+%% azsolution chargé.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\aznewtheorem [ use~counter = theo, within~chapter~or~section ] {theo}
+  {Théorème} {théorème} {du~} {theorem} {titled~items}
+\aznewtheorem [ use~counter~from = theo ] {theodef}
+  {Théorème~et~définition} {théorème} {du~} {theorem} {titled~items}
+\aznewtheorem [ use~counter~from = theo ] {propdef}
+  {Proposition~et~définition} {proposition} {de~la~} {theorem} {titled~items}
+\aznewtheorem [ use~counter~from = theo ] {prop}
+  {Proposition} {proposition} {de~la~} {theorem} {titled~items}
+\aznewtheorem [ use~counter~from = theo ] {lemm}
+  {Lemme} {lemme} {du~} {theorem} { }
+\aznewtheorem [ use~counter~from = theo ] {ppte}
+  {Propriétés} {propriétés} {des~} {theorem} {titled~items}
+\aznewtheorem [ use~counter~from = theo ] {coro}
+  {Corollaire} {corollaire} {du~} {theorem} {titled~items}
+
+\aznewtheorem [ use~counter = defi, within~chapter~or~section ] {defi}
+  {Définition} {définition} { } {definition} {titled~items}
+\aznewtheorem [ use~counter~from = defi ] {voca}
+  {Vocabulaire} {vocabulaire} { } {definition} {titled~items}
+\aznewtheorem [ use~counter~from = defi ] {nota}
+  {Notations} {notation} { } {definition} {titled~items}
+\aznewtheorem [ use~counter~from = defi ] {vocanota}
+  {Vocabulaire~et~notations} {notation} { } {definition} {titled~items}
+
+\aznewtheorem [ use~counter = rema, within~chapter~or~section ] {rema}
+  {Remarque} {remarque} { } {remark} { }
+\aznewtheorem [ use~counter~from = rema ] {remas}
+  {Remarques} {remarques} { } {remark} {titled~items}
+\aznewtheorem [ use~counter~from = rema ] {remap}
+  {Remarques~pratiques} {remarques~pratiques} { } {remark} {titled~items}
+
+\aznewtheorem [ use~counter = exem, within~chapter~or~section ] {exem}
+  {Exemples} {exemples} { } {example} {titled~items}
+\aznewtheorem [ use~counter~from = exem ] {exemf}
+  {Exemples~fondamentaux} {exemples~fondamentaux} { } {theorem} {titled~items}
+\aznewtheorem [ use~counter~from = exem ] {exema}
+  {Exemple~d'application} {exemple~d'application} { } {example} {titled~items}
+\aznewtheorem [ use~counter~from = exem ] {exemp}
+  {Exemple~pratique} {exemple~pratique} { } {example} {titled~items}
+\aznewtheorem [ use~counter~from = exem ] {appl}
+  {Application} {application} { } {example} { }
+\aznewtheorem [ use~counter~from = exem ] {appls}
+  {Applications} {applications} { } {example} {titled~items}
+
+\aznewtheorem [ no~counter ] {demo}
+  {Démonstration} { } { } {proof} {titled~items}
+\aznewtheorem {float}
+  {Figure} { } { } {other} {float, halign~title = flush~center}
+\tcbset { floatplacement = tbp }
+
+\aznewtheorem [ use~counter = exer, within~chapter~or~section ] {exer}
+  {Exercice} {exercice} {de~l'} {exercise} {titled~items}
+\aznewtheorem [ use~counter~from = exer ] {exerappli}
+  {Exercice~d'application} {exercice} {de~l'} {exercise} {titled~items}
+\aznewtheorem [ use~counter~from = exer ] {exerappro}
+  {Exercice~d'approfondissement} {exercice} {de~l'} {exercise} {titled~items}
+\aznewtheorem [ use~counter~from = exer ] {prob}
+  {Problème} {problème} {du~} {exercise} {titled~items}
+\aznewtheorem [ use~counter~from = exer ] {acti}
+  {Activité} {activité} {de~l'} {exercise} {titled~items}
+
+\endinput

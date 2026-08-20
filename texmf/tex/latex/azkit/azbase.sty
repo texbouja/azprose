@@ -346,6 +346,17 @@
 \azgsetdeco {subsection} { #1 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Roles de fonte
+%%
+%% Deux noms partages par les titres de bloc, les titres de document et les
+%% en-tetes. Declares au socle parce que trois modules les emploient ;
+%% azlayout les redefinit selon le prereglage de fontes retenu.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new:Npn \TitlingFont { \sffamily \scshape }
+\cs_new:Npn \HeadingFont { \scshape }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Mesures de fonte et utilitaires de composition
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
