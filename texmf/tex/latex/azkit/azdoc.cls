@@ -33,8 +33,17 @@
 
 \tl_new:N \g_az_doc_class_tl
 \tl_new:N \g_az_doc_options_tl
+\tl_new:N \g_az_doc_moteur_tl
 \tl_gset:Nn \g_az_doc_class_tl { report }
 \tl_gset:Nn \g_az_doc_options_tl { 11pt }
+\tl_gset:Nn \g_az_doc_moteur_tl { azthm }
+
+\msg_new:nnnn { azkit } { solutions-sans-tcolorbox }
+  { Les~solutions~déportées~demandent~le~moteur~azthm. }
+  {
+    azsolution~est~bâti~sur~tcolorbox~;~avec~moteur=azbloc~il~n'est~pas~
+    chargé,~et~les~options~`solution*`~et~`proof*`~restent~sans~effet.
+  }
 
 \bool_new:N \g_az_doc_solution_bool
 \bool_new:N \g_az_doc_solution_delayed_bool
@@ -50,6 +59,22 @@
     book    .code:n =
       { \tl_gset:Nn \g_az_doc_class_tl { book }
         \tl_gput_left:Nn \g_az_doc_options_tl { oneside , } } ,
+    %% Le MOTEUR de blocs sémantiques. Deux implémentations interchangeables,
+    %% même surface d'écriture :
+    %%
+    %%   azthm   tcolorbox — l'historique, avec ses styles commutables et
+    %%           les solutions déportées ;
+    %%   azbloc  framed + pgf — deux fois et demie plus rapide, décoration
+    %%           dans la veine des callouts de l'application.
+    %%
+    %% Le défaut reste azthm : le second CHANGE le rendu, et ce n'est pas à la
+    %% classe d'en décider pour des documents déjà écrits.
+    moteur .choice: ,
+    moteur / azthm  .code:n = { \tl_gset:Nn \g_az_doc_moteur_tl { azthm } } ,
+    moteur / azbloc .code:n = { \tl_gset:Nn \g_az_doc_moteur_tl { azbloc } } ,
+    %% Les deux noms nus, parce qu'on les écrira ainsi neuf fois sur dix.
+    azthm  .meta:n = { moteur = azthm } ,
+    azbloc .meta:n = { moteur = azbloc } ,
     draft       .bool_gset:N = \g_az_doc_draft_bool ,
     final       .code:n = { \global \finaltrue } ,
     background  .code:n = { \global \backgroundtrue } ,
@@ -131,8 +156,26 @@
 \RequirePackage { aztitle }
 \RequirePackage { azinclude }
 \RequirePackage { azrecord }
-\RequirePackage { azthm }
-\RequirePackage { azsolution }
+
+%% UN SEUL moteur est chargé. Les charger tous les deux mettrait tcolorbox en
+%% mémoire pour rien et laisserait le second écraser le premier en silence.
+\exp_args:NV \RequirePackage \g_az_doc_moteur_tl
+
+\str_if_eq:VnTF \g_az_doc_moteur_tl { azthm }
+  { \RequirePackage { azsolution } }
+  {
+    %% azbloc ne connaît que le placement SUR PLACE. Les options de classe s'y
+    %% transmettent quand même : `solution=false` doit continuer d'éteindre les
+    %% corrigés, c'est le tirage le plus courant.
+    %% Par copie de booléen et non par \keys_set : une valeur calculée n'est pas
+    %% développée avant que l3keys ne la lise, et `.bool_gset:N` la refuserait.
+    \bool_gset_eq:NN \g_az_bloc_solution_bool \g_az_doc_solution_bool
+    \bool_gset_eq:NN \g_az_bloc_proof_bool    \g_az_doc_proof_bool
+    \bool_lazy_or:nnT
+      { \bool_if_p:N \g_az_doc_solution_delayed_bool }
+      { \bool_if_p:N \g_az_doc_proof_delayed_bool }
+      { \msg_warning:nn { azkit } { solutions-sans-tcolorbox } }
+  }
 
 %% Les options de titlesec ne sont pas negociables ici : `explicit` rend #1
 %% utilisable dans le corps du format, `pagestyles` fournit \sethead aux themes.
@@ -145,19 +188,27 @@
 %% repere, pas un contenu.
 \RequirePackage { fontawesome }
 
-\ExplSyntaxOff
-\usetikzlibrary{calc,babel,positioning}
-\ExplSyntaxOn
+%% tikz n'est chargé QUE par la voie azthm, qui en a besoin pour ses habillages
+%% de boîte. azbloc s'en tient à pgf, et c'est une part de ce qu'il fait gagner.
+\str_if_eq:VnT \g_az_doc_moteur_tl { azthm }
+  {
+    \ExplSyntaxOff
+    \usetikzlibrary{calc,babel,positioning}
+    \ExplSyntaxOn
+  }
 
 %% Les placements retenus en option de classe sont transmis à azsolution une
 %% fois celui-ci chargé — la classe ne fait que porter la décision.
-\azsetupsolutions
+\cs_if_exist:NT \azsetupsolutions
   {
-    solution = \bool_if:NTF \g_az_doc_solution_bool { true } { false } ,
-    proof    = \bool_if:NTF \g_az_doc_proof_bool { true } { false } ,
+    \azsetupsolutions
+      {
+        solution = \bool_if:NTF \g_az_doc_solution_bool { true } { false } ,
+        proof    = \bool_if:NTF \g_az_doc_proof_bool { true } { false } ,
+      }
+    \bool_if:NT \g_az_doc_solution_delayed_bool { \azsetupsolutions { solution* } }
+    \bool_if:NT \g_az_doc_proof_delayed_bool    { \azsetupsolutions { proof* } }
   }
-\bool_if:NT \g_az_doc_solution_delayed_bool { \azsetupsolutions { solution* } }
-\bool_if:NT \g_az_doc_proof_delayed_bool    { \azsetupsolutions { proof* } }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Numérotation et retraits
@@ -227,16 +278,31 @@
 \tl_set:Nn \az@chapter@anchor { north~east }
 \tl_set:Nn \az@section@anchor { west }
 
+%% Les clés d'habillage passent par tcolorbox et tikz : sur la voie azbloc,
+%% où ni l'un ni l'autre n'est chargé, elles deviennent muettes plutôt
+%% qu'absentes — un document qui les emploie doit rester compilable.
+%% Drapeau du moteur, en \newif CLASSIQUE : il gouverne une region lue hors
+%% syntaxe expl3, ou un booleen l3 ne serait pas lisible.
+\newif \ifaztcb
+\bool_new:N \g_az_doc_tcb_bool
+\str_if_eq:VnT \g_az_doc_moteur_tl { azthm }
+  { \bool_gset_true:N \g_az_doc_tcb_bool \aztcbtrue }
+
+\cs_new_protected:Npn \az_doc_tcbstyle:nn #1#2
+  { \bool_if:NT \g_az_doc_tcb_bool { \tcbset { #1 /.style = {#2} } } }
+\cs_new_protected:Npn \az_doc_tikzstyle:nn #1#2
+  { \bool_if:NT \g_az_doc_tcb_bool { \tikzset { #1 /.style = {#2} } } }
+
 \keys_define:nn { az / sectiontitle }
   {
-    chapter~style .code:n = { \tcbset { az@chapter@style/.style = {#1} } } ,
-    section~style .code:n = { \tcbset { az@section@style/.style = {#1} } } ,
+    chapter~style .code:n = { \az_doc_tcbstyle:nn { az@chapter@style } {#1} } ,
+    section~style .code:n = { \az_doc_tcbstyle:nn { az@section@style } {#1} } ,
     chapter~label~style .code:n =
-      { \tikzset { az@chapter@label/.style = {#1} } } ,
+      { \az_doc_tikzstyle:nn { az@chapter@label } {#1} } ,
     section~label~style .code:n =
-      { \tikzset { az@section@label/.style = {#1} } } ,
+      { \az_doc_tikzstyle:nn { az@section@label } {#1} } ,
     subsection~label~style .code:n =
-      { \tikzset { az@subsection@label/.style = {#1} } } ,
+      { \az_doc_tikzstyle:nn { az@subsection@label } {#1} } ,
     chapter~label~decoration .tl_set:N = \az@chapter@deco ,
     chapter~label~anchor .tl_set:N = \az@chapter@anchor ,
     section~label~anchor .tl_set:N = \az@section@anchor ,
@@ -257,8 +323,20 @@
     subsection~label~style = { } ,
   }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Les deux jeux de formats de titre
+%%
+%% Écrits dans une SEULE région \ExplSyntaxOff, gouvernée par un conditionnel
+%% TeX ordinaire. Un \bool_if:NF de l3 aurait grabbé les deux blocs comme des
+%% ARGUMENTS — donc tokenisés en catcodes expl3 avant que le \ExplSyntaxOff
+%% intérieur n'ait pu agir, et les espaces des formats auraient disparu.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 \ExplSyntaxOff
 
+\ifaztcb
+
+%% ── Voie azthm : le titre est une tcolorbox ─────────────────────────────────
 \titleformat{name=\chapter}[display]
   {\normalfont\huge\scshape}{}{0pt}
   {%
@@ -302,6 +380,38 @@
   {3pt}
   {\itshape#1}
 
+\else
+
+%% ── Voie azbloc : le titre est dessiné au filet ─────────────────────────────
+%%
+%% Même hiérarchie, sans boîte. Le bandeau plein demandait une tcolorbox par
+%% titre ; ici la couleur ne marque que le numéro et le soulignement, ce qui
+%% suffit à situer un titre dans la page et s'accorde à la sobriété des blocs.
+\titleformat{name=\chapter}[display]
+  {\normalfont\huge\scshape}
+  {\textcolor{thmcol}{\TitlingFont\Large\az@label@chapter}}
+  {6pt}
+  {#1\\[4pt]\textcolor{thmcol}{\rule{\linewidth}{1.2pt}}}
+\titleformat{name=\chapter,numberless}[display]
+  {\normalfont\huge}{}{0pt}
+  {#1\\[4pt]\textcolor{thmcol}{\rule{\linewidth}{1.2pt}}}
+
+\titleformat{\section}[block]
+  {\sffamily\Large\scshape}
+  {\textcolor{thmcol}{\az@label@section}}
+  {.6em}
+  {#1}
+\titleformat{name=\section,numberless}
+  {\sffamily\Large\scshape}{}{0pt}{#1}
+
+\titleformat{\subsection}
+  {\sffamily\large\scshape}
+  {\textcolor{thmcol}{\az@label@subsection}}
+  {.5em}
+  {\itshape#1}
+
+\fi
+
 \ExplSyntaxOn
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -314,20 +424,25 @@
 %% à un \fbox : le tracé tikz coûte cher et n'apprend rien à la relecture.
 \NewDocumentCommand \genboxcmd { O{} +m } { \fbox {#2} }
 
+%% Le tracé tikz n'est posé que si tikz est là — donc sur la voie azthm, et
+%% hors brouillon où il ne vaut pas son prix. Ailleurs, \fbox fait l'affaire.
 \AddToHook { begindocument/before }
   {
-    \ifdraft \else
-      \tikzset
-        {
-          az@generic/.style =
+    \bool_if:NT \g_az_doc_tcb_bool
+      {
+        \ifdraft \else
+          \tikzset
             {
-              fill = none, draw = framestrokecol,
-              inner~sep = 3pt, rounded~corners = 3pt
+              az@generic/.style =
+                {
+                  fill = none, draw = framestrokecol,
+                  inner~sep = 3pt, rounded~corners = 3pt
+                }
             }
-        }
-      \RenewDocumentCommand \genboxcmd { O{} +m }
-        { \tikz [ baseline=(T.base) ] \node (T) [ az@generic, #1 ] { \strut #2 } ; }
-    \fi
+          \RenewDocumentCommand \genboxcmd { O{} +m }
+            { \tikz [ baseline=(T.base) ] \node (T) [ az@generic, #1 ] { \strut #2 } ; }
+        \fi
+      }
   }
 
 \azsetdeco { formula } { \genboxcmd [ draw = thmcol ] {#1} }

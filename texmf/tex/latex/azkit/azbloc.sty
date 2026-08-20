@@ -680,6 +680,88 @@
 \cs_if_exist:NF \azauxdir { \tl_new:N \azauxdir \tl_set:Nn \azauxdir { tmp } }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \solution et \proof — sur place
+%%
+%% Le contenu les écrit à l'intérieur d'un bloc ; ils doivent donc exister dès
+%% que ce module est chargé, sans attendre azsolution — qui est bâti sur
+%% tcolorbox et ne suit pas cette voie.
+%%
+%% Ici, le placement est SUR PLACE : un sous-titre dans le bloc, et la suite
+%% du corps est la solution. Éteints, ils avalent le reste du bloc en le
+%% déportant vers un fichier que personne ne relit — c'est le seul moyen de ne
+%% pas composer un texte sans le conditionner ligne à ligne.
+%%
+%% Le DIFFÉRÉ (solution*, proof*) reste l'affaire d'azsolution, et n'est pas
+%% encore porté sur ce moteur.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bool_new:N \g_az_bloc_solution_bool
+\bool_new:N \g_az_bloc_proof_bool
+\bool_gset_true:N \g_az_bloc_solution_bool
+\bool_gset_true:N \g_az_bloc_proof_bool
+
+\keys_define:nn { az / bloc / sol }
+  {
+    solution .bool_gset:N = \g_az_bloc_solution_bool ,
+    solution .default:n   = { true } ,
+    proof    .bool_gset:N = \g_az_bloc_proof_bool ,
+    proof    .default:n   = { true } ,
+    unknown  .code:n = { } ,
+  }
+
+\NewDocumentCommand \azblocsetup { m } { \keys_set:nn { az / bloc / sol } {#1} }
+
+\cs_if_exist:NF \solutionname { \newrobustcmd \solutionname { solution } }
+\cs_if_exist:NF \proofname    { \newrobustcmd \proofname { démonstration } }
+
+%% Un sous-titre dans le bloc : un filet court dans la couleur d'accent, puis
+%% le nom. Assez pour marquer la bascule énoncé → solution sans ouvrir une
+%% seconde boîte, ce qui est précisément ce qu'on cherchait à éviter.
+\cs_new_protected:Npn \az_bloc_subtitle:n #1
+  {
+    \exit \closeunite
+    \par \addvspace { \azblocvsep }
+    \noindent
+    \begingroup
+      \color { \l__az_bloc_accentcol_tl }
+      \rule [ .3ex ] { 1.4em } { .8pt } \hspace { .5em }
+      \azblocfonttitle \MakeUppercase { \use:c { #1 name } }
+    \endgroup
+    \par \nobreak \vspace { .3\azblocvsep }
+    \az_liste_defaults_inside:
+    \noindent \ignorespaces
+  }
+
+\cs_new_protected:Npn \az_bloc_swallow:n #1
+  {
+    \bool_set_true:N \l__az_bloc_capturing_bool
+    \azwriteonce { \azauxdir / az-rebut }
+  }
+
+\cs_new_protected:Npn \az_bloc_sol:n #1
+  {
+    \bool_if:cTF { g_az_bloc_ #1 _bool }
+      { \az_bloc_subtitle:n {#1} }
+      { \az_bloc_swallow:n {#1} }
+  }
+
+\cs_set_protected:Npn \solution { \az_bloc_sol:n { solution } }
+\cs_set_protected:Npn \proof    { \az_bloc_sol:n { proof } }
+
+%% Les points de dépôt du différé. Ici ils n'ont rien à déposer — le placement
+%% est toujours sur place — mais ils EXISTENT, pour qu'un document écrit pour
+%% azthm compile tel quel sur ce moteur. Silencieux : l'avertissement est déjà
+%% donné une fois par la classe, le répéter à chaque \solutions n'apprendrait
+%% rien.
+\cs_if_exist:NF \solutions { \NewDocumentCommand \solutions { } { } }
+\cs_if_exist:NF \proofs    { \NewDocumentCommand \proofs { } { } }
+
+%% azthm expose \azsetuptcb — l'alias de \tcbset. Ce moteur n'a pas de
+%% tcolorbox ; la commande existe et ne fait rien, pour qu'une classe ou un
+%% document qui la pose n'échoue pas.
+\cs_if_exist:NF \azsetuptcb { \NewDocumentCommand \azsetuptcb { m } { } }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Le vocabulaire
 %%
 %% Mot pour mot celui d'azthm : c'est la condition pour que ce module en soit
