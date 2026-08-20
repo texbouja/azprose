@@ -1,0 +1,466 @@
+%% azbase.sty — socle du kit azkit
+%%
+%% Décorations nommées, gabarits d'étiquettes |…|, compteurs et ordinaux
+%% français, inclusion de `user.def`.
+%%
+%% Ce fichier ne dépend d'aucun autre module du kit : il est chargé le premier
+%% par tous les autres.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azbase} {2026-08-20} {0.1}
+  {azkit — socle : décorations, compteurs, étiquettes}
+
+\RequirePackage { calc }
+\RequirePackage { array }
+\RequirePackage { relsize }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Messages
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\msg_new:nnnn { azkit } { raccourci-reserve }
+  { Le~raccourci~de~compteur~«~#1~»~est~réservé. }
+  {
+    Les~raccourcis~1~a~A~i~I~M~F~m~f~q~Q~e~C~désignent~des~compteurs~du~noyau~
+    ou~de~la~structure~du~document.~Le~raccourci~est~ignoré.
+  }
+
+\msg_new:nnnn { azkit } { raccourci-pris }
+  { Le~raccourci~de~compteur~«~#1~»~est~déjà~affecté. }
+  { Préfixer~d'une~étoile~—~(*#1)~—~pour~l'écraser~délibérément. }
+
+\msg_new:nnnn { azkit } { raccourci-inconnu }
+  { Raccourci~de~compteur~«~#1~»~inconnu~dans~un~gabarit~d'étiquette. }
+  { Le~gabarit~garde~|#1|~tel~quel.~Vérifier~l'orthographe~du~raccourci. }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Décorations nommées
+%%
+%% Une décoration est un habillage désigné par un nom :
+%%
+%%   \azsetdeco{unite}{\textbf{#1.}}   puis   \azusedeco{unite}{3}
+%%
+%% Le POURQUOI : séparer « quel texte » de « comment il est habillé ». Un thème
+%% redéfinit la seconde moitié sans jamais toucher à la première — c'est ce qui
+%% permettra de commuter l'apparence sans repasser sur le contenu.
+%%
+%% La forme étoilée reçoit le code SANS argument : la décoration est alors une
+%% commande à un argument fournie telle quelle (\azsetdeco*{simple}{\fbox}).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentCommand \azsetdeco { s m +m }
+  {
+    \IfBooleanTF {#1}
+      { \cs_set:cpn { az@deco@ #2 } {#3} }
+      { \cs_set:cpn { az@deco@ #2 } ##1 { \group_begin: #3 \group_end: } }
+  }
+
+\NewDocumentCommand \azgsetdeco { s m +m }
+  {
+    \IfBooleanTF {#1}
+      { \cs_gset:cpn { az@deco@ #2 } {#3} }
+      { \cs_gset:cpn { az@deco@ #2 } ##1 { \group_begin: #3 \group_end: } }
+  }
+
+%% Une décoration absente se comporte en identité : \use:c donne \relax et
+%% l'argument est composé nu. C'est délibéré — un habillage manquant ne doit
+%% jamais faire disparaître le texte qu'il habille.
+\NewDocumentCommand \azusedeco { m } { \use:c { az@deco@ #1 } }
+
+\cs_new_protected:Npn \az_deco:nn #1#2 { \use:c { az@deco@ #1 } {#2} }
+
+\azsetdeco* {simple} {\fbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Ordinaux français
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new:Npn \az_ordinal:nnn #1#2#3
+  {
+    \int_case:nnF { \value {#3} }
+      {
+        {1} {#1}
+        {2} {#2 Deuxième}   {3} {#2 Troisième}  {4} {#2 Quatrième}
+        {5} {#2 Cinquième}  {6} {#2 Sixième}    {7} {#2 Septième}
+        {8} {#2 Huitième}   {9} {#2 Neuvième}   {10} {#2 Dixième}
+      }
+      { \int_to_arabic:n { \value {#3} } }
+  }
+
+%% Les quatre genres/casses. Le deuxième argument de \az_ordinal:nnn est vide
+%% pour la capitale et \MakeLowercase pour la minuscule — les formes composées
+%% (« Deuxième ») ne diffèrent que par là.
+\NewDocumentCommand \MOrdinal { m } { \az_ordinal:nnn {Premier}  {}              {#1} }
+\NewDocumentCommand \FOrdinal { m } { \az_ordinal:nnn {Première} {}              {#1} }
+\NewDocumentCommand \mordinal { m } { \az_ordinal:nnn {premier}  {\MakeLowercase} {#1} }
+\NewDocumentCommand \fordinal { m } { \az_ordinal:nnn {première} {\MakeLowercase} {#1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Raccourcis de compteur
+%%
+%% Un raccourci est une lettre qui, dans un gabarit d'étiquette, désigne une
+%% représentation : |1| l'arabe, |C| le chapitre courant, |X| rien du tout.
+%% Chaque raccourci est une commande \az@cnt@<lettre> à un argument : le nom du
+%% compteur auquel le gabarit s'applique. Les raccourcis « en lecture seule »
+%% ignorent cet argument — ils renvoient un compteur de structure du document.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\seq_new:N \g_az_cnt_actifs_seq
+\seq_new:N \g_az_cnt_verrous_seq
+
+%% ACTIFS : ceux qui représentent le compteur LUI-MÊME. Leur présence dans un
+%% gabarit fixe aussi \the<compteur> — c'est ce que LaTeX utilise pour \ref et
+%% pour \stepcounter, indépendamment de l'étiquette affichée.
+\seq_gset_from_clist:Nn \g_az_cnt_actifs_seq { M, F, m, f, 1, a, A, i, I }
+
+%% VERROUS : les actifs, plus les compteurs de structure. Aucun ne peut être
+%% réaffecté par l'utilisateur : les réaffecter casserait silencieusement tous
+%% les gabarits déjà écrits.
+\seq_gset_from_clist:Nn \g_az_cnt_verrous_seq
+  { M, F, m, f, 1, a, A, i, I, q, Q, e, C }
+
+\cs_new:cpn { az@cnt@1 } #1 { \arabic {#1} }
+\cs_new:cpn { az@cnt@a } #1 { \alph   {#1} }
+\cs_new:cpn { az@cnt@A } #1 { \Alph   {#1} }
+\cs_new:cpn { az@cnt@i } #1 { \roman  {#1} }
+\cs_new:cpn { az@cnt@I } #1 { \Roman  {#1} }
+\cs_new:cpn { az@cnt@M } #1 { \MOrdinal {#1} }
+\cs_new:cpn { az@cnt@F } #1 { \FOrdinal {#1} }
+\cs_new:cpn { az@cnt@m } #1 { \mordinal {#1} }
+\cs_new:cpn { az@cnt@f } #1 { \fordinal {#1} }
+
+%% Lecture seule : l'argument est absorbé et ignoré.
+%% |C| doit survivre à une classe sans chapitre — un gabarit écrit pour un
+%% livre ne doit pas exploser dans un article, il doit simplement se taire.
+\cs_new:cpn { az@cnt@C } #1
+  { \cs_if_exist:cT { c@chapter } { \thechapter } }
+\cs_new:cpn { az@cnt@S } #1 { \thesection    }
+\cs_new:cpn { az@cnt@s } #1 { \thesubsection }
+\cs_new:cpn { az@cnt@Q } #1 { \theenumi      }
+\cs_new:cpn { az@cnt@q } #1 { \theenumii     }
+\cs_new:cpn { az@cnt@e } #1 { \theequation   }
+
+%% |X| ne rend rien : il sert de place réservée, notamment pour la numérotation
+%% des unités à l'intérieur d'un théorème, où le préfixe est fourni ailleurs.
+\cs_new:cpn { az@cnt@X } #1 { }
+
+%% \azdefshortcut{<lettre>}{<compteur>} — affecte une lettre à \the<compteur>.
+%% L'étoile en tête de la lettre force l'écrasement d'un raccourci déjà pris.
+\NewDocumentCommand \azdefshortcut { m m }
+  { \az_cnt_shortcut:nn {#1} {#2} }
+
+\bool_new:N \l__az_cnt_refus_bool
+
+\cs_new_protected:Npn \az_cnt_shortcut:nn #1#2
+  {
+    \bool_set_false:N \l__az_cnt_refus_bool
+    \tl_set:Nn \l__az_lettre_tl {#1}
+    \tl_if_head_eq_charcode:nNTF {#1} *
+      { \tl_set:Nx \l__az_lettre_tl { \tl_tail:n {#1} } }
+      {
+        \seq_if_in:NVT \g_az_cnt_verrous_seq \l__az_lettre_tl
+          {
+            \bool_set_true:N \l__az_cnt_refus_bool
+            \msg_warning:nnV { azkit } { raccourci-reserve } \l__az_lettre_tl
+          }
+        \bool_if:NF \l__az_cnt_refus_bool
+          {
+            \cs_if_exist:cT { az@cnt@ \l__az_lettre_tl }
+              {
+                \bool_set_true:N \l__az_cnt_refus_bool
+                \msg_warning:nnV { azkit } { raccourci-pris } \l__az_lettre_tl
+              }
+          }
+      }
+    \bool_if:NF \l__az_cnt_refus_bool
+      {
+        \cs_gset:cpx { az@cnt@ \l__az_lettre_tl } ##1
+          { \exp_not:c { the #2 } }
+      }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Gabarits d'étiquettes |…|
+%%
+%%   \azsetlabel{theo}{|C|.|1|}
+%%
+%% Le gabarit alterne littéraux et raccourcis, séparés par des barres. Découpé
+%% sur « | », il donne une suite dont les rangs impairs sont littéraux et les
+%% rangs pairs des raccourcis — c'est tout le parseur.
+%%
+%% Deux macros en sortent, et la distinction compte :
+%%   \az@label@<c> — l'étiquette AFFICHÉE, gabarit complet (« 2.1 ») ;
+%%   \the<c>       — la représentation du compteur pour LaTeX (« 1 »),
+%%                   fixée par le premier raccourci actif rencontré.
+%% \azmakethetolabel aligne la seconde sur la première quand on veut que \ref
+%% porte l'étiquette entière.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \l__az_label_tl
+\tl_new:N \l__az_lettre_tl
+\tl_new:N \l__az_actif_tl
+\seq_new:N \l__az_gabarit_seq
+\int_new:N \l__az_rang_int
+\bool_new:N \l__az_global_bool
+
+\cs_new_protected:Npn \az_label_set:nnn #1#2#3
+  % #1 = booléen global, #2 = compteur, #3 = gabarit
+  {
+    \tl_clear:N \l__az_label_tl
+    \tl_clear:N \l__az_actif_tl
+    \seq_set_split:Nnn \l__az_gabarit_seq { | } {#3}
+    \int_zero:N \l__az_rang_int
+    \seq_map_inline:Nn \l__az_gabarit_seq
+      {
+        \int_incr:N \l__az_rang_int
+        \int_if_odd:nTF { \l__az_rang_int }
+          { \tl_put_right:Nn \l__az_label_tl {##1} }
+          { \az_label_shortcut:nn {#2} {##1} }
+      }
+    \bool_if:nTF {#1}
+      {
+        \tl_gset_eq:cN { az@label@ #2 } \l__az_label_tl
+        \tl_if_empty:NF \l__az_actif_tl
+          { \cs_gset:cpx { the #2 } { \exp_not:V \l__az_actif_tl } }
+      }
+      {
+        \tl_set_eq:cN { az@label@ #2 } \l__az_label_tl
+        \tl_if_empty:NF \l__az_actif_tl
+          { \cs_set:cpx { the #2 } { \exp_not:V \l__az_actif_tl } }
+      }
+  }
+
+\cs_new_protected:Npn \az_label_shortcut:nn #1#2
+  {
+    \cs_if_exist:cTF { az@cnt@ #2 }
+      {
+        \tl_put_right:Nx \l__az_label_tl
+          { \exp_not:c { az@cnt@ #2 } {#1} }
+        %% Le PREMIER raccourci actif l'emporte : les suivants ne feraient que
+        %% se contredire, et l'ordre du gabarit est le seul ordre lisible.
+        \tl_if_empty:NT \l__az_actif_tl
+          {
+            \seq_if_in:NnT \g_az_cnt_actifs_seq {#2}
+              { \tl_set:Nx \l__az_actif_tl { \exp_not:c { az@cnt@ #2 } {#1} } }
+          }
+      }
+      {
+        \msg_warning:nnn { azkit } { raccourci-inconnu } {#2}
+        \tl_put_right:Nn \l__az_label_tl { | #2 | }
+      }
+  }
+
+\NewDocumentCommand \azsetlabel { s m m }
+  { \az_label_set:nnn { \IfBooleanTF {#1} {\c_true_bool} {\c_false_bool} } {#2} {#3} }
+
+\NewDocumentCommand \azmakethetolabel { s m }
+  {
+    \IfBooleanTF {#1}
+      { \cs_gset:cpx { the #2 } { \exp_not:v { az@label@ #2 } } }
+      { \cs_set:cpx  { the #2 } { \exp_not:v { az@label@ #2 } } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Compteurs
+%%
+%%   \azdefcounter{<nom>}{<gabarit>}[<parents>](<raccourci>)<format de renvoi>
+%%
+%% Un gabarit vide vaut |1|. Les parents sont une liste de compteurs qui
+%% réinitialisent celui-ci (\counterwithin*, sans toucher à leur \the).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentCommand \azdefcounter { m m o d() d<> }
+  {
+    \IfValueT {#4} { \az_cnt_shortcut:nn {#4} {#1} }
+    \az_counter_new:n {#1}
+    \tl_if_blank:nTF {#2}
+      { \azsetlabel* {#1} {|1|} }
+      { \azsetlabel* {#1} {#2} }
+    \IfValueT {#3}
+      { \clist_map_inline:nn {#3} { \counterwithin* {#1} {##1} } }
+    %% <…> : le préfixe que \ref colle devant le numéro (p@<compteur>).
+    \IfValueT {#5} { \cs_gset:cpn { p@ #1 } ##1 {#5} }
+  }
+
+\cs_new_protected:Npn \az_counter_new:n #1
+  { \cs_if_exist:cF { c@ #1 } { \newcounter {#1} } }
+
+%% Deux compteurs qui partagent le MÊME registre : incrémenter l'un incrémente
+%% l'autre. C'est ainsi que « théorème » et « proposition » se suivent dans une
+%% numérotation unique tout en gardant deux noms.
+\NewDocumentCommand \clonecounter { m m }
+  { \cs_gset_eq:cc { c@ #1 } { c@ #2 } }
+
+%% Le numéro suivi d'un point, mais seulement s'il y en a un.
+\NewDocumentCommand \azthe { m }
+  { \int_compare:nT { \value {#1} > 0 } { \use:c { the #1 } . } }
+
+\cs_new_protected:Npn \az_setcounter_ref:nn #1#2
+  {
+    \setcounter {#1} {#2}
+    \cs_set:Npx \@currentcounter {#1}
+    \cs_set:Npx \@currentlabel
+      { \exp_not:c { p@ #1 } \exp_not:c { the #1 } }
+  }
+
+\cs_new_protected:Npn \az_addtocounter_ref:nn #1#2
+  {
+    \addtocounter {#1} {#2}
+    \cs_set:Npx \@currentcounter {#1}
+    \cs_set:Npx \@currentlabel
+      { \exp_not:c { p@ #1 } \exp_not:c { the #1 } }
+  }
+
+\cs_new_protected:Npn \az_stepcounter_ref:n #1
+  {
+    \stepcounter {#1}
+    \cs_set:Npx \@currentcounter {#1}
+    \cs_set:Npx \@currentlabel
+      { \exp_not:c { p@ #1 } \exp_not:c { the #1 } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Étiquettes par défaut
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\azsetlabel* {enumi}   {|1|}
+\azsetlabel* {enumii}  {|a|}
+\azsetlabel* {enumiii} {|i|}
+\azsetlabel* {section} {|I|}
+\azsetlabel* {subsection} {|A|}
+
+\azgsetdeco {enumi}   { \bfseries #1. }
+\azgsetdeco {enumii}  { \bfseries #1. }
+\azgsetdeco {enumiii} { (#1) }
+\azgsetdeco {section} { #1 }
+\azgsetdeco {subsection} { #1 }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Mesures de fonte et utilitaires de composition
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new:Npn \fntht { \fontcharht \font ` }
+\cs_new:Npn \fntdp { \fontchardp \font ` }
+\cs_new:Npn \fntwd { \fontcharwd \font ` }
+
+%% Un carré à la hauteur de la lettre donnée : sert de puce dans les pieds de
+%% page, où il doit s'accorder à la fonte courante et non à une taille fixe.
+\NewDocumentCommand \azsquare { O{x} } { \rule { \fntht #1 } { \fntht #1 } }
+
+%% Passe à la page suivante s'il ne reste pas <n> lignes — évite qu'un titre de
+%% solution reste seul en bas de page, séparé de ce qu'il annonce.
+\dim_new:N \l__az_saut_dim
+\dim_new:N \l__az_reste_dim
+
+\NewDocumentCommand \breakifnospace { O{2} }
+  {
+    \dim_set:Nn \l__az_saut_dim { #1 \baselineskip }
+    \dim_set:Nn \l__az_reste_dim { \pagegoal - \pagetotal }
+    \dim_compare:nT { \l__az_reste_dim < \l__az_saut_dim }
+      { \raggedbottom \eject }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Pointillés
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\skip_new:N \ligneskip
+\box_new:N  \l__az_point_box
+
+\azgsetdeco {pointille} { \textcolor{black!75}{\rule{.8pt}{.4pt}\hskip1.2pt} }
+
+\skip_set:Nn \ligneskip { 0.33 \baselineskip }
+
+\cs_new_protected:Npn \az_point_box:
+  { \hbox_set:Nn \l__az_point_box { \azusedeco{pointille} \hss } }
+
+%% \lignes{<n>} : n lignes pointillées pleine largeur.
+%% \lignes*     : finit la ligne courante en pointillés, puis n lignes.
+\NewDocumentCommand \lignes { s m }
+  {
+    \az_point_box:
+    \IfBooleanT {#1}
+      {
+        \hbox:n { } \vrule height \ligneskip width \c_zero_dim
+        \xleaders \hbox_use:N \l__az_point_box \hskip 0pt plus 1fill
+        \vadjust { \vskip \ligneskip } \hbox:n { }
+      }
+    \par \addvspace { \ligneskip }
+    \group_begin:
+      \int_step_inline:nn {#2}
+        {
+          \hbox to \hsize
+            {
+              \mbox{}
+              \xleaders \hbox_use:N \l__az_point_box \hskip 0pt plus 1fill \relax
+              \vadjust { \vskip \ligneskip } \hbox:n { }
+            }
+        }
+    \group_end:
+    \addvspace { 2 \ligneskip }
+  }
+
+%% \points{<largeur>} : un filet pointillé horizontal de largeur donnée.
+\NewDocumentCommand \points { s m }
+  {
+    \az_point_box:
+    \IfBooleanT {#1}
+      {
+        \xleaders \hbox_use:N \l__az_point_box \hskip 0pt plus 1fill
+        \hbox:n { } \linebreak
+      }
+    \hbox to #2
+      { \xleaders \hbox_use:N \l__az_point_box \hskip 0pt plus 1fill \hbox:n { } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Notes de bas de page hors des boîtes
+%%
+%% tcolorbox et tikz composent dans des \minipage, où \footnote produit une
+%% note LOCALE à la boîte au lieu d'une note de page. On intercepte le texte,
+%% on l'accumule, et on le rejoue une fois la boîte refermée.
+%%
+%% La marque de renvoi est figée AU MOMENT DE LA COLLECTE (\tl_gput_right:Nx) :
+%% une fois la boîte refermée, \@thefnmark aura changé et la note porterait le
+%% numéro d'une autre.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \g_az_footnote_tl
+
+\cs_new_protected:Npn \az_footnote_collect:n #1
+  {
+    \tl_gput_right:Nx \g_az_footnote_tl
+      { \exp_not:N \footnotetext [ \@thefnmark ] { \exp_not:n {#1} } }
+  }
+
+\cs_new_protected:Npn \az_footnote_restore:
+  {
+    \cs_set:Npn \@mpfn { footnote }
+    \cs_set:Npn \thempfn { \arabic { footnote } }
+    \cs_set_eq:NN \@footnotetext \az_footnote_collect:n
+  }
+
+\cs_new_protected:Npn \az_footnote_use:
+  {
+    \g_az_footnote_tl
+    \tl_gclear:N \g_az_footnote_tl
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% user.def
+%%
+%% Les préambules de document ne définissent plus de macros (règle stricte du
+%% kit) : les commandes personnelles vivent dans un unique `user.def`, déposé
+%% par AZprose dans l'arbre texmf du projet. La résolution est laissée à
+%% kpathsea — l'utilisateur n'écrit jamais de chemin.
+%%
+%% Chargé à la FIN du préambule : `user.def` peut employer tout ce que le
+%% document a chargé, azmath compris. Absent, il ne dit rien.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\AddToHook { begindocument/before }
+  { \InputIfFileExists { user.def } { } { } }
+
+\endinput

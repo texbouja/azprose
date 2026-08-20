@@ -1,0 +1,499 @@
+%% azlayout.sty — géométrie, fontes et langue du kit azkit
+%%
+%% Ce module règle la SORTIE : format de papier, marges, fontes, langue. Il est
+%% partagé par toutes les classes du kit — un devoir et un cours n'ont pas les
+%% mêmes environnements, mais ils sortent sur le même papier.
+%%
+%% Deux ruptures avec cpgekit :
+%%
+%%  · les formats de papier passent par `paperwidth`/`paperheight`, l'interface
+%%    publique de geometry, et non plus par \Gm@setsize et \define@key{Gm} ;
+%%  · polyglossia est déclassé. xelatex sait désormais travailler avec babel,
+%%    ce qui fait tomber du même coup ifluatex, ifxetex et pdftexcmds, chargés
+%%    uniquement pour arbitrer entre les deux.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azlayout} {2026-08-20} {0.1}
+  {azkit — géométrie, fontes et langue}
+
+\RequirePackage { azbase }
+\RequirePackage { geometry }
+\RequirePackage { cuted }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Messages
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\msg_new:nnnn { azkit } { media-inconnu }
+  { Support~de~sortie~«~#1~»~inconnu. }
+  {
+    Les~supports~connus~sont~:~print,~2print,~lsprint,~book,~altbook,~draft,~
+    phone,~altphone,~beamer,~tablet,~lstablet,~alttablet,~lsalttablet.
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Drapeaux de mise en page
+%%
+%% Exposés en \if… classiques : ils sont lus par les fichiers de thème et par
+%% le code hérité, qui sont du TeX ordinaire.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_if_exist:NF \ifdark       { \newif \ifdark }
+\cs_if_exist:NF \ifprint      { \newif \ifprint }
+\cs_if_exist:NF \ifcompact    { \newif \ifcompact }
+\cs_if_exist:NF \iflandscape  { \newif \iflandscape }
+\cs_if_exist:NF \iftitlepage  { \newif \iftitlepage }
+\cs_if_exist:NF \ifstriptitle { \newif \ifstriptitle }
+\cs_if_exist:NF \ifdraft      { \newif \ifdraft }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Marge de note
+%%
+%% `littlemargin` n'existe pas dans geometry : c'est une commodité du kit, qui
+%% règle d'un coup la largeur de la colonne de notes marginales et supprime
+%% l'espace qui l'en sépare. Traitée ici, jamais transmise à geometry.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\dim_new:N \azlittlemargin
+
+\cs_new_protected:Npn \az_littlemargin:n #1
+  {
+    \dim_set:Nn \azlittlemargin {#1}
+    \dim_set:Nn \marginparwidth {#1}
+    \dim_zero:N \marginparsep
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Supports de sortie
+%%
+%% Un support est une intention — « lu sur une tablette », « imprimé recto
+%% verso » — pas un format de papier. Il fixe d'un coup le papier, les marges
+%% et les drapeaux qui vont avec, parce que ces trois choses ne se décident pas
+%% séparément : un écran de téléphone impose la compacité autant que sa taille.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\prop_new:N \g_az_media_prop
+
+\cs_new_protected:Npn \az_media_new:nn #1#2
+  { \prop_gput:Nnn \g_az_media_prop {#1} {#2} }
+
+%% ── Impression ──────────────────────────────────────────────────────────────
+
+\az_media_new:nn { print }
+  {
+    \printtrue \darkfalse \compactfalse
+    \geometry
+      {
+        a4paper, inner = 3cm, outer = 2cm, vmargin = {3cm,3cm},
+        headsep = 1.5cm, footskip = 2cm
+      }
+    \az_littlemargin:n { 6pc }
+  }
+
+\az_media_new:nn { 2print }
+  {
+    \printtrue \darkfalse \compacttrue \striptitletrue
+    \geometry
+      {
+        a4paper, twocolumn, columnsep = 24truept,
+        inner = 1truecm, outer = 1truecm, vmargin = {2.4truecm,2.4truecm},
+        footskip = 1.6cm
+      }
+    \az_littlemargin:n { 4.5pc }
+  }
+
+\az_media_new:nn { lsprint }
+  {
+    \printtrue \darkfalse \compactfalse \landscapetrue
+    \geometry
+      {
+        a4paper, landscape, twocolumn, columnsep = 36truept,
+        inner = 1.8truecm, outer = 1.8truecm, vmargin = {1.5truecm,1.5truecm},
+        footskip = 1cm
+      }
+    \az_littlemargin:n { 4.5pc }
+  }
+
+%% ── Livres ──────────────────────────────────────────────────────────────────
+
+\az_media_new:nn { book }
+  {
+    \printtrue \darkfalse \compacttrue
+    \geometry
+      {
+        paperwidth = 170truemm, paperheight = 240truemm,
+        inner = 2.4cm, outer = 1.6cm, vmargin = {2cm,2.4cm},
+        footskip = 1.4cm, headsep = 1cm
+      }
+    \az_littlemargin:n { 4.5pc }
+  }
+
+\az_media_new:nn { altbook }
+  {
+    \printtrue \darkfalse \compactfalse
+    \geometry
+      {
+        paperwidth = 190truemm, paperheight = 240truemm,
+        inner = 3cm, outer = 2cm, vmargin = {2cm,3cm}
+      }
+    \az_littlemargin:n { 8pc }
+  }
+
+%% ── Écrans ──────────────────────────────────────────────────────────────────
+
+\az_media_new:nn { draft }
+  {
+    \printfalse \compacttrue \titlepagetrue
+    \geometry
+      {
+        a5paper, inner = 1.25cm, outer = 1.25cm, vmargin = {1.2cm,1.8cm}
+      }
+    \az_littlemargin:n { 4.5pc }
+  }
+
+\az_media_new:nn { phone }
+  {
+    \printfalse \darktrue \compacttrue \titlepagetrue
+    \geometry
+      {
+        paperwidth = 126truemm, paperheight = 224truemm,
+        hmargin = {.5cm,.5cm}, vmargin = {1.2cm,1.4cm}
+      }
+    \az_littlemargin:n { 3.5pc }
+  }
+
+\az_media_new:nn { altphone }
+  {
+    \printfalse \darktrue \compacttrue \titlepagetrue
+    \geometry
+      {
+        paperwidth = 126truemm, paperheight = 266truemm,
+        hmargin = {.5cm,.5cm}, vmargin = {1.4cm,1.8cm}
+      }
+    \az_littlemargin:n { 3.5pc }
+  }
+
+\az_media_new:nn { beamer }
+  {
+    \printfalse \darkfalse \compactfalse \titlepagetrue
+    \geometry
+      {
+        paperwidth = 128truemm, paperheight = 96truemm,
+        hmargin = {1cm,.5cm}, vmargin = {.4cm,1.2cm}
+      }
+    \az_littlemargin:n { 4.5pc }
+  }
+
+\az_media_new:nn { tablet }
+  {
+    \printfalse \darkfalse \compactfalse \titlepagetrue
+    \geometry
+      {
+        paperwidth = 180truemm, paperheight = 240truemm,
+        hmargin = {1.8cm,1.8cm}, vmargin = {1.5cm,2cm}
+      }
+    \az_littlemargin:n { 4.5pc }
+  }
+
+\az_media_new:nn { lstablet }
+  {
+    \printfalse \darkfalse \compacttrue \landscapetrue \titlepagetrue
+    \geometry
+      {
+        paperwidth = 180truemm, paperheight = 240truemm,
+        landscape, twocolumn, columnsep = 36truept,
+        hmargin = {.75cm,.75cm}, vmargin = {1.2cm,1.8cm}
+      }
+    \az_littlemargin:n { 4.5pc }
+  }
+
+\az_media_new:nn { alttablet }
+  {
+    \printfalse \darkfalse \compactfalse \titlepagetrue
+    \geometry
+      {
+        paperwidth = 180truemm, paperheight = 288truemm,
+        hmargin = {1.2cm,1.2cm}, vmargin = {2cm,3cm}
+      }
+    \az_littlemargin:n { 4.5pc }
+  }
+
+\az_media_new:nn { lsalttablet }
+  {
+    \printfalse \darkfalse \compacttrue \titlepagetrue
+    \geometry
+      {
+        paperwidth = 180truemm, paperheight = 288truemm,
+        landscape, twocolumn, columnsep = 40pt,
+        hmargin = {1cm,1cm}, vmargin = {1.2cm,1.2cm}
+      }
+    \az_littlemargin:n { 6pc }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \azgeometry
+%%
+%%   \azgeometry[<clés>]{<support>}
+%%
+%% Les clés inconnues sont transmises telles quelles à geometry : le kit ne
+%% prétend pas redécrire une interface qui existe déjà et qui est bonne.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bool_new:N \g_az_geometry_fait_bool
+\bool_new:N \l_az_geometry_force_bool
+\tl_new:N   \g_az_media_tl
+\clist_new:N \l__az_geom_reste_clist
+
+\keys_define:nn { az / geometry }
+  {
+    littlemargin  .code:n   = { \az_littlemargin:n {#1} } ,
+    force~compact .code:n   = { \global \compacttrue } ,
+    force~geometry .bool_set:N = \l_az_geometry_force_bool ,
+    draft         .code:n   = { \global \drafttrue } ,
+    dark          .code:n   = { \global \darktrue } ,
+    unknown       .code:n   =
+      {
+        \tl_if_novalue:nTF {#1}
+          { \clist_put_right:Nx \l__az_geom_reste_clist { \l_keys_key_str } }
+          { \clist_put_right:Nx \l__az_geom_reste_clist
+              { \l_keys_key_str = { \exp_not:n {#1} } } }
+      } ,
+  }
+
+\NewDocumentCommand \azgeometry { O{} m }
+  {
+    \tl_if_empty:NT \g_az_media_tl { \tl_gset:Nn \g_az_media_tl {#2} }
+    \clist_clear:N \l__az_geom_reste_clist
+    \keys_set:nn { az / geometry } {#1}
+    \bool_if:NF \g_az_geometry_fait_bool
+      {
+        \bool_gset_true:N \g_az_geometry_fait_bool
+        %% En brouillon, le support demandé cède la place au support `draft` :
+        %% on relit à l'écran, sur du petit papier, quel que soit le tirage visé.
+        \ifdraft
+          \bool_if:NTF \l_az_geometry_force_bool
+            { \az_media_use:V \g_az_media_tl }
+            { \az_media_use:n { draft } }
+        \else
+          \az_media_use:V \g_az_media_tl
+        \fi
+      }
+    \clist_if_empty:NF \l__az_geom_reste_clist
+      { \exp_args:NV \geometry \l__az_geom_reste_clist }
+    \az_layout_after:
+  }
+
+\cs_new_protected:Npn \az_media_use:n #1
+  {
+    \prop_get:NnNTF \g_az_media_prop {#1} \l__az_media_code_tl
+      { \l__az_media_code_tl }
+      { \msg_warning:nnn { azkit } { media-inconnu } {#1} }
+  }
+\cs_generate_variant:Nn \az_media_use:n { V }
+\tl_new:N \l__az_media_code_tl
+
+%% Point d'accroche pour les modules qui doivent réagir à un changement de
+%% géométrie — azlist y règle les retraits de liste, qui dépendent de la
+%% largeur de colonne.
+\tl_new:N \g_az_layout_after_tl
+\cs_new_protected:Npn \az_layout_after: { \g_az_layout_after_tl }
+
+%% Une colonne étroite impose la compacité, quel que soit le support déclaré :
+%% en deux colonnes sur A4, les blocs aérés deviennent illisibles.
+\dim_const:Nn \c_az_compact_limite_dim { 123mm }
+
+\AddToHook { begindocument/before }
+  {
+    %% Aucun \azgeometry dans le document : le brouillon fait foi. Sans cela le
+    %% document sortirait avec la géométrie de la classe de base, jamais celle
+    %% du kit.
+    \bool_if:NF \g_az_geometry_fait_bool { \azgeometry { draft } }
+    \dim_compare:nT { \linewidth < \c_az_compact_limite_dim } { \compacttrue }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Fontes
+%%
+%% Un préréglage de fonte est un TRIPLET cohérent — romain, sans-empattement,
+%% mathématique — plus la fonte des titres. Les charger séparément produit des
+%% documents qui jurent ; le kit ne propose donc que des ensembles.
+%%
+%% Le chargement est différé à la fin du préambule : le document choisit sa
+%% fonte n'importe où, et le kit tranche une fois pour toutes au dernier moment.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\cs_new_protected:Npn \az_fonts_load: { }
+\bool_new:N \g_az_font_choisie_bool
+\cs_new:Npn \TitlingFont { \sffamily \scshape }
+\cs_new:Npn \HeadingFont { \scshape }
+
+\bool_new:N \g_az_txsf_bool
+
+\keys_define:nn { az / font }
+  {
+    libertine .code:n =
+      {
+        \bool_gset_true:N \g_az_font_choisie_bool
+        \cs_set_protected:Npn \az_fonts_load:
+          {
+            \RequirePackage [tt=false] { libertine }
+            \sys_if_engine_pdftex:TF
+              {
+                \RequirePackage [libertine,smallerops,bigdelims,upint,vvarbb]
+                  { newtxmath }
+                \RequirePackage [scr=boondoxo,bb=boondox] { mathalpha }
+              }
+              {
+                \RequirePackage
+                  [warnings-off={mathtools-colon,mathtools-overbracket}]
+                  { unicode-math }
+                \setmathfont { TeX~Gyre~Termes~Math }
+              }
+            \RequirePackage [scaled=.8] { FiraMono }
+            \useosf
+            \cs_set:Npn \TitlingFont { \sffamily \scshape }
+          }
+      } ,
+    garamond .code:n =
+      {
+        \bool_gset_true:N \g_az_font_choisie_bool
+        \cs_set_protected:Npn \az_fonts_load:
+          {
+            \RequirePackage [vvarbb,ebgaramond,smallerops] { newtx }
+            \RequirePackage [sf,scale=0.95] { libertine }
+            \RequirePackage [scr=boondoxo,bb=boondox] { mathalpha }
+            \cs_set:Npn \TitlingFont { \scshape }
+          }
+      } ,
+    lmodern .code:n =
+      {
+        \bool_gset_true:N \g_az_font_choisie_bool
+        \cs_set_protected:Npn \az_fonts_load:
+          {
+            \RequirePackage { mlmodern }
+            \cs_set:Npn \TitlingFont { \scshape }
+          }
+      } ,
+    utopia .code:n =
+      {
+        \bool_gset_true:N \g_az_font_choisie_bool
+        \cs_set_protected:Npn \az_fonts_load:
+          {
+            \sys_if_engine_pdftex:TF
+              {
+                \RequirePackage [p,scaled=.98,space] { erewhon }
+                \RequirePackage [utopia,vvarbb] { newtxmath }
+                \useosf
+              }
+              { \RequirePackage { fourier-otf } }
+            \RequirePackage [scaled=1.05] { FiraSans }
+            \RequirePackage [varqu,varl] { inconsolata }
+            \cs_set:Npn \TitlingFont { \firamedium \scshape }
+          }
+      } ,
+    palatino .code:n =
+      {
+        \bool_gset_true:N \g_az_font_choisie_bool
+        \cs_set_protected:Npn \az_fonts_load:
+          {
+            \RequirePackage [nohelv] { newpxtext }
+            \RequirePackage [scaled=1.05] { biolinum }
+            \RequirePackage [vvarbb,smallerops] { newpxmath }
+            \useosf
+            \cs_set:Npn \TitlingFont { \sffamily \scshape }
+          }
+      } ,
+    fira .code:n =
+      {
+        \bool_gset_true:N \g_az_font_choisie_bool
+        \cs_set_protected:Npn \az_fonts_load:
+          {
+            \RequirePackage [sfdefault,scaled=.92] { FiraSans }
+            \RequirePackage [scaled=.88] { FiraMono }
+            \sys_if_engine_pdftex:TF
+              {
+                \RequirePackage [smallerops,upint] { newtxsf }
+                \bool_gset_true:N \g_az_txsf_bool
+              }
+              { \RequirePackage [fakebold,mathrm=sym] { firamath-otf } }
+            \firaoldstyle
+            \cs_set:Npn \TitlingFont { \scshape }
+          }
+      } ,
+    load .code:n =
+      {
+        \bool_gset_true:N \g_az_font_choisie_bool
+        \cs_set_protected:Npn \az_fonts_load:
+          {
+            \RequirePackage [T1] { fontenc }
+            \RequirePackage {#1}
+            \RequirePackage { microtype }
+          }
+      } ,
+    none .code:n = { \cs_set_protected:Npn \az_fonts_load: { } } ,
+    titling~font .code:n = { \cs_set:Npn \TitlingFont {#1} } ,
+  }
+
+\NewDocumentCommand \azfont { m } { \keys_set:nn { az / font } {#1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Langue
+%%
+%% babel seul, sur tous les moteurs. polyglossia n'avait de raison d'être que
+%% parce que babel ne suivait pas xetex ; ce n'est plus vrai, et la double voie
+%% coûtait trois paquets de détection de moteur.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\clist_new:N \g_az_langues_clist
+\clist_gset:Nn \g_az_langues_clist { english, french }
+
+\keys_define:nn { az / lang }
+  {
+    main      .code:n = { \clist_gput_right:Nn \g_az_langues_clist {#1} } ,
+    languages .clist_gset:N = \g_az_langues_clist ,
+  }
+
+\NewDocumentCommand \azlang { m } { \keys_set:nn { az / lang } {#1} }
+
+\cs_new_protected:Npn \az_lang_load:
+  {
+    \sys_if_engine_pdftex:TF
+      {
+        \RequirePackage [T1] { fontenc }
+        \RequirePackage { microtype }
+      }
+      {
+        \RequirePackage [no-math] { fontspec }
+        %% \lsstyle vient de microtype, absent sous xetex/luatex : neutralisé
+        %% plutôt que laissé indéfini, car les en-têtes s'en servent.
+        \cs_set_eq:NN \lsstyle \prg_do_nothing:
+      }
+    \use:x
+      { \exp_not:N \RequirePackage [ \g_az_langues_clist ] { babel } }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Chargement effectif
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\AddToHook { begindocument/before }
+  {
+    %% Aucune fonte demandée : l'écran prend fira, le papier libertine. Les
+    %% deux ont été choisies pour leur lisibilité sur leur support respectif.
+    \bool_if:NF \g_az_font_choisie_bool
+      { \ifprint \azfont { libertine } \else \azfont { fira } \fi }
+    \az_fonts_load:
+    \az_lang_load:
+    %% \mathbb de newtxsf n'accepte pas un argument entouré d'espaces, ce qui
+    %% arrive dès qu'une macro utilisateur le construit.
+    \bool_if:NT \g_az_txsf_bool
+      {
+        \RenewDocumentCommand \mathbb { >{\TrimSpaces} m }
+          { \exp_not:n { \varmathbb {#1} } }
+      }
+    \cs_if_exist:NF \up { \cs_set_eq:NN \up \textsuperscript }
+  }
+
+\endinput

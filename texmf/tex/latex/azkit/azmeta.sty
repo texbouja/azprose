@@ -1,0 +1,205 @@
+%% azmeta.sty — métadonnées du document
+%%
+%% Une métadonnée est un renseignement sur le document lui-même : qui l'écrit,
+%% pour quelle classe, sur quel thème, à quelle période. Elle sert trois
+%% consommateurs qui ne se ressemblent pas — le titre, les en-têtes de page, et
+%% l'indexation par AZprose — d'où deux vues systématiques :
+%%
+%%   la valeur BRUTE     \azrawmeta{theme}  →  Réduction des endomorphismes
+%%   la valeur HABILLÉE  \usemeta{theme}    →  {\scshape Réduction…}
+%%
+%% Séparer les deux évite que l'habillage du titre ne contamine ce qui part à
+%% l'index.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azmeta} {2026-08-20} {0.1}
+  {azkit — métadonnées du document}
+
+\RequirePackage { azbase }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Messages
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\msg_new:nnnn { azkit } { type-invalide }
+  { \string\Type\ :~«~#1~»~n'est~pas~un~type~de~document. }
+  {
+    Le~vocabulaire~est~FERMÉ~:~cours,~exercices,~banque,~devoir,~note,~colle,~
+    concours,~rapport,~misc.~Une~valeur~libre~rendrait~le~champ~inexploitable~
+    à~l'indexation,~ce~qui~est~sa~raison~d'être.
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Le magasin
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\prop_new:N \g_az_meta_prop        % clef → valeur brute
+\seq_new:N  \g_az_meta_champs_seq  % clefs, dans l'ordre de déclaration
+
+
+%% \aznewmeta{<Commande>}{<clef>}{<habillage>}[<valeur initiale>]
+%%
+%% L'habillage reçoit la valeur en #1. Il n'est PAS appliqué au stockage : la
+%% valeur brute reste disponible telle que l'auteur l'a écrite.
+\NewDocumentCommand \aznewmeta { m m m O{} }
+  {
+    \seq_if_in:NnF \g_az_meta_champs_seq {#2}
+      { \seq_gput_right:Nn \g_az_meta_champs_seq {#2} }
+    %% Habillage vide d'emblée : \usemeta d'un champ jamais renseigné doit
+    %% rendre le vide, pas un \relax qui traînerait dans un en-tête.
+    \cs_gset:cpn { az@meta@fmt@ #2 } { }
+    \cs_gset_protected:cpn {#1} ##1
+      {
+        \prop_gput:Nnn \g_az_meta_prop {#2} {##1}
+        \cs_gset:cpn { az@meta@fmt@ #2 } { { #3 } }
+      }
+    \tl_if_blank:nF {#4} { \use:c {#1} {#4} }
+  }
+
+%% L'habillage est reconstruit à chaque affectation avec la valeur figée
+%% dedans : c'est ce qui permet à \usemeta d'être développable et de tenir dans
+%% un en-tête de page, où l'on ne peut rien exécuter.
+\NewDocumentCommand \usemeta   { m } { \use:c { az@meta@fmt@ #1 } }
+\NewDocumentCommand \azrawmeta { m } { \prop_item:Nn \g_az_meta_prop {#1} }
+
+\NewDocumentCommand \resetmeta { m }
+  {
+    \prop_gremove:Nn \g_az_meta_prop {#1}
+    \cs_gset:cpn { az@meta@fmt@ #1 } { }
+  }
+
+\prg_new_conditional:Npnn \az_meta_if_set:n #1 { T, F, TF, p }
+  {
+    \prop_if_in:NnTF \g_az_meta_prop {#1}
+      { \prg_return_true: } { \prg_return_false: }
+  }
+
+%% Conservé sous son nom hérité : les gabarits de titre et de page l'emploient.
+\NewDocumentCommand \ifdefmeta { m } { \az_meta_if_set:nTF {#1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Les champs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% ── Où et pour qui ──────────────────────────────────────────────────────────
+\aznewmeta {Centre}      {centre}      { \scshape #1 }
+\aznewmeta {Ville}       {ville}       { \scshape #1 }
+\aznewmeta {Filiere}     {filiere}     { \scshape #1 }
+\aznewmeta {Classe}      {classe}      { \scshape #1 }
+\aznewmeta {Matiere}     {matiere}     { \scshape #1 }
+\aznewmeta {Evenement}   {evenement}   { \scshape #1 }
+
+%% ── Qui écrit ───────────────────────────────────────────────────────────────
+\aznewmeta {Auteur}      {auteur}      { \scshape #1 }
+\aznewmeta {Moderateur}  {moderateur}  { \scshape #1 }
+\aznewmeta {Affiliation} {affiliation} { \scshape \itshape #1 }
+\aznewmeta {Email}       {email}       { \ttfamily #1 }
+\aznewmeta {Website}     {website}     { \ttfamily \url {#1} }
+\aznewmeta {Preauteur}   {preauteur}   { \itshape #1 } [Rédigé~par~]
+
+%% ── Quoi ────────────────────────────────────────────────────────────────────
+\aznewmeta {Document}    {document}    { #1 }
+\aznewmeta {Devoir}      {devoir}      { #1 }
+\aznewmeta {Theme}       {theme}       { #1 }
+\aznewmeta {Subtheme}    {subtheme}    { #1 }
+\aznewmeta {Periode}     {periode}     { #1 }
+\aznewmeta {Horaire}     {horaire}     { #1 }
+
+%% ── Concours ────────────────────────────────────────────────────────────────
+\aznewmeta {Concours}    {concours}    { #1 }
+\aznewmeta {Origine}     {origine}     { #1 }
+\aznewmeta {Epreuve}     {epreuve}     { #1 }
+\aznewmeta {Session}     {session}     { \itshape Session~#1 }
+\aznewmeta {Duree}       {duree}       { \itshape Durée~:~#1~heures }
+\aznewmeta {Texte}       {texte}       { \parbox {.75\columnwidth} {\centering #1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \Type — vocabulaire FERMÉ
+%%
+%% \Document dit ce que l'auteur veut lire en titre (« Cours », « DS n°3 ») ;
+%% \Type dit ce que la MACHINE doit comprendre. Les deux sont nécessaires parce
+%% qu'un titre est libre et qu'un index ne peut pas l'être : c'est le champ qui
+%% reprend le rôle de la donnée YAML `type:`.
+%%
+%% Une valeur hors liste est une ERREUR, pas un avertissement. Un champ
+%% d'indexation qui accepte n'importe quoi n'indexe plus rien.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\clist_const:Nn \c_az_meta_types_clist
+  { cours, exercices, banque, devoir, note, colle, concours, rapport, misc }
+
+\aznewmeta {az@Type@store} {type} { #1 }
+
+\NewDocumentCommand \Type { m }
+  {
+    \clist_if_in:NnTF \c_az_meta_types_clist {#1}
+      { \use:c { az@Type@store } {#1} }
+      { \msg_error:nnn { azkit } { type-invalide } {#1} }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Forme clé-valeur
+%%
+%%   \azmeta{Centre = Abulcasis, Theme = Réduction des endomorphismes}
+%%
+%% Même surface que les commandes, mais en une seule instruction — c'est la
+%% forme qu'un générateur produira.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\keys_define:nn { az / meta }
+  {
+    unknown .code:n =
+      {
+        \cs_if_exist:cTF { \l_keys_key_str }
+          { \use:c { \l_keys_key_str } {#1} }
+          { \msg_warning:nnx { azkit } { meta-inconnue } { \l_keys_key_str } }
+      }
+  }
+
+\msg_new:nnnn { azkit } { meta-inconnue }
+  { Métadonnée~«~#1~»~inconnue. }
+  { Déclarer~le~champ~avec~\string\aznewmeta\ avant~de~l'employer. }
+
+\NewDocumentCommand \azmeta { m } { \keys_set:nn { az / meta } {#1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Table lisible par machine
+%%
+%% Les métadonnées sont déposées dans `\jobname.azmeta`, une clef par ligne.
+%% C'est le seul point du kit où le document PARLE à l'application : AZprose y
+%% lit ce qu'il indexe, sans avoir à interpréter du TeX.
+%%
+%% Le fichier n'est écrit que si le document porte au moins un champ, pour ne
+%% pas semer des fichiers vides à côté de chaque fragment compilé seul.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\iow_new:N \g_az_meta_iow
+
+\bool_new:N \g_az_meta_ecrire_bool
+\bool_gset_true:N \g_az_meta_ecrire_bool
+
+\cs_new_protected:Npn \az_meta_dump:
+  {
+    \prop_if_empty:NF \g_az_meta_prop
+      {
+        \iow_open:Nn \g_az_meta_iow { \c_sys_jobname_str .azmeta }
+        \seq_map_inline:Nn \g_az_meta_champs_seq
+          {
+            \prop_get:NnNT \g_az_meta_prop {##1} \l__az_meta_val_tl
+              {
+                \iow_now:Nx \g_az_meta_iow
+                  { ##1 = \tl_to_str:N \l__az_meta_val_tl }
+              }
+          }
+        \iow_close:N \g_az_meta_iow
+      }
+  }
+
+\tl_new:N \l__az_meta_val_tl
+
+\AddToHook { begindocument }
+  { \bool_if:NT \g_az_meta_ecrire_bool { \az_meta_dump: } }
+
+\endinput

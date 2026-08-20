@@ -1,0 +1,318 @@
+%% azcolor.sty — infrastructure de couleurs du kit azkit
+%%
+%% Ce module ne sait RIEN des théorèmes, des titres ni de la mise en page. Il
+%% ne connaît que des RÔLES : « le fond de page », « le trait d'un cadre », « la
+%% couleur d'un exercice ». C'est la couche sur laquelle les thèmes viendront
+%% se brancher — d'où le soin mis à séparer la DÉCLARATION d'une couleur de sa
+%% DÉFINITION effective.
+%%
+%% Chaque rôle porte deux valeurs, claire et sombre. Rien n'est défini au
+%% moment de la déclaration : tout est différé à la fin du préambule, quand on
+%% sait enfin si le document est sombre et quelle palette a gagné. C'est ce qui
+%% permet à une palette chargée tardivement d'écraser la précédente sans que
+%% l'ordre des \usepackage n'entre en jeu.
+%%
+%% Sadik Boujaida — licence LPPL 1.3c
+
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesExplPackage {azcolor} {2026-08-20} {0.1}
+  {azkit — couleurs : rôles, palettes, point d'accroche des thèmes}
+
+\RequirePackage { azbase }
+\RequirePackage [svgnames] { xcolor }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Messages
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\msg_new:nnnn { azkit } { palette-introuvable }
+  { Palette~de~couleurs~«~#1~»~introuvable. }
+  {
+    Le~fichier~az-#1-colors.def~n'est~pas~dans~l'arbre~texmf.~
+    La~palette~en~place~est~conservée.
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Drapeaux partagés
+%%
+%% Déclarés ici parce que la couleur est le premier module à en avoir besoin,
+%% et exposés aussi en \if… classiques : les fichiers de palette et les futurs
+%% thèmes sont du TeX ordinaire, ils ne doivent pas avoir à ouvrir expl3.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bool_new:N \g_az_dark_bool
+\bool_new:N \g_az_print_bool
+\bool_new:N \g_az_nocolors_bool
+
+\cs_if_exist:NF \ifdark     { \newif \ifdark }
+\cs_if_exist:NF \ifprint    { \newif \ifprint }
+\cs_if_exist:NF \ifnocolors { \newif \ifnocolors }
+
+%% Les deux représentations sont tenues en phase par ce pont : le code l3 lit
+%% le booléen, une palette écrit \darktrue. Un seul point de vérité au moment
+%% où la couleur se décide, deux écritures pour y arriver.
+\cs_new_protected:Npn \az_flags_sync:
+  {
+    \ifdark     \bool_gset_true:N \g_az_dark_bool     \fi
+    \ifprint    \bool_gset_true:N \g_az_print_bool    \fi
+    \ifnocolors \bool_gset_true:N \g_az_nocolors_bool \fi
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Déclaration des rôles
+%%
+%% \azsetupcolors accepte deux formes de valeur :
+%%
+%%   role = [<modèle>]{<spec>}              une seule teinte
+%%   role = [<modèle>]{<clair>}{<sombre>}   deux teintes commutables
+%%
+%% Le modèle vide vaut `named` : la valeur est alors une EXPRESSION xcolor —
+%% un nom de couleur, éventuellement mélangé (`azgreen!86!black`). C'est ce qui
+%% laisse une palette se composer par renvois internes.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\prop_new:N \g_az_color_clair_prop
+\prop_new:N \g_az_color_sombre_prop
+\prop_new:N \g_az_color_modele_prop
+\seq_new:N  \g_az_color_ordre_seq
+
+\tl_new:N \l__az_modele_tl
+\tl_new:N \l__az_role_tl
+\tl_new:N \l__az_spec_tl
+\tl_new:N \l__az_clair_tl
+\tl_new:N \l__az_sombre_tl
+\prop_new:N \l__az_actif_prop
+
+\tl_new:N \g_az_color_modele_defaut_tl
+\tl_gset:Nn \g_az_color_modele_defaut_tl { named }
+
+\tl_new:N \g_az_color_cible_tl
+\tl_gset:Nn \g_az_color_cible_tl { rgb }
+
+\tl_new:N \g_az_color_class_tl
+\tl_gset:Nn \g_az_color_class_tl { {azorange}{azyellow}{azgreen} }
+
+\cs_generate_variant:Nn \prop_gput:Nnn { NVn, NVV }
+\cs_generate_variant:Nn \seq_gput_right:Nn { NV }
+\cs_generate_variant:Nn \seq_if_in:NnTF { NV }
+
+%% L'ordre de DÉCLARATION fait l'ordre de DÉFINITION : une palette énonce ses
+%% teintes de base avant les rôles qui y renvoient, et cet ordre doit survivre.
+%% Une redéclaration ne bouscule donc pas la position acquise.
+\cs_new_protected:Npn \az_color_declare:nn #1#2
+  % #1 = valeur claire, #2 = valeur sombre ; rôle et modèle sont dans les
+  % variables locales, faute de quoi il faudrait quatre variantes d'expansion.
+  {
+    \seq_if_in:NVF \g_az_color_ordre_seq \l__az_role_tl
+      { \seq_gput_right:NV \g_az_color_ordre_seq \l__az_role_tl }
+    \prop_gput:NVV \g_az_color_modele_prop \l__az_role_tl \l__az_modele_tl
+    \prop_gput:NVn \g_az_color_clair_prop  \l__az_role_tl {#1}
+    \prop_gput:NVn \g_az_color_sombre_prop \l__az_role_tl {#2}
+  }
+
+\cs_generate_variant:Nn \az_color_declare:nn { VV }
+
+%% Parseur de valeur, en macros délimitées et non en \NewDocumentCommand : les
+%% types d'arguments qui rendraient une SECONDE teinte facultative (`g`, `u`)
+%% ne font pas partie de xparse. Le repère est plus simple à poser à la main —
+%% un \q_nil planté en fin de valeur dit s'il reste un groupe ou non.
+%% Le \q_nil est planté DÈS L'APPEL, et non au passage suivant : sans lui, une
+%% valeur à teinte unique — `[HTML]{111111}` — laisserait un argument délimité
+%% réduit à un seul groupe, que TeX déshabille de ses accolades. La spec se
+%% retrouverait découpée caractère par caractère.
+\cs_new_protected:Npn \az_color_value:n #1
+  {
+    \tl_if_head_eq_charcode:nNTF {#1} [
+      { \az_color_bracket:w #1 \q_nil \q_stop }
+      {
+        \tl_set_eq:NN \l__az_modele_tl \g_az_color_modele_defaut_tl
+        \az_color_specs:w #1 \q_nil \q_stop
+      }
+  }
+
+\cs_new_protected:Npn \az_color_bracket:w [#1] #2 \q_stop
+  {
+    \tl_set:Nn \l__az_modele_tl {#1}
+    \tl_if_empty:NT \l__az_modele_tl
+      { \tl_set_eq:NN \l__az_modele_tl \g_az_color_modele_defaut_tl }
+    \az_color_specs:w #2 \q_stop
+  }
+
+\cs_new_protected:Npn \az_color_specs:w #1#2 \q_stop
+  {
+    \tl_set:Nn \l__az_clair_tl {#1}
+    \tl_if_head_is_group:nTF {#2}
+      { \az_color_dark:w #2 \q_stop }
+      { \tl_set_eq:NN \l__az_sombre_tl \l__az_clair_tl }
+    \az_color_declare:VV \l__az_clair_tl \l__az_sombre_tl
+  }
+
+\cs_new_protected:Npn \az_color_dark:w #1#2 \q_stop
+  { \tl_set:Nn \l__az_sombre_tl {#1} }
+
+\keys_define:nn { az / colors }
+  {
+    default~import~model .tl_gset:N = \g_az_color_modele_defaut_tl ,
+    color~model          .tl_gset:N = \g_az_color_cible_tl ,
+    rgb                  .code:n    = { \tl_gset:Nn \g_az_color_cible_tl { rgb } } ,
+    cmyk                 .code:n    = { \tl_gset:Nn \g_az_color_cible_tl { cmyk } } ,
+    dark                 .code:n    =
+      { \bool_gset_true:N \g_az_dark_bool \global \darktrue } ,
+    dark                 .default:n = { true } ,
+    no~colors            .code:n    =
+      { \bool_gset_true:N \g_az_nocolors_bool \global \nocolorstrue } ,
+    %% Le rôle `class` porte trois valeurs — cours, série, devoir — dont la
+    %% classe choisira la bonne. Rangé tel quel, résolu par azdoc.
+    class                .tl_gset:N = \g_az_color_class_tl ,
+    unknown              .code:n    =
+      {
+        \tl_set:Nx \l__az_role_tl { \l_keys_key_str }
+        \az_color_value:n {#1}
+      } ,
+  }
+
+\NewDocumentCommand \azsetupcolors { m } { \keys_set:nn { az / colors } {#1} }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Définition effective
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Le modèle `named` passe par \colorlet et non \definecolor : lui seul sait
+%% évaluer une expression de mélange (`azgreen!86!black`), qui est la forme la
+%% plus courante dans les palettes.
+\cs_new_protected:Npn \az_color_define:nnn #1#2#3
+  {
+    \str_if_eq:nnTF {#2} { named }
+      { \colorlet {#1} {#3} }
+      { \definecolor {#1} {#2} {#3} }
+  }
+
+\cs_generate_variant:Nn \az_color_define:nnn { nVV }
+
+\cs_new_protected:Npn \az_colors_realise:
+  {
+    \az_flags_sync:
+    \bool_if:NTF \g_az_dark_bool
+      { \prop_set_eq:NN \l__az_actif_prop \g_az_color_sombre_prop }
+      { \prop_set_eq:NN \l__az_actif_prop \g_az_color_clair_prop }
+    \seq_map_inline:Nn \g_az_color_ordre_seq
+      {
+        \prop_get:NnNT \l__az_actif_prop {##1} \l__az_spec_tl
+          {
+            \prop_get:NnN \g_az_color_modele_prop {##1} \l__az_modele_tl
+            \az_color_define:nVV {##1} \l__az_modele_tl \l__az_spec_tl
+          }
+      }
+    %% L'impression passe en noir sur blanc quoi qu'ait dit la palette : le
+    %% papier n'a pas de fond, un texte clair y disparaîtrait.
+    \bool_if:NT \g_az_print_bool
+      {
+        \colorlet { pagecol   } { white }
+        \colorlet { textcol   } { black }
+        \colorlet { strokecol } { black }
+      }
+    %% thmcol est la couleur COURANTE d'un bloc sémantique : les théorèmes la
+    %% réaffectent bloc par bloc, tout le reste du kit s'y réfère sans savoir
+    %% dans quoi il se trouve.
+    \colorlet { thmcol } { framestrokecol }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Palettes
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tl_new:N \g_az_palette_tl
+\tl_gset:Nn \g_az_palette_tl { default }
+
+%% \azcolors[<clés>]{<palette>} — charge az-<palette>-colors.def.
+%% Une palette absente laisse la précédente en place : mieux vaut un document
+%% aux mauvaises couleurs qu'un document qui ne compile pas.
+\NewDocumentCommand \azcolors { O{} m }
+  {
+    \tl_gset:Nn \g_az_palette_tl {#2}
+    \azsetupcolors {#1}
+    \file_if_exist:nTF { az- #2 -colors.def }
+      { \file_input:n { az- #2 -colors.def } }
+      { \msg_warning:nnn { azkit } { palette-introuvable } {#2} }
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Palette par défaut
+%%
+%% Elle n'est pas un pis-aller : les thèmes étant ajournés, c'est elle qui rend
+%% TOUS les documents du kit. Elle est donc écrite pour tenir seule.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\azsetupcolors
+  {
+    mainone   = [HTML]{111111} ,
+    maintwo   = [HTML]{222222} ,
+    mainthree = [HTML]{eeeeee} ,
+    mainfour  = [HTML]{ffffff} ,
+    mainfive  = [HTML]{666666} ,
+    mainsix   = [HTML]{fafafa} ,
+    azblue    = [HTML]{1c1681}{838ecc} ,
+    azred     = [HTML]{922d2d}{cb7777} ,
+    azgreen   = [HTML]{407d5d}{b2e6cb} ,
+    azyellow  = [HTML]{b8ab01}{e0db91} ,
+    azorange  = [HTML]{b2591d}{e4b18e} ,
+    azmagenta = [HTML]{9e187a}{d79ac7} ,
+    azcyan    = [HTML]{116c7e}{85c9de} ,
+    azneutral = {maintwo}{mainthree} ,
+    textcol         = {mainone}{mainfour} ,
+    strokecol       = {mainone}{mainfour} ,
+    pagecol         = {mainfour}{mainone} ,
+    frametextcol    = {mainone}{mainfour} ,
+    framestrokecol  = {mainone}{mainfour} ,
+    framebackcol    = {mainthree}{maintwo} ,
+    frameshadowcol  = {maintwo}{mainthree} ,
+    titletextcol    = {maintwo}{mainthree} ,
+    titlestrokecol  = {maintwo}{mainthree} ,
+    titlebackcol    = {mainfour}{mainone} ,
+    linktextcol     = {azblue}{azblue} ,
+    linkstrokecol   = {azblue}{azblue} ,
+    linkbackcol     = {azblue}{azblue} ,
+    buttontextcol   = {mainthree}{maintwo} ,
+    buttonstrokecol = {mainthree}{maintwo} ,
+    buttonbackcol   = {maintwo}{mainthree} ,
+    importantcol    = {azred}{azred} ,
+    alertcol        = {azred}{azred} ,
+    errorcol        = {azcyan}{azcyan} ,
+    theoremcol      = {azgreen}{azgreen} ,
+    definitioncol   = {azblue}{azblue} ,
+    remarkcol       = {azneutral}{azneutral} ,
+    examplecol      = {azorange}{azorange} ,
+    exercisecol     = {azorange}{azorange} ,
+    proofcol        = {azneutral}{azneutral} ,
+    othercol        = {azneutral}{azneutral} ,
+    classcol        = {azorange}{azorange} ,
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% \aztheme — point d'accroche, en sommeil
+%%
+%% Les thèmes sont AJOURNÉS, pas abandonnés. La signature ci-dessous est
+%% néanmoins le contrat DÉFINITIF : elle couvre les trois formes d'appel
+%% relevées dans le corpus — \aztheme[palette=nord]{curve}, \aztheme[logo=az]{az}
+%% et \aztheme{curve} — de sorte que la remise en fonction ne demandera aucune
+%% retouche des documents.
+%%
+%% Silencieuse, délibérément : aucun avertissement, aucune trace. Le
+%% comportement est documenté, il n'a pas à être signalé à chaque compilation.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NewDocumentCommand \aztheme { O{} m } { }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Réalisation en fin de préambule
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\AddToHook { begindocument/before }
+  {
+    \az_colors_realise:
+    \bool_if:NT \g_az_nocolors_bool { \selectcolormodel { gray } }
+    \pagecolor { pagecol }
+    \color { textcol }
+  }
+
+\endinput
