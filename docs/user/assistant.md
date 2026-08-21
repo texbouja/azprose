@@ -47,11 +47,12 @@ bouton **stop** interrompt la réponse en cours.
 
 Tapez **`@`** dans le champ de saisie : une liste de fichiers et de dossiers
 du coffre apparaît au-dessus du champ. Continuez à taper pour filtrer par
-chemin, naviguez aux flèches, validez avec `Entrée` ou `Tab` (`Échap`
-referme). Choisir un dossier laisse la liste ouverte pour descendre dans
-l'arborescence ; choisir un fichier insère son chemin complet —
-`@notes/cours/limites.md` — et vous pouvez mentionner plusieurs éléments
-dans la même demande :
+chemin, naviguez aux flèches (`Échap` referme). `Entrée` et le clic valident :
+le chemin complet s'insère — `@notes/cours/limites.md` — brièvement surligné
+pour marquer l'insertion. Sur un **dossier**, `Tab` déroule au lieu de
+valider : la liste reste ouverte sur son contenu pour descendre dans
+l'arborescence ; seul `Entrée` fige un dossier dans le message. Vous pouvez
+mentionner plusieurs éléments dans la même demande :
 
 ```text
 Compare @notes/mpsi/limites.md et @notes/mp2/continuite.md : où divergent-ils ?
@@ -63,6 +64,15 @@ contiennent. Une mention de dossier n'attache rien — l'assistant explorera
 le dossier lui-même si votre demande le nécessite. Seuls les fichiers texte
 éditables sont proposés (notes, LaTeX, tableurs) ; pour un PDF, demandez-le
 simplement par son nom — il ira le consulter lui-même.
+
+## Rappeler une demande précédente
+
+Comme dans un terminal : `↑` en haut du champ rappelle votre dernière
+demande envoyée, `↑` encore remonte plus loin dans l'historique de la
+session, `↓` redescend. Le texte en cours d'écriture est mis de côté au
+premier rappel et restitué quand vous redescendez jusqu'au bout. Dans une
+demande multiligne, les flèches ne rappellent l'historique qu'aux bornes —
+au milieu du texte, elles déplacent simplement le curseur.
 
 ## Choisir le modèle
 

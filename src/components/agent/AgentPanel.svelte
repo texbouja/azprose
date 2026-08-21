@@ -44,6 +44,12 @@ import {
   uriFichier,
   type CandidatCompletion,
 } from "@/lib/agent/mentions";
+import {
+  caretSurDerniereLigne,
+  caretSurPremiereLigne,
+  cibleHistorique,
+  entreeHistorique,
+} from "@/lib/agent/historique";
 import { walkSupportedTextFiles, type FlatFileEntry } from "@/lib/files";
 import AgentModelSelect from "@/components/agent/AgentModelSelect.svelte";
 import AgentConnectDialog from "@/components/agent/AgentConnectDialog.svelte";
@@ -693,6 +699,7 @@ async function send() {
   pushItem({ kind: "user", text });
   draft = "";
   completionOuverte = false;
+  histPos = -1; // nouvel envoi = retour au brouillon vivant
   status = "busy";
   awaiting = true;
   scrollToBottom();
@@ -787,21 +794,105 @@ function verifierCompletion(): void {
   completionOuverte = true;
 }
 
-/** Remplace le token en cours par le chemin complet (+ espace final) et
- *  rend le curseur à l'endroit de la poursuite de frappe. Un DOSSIER laisse
- *  le token ouvert : la liste rouvre immédiatement sur ses enfants — c'est
- *  tout l'intérêt de les proposer. */
+/** VALIDATION d'un candidat (Entrée, clic, Tab sur fichier) : remplace le
+ *  token par le chemin complet (+ espace final), referme la liste, met en
+ *  valeur éphémère la mention insérée. */
 function choisirCandidat(c: CandidatCompletion): void {
   const finToken = completionDebut + 1 + completionQuery.length;
   const remplacement = "@" + c.insertion + " ";
   draft = draft.slice(0, completionDebut) + remplacement + draft.slice(finToken);
   completionOuverte = false;
   const pos = completionDebut + remplacement.length;
+  flashMention(completionDebut + 1, c.insertion.length);
   void tick().then(() => {
     textareaEl?.focus();
     textareaEl?.setSelectionRange(pos, pos);
-    if (c.dossier) verifierCompletion();
   });
+}
+
+/** Tab sur un DOSSIER : déroule sans valider — « @docs/ » SANS espace final,
+ *  le token reste ouvert et la liste rouvre sur les enfants. C'est
+ *  l'affinage dans l'arborescence ; seule une validation (Entrée/clic)
+ *  fige un dossier dans le message. */
+function deroulerDossier(c: CandidatCompletion): void {
+  const finToken = completionDebut + 1 + completionQuery.length;
+  const remplacement = "@" + c.insertion;
+  draft = draft.slice(0, completionDebut) + remplacement + draft.slice(finToken);
+  const pos = completionDebut + remplacement.length;
+  void tick().then(() => {
+    textareaEl?.focus();
+    textareaEl?.setSelectionRange(pos, pos);
+    verifierCompletion();
+  });
+}
+
+let flashEl = $state<HTMLElement | null>(null);
+
+/** Mise en valeur éphémère de la mention validée (comportement TUI). Le
+ *  champ ne stylise pas ses sous-chaînes : on mesure les fragments de ligne
+ *  du token dans un miroir hors écran aux styles identiques, puis on peint
+ *  une surbrillance par fragment qui s'estompe. */
+function flashMention(debut: number, longueur: number): void {
+  const ta = textareaEl;
+  const couche = flashEl;
+  const comp = couche?.parentElement;
+  if (!ta || !couche || !comp || longueur <= 0) return;
+  const cs = getComputedStyle(ta);
+  // Miroir : mêmes boîte (bordures/padding/width inclus) et typographie que
+  // le champ — visibility:hidden conserve la géométrie.
+  const miroir = document.createElement("div");
+  miroir.setAttribute("aria-hidden", "true");
+  Object.assign(miroir.style, {
+    position: "absolute",
+    top: "-9999px",
+    left: "-9999px",
+    visibility: "hidden",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "break-word",
+    boxSizing: cs.boxSizing,
+    width: cs.width,
+    borderWidth: cs.borderWidth,
+    padding: cs.padding,
+    fontFamily: cs.fontFamily,
+    fontSize: cs.fontSize,
+    fontWeight: cs.fontWeight,
+    letterSpacing: cs.letterSpacing,
+    lineHeight: cs.lineHeight,
+    tabSize: cs.tabSize,
+  } satisfies Partial<CSSStyleDeclaration>);
+  const avant = document.createElement("span");
+  avant.textContent = draft.slice(0, debut);
+  const jeton = document.createElement("span");
+  jeton.textContent = draft.slice(debut, debut + longueur);
+  miroir.replaceChildren(avant, jeton);
+  comp.appendChild(miroir);
+  // Fragments = un rectangle PAR ligne visuelle (un chemin long peut se
+  // replier). Repère : bord interne du composer ; le scroll du champ est
+  // soustrait car le miroir, lui, ne défile pas.
+  const plage = document.createRange();
+  plage.selectNodeContents(jeton);
+  const rComp = comp.getBoundingClientRect();
+  const origineX = rComp.left + comp.clientLeft - ta.scrollLeft;
+  const origineY = rComp.top + comp.clientTop - ta.scrollTop;
+  couche.replaceChildren(
+    ...[...plage.getClientRects()].map((r) => {
+      const frag = document.createElement("i");
+      Object.assign(frag.style, {
+        left: `${r.left - origineX}px`,
+        top: `${r.top - origineY}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
+      });
+      return frag;
+    }),
+  );
+  miroir.remove();
+  // Rejouable à validation rapprochée : on fige, force le reflow, relâche.
+  couche.style.transition = "none";
+  couche.style.opacity = "1";
+  void couche.offsetWidth;
+  couche.style.transition = "";
+  couche.style.opacity = "0";
 }
 
 /** L'item actif reste visible quand on navigue aux flèches. */
@@ -810,6 +901,32 @@ $effect(() => {
   if (!completionOuverte || !listeEl) return;
   listeEl.querySelector(".is-active")?.scrollIntoView({ block: "nearest" });
 });
+
+/** Historique des demandes de la session — ↑/↓ façon TUI. La position
+ *  compte depuis le présent : -1 = brouillon vivant, 0 = dernier envoi.
+ *  Le brouillon non envoyé est mis de côté au premier rappel et restitué
+ *  au retour ; les éditions d'une entrée rappelée ne sont pas conservées
+ *  quand on poursuit la navigation (comportement shell). */
+let histPos = $state(-1);
+let histBrouillon = "";
+const demandesEnvoyees = $derived(
+  items.filter((i) => i.kind === "user").map((i) => i.text),
+);
+
+function naviguerHistorique(delta: number): void {
+  const hist = demandesEnvoyees;
+  if (histPos >= hist.length) histPos = -1; // position périmée
+  const cible = cibleHistorique(histPos, delta, hist.length);
+  if (cible === histPos) return;
+  if (histPos === -1) histBrouillon = draft;
+  histPos = cible;
+  completionOuverte = false;
+  draft = entreeHistorique(hist, histPos, histBrouillon);
+  void tick().then(() => {
+    textareaEl?.focus();
+    textareaEl?.setSelectionRange(draft.length, draft.length);
+  });
+}
 
 /** Blocs ACP `resource_link` pour chaque mention résolvable du message —
  *  le serveur OpenCode y embarque le contenu (comportement TUI documenté).
@@ -846,7 +963,11 @@ function onKeydown(e: KeyboardEvent) {
     }
     if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
       e.preventDefault();
-      choisirCandidat(candidats[completionIndex]);
+      const c = candidats[completionIndex];
+      // Tab sur un dossier DÉROULE (affinage dans l'arborescence) ;
+      // Entrée et clic valident toujours — fichier comme dossier.
+      if (e.key === "Tab" && c.dossier) deroulerDossier(c);
+      else choisirCandidat(c);
       return;
     }
     if (e.key === "Escape") {
@@ -857,6 +978,21 @@ function onKeydown(e: KeyboardEvent) {
   } else if (completionOuverte && e.key === "Escape") {
     completionOuverte = false;
     return;
+  }
+  // Historique ↑/↓ façon TUI : seulement aux bornes verticales LOGIQUES du
+  // champ, pour ne pas voler le déplacement caret dans une demande multiligne
+  // (Maj+flèche = sélection, jamais l'historique).
+  if (!e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    const caret = textareaEl?.selectionStart ?? draft.length;
+    const aBorne =
+      e.key === "ArrowUp"
+        ? caretSurPremiereLigne(draft, caret)
+        : caretSurDerniereLigne(draft, caret);
+    if (aBorne) {
+      e.preventDefault();
+      naviguerHistorique(e.key === "ArrowUp" ? 1 : -1);
+      return;
+    }
   }
   // Entrée envoie, Maj+Entrée saute une ligne.
   if (e.key === "Enter" && !e.shiftKey) {
@@ -1074,6 +1210,9 @@ onDestroy(() => {
         {/each}
       </div>
     {/if}
+    <!-- Surbrillance éphémère de la mention validée : conteneur plein
+         composer, fragments positionnés par flashMention. -->
+    <div bind:this={flashEl} class="agent__mention-flash" aria-hidden="true"></div>
     <textarea
       bind:this={textareaEl}
       bind:value={draft}
@@ -1472,6 +1611,23 @@ onDestroy(() => {
     font-family: var(--font-mono, ui-monospace, monospace);
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* Surbrillance éphémère d'une mention validée (comportement TUI) : le
+     conteneur couvre le composer et s'estompe ; les fragments sont posés au
+     pixel par la mesure miroir. Aucune interaction possible (pointer-events). */
+  .agent__mention-flash {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.55s ease-out;
+  }
+  /* Fragments <i> créés en JS : :global obligatoire, sinon Svelte juge la
+     règle inutilisée et la retire au build. */
+  .agent__mention-flash :global(i) {
+    position: absolute;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
   }
   .agent__composer textarea {
     width: 100%;
