@@ -2,6 +2,7 @@
 import { mount, unmount } from "svelte";
 import AgentModelPopup from "./AgentModelPopup.svelte";
 import type { ModeleDisponible } from "@/lib/agent/config-options";
+import type { FournisseurCatalogue } from "@/lib/agent/catalogue";
 
 /**
  * Sélecteur de modèle de l'assistant — le chip de l'en-tête du panneau
@@ -10,11 +11,13 @@ import type { ModeleDisponible } from "@/lib/agent/config-options";
  * `document.body` : un `<select>` natif serait peint par WebKitGTK hors
  * thème, et le header étroit recliperait un popup rendu en place.
  *
- * La liste vient du PARENT (options déclarées par l'agent via ACP, voir
- * `config-options.ts`) : ce composant ne connaît ni le binaire ni le
+ * La liste vient du PARENT : options déclarées par l'agent via ACP
+ * (`config-options.ts`) + catalogue complet des fournisseurs (`catalogue.ts`,
+ * voie serveur headless). Ce composant ne connaît ni le binaire ni le
  * protocole. La sélection est ASYNCHRONE (le switch passe par l'agent et
  * peut être refusé) : `onSelect` renvoie null si appliqué, sinon un message
- * d'erreur que le popup affiche en place.
+ * d'erreur que le popup affiche en place. Un modèle non connecté passe par
+ * `onSelectCatalogue` → dialogue de connexion côté panneau.
  */
 let {
   label = "",
@@ -23,15 +26,25 @@ let {
   /** Modèles déclarés par la session courante ; null = pas de liste
    *  (agent sans configOptions) → le popup dégrade en saisie libre. */
   modeles = null as ModeleDisponible[] | null,
+  /** Catalogue complet trié ; null = pas encore chargé (chargement au 1er ouvert). */
+  catalogue = null as FournisseurCatalogue[] | null,
+  catalogueIndisponible = false,
   disabled = false,
   onSelect,
+  onSelectCatalogue,
+  /** Première ouverture du menu : charge paresseuse du catalogue (panneau). */
+  onOuvre,
 }: {
   label?: string;
   value?: string | null;
   labelDefaut?: string;
   modeles?: ModeleDisponible[] | null;
+  catalogue?: FournisseurCatalogue[] | null;
+  catalogueIndisponible?: boolean;
   disabled?: boolean;
   onSelect?: (id: string | null) => Promise<string | null>;
+  onSelectCatalogue?: (id: string) => void;
+  onOuvre?: () => void;
 } = $props();
 
 let open = $state(false);
@@ -39,6 +52,7 @@ let triggerEl = $state<HTMLButtonElement | null>(null);
 
 function toggle() {
   if (disabled) return;
+  if (!open) onOuvre?.();
   open = !open;
 }
 
@@ -61,8 +75,11 @@ $effect(() => {
       value,
       labelDefaut,
       modeles,
+      catalogue,
+      catalogueIndisponible,
       triggerEl,
       onSelect,
+      onSelectCatalogue,
       onClose: close,
     },
   });

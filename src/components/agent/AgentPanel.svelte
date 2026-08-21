@@ -7,7 +7,7 @@
 // Permissions (phase 4) : affichées DANS LE FIL, jamais en modale — un side
 // panel est étroit, une modale y couperait le contexte au pire moment.
 import { onMount, onDestroy, tick } from "svelte";
-import { createAgentClient, type AgentClient, type McpServerDecl } from "@/lib/agent/client";
+import { createAgentClient, resolveAgentBinary, type AgentClient, type McpServerDecl } from "@/lib/agent/client";
 import { invoke } from "@tauri-apps/api/core";
 import { synchroniserProgrammes, corpusDir } from "@/programmes";
 import { programmesSelection } from "@/stores/programmes-selection.svelte";
@@ -27,7 +27,15 @@ import {
 } from "@/lib/agent/context";
 import { STORAGE_KEYS } from "@/lib/storage";
 import { optionModele, modelesDeOption, type ConfigOption } from "@/lib/agent/config-options";
+import {
+  fournisseurDeId,
+  parserCatalogue,
+  trierCatalogue,
+  type FournisseurCatalogue,
+} from "@/lib/agent/catalogue";
+import { serveurCatalogue } from "@/lib/agent/serve";
 import AgentModelSelect from "@/components/agent/AgentModelSelect.svelte";
+import AgentConnectDialog from "@/components/agent/AgentConnectDialog.svelte";
 import { cleLibelleOutil, resumerOutil } from "@/lib/agent/outils";
 import { getProjectRoot } from "@/lib/session";
 import { appDataDir, join } from "@tauri-apps/api/path";
@@ -175,6 +183,64 @@ async function choisirModele(id: string | null): Promise<string | null> {
     pushItem({ kind: "agent", text: t("agent.model.prochaineSession", { id }) });
     return null;
   }
+}
+
+// ── Catalogue complet des fournisseurs (voie serveur headless) ──────────────
+// Le contrat ACP ne rend que l'UTILISABLE ici et maintenant ; le catalogue
+// ENTIER (193 fournisseurs à charge réelle) vient de `GET /provider` — voie
+// documentée d'OpenCode — servi par le MÊME binaire en mode `serve`. Cycle
+// paresseux : premier spawn à la première ouverture du menu, réutilisé
+// ensuite, tué avec le panneau (décision 2026-08-21).
+let catalogue = $state<FournisseurCatalogue[] | null>(null);
+let catalogueErreur = $state(false);
+
+async function chargerCatalogue(): Promise<void> {
+  // Prêt → ne rien faire ; échec précédent ([] + erreur) → réessayer à
+  // chaque ouverture, le serveur a pu démarrer entre-temps.
+  if (catalogue !== null && !catalogueErreur) return;
+  try {
+    const rep = await serveurCatalogue.requete<unknown>(resolveAgentBinary(), "/provider");
+    catalogue = trierCatalogue(parserCatalogue(rep));
+    catalogueErreur = false;
+  } catch (e) {
+    console.warn("[agent] catalogue des fournisseurs indisponible :", e);
+    catalogue = [];
+    catalogueErreur = true;
+  }
+}
+
+/** Après connexion réussie : le fournisseur doit QUITTER la section catalogue
+ *  pour rejoindre les actifs — l'état `connected` du serveur est LA vérité. */
+async function rafraichirCatalogue(): Promise<void> {
+  catalogue = null;
+  catalogueErreur = false;
+  await chargerCatalogue();
+}
+
+/** Flux de connexion en cours : dialogue rendu tant que non null. Le modèle
+ *  visé est appliqué une fois le fournisseur authentifié. */
+let connexion = $state<{ fournisseur: FournisseurCatalogue; modeleId: string } | null>(null);
+
+/** Modèle choisi dans la section CATALOGUE. Déjà connecté (l'état a changé
+ *  entre-temps) → chemin normal du sélecteur ; sinon → dialogue. */
+function choisirModeleCatalogue(modeleId: string): void {
+  const f = fournisseurDeId(catalogue ?? [], modeleId);
+  if (!f || f.connecte) {
+    void choisirModele(modeleId);
+    return;
+  }
+  connexion = { fournisseur: f, modeleId };
+}
+
+/** Le serveur confirme la connexion (`connected`) : rafraîchir le catalogue,
+ *  appliquer le modèle demandé, prévenir qu'un ↺ peut être nécessaire. */
+async function connexionReussie(): Promise<void> {
+  const modeleId = connexion?.modeleId;
+  connexion = null;
+  await rafraichirCatalogue();
+  if (!modeleId) return;
+  await choisirModele(modeleId);
+  pushItem({ kind: "agent", text: t("agent.model.connecteNote") });
 }
 
 /** Rend une demande de permission dans le fil et suspend jusqu'au clic. */
@@ -686,6 +752,10 @@ onMount(() => {
 onDestroy(() => {
   offUpdate?.();
   void client?.stop();
+  // Le serveur de catalogue vit autant que le panneau (décision paresseux-
+  // puis-maintenu) : sans ce kill, il resterait orphelin jusqu'à la fermeture
+  // de l'app.
+  void serveurCatalogue.arreter();
 });
 </script>
 
@@ -706,16 +776,21 @@ onDestroy(() => {
     <span class="agent__title">{t("agent.title")}</span>
     <div class="agent__actions">
       <!-- Sélecteur de modèle : actif seulement sur session prête (D7 — un
-           switch pendant une génération ferait la course au prompt). La liste
-           vient de l'agent (configOptions) ; le chip montre le modèle EN
-           COURS, pas seulement la surcharge demandée. -->
+           switch pendant une génération ferait la course au prompt). Deux
+           sources : la liste de l'agent (configOptions, actifs) et le
+           catalogue complet du serveur headless (chargé au 1er ouvert).
+           Le chip montre le modèle EN COURS, pas seulement la surcharge. -->
       <AgentModelSelect
         label={t("agent.model.label")}
         value={modeleAffiche}
         labelDefaut={t("agent.model.default")}
         modeles={modelesDisponibles}
+        catalogue={catalogue}
+        catalogueIndisponible={catalogueErreur}
         disabled={status !== "ready"}
         onSelect={choisirModele}
+        onSelectCatalogue={choisirModeleCatalogue}
+        onOuvre={chargerCatalogue}
       />
       <button
         class="agent__reset"
@@ -851,6 +926,16 @@ onDestroy(() => {
       </button>
     </div>
   </div>
+
+  {#if connexion}
+    <!-- Dialogue de connexion d'un fournisseur du catalogue : modal sur toute
+         la fenêtre (le sélecteur derrière n'a plus de sens pendant le flux). -->
+    <AgentConnectDialog
+      fournisseur={connexion.fournisseur}
+      onFerme={() => (connexion = null)}
+      onConnecte={connexionReussie}
+    />
+  {/if}
 </div>
 
 <style>

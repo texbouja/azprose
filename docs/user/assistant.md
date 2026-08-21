@@ -45,10 +45,16 @@ bouton **stop** interrompt la réponse en cours.
 
 ## Choisir le modèle
 
-L'en-tête du panneau porte un sélecteur **Modèle** : il liste les modèles que
-votre OpenCode met à disposition — c'est-à-dire ceux des fournisseurs que vous
-avez connectés avec `opencode auth login`. Un champ de filtre permet de se
-retrouver dans une longue liste.
+L'en-tête du panneau porte un sélecteur **Modèle**, organisé en deux sections :
+
+- **Connectés** — les fournisseurs déjà authentifiés, dont les modèles sont
+  immédiatement utilisables ;
+- **Autres fournisseurs** — le catalogue complet d'OpenCode (centaines de
+  fournisseurs, des milliers de modèles). Choisir un modèle de cette section
+  ouvre une **connexion intégrée** : voir plus bas.
+
+Un champ de filtre permet de se retrouver dans une longue liste ; il fouille
+les deux sections à la fois.
 
 - **Défaut OpenCode** ne surcharge rien : c'est OpenCode qui choisit son
   modèle par défaut.
@@ -65,6 +71,24 @@ l'affichage suit.
 Le choix est conservé d'une session à l'autre et vaut pour tous vos projets.
 Revenir à **Défaut OpenCode** prend effet à la prochaine session (bouton
 *nouvelle session*).
+
+### Connecter un fournisseur
+
+Choisir un modèle dans la section *Autres fournisseurs* ouvre un dialogue de
+connexion. Selon ce que le fournisseur propose :
+
+- **Clé API** — collez la clé obtenue sur le site du fournisseur ; elle est
+  enregistrée dans le stockage d'OpenCode, comme le ferait `opencode auth login`.
+- **Navigateur** — votre navigateur s'ouvre sur la page d'authentification du
+  fournisseur (ChatGPT, Anthropic…) ; AZprose détecte la connexion dès qu'elle
+  est confirmée.
+
+Une fois connecté, le modèle demandé est appliqué et le fournisseur rejoint la
+section *Connectés*. Si le modèle n'est pas actif immédiatement, lancez une
+nouvelle session (bouton ↺).
+
+> La connexion se fait depuis AZprose mais l'authentification appartient à
+> OpenCode : les modèles connectés ici le sont aussi pour l'usage en terminal.
 
 ## Vous gardez la main sur les fichiers
 

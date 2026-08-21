@@ -9,18 +9,22 @@
  * sondage du binaire ici. `modeles === null` = l'agent n'a rien déclaré
  * (binaire ancien) → note + saisie libre `fournisseur/modèle`.
  *
- * Forme EN CASCADE (retour d'usage : la liste plate à 12 px lisait mal) :
- * racine = « Défaut OpenCode » + une entrée par FOURNISSEUR, survol/clic
- * ouvre un sous-menu à côté (à gauche si la fenêtre manque à droite — le chip
- * vit au bord droit). Le champ de filtre APLATIT la liste tant qu'il est
- * rempli : navigation rapide dans un gros catalogue, cascade sinon. La saisie
- * libre `fournisseur/modèle` passe par ce même champ (action « Utiliser »).
+ * Forme EN CASCADE à DEUX SECTIONS (retour d'usage + décision 2026-08-21) :
+ * racine = « Défaut OpenCode » + section ACTIFS (fournisseurs connectés, liste
+ * déclarée par l'agent via ACP) puis section CATALOGUE (les autres, voie
+ * documentée `GET /provider` du serveur headless). Un fournisseur non
+ * connecté s'ouvre comme les autres ; choisir un de ses modèles déclenche
+ * `onSelectCatalogue` → le PANNEAU ouvre le dialogue de connexion (le menu se
+ * ferme : le flux est modal). Le champ de filtre APLATIT les deux sections
+ * tant qu'il est rempli. La saisie libre `fournisseur/modèle` passe par ce
+ * même champ (action « Utiliser »).
  *
  * Sélection ASYNCHRONE : le switch passe par l'agent (`set_config_option`,
  * repli `set_model`) et peut être refusé — l'erreur s'affiche en place, le
  * menu reste ouvert.
  */
 import { grouperParProvider, estIdModele, type ModeleDisponible } from "@/lib/agent/config-options";
+import type { FournisseurCatalogue } from "@/lib/agent/catalogue";
 import { getT, language } from "@/lib/i18n";
 
 let {
@@ -29,8 +33,13 @@ let {
   labelDefaut = "",
   /** Liste déclarée par l'agent ; null = pas de liste disponible. */
   modeles = null as ModeleDisponible[] | null,
+  /** Catalogue complet (`GET /provider`) déjà trié ; null = pas encore chargé. */
+  catalogue = null as FournisseurCatalogue[] | null,
+  /** Le chargement a échoué (serveur injoignable) → note dédiée. */
+  catalogueIndisponible = false,
   triggerEl = null as HTMLElement | null,
   onSelect,
+  onSelectCatalogue,
   onClose,
 }: {
   rect?: DOMRect | null;
@@ -38,9 +47,13 @@ let {
   value?: string | null;
   labelDefaut?: string;
   modeles?: ModeleDisponible[] | null;
+  catalogue?: FournisseurCatalogue[] | null;
+  catalogueIndisponible?: boolean;
   triggerEl?: HTMLElement | null;
   /** Renvoie null si le choix est appliqué, sinon le message d'erreur. */
   onSelect?: (id: string | null) => Promise<string | null>;
+  /** Modèle d'un fournisseur NON connecté → dialogue de connexion (panneau). */
+  onSelectCatalogue?: (id: string) => void;
   onClose?: () => void;
 } = $props();
 
@@ -60,7 +73,11 @@ let searchEl = $state<HTMLInputElement | null>(null);
 let erreurInline = $state("");
 // Sélection en vol : on grise les items pour éviter un double changement.
 let enCours = $state<string | null>(null);
+// Sous-menu ouvert : identifiant affiché + items + section d'origine
+// (actifs → switch direct ; catalogue → dialogue de connexion).
 let providerOuvert = $state<string | null>(null);
+let sousMenu = $state<{ id: string; nom?: string }[]>([]);
+let sousMenuCatalogue = $state(false);
 
 /** Pas de liste déclarée par l'agent : menu réduit à la saisie libre. */
 const listeIndisponible = $derived(modeles === null);
@@ -72,6 +89,22 @@ const filtres = $derived.by(() => {
   return base.filter((m) => m.id.toLowerCase().includes(q));
 });
 const groupes = $derived(grouperParProvider(filtres));
+
+/** Catalogue SANS les fournisseurs déjà connectés (ceux-là sont dans la
+ *  section actifs — les lister deux fois semblerait un bug), avec modèles. */
+const fournisseursCatalogue = $derived(
+  (catalogue ?? []).filter((f) => !f.connecte && f.modeles.length > 0),
+);
+
+/** Mode aplati : le catalogue filtré aussi — un clic passe par
+ *  onSelectCatalogue, qui sait retomber sur le choix normal si l'état a
+ *  changé entre-temps (connexion faite par ailleurs). */
+const cataloguePlat = $derived.by(() => {
+  const q = requete.trim().toLowerCase();
+  if (!q) return [];
+  return fournisseursCatalogue.flatMap((f) => f.modeles)
+    .filter((m) => m.id.toLowerCase().includes(q));
+});
 
 /** Recherche active → liste APLATIE (tous fournisseurs confondus) : c'est le
  *  mode « je sais ce que je cherche ». Cascade seulement à champ vide. */
@@ -107,10 +140,24 @@ async function choisir(id: string | null) {
   }
 }
 
+/** Choix d'un modèle NON connecté : le panneau ouvre son dialogue de
+ *  connexion — on ferme le menu, le flux est modal. */
+function choisirCatalogue(id: string) {
+  if (!onSelectCatalogue || enCours !== null) return;
+  onSelectCatalogue(id);
+  onClose?.();
+}
+
 /** Ouvre le sous-menu d'un fournisseur, ancré à sa ligne. Côté droit d'abord ;
  *  le chip vit au bord droit de la fenêtre, on bascule à GAUCHE de la racine
- *  quand il n'y a pas la place — sinon le sous-menu sortirait de l'écran. */
-function ouvrirProvider(e: MouseEvent, provider: string) {
+ *  quand il n'y a pas la place — sinon le sous-menu sortirait de l'écran.
+ *  `items` portés par l'appelant : actifs (configOptions) OU catalogue. */
+function ouvrirProvider(
+  e: MouseEvent,
+  provider: string,
+  items: { id: string; nom?: string }[],
+  duCatalogue = false,
+) {
   const ligne = (e.currentTarget as HTMLElement).getBoundingClientRect();
   const racine = ref?.getBoundingClientRect();
   let left = (racine?.right ?? ligne.right) + 4;
@@ -122,11 +169,13 @@ function ouvrirProvider(e: MouseEvent, provider: string) {
     top: Math.max(8, Math.min(ligne.top - 4, window.innerHeight - SUB_MAX_H - 8)),
   };
   providerOuvert = provider;
+  sousMenu = items;
+  sousMenuCatalogue = duCatalogue;
 }
 
 /** Libellé d'un modèle dans le sous-menu : le slug après « provider/ » quand
- *  l'id a cette forme, sinon le nom fourni par l'agent, sinon l'id complet. */
-function libelle(m: ModeleDisponible): string {
+ *  l'id a cette forme, sinon le nom fourni (agent ou catalogue), sinon l'id. */
+function libelle(m: { id: string; nom?: string }): string {
   const p = providerOuvert ?? "";
   if (p && m.id.startsWith(p + "/")) return m.id.slice(p.length + 1);
   return m.nom ?? m.id;
@@ -140,9 +189,11 @@ function onSearchKeydown(e: KeyboardEvent) {
   }
   if (e.key !== "Enter") return;
   e.preventDefault();
-  // Entrée : la saisie libre prioritaire, sinon le premier modèle filtré.
+  // Entrée : saisie libre prioritaire, sinon premier actif filtré, sinon
+  // premier modèle de catalogue filtré (→ connexion).
   if (saisieLibre) void choisir(saisieLibre);
   else if (filtres.length > 0) void choisir(filtres[0].id);
+  else if (cataloguePlat.length > 0) choisirCatalogue(cataloguePlat[0].id);
 }
 
 // Sous le déclencheur, rabattu dans le viewport si la liste déborderait
@@ -204,8 +255,10 @@ $effect(() => {
   />
 
   {#if plat}
-    <!-- Mode aplati : résultats tous fournisseurs confondus, identifiant complet. -->
-    {#if filtres.length === 0 && !saisieLibre}
+    <!-- Mode aplati : résultats des deux sections, identifiant complet.
+         Les items de catalogue (non connectés) sont atténués et routent
+         vers le dialogue de connexion via le panneau. -->
+    {#if filtres.length === 0 && cataloguePlat.length === 0 && !saisieLibre}
       <div class="agent-model-menu__note">{t("agent.model.aucun")}</div>
     {:else}
       {#each filtres as m (m.id)}
@@ -217,6 +270,18 @@ $effect(() => {
           disabled={enCours !== null}
           title={m.id}
           onclick={() => choisir(m.id)}
+        >
+          {m.id}
+        </button>
+      {/each}
+      {#each cataloguePlat as m (m.id)}
+        <button
+          type="button"
+          role="menuitem"
+          class="agent-model-menu__item agent-model-menu__item--mono agent-model-menu__item--cat"
+          disabled={enCours !== null}
+          title={m.id}
+          onclick={() => choisirCatalogue(m.id)}
         >
           {m.id}
         </button>
@@ -234,7 +299,7 @@ $effect(() => {
       </button>
     {/if}
   {:else}
-    <!-- Mode cascade : défaut, puis un fournisseur par ligne. -->
+    <!-- Mode cascade : défaut, puis ACTIFS (connectés), puis CATALOGUE. -->
     <button
       type="button"
       role="menuitem"
@@ -246,13 +311,9 @@ $effect(() => {
       {labelDefaut}
     </button>
 
-    <div class="agent-model-menu__divider" aria-hidden="true"></div>
-
-    {#if listeIndisponible}
-      <div class="agent-model-menu__note">{t("agent.model.indisponible")}</div>
-    {:else if groupes.size === 0}
-      <div class="agent-model-menu__note">{t("agent.model.aucun")}</div>
-    {:else}
+    {#if !listeIndisponible && groupes.size > 0}
+      <div class="agent-model-menu__divider" aria-hidden="true"></div>
+      <div class="agent-model-menu__section">{t("agent.model.actifs")}</div>
       {#each [...groupes] as [provider, liste] (provider)}
         <button
           type="button"
@@ -262,11 +323,47 @@ $effect(() => {
           class="agent-model-menu__item agent-model-menu__provider"
           class:is-open={providerOuvert === provider}
           disabled={enCours !== null}
-          onmouseenter={(e) => ouvrirProvider(e, provider)}
-          onclick={(e) => ouvrirProvider(e, provider)}
+          onmouseenter={(e) => ouvrirProvider(e, provider, liste)}
+          onclick={(e) => ouvrirProvider(e, provider, liste)}
         >
           <span class="agent-model-menu__provider-nom">{provider}</span>
           <span class="agent-model-menu__count">{liste.length}</span>
+          <i class="wxi-chevron-right agent-model-menu__chevron" aria-hidden="true"></i>
+        </button>
+      {/each}
+    {:else if listeIndisponible}
+      <div class="agent-model-menu__note">{t("agent.model.indisponible")}</div>
+    {:else if groupes.size === 0}
+      <div class="agent-model-menu__note">{t("agent.model.aucun")}</div>
+    {/if}
+
+    <!-- Catalogue : tout ce que le serveur connaît MOINS les connectés.
+         null = pas encore chargé (chargement paresseux au 1er ouvert) ;
+         [] avec erreur = tentative échouée. -->
+    <div class="agent-model-menu__divider" aria-hidden="true"></div>
+    <div class="agent-model-menu__section">{t("agent.model.catalogue")}</div>
+    {#if catalogue === null}
+      <div class="agent-model-menu__note">{t("agent.model.catalogueChargement")}</div>
+    {:else if catalogueIndisponible}
+      <div class="agent-model-menu__note">{t("agent.model.catalogueIndisponible")}</div>
+    {:else if fournisseursCatalogue.length === 0}
+      <div class="agent-model-menu__note">{t("agent.model.aucunAutre")}</div>
+    {:else}
+      {#each fournisseursCatalogue as f (f.id)}
+        <button
+          type="button"
+          role="menuitem"
+          aria-haspopup="menu"
+          aria-expanded={providerOuvert === f.id}
+          class="agent-model-menu__item agent-model-menu__provider agent-model-menu__provider--cat"
+          class:is-open={providerOuvert === f.id}
+          disabled={enCours !== null}
+          title={t("agent.connect.titre", { nom: f.nom })}
+          onmouseenter={(e) => ouvrirProvider(e, f.id, f.modeles, true)}
+          onclick={(e) => ouvrirProvider(e, f.id, f.modeles, true)}
+        >
+          <span class="agent-model-menu__provider-nom">{f.nom}</span>
+          <span class="agent-model-menu__count">{f.modeles.length}</span>
           <i class="wxi-chevron-right agent-model-menu__chevron" aria-hidden="true"></i>
         </button>
       {/each}
@@ -286,7 +383,7 @@ $effect(() => {
     aria-label={providerOuvert}
     style="position:fixed;left:{subPos.left}px;top:{subPos.top}px"
   >
-    {#each groupes.get(providerOuvert) ?? [] as m (m.id)}
+    {#each sousMenu as m (m.id)}
       <button
         type="button"
         role="menuitem"
@@ -294,7 +391,7 @@ $effect(() => {
         class:is-selected={m.id === value}
         disabled={enCours !== null}
         title={m.id}
-        onclick={() => choisir(m.id)}
+        onclick={() => (sousMenuCatalogue ? choisirCatalogue(m.id) : choisir(m.id))}
       >
         <span class="agent-model-menu__modele-nom">{libelle(m)}</span>
         {#if m.id === value}<i class="wxi-check agent-model-menu__check" aria-hidden="true"></i>{/if}
@@ -383,6 +480,31 @@ $effect(() => {
     height: 1px;
     margin: 3px 6px;
     background: var(--border);
+  }
+  /* Intitulé de section (Actifs / Catalogue) : petit, muet, non cliquable —
+     même vocabulaire visuel que les menus de l'app. */
+  .agent-model-menu__section {
+    padding: 3px 10px 2px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  /* Items de catalogue (non connectés) : atténués mais lisibles ; au survol
+     ils reprennent la teinte normale pour ne pas sembler désactivés. */
+  .agent-model-menu__item--cat {
+    color: var(--muted);
+  }
+  .agent-model-menu__item--cat:hover:not(:disabled) {
+    color: var(--fg);
+  }
+  .agent-model-menu__provider--cat .agent-model-menu__provider-nom {
+    color: var(--muted);
+  }
+  .agent-model-menu__provider--cat:hover:not(:disabled) .agent-model-menu__provider-nom,
+  .agent-model-menu__provider--cat.is-open .agent-model-menu__provider-nom {
+    color: var(--fg);
   }
   .agent-model-menu__provider {
     justify-content: space-between;
