@@ -140,6 +140,33 @@ test("cancel() envoie session/cancel en notification (sans réponse attendue)", 
   expect(notif.params).toEqual({ sessionId: "ses_1" });
 });
 
+// ── Switch à chaud (sonde 2026-08-21) ───────────────────────────────────────
+// `session/set_model` existe sur OpenCode 1.18.11 sans être annoncée dans
+// les capacités : appliquée immédiatement, conversation préservée.
+
+test("setModel() envoie session/set_model avec sessionId et modelId", async () => {
+  const t = fakeTransport({ initialize: INIT_RESULT, "session/set_model": {} });
+  const client = createAgentClient({ cwd: "/vault", transport: t });
+  await client.start();
+  await client.setModel("ses_1", "opencode/hy3-free");
+  expect(t.sent[1]).toMatchObject({
+    method: "session/set_model",
+    params: { sessionId: "ses_1", modelId: "opencode/hy3-free" },
+  });
+});
+
+test("setModel() propage l'erreur « model not found » du binaire", async () => {
+  // Forme mesurée : -32602 « Invalid params: model not found: X/Y » — le
+  // sélecteur s'en sert pour distinguer une saisie invalide d'une méthode absente.
+  const t = fakeTransport({
+    initialize: INIT_RESULT,
+    "session/set_model": new Error("Invalid params: model not found: inconnu/nimporte"),
+  });
+  const client = createAgentClient({ cwd: "/vault", transport: t });
+  await client.start();
+  await expect(client.setModel("ses_1", "inconnu/nimporte")).rejects.toThrow(/model not found/);
+});
+
 test("onUpdate ne transmet que session/update, dépliée", async () => {
   const t = fakeTransport({ initialize: INIT_RESULT });
   const client = createAgentClient({ cwd: "/vault", transport: t });

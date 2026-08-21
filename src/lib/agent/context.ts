@@ -203,9 +203,13 @@ place.`);
 /** Configuration inline injectée au spawn. `external_directory: "ask"` est le
  *  DÉFAUT d'OpenCode — on le rend explicite : c'est la règle « libre dedans,
  *  autorisation dehors » (arbitrage 2026-08-15), et l'explicite survit à un
- *  changement de défaut amont. */
-export function buildAgentConfig(instructionsPath: string): Record<string, unknown> {
-  return {
+ *  changement de défaut amont.
+ *
+ *  `modele` (sonde 2026-08-21) : clé `model` de la config — honorée au spawn,
+ *  MERGÉE comme le reste (auth et providers survivent). Absente → OpenCode
+ *  choisit son défaut ; c'est l'état « Défaut OpenCode » du sélecteur. */
+export function buildAgentConfig(instructionsPath: string, modele?: string): Record<string, unknown> {
+  const config: Record<string, unknown> = {
     instructions: [instructionsPath],
     permission: {
       external_directory: "ask",
@@ -231,11 +235,13 @@ export function buildAgentConfig(instructionsPath: string): Record<string, unkno
     // Ce que la commande faisait est désormais un COMPORTEMENT, décrit dans
     // les instructions : chercher la section qui traite du sujet.
   };
+  if (modele) config.model = modele;
+  return config;
 }
 
 /** Variable d'environnement passée au spawn (via `acp_spawn`). */
-export function buildAgentEnv(instructionsPath: string): Record<string, string> {
-  return { OPENCODE_CONFIG_CONTENT: JSON.stringify(buildAgentConfig(instructionsPath)) };
+export function buildAgentEnv(instructionsPath: string, modele?: string): Record<string, string> {
+  return { OPENCODE_CONFIG_CONTENT: JSON.stringify(buildAgentConfig(instructionsPath, modele)) };
 }
 
 /** Diff porté par `toolCall.content[]` (type "diff") ou `rawInput.diff`

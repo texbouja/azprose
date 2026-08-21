@@ -56,6 +56,13 @@ export interface AgentClient {
   newSession(cwd: string, mcpServers?: McpServerDecl[]): Promise<string>;
   prompt(sessionId: string, text: string): Promise<PromptResult>;
   cancel(sessionId: string): Promise<void>;
+  /** Change le modèle de la session À CHAUD (sonde 2026-08-21 : méthode
+   *  `session/set_model`, non annoncée dans les capacités mais réelle sur
+   *  OpenCode 1.18.11 — appliquée immédiatement, fil de conversation gardé).
+   *  Rejette avec « model not found: X » si l'identifiant est inconnu du
+   *  binaire, et peut rejeter faute de méthode sur un agent plus ancien —
+   *  l'appelant décide alors du repli (régime B : config au prochain spawn). */
+  setModel(sessionId: string, modelId: string): Promise<void>;
   onUpdate(cb: (u: SessionUpdate) => void): () => void;
   stop(): Promise<void>;
 }
@@ -132,6 +139,11 @@ export function createAgentClient(options: AgentClientOptions): AgentClient {
 
     async cancel(sessionId: string): Promise<void> {
       transport.sendNotification("session/cancel", { sessionId });
+    },
+
+    async setModel(sessionId: string, modelId: string): Promise<void> {
+      // Réponse attendue ({}) mais vide : seule l'erreur compte.
+      await transport.sendRequest("session/set_model", { sessionId, modelId });
     },
 
     onUpdate(cb) {

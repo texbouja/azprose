@@ -60,6 +60,10 @@ export const STORAGE_KEYS = {
   // Chemin explicite vers le binaire de l'agent (surcharge du PATH) —
   // sert à la veille : pointer une version candidate avant de l'adopter.
   agentBinaryPath: "mdview.agent.binaryPath",
+  // Modèle choisi pour l'assistant (équivalent `/models`) — GLOBAL comme le
+  // chemin du binaire : le choix suit l'utilisateur, pas le vault. Absent ou
+  // vide = « Défaut OpenCode » (aucune surcharge injectée).
+  agentModel: "mdview.agent.model",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

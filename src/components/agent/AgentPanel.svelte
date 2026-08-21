@@ -25,6 +25,8 @@ import {
   extractToolDiff,
   type ToolDiff,
 } from "@/lib/agent/context";
+import { STORAGE_KEYS } from "@/lib/storage";
+import AgentModelSelect from "@/components/agent/AgentModelSelect.svelte";
 import { cleLibelleOutil, resumerOutil } from "@/lib/agent/outils";
 import { getProjectRoot } from "@/lib/session";
 import { appDataDir, join } from "@tauri-apps/api/path";
@@ -81,6 +83,59 @@ let offUpdate: (() => void) | null = null;
 // Recréés à chaque session (startSession) : les « toujours » ne survivent pas
 // à une réinitialisation (D12 — mémoire de session, jamais disque).
 let handlers = $state<ReturnType<typeof createAgentHandlers> | null>(null);
+
+// ── Sélecteur de modèle (équivalent `/models`) ──────────────────────────────
+// Choix GLOBAL (localStorage, comme le chemin du binaire) : suit
+// l'utilisateur d'un vault à l'autre. `null` = « Défaut OpenCode » — absence
+// de surcharge, état légitime. Le switch à chaud passe par `session/set_model`
+// (sonde 2026-08-21) ; en cas d'indisponibilité, `respawnRequis` programme un
+// re-spawn au prochain reset — c'est alors la config inline du spawn qui
+// porte le choix (clé `model`, honorée : mesurée à charge réelle).
+function lireModeleStocke(): string | null {
+  try {
+    const brut = localStorage.getItem(STORAGE_KEYS.agentModel);
+    if (!brut) return null;
+    const v = JSON.parse(brut);
+    return typeof v === "string" && v ? v : null;
+  } catch { return null; }
+}
+
+function ecrireModeleStocke(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(STORAGE_KEYS.agentModel, JSON.stringify(id));
+    else localStorage.removeItem(STORAGE_KEYS.agentModel);
+  } catch { /* stockage indisponible : le choix ne survivra pas à la fenêtre */ }
+}
+
+let modeleChoisi = $state<string | null>(lireModeleStocke());
+let respawnRequis = false;
+
+/** Choix depuis le sélecteur. Renvoie null si appliqué, sinon le message
+ *  d'erreur que le menu affichera en place (modèle refusé par le binaire). */
+async function choisirModele(id: string | null): Promise<string | null> {
+  ecrireModeleStocke(id);
+  modeleChoisi = id;
+  // Pas de session prête : le choix s'appliquera au spawn / à la prochaine
+  // session — persister suffit.
+  if (!client || !sessionId || status !== "ready") return null;
+  if (id === null) {
+    // Le protocole n'a pas de « unset » : revenir au défaut prendra effet à
+    // la prochaine session, qui naîtra sans surcharge.
+    pushItem({ kind: "agent", text: t("agent.model.defautProchaine") });
+    return null;
+  }
+  try {
+    await client.setModel(sessionId, id);
+    return null;
+  } catch (e) {
+    const msg = String(e);
+    if (/model not found/i.test(msg)) return msg; // validation dans le menu
+    // Méthode absente ou autre panne : régime B — re-spawn au prochain reset.
+    respawnRequis = true;
+    pushItem({ kind: "agent", text: t("agent.model.prochaineSession", { id }) });
+    return null;
+  }
+}
 
 /** Rend une demande de permission dans le fil et suspend jusqu'au clic. */
 function askPermission(req: PermissionRequest): Promise<string | null> {
@@ -342,19 +397,32 @@ async function startSession() {
   try {
     const root = getProjectRoot() ?? "/";
     handlers = createAgentHandlers(undefined, askPermission);
+    // Régime B : un choix qui n'a pas pu passer à chaud (méthode absente chez
+    // un agent plus ancien) force un re-spawn — la config inline du spawn
+    // porte alors le modèle. Sans ça, le processus réutilisé garderait son
+    // défaut d'origine.
+    if (client && respawnRequis) {
+      offUpdate?.();
+      offUpdate = null;
+      await client.stop();
+      client = null;
+      respawnRequis = false;
+    }
     client ??= createAgentClient({
       cwd: root,
       // Phase 4 : les capacités fs sont déclarées MAINTENANT qu'elles sont
       // implémentées (P3 — jamais avant). Servies depuis le disque (D9).
       capabilities: { fs: { readTextFile: true, writeTextFile: true } },
       // Contexte d'environnement : instructions (fichier $APPDATA, hors
-      // vault) + config inline (external_directory: ask) — voir context.ts.
-      env: buildAgentEnv(await ensureAgentInstructions(root)),
+      // vault) + config inline (external_directory: ask) + modèle choisi —
+      // voir context.ts.
+      env: buildAgentEnv(await ensureAgentInstructions(root), modeleChoisi ?? undefined),
       onServerRequest: (req) => handlers!.handle(req),
     });
     await client.start();
     offUpdate ??= client.onUpdate(applyUpdate);
     sessionId = await client.newSession(root, await mcpServers(root));
+    await appliquerModeleSession();
     status = "ready";
   } catch (e) {
     if (e instanceof Error && e.name === "AgentNotInstalledError") {
@@ -362,6 +430,29 @@ async function startSession() {
     } else {
       status = "error";
       errorMessage = String(e);
+    }
+  }
+}
+
+/** Applique le choix mémorisé à la session fraîche. Le spawn vient de
+ *  recevoir la config, MAIS un processus réutilisé (`client ??=`) garde SON
+ *  défaut d'origine : sans `set_model` explicite, une session neuve
+ *  repartirait sur l'ancien modèle. */
+async function appliquerModeleSession() {
+  if (!client || !sessionId || !modeleChoisi) return;
+  try {
+    await client.setModel(sessionId, modeleChoisi);
+  } catch (e) {
+    const msg = String(e);
+    if (/model not found/i.test(msg)) {
+      // Modèle disparu du binaire (désauthentifié, renommé) : ne pas afficher
+      // un choix mensonger — retour au défaut, choix dépersisté.
+      ecrireModeleStocke(null);
+      modeleChoisi = null;
+      console.warn("[agent] modèle mémorisé introuvable, retour au défaut :", msg);
+    } else {
+      respawnRequis = true;
+      console.warn("[agent] set_model indisponible, re-spawn au prochain reset :", msg);
     }
   }
 }
@@ -555,15 +646,26 @@ onDestroy(() => {
 
   <div class="agent__header">
     <span class="agent__title">{t("agent.title")}</span>
-    <button
-      class="agent__reset"
-      data-tooltip={t("agent.reset")}
-      aria-label={t("agent.reset")}
-      onclick={startSession}
-      disabled={status === "starting"}
-    >
-      <i class="wxi-rotate-ccw"></i>
-    </button>
+    <div class="agent__actions">
+      <!-- Sélecteur de modèle : actif seulement sur session prête (D7 — un
+           switch pendant une génération ferait la course au prompt). -->
+      <AgentModelSelect
+        label={t("agent.model.label")}
+        value={modeleChoisi}
+        labelDefaut={t("agent.model.default")}
+        disabled={status !== "ready"}
+        onSelect={choisirModele}
+      />
+      <button
+        class="agent__reset"
+        data-tooltip={t("agent.reset")}
+        aria-label={t("agent.reset")}
+        onclick={startSession}
+        disabled={status === "starting"}
+      >
+        <i class="wxi-rotate-ccw"></i>
+      </button>
+    </div>
   </div>
 
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions — clic délégué sur les <a> du rendu markdown, même motif que la preview -->
@@ -716,6 +818,11 @@ onDestroy(() => {
     flex: none;
   }
   .agent__title { font-weight: 600; font-size: 12px; letter-spacing: 0.02em; }
+  .agent__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
   .agent__reset {
     border: none;
     background: transparent;

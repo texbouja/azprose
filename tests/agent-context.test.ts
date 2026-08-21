@@ -186,6 +186,27 @@ test("l'env porte OPENCODE_CONFIG_CONTENT en JSON valide", () => {
   expect(parsed.instructions).toEqual(["/appdata/agent-instructions.md"]);
 });
 
+// ── Sélecteur de modèle (sonde 2026-08-21) ──────────────────────────────────
+// La clé `model` de la config inline fixe le défaut du spawn — mesuré à
+// charge réelle : OPENCODE_CONFIG_CONTENT {"model": "opencode/hy3-free"} →
+// la session démarre sur hy3-free (vérifié par `opencode export`).
+
+test("la config porte le modèle choisi quand il y en a un", () => {
+  const cfg = buildAgentConfig("/appdata/agent-instructions.md", "opencode/hy3-free") as any;
+  expect(cfg.model).toBe("opencode/hy3-free");
+  const parsed = JSON.parse(buildAgentEnv("/appdata/a.md", "anthropic/claude-sonnet-4-5").OPENCODE_CONFIG_CONTENT);
+  expect(parsed.model).toBe("anthropic/claude-sonnet-4-5");
+});
+
+test("sans modèle choisi : AUCUNE clé model — c'est l'état « Défaut OpenCode »", () => {
+  // L'absence de surcharge est un état légitime : OpenCode choisit son défaut.
+  // Émettre `"model": null` ou "" ferait échouer la fusion de config.
+  const cfg = buildAgentConfig("/appdata/agent-instructions.md") as any;
+  expect(cfg.model).toBeUndefined();
+  const vide = buildAgentConfig("/appdata/a.md", "") as any;
+  expect(vide.model).toBeUndefined();
+});
+
 test("extractToolDiff lit le bloc content type=diff (forme phase 0c)", () => {
   const params = {
     toolCall: {
