@@ -83,6 +83,11 @@ immédiatement dans un onglet de l'éditeur. Vous pouvez l'annoter, le lier
 depuis vos notes ou l'archiver ; les exports restent dans le dossier caché
 `.azprose/`, hors de votre arborescence de notes.
 
+Pour ne récupérer qu'un message, **clic droit sur une demande ou une
+réponse → Copier en Markdown** : c'est la source brute qui est copiée
+(maths, code et tableaux compris), pas le rendu — collez-la dans une note,
+elle reste vivante.
+
 ## Choisir le modèle
 
 L'en-tête du panneau porte un sélecteur **Modèle**, organisé en deux sections :

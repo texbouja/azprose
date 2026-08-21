@@ -52,6 +52,7 @@ import {
 } from "@/lib/agent/historique";
 import { nomTranscription, transcriptionMarkdown } from "@/lib/agent/transcription";
 import { notifications } from "@/stores/notifications.svelte";
+import { contextMenu } from "@/stores/context-menu.svelte";
 import { mkdir } from "@tauri-apps/plugin-fs";
 import {
   joinPath,
@@ -967,6 +968,33 @@ async function exporterTranscription(): Promise<void> {
   }
 }
 
+/** Copie ATOMIQUE d'un message en source Markdown (variante fine de
+ *  l'export) : clic droit sur une demande ou une réponse → « Copier en
+ *  Markdown ». Le texte BRUT est copié tel quel — pas le rendu HTML — pour
+ *  coller dans une note en gardant maths, code et tableaux. Réflexions et
+ *  outils exclus (comme dans la transcription). */
+function onFeedContextMenu(e: MouseEvent, item: FeedItem): void {
+  if (item.kind !== "user" && item.kind !== "agent") return;
+  contextMenu.openItems(e, [
+    {
+      label: t("agent.copierMarkdown"),
+      icon: "wxi-copy",
+      onSelect: () => void copierMarkdown(item),
+    },
+  ]);
+}
+
+async function copierMarkdown(item: FeedItem): Promise<void> {
+  if (item.kind !== "user" && item.kind !== "agent") return;
+  try {
+    await navigator.clipboard.writeText(item.text);
+    notifications.setInfo(t("agent.copieOk"));
+  } catch (err) {
+    console.warn("[agent] copie presse-papiers :", err);
+    notifications.setInfo(t("agent.copieErreur"));
+  }
+}
+
 /** Blocs ACP `resource_link` pour chaque mention résolvable du message —
  *  le serveur OpenCode y embarque le contenu (comportement TUI documenté).
  *  L'index ne contient que des FICHIERS : une mention de dossier
@@ -1146,7 +1174,7 @@ onDestroy(() => {
 
     {#each items as item (item.id)}
       {#if item.kind === "user"}
-        <div class="agent__msg agent__msg--user">
+        <div class="agent__msg agent__msg--user" oncontextmenu={(e) => onFeedContextMenu(e, item)}>
           <div class="agent__who">{t("agent.you")}</div>
           <div class="agent__bubble">{item.text}</div>
         </div>
@@ -1216,7 +1244,7 @@ onDestroy(() => {
         </div>
       {:else if item.kind === "agent"}
         {#if item.text}
-          <div class="agent__msg agent__msg--agent mdv-prose" class:agent__msg--html={!!item.html}>
+          <div class="agent__msg agent__msg--agent mdv-prose" class:agent__msg--html={!!item.html} oncontextmenu={(e) => onFeedContextMenu(e, item)}>
             {#if item.html}{@html item.html}{:else}{item.text}{/if}
           </div>
         {/if}

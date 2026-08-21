@@ -37,6 +37,16 @@ function createContextMenu() {
       target = { x: e.clientX, y: e.clientY, path: entry.path, isDir: entry.isDir };
       items = menuItems;
     },
+    /** Ouvre le menu sur des items arbitraires, SANS cible fichier (le fil de
+     *  l'assistant, par exemple). Même sémantique d'événement que open() ;
+     *  le rendu ne lit que x/y/items — les champs path/isDir du target y sont
+     *  indifférents. */
+    openItems(e: MouseEvent, menuItems: ContextMenuItem[]) {
+      e.preventDefault();
+      e.stopPropagation();
+      target = { x: e.clientX, y: e.clientY, path: "", isDir: false };
+      items = menuItems;
+    },
     close() { target = null; items = []; },
   };
 }
