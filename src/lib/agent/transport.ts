@@ -99,8 +99,12 @@ export function createAcpTransport(
         await listen<{ id: string; data: string }>("acp://stderr", (ev) => {
           if (ev.payload.id === id) console.log(`[agent:stderr] ${ev.payload.data.trimEnd()}`);
         });
-        await listen<{ id: string }>("acp://exit", (ev) => {
-          if (ev.payload.id !== id) return;
+        await listen<unknown>("acp://exit", (ev) => {
+          // Le pont Rust émet l'id NU ici (contrairement à output/stderr qui
+          // portent {id, data}) — on tolère les deux formes par prudence.
+          const charge = ev.payload as string | { id?: string };
+          const sortiId = typeof charge === "string" ? charge : charge?.id;
+          if (sortiId !== id) return;
           dead = true;
           console.warn(`[agent] processus terminé — id=${id}`);
           // Toute requête en vol est rejetée : sans ça elle attendrait son
