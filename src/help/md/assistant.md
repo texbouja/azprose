@@ -23,8 +23,8 @@ L'assistant ne contient aucun modèle : il s'appuie sur un programme séparé,
 > [!important] AZprose ne voit jamais vos clés
 > C'est OpenCode qui gère la connexion, les abonnements et les clés d'API.
 > AZprose ne les stocke pas, ne les affiche pas et ne les transmet pas : il se
-> contente de dialoguer avec le programme que vous avez configuré. Changer de
-> modèle se fait dans OpenCode, pas ici.
+> contente de dialoguer avec le programme que vous avez configuré. Le choix du
+> modèle, lui, se fait dans le panneau même — voir plus bas.
 
 Si l'assistant affiche « Agent introuvable », c'est qu'OpenCode n'est pas
 accessible : vérifiez qu'il est installé et qu'il répond à la commande
@@ -42,6 +42,25 @@ bouton **stop** interrompt la réponse en cours.
 > Certains modèles exposent leur raisonnement avant de répondre. Il s'affiche
 > replié sous le libellé *réflexion* — dépliez-le si vous voulez suivre son
 > cheminement, ignorez-le sinon.
+
+## Choisir le modèle
+
+L'en-tête du panneau porte un sélecteur **Modèle** : il liste les modèles que
+votre OpenCode met à disposition — c'est-à-dire ceux des fournisseurs que vous
+avez connectés avec `opencode auth login`. Un champ de filtre permet de se
+retrouver dans une longue liste.
+
+- **Défaut OpenCode** ne surcharge rien : c'est OpenCode qui choisit son
+  modèle par défaut.
+- Choisir un modèle l'applique **immédiatement**, sans perdre la conversation
+  en cours.
+- Si votre modèle n'apparaît pas — fournisseur récent, modèle confidentiel —,
+  tapez directement son identifiant `fournisseur/modèle` dans le champ de
+  filtre et validez avec `Entrée`.
+
+Le choix est conservé d'une session à l'autre et vaut pour tous vos projets.
+Revenir à **Défaut OpenCode** prend effet à la prochaine session (bouton
+*nouvelle session*).
 
 ## Vous gardez la main sur les fichiers
 
