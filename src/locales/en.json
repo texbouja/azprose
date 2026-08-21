@@ -261,6 +261,8 @@
   "tabs.liveView": "Live View",
   "tabs.build": "Build",
   "tabs.buildPdf": "Build PDF",
+  "tabs.theme": "Theme",
+  "tabs.media": "Media",
   "tabs.exportPdf": "Export PDF",
   "tabs.colles": "Oral sheets",
   "config.warnings": "config.json has invalid or unknown keys — they were ignored",

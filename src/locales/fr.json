@@ -246,6 +246,8 @@
   "tabs.liveView": "Live View",
   "tabs.build": "Compiler",
   "tabs.buildPdf": "Compiler PDF",
+  "tabs.theme": "Thème",
+  "tabs.media": "Média",
   "tabs.exportPdf": "Export PDF",
   "tabs.colles": "Colles",
   "config.warnings": "config.json contient des clés invalides ou inconnues — elles ont été ignorées",

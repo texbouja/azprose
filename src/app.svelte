@@ -115,6 +115,7 @@ import {
   cleanLatexAux, cleanLatexAuxAndOutput, cleanLatexAll,
   handleLatexBuild,
 } from "@/latex";
+import { setDirective } from "@/latex/preamble-directives";
 import { FileOpsManager } from "@/lib/file-operations.svelte";
 import ConsolePanel from "@/components/console/ConsolePanel.svelte";
 import { mathJaxPreamble, mathJaxPackages, mathJaxFont, mathJaxSpacing } from "@/stores/mathjax-preamble.svelte";
@@ -1454,6 +1455,46 @@ $effect(() => {
   };
   window.addEventListener("azprose:colle-eval", onColleEval);
   return () => window.removeEventListener("azprose:colle-eval", onColleEval);
+});
+
+// ── Canal « directive .tex » (barre d'actions) : palette/média azkit ────────
+// TabActions propose deux sélecteurs (theme/media) qui écrivent DANS le
+// préambule du fichier .tex actif : `setDirective` remplace la valeur de
+// `\azcolors`/`\azgeometry` si la directive existe, l'insère sinon. Même canal
+// d'écriture que le write-back colles : base = contenu du STORE (buffer live),
+// reflets des tabs mis à jour, puis UNE sauvegarde — jamais de writeText brut.
+$effect(() => {
+  const onTexDirective = (e: Event) => {
+    const detail = (e as CustomEvent).detail as {
+      path?: string | null;
+      kind?: "colors" | "geometry";
+      value?: string;
+    };
+    if (detail.path == null || detail.kind == null || detail.value == null) return;
+    const norm = (p: string) => p.split("/").filter((s) => s !== ".").join("/");
+    const target = norm(detail.path);
+    const mainTab = pm.main.tabs.find((t: any) => norm(t.path) === target);
+    const sideTab = pm.side.tabs.find((t: any) => norm(t.path) === target);
+    const base = contentStore.has(target) ? contentStore.get(target) : (mainTab?.source ?? sideTab?.source);
+    if (base === undefined) return;
+    const next = setDirective(base, detail.kind!, detail.value!);
+    if (next === base) return; // valeur déjà en place — fichier laissé intact
+    contentStore.setBuffer(target, next);
+    if (mainTab) pm.main.setTabSource(mainTab.id, next);
+    if (sideTab) pm.side.setTabSource(sideTab.id, next);
+    _panelVersion++;
+    if (mainTab && norm(pm.main.activePath ?? "") === target) {
+      // L'effet dirty s'exécute après le flush Svelte : pose explicite pour
+      // que handleSave() parte immédiatement (même logique que colle-eval).
+      saveStatus = "dirty";
+      void handleSave();
+    } else {
+      void contentStore.persist(target).catch((err: unknown) =>
+        console.error("azprose: tex-directive write-back direct failed", err));
+    }
+  };
+  window.addEventListener("azprose:tex-directive", onTexDirective);
+  return () => window.removeEventListener("azprose:tex-directive", onTexDirective);
 });
 
 // ── Canal « navigate » (phase 1, idée A) : DI réelle du reducer ──────────────

@@ -14,11 +14,14 @@ import { slideSettings, SLIDE_MODES } from "@/stores/slide-settings.svelte";
 import { parseFrontMatter } from "@/lib/front-matter";
 import { docTypeSwitches, normalizeDocType } from "@/lib/doc-meta";
 import SlideModeRadio from "./SlideModeRadio.svelte";
+import TexDirectiveSelect from "./TexDirectiveSelect.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
 import { pinnedHistory, getPinnedNavActions } from "@/stores/pinned-history.svelte";
+import { readDirective, AZ_PALETTES, AZ_MEDIA } from "@/latex/preamble-directives";
 
 // Register SlideModeRadio as a custom toolbar item
 registerToolbarItem("slide-mode-radio", SlideModeRadio);
+registerToolbarItem("tex-directive-select", TexDirectiveSelect);
 
 let {
   activeTab = null as Tab | null,
@@ -127,6 +130,24 @@ function dispatchColleNav(dir: "prev" | "next") {
 let ext = $derived(extFromPath(activeTab?.path ?? ""));
 let isMd = $derived(ext === "md");
 let isTex = $derived(ext === "tex");
+
+// Directives azkit pilotables depuis la barre d'actions .tex. Lues sur la
+// source LIVE du tab (`setSource` la reflète à chaque frappe de l'éditeur) :
+// le sélecteur montre la valeur réellement en place, y compris un edit non
+// encore sauvegardé. `null` = directive absente du préambule.
+let texColors = $derived(isTex ? readDirective(activeTab?.source ?? "", "colors") : null);
+let texMedia = $derived(isTex ? readDirective(activeTab?.source ?? "", "geometry") : null);
+
+// Écrit dans le fichier via le canal app (`azprose:tex-directive`) — c'est
+// app.svelte qui détient le store de contenu (autorité) et la sauvegarde.
+function chooseTexDirective(kind: "colors" | "geometry", value: string) {
+  if (!activeTab) return;
+  window.dispatchEvent(
+    new CustomEvent("azprose:tex-directive", {
+      detail: { path: activeTab.path, kind, value },
+    }),
+  );
+}
 let isCsv = $derived(ext === "csv" || ext === "tsv");
 let isMain = $derived(panelId === "main");
 // Mode ALTERNATIF du viewer pour le fichier affiché (généralisation).
@@ -192,6 +213,12 @@ let mainItems = $derived.by(() => {
   if (isTex) return [
     ...pinnedHistItems,
     { spacer: true },
+    { comp: "tex-directive-select", text: t("tabs.theme"), value: texColors,
+      options: [...AZ_PALETTES], pinned: true,
+      handler: (_item: unknown, value: string) => chooseTexDirective("colors", value) },
+    { comp: "tex-directive-select", text: t("tabs.media"), value: texMedia,
+      options: [...AZ_MEDIA], pinned: true,
+      handler: (_item: unknown, value: string) => chooseTexDirective("geometry", value) },
     { comp: "button", icon: "wxi-file-down", text: t("tabs.build"),
       handler: () => onLatexBuild?.() },
     { comp: "button", icon: "wxi-file-text", text: t("tabs.viewPdf"),
