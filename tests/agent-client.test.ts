@@ -103,12 +103,45 @@ test("newSession() envoie cwd = racine du vault et mcpServers vide (D13)", async
   });
   const client = createAgentClient({ cwd: "/vault", transport: t });
   await client.start();
-  const id = await client.newSession("/vault");
-  expect(id).toBe("ses_test123");
+  const ses = await client.newSession("/vault");
+  expect(ses.sessionId).toBe("ses_test123");
   expect(t.sent[1]).toMatchObject({
     method: "session/new",
     params: { cwd: "/vault", mcpServers: [] },
   });
+});
+
+test("newSession() rend les configOptions déclarées par l'agent (ACP v1)", async () => {
+  // Forme réelle mesurée en sonde (2026-08-21) : session/new ne rend que
+  // {sessionId, configOptions} — c'est LA source du sélecteur de modèle.
+  const options = [
+    {
+      id: "model",
+      category: "model",
+      type: "select",
+      currentValue: "opencode/big-pickle",
+      options: [{ value: "opencode/big-pickle", name: "OpenCode/Big Pickle" }],
+    },
+  ];
+  const t = fakeTransport({
+    initialize: INIT_RESULT,
+    "session/new": { sessionId: "ses_1", configOptions: options },
+  });
+  const client = createAgentClient({ cwd: "/vault", transport: t });
+  await client.start();
+  const ses = await client.newSession("/vault");
+  expect(ses.configOptions).toEqual(options);
+});
+
+test("newSession() : agent sans configOptions → tableau vide, jamais d'erreur", async () => {
+  const t = fakeTransport({
+    initialize: INIT_RESULT,
+    "session/new": { sessionId: "ses_1" },
+  });
+  const client = createAgentClient({ cwd: "/vault", transport: t });
+  await client.start();
+  const ses = await client.newSession("/vault");
+  expect(ses.configOptions).toEqual([]);
 });
 
 test("prompt() envoie un bloc texte et retourne le stopReason", async () => {
@@ -140,11 +173,36 @@ test("cancel() envoie session/cancel en notification (sans réponse attendue)", 
   expect(notif.params).toEqual({ sessionId: "ses_1" });
 });
 
-// ── Switch à chaud (sonde 2026-08-21) ───────────────────────────────────────
-// `session/set_model` existe sur OpenCode 1.18.11 sans être annoncée dans
-// les capacités : appliquée immédiatement, conversation préservée.
+// ── Changement de modèle ─────────────────────────────────────────────────────
+// Chemin DOCUMENTÉ d'abord (`session/set_config_option`, ACP v1 stabilisé —
+// la réponse porte l'état complet des options), repli historique
+// `session/set_model` pour les binaires sans configOptions.
 
-test("setModel() envoie session/set_model avec sessionId et modelId", async () => {
+test("setConfigOption() envoie sessionId, configId et value", async () => {
+  const t = fakeTransport({
+    initialize: INIT_RESULT,
+    "session/set_config_option": { configOptions: [{ id: "model", currentValue: "a/b" }] },
+  });
+  const client = createAgentClient({ cwd: "/vault", transport: t });
+  await client.start();
+  const opts = await client.setConfigOption("ses_1", "model", "a/b");
+  expect(t.sent[1]).toMatchObject({
+    method: "session/set_config_option",
+    params: { sessionId: "ses_1", configId: "model", value: "a/b" },
+  });
+  // La spec garantit l'état COMPLET en réponse : l'appelant s'en sert pour
+  // rafraîchir son affichage (options dépendantes comprises).
+  expect(opts).toEqual([{ id: "model", currentValue: "a/b" }]);
+});
+
+test("setConfigOption() : réponse sans état → tableau vide, jamais d'erreur", async () => {
+  const t = fakeTransport({ initialize: INIT_RESULT, "session/set_config_option": {} });
+  const client = createAgentClient({ cwd: "/vault", transport: t });
+  await client.start();
+  expect(await client.setConfigOption("ses_1", "model", "a/b")).toEqual([]);
+});
+
+test("setModel() envoie session/set_model avec sessionId et modelId (repli)", async () => {
   const t = fakeTransport({ initialize: INIT_RESULT, "session/set_model": {} });
   const client = createAgentClient({ cwd: "/vault", transport: t });
   await client.start();

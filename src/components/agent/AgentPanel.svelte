@@ -26,6 +26,7 @@ import {
   type ToolDiff,
 } from "@/lib/agent/context";
 import { STORAGE_KEYS } from "@/lib/storage";
+import { optionModele, modelesDeOption, type ConfigOption } from "@/lib/agent/config-options";
 import AgentModelSelect from "@/components/agent/AgentModelSelect.svelte";
 import { cleLibelleOutil, resumerOutil } from "@/lib/agent/outils";
 import { getProjectRoot } from "@/lib/session";
@@ -85,12 +86,19 @@ let offUpdate: (() => void) | null = null;
 let handlers = $state<ReturnType<typeof createAgentHandlers> | null>(null);
 
 // ── Sélecteur de modèle (équivalent `/models`) ──────────────────────────────
-// Choix GLOBAL (localStorage, comme le chemin du binaire) : suit
-// l'utilisateur d'un vault à l'autre. `null` = « Défaut OpenCode » — absence
-// de surcharge, état légitime. Le switch à chaud passe par `session/set_model`
-// (sonde 2026-08-21) ; en cas d'indisponibilité, `respawnRequis` programme un
-// re-spawn au prochain reset — c'est alors la config inline du spawn qui
-// porte le choix (clé `model`, honorée : mesurée à charge réelle).
+// Contrat DOCUMENTÉ (ACP v1 « Session Config Options », stabilisé) :
+// `session/new` rend les options de la session — dont celle de catégorie
+// `model`, qui porte la LISTE des modèles utilisables (providers configurés
+// par l'utilisateur) et la valeur courante ; `session/set_config_option`
+// change celle-ci à chaud et rend l'état complet ; l'agent peut aussi changer
+// ses options LUI-MÊME (`config_option_update` — repli de fournisseur…) et
+// le chip suit. Plus aucun sondage du CLI : la liste vient de l'AGENT.
+//
+// Le choix GLOBAL persisté (localStorage, comme le chemin du binaire) n'est
+// plus la vérité affichée mais la SURCHARGE demandée : `null` = « Défaut
+// OpenCode ». Il part dans la config du spawn (clé `model`, documentée) et
+// s'applique à chaque session fraîche par set_config_option — un processus
+// réutilisé garde sinon SON défaut d'origine.
 function lireModeleStocke(): string | null {
   try {
     const brut = localStorage.getItem(STORAGE_KEYS.agentModel);
@@ -109,6 +117,36 @@ function ecrireModeleStocke(id: string | null): void {
 
 let modeleChoisi = $state<string | null>(lireModeleStocke());
 let respawnRequis = false;
+/** État VIVANT des options de la session courante — la source d'affichage. */
+let optionsSession = $state<ConfigOption[]>([]);
+
+const optionModeleLive = $derived(optionModele(optionsSession));
+/** Modèle RÉELLEMENT en cours dans la session, tel que déclaré par l'agent. */
+const modeleEnCours = $derived(
+  optionModeleLive && typeof optionModeleLive.currentValue === "string"
+    ? optionModeleLive.currentValue
+    : null,
+);
+/** Liste proposée au menu : exactement ce que l'agent déclare utilisable. */
+const modelesDisponibles = $derived(optionModeleLive ? modelesDeOption(optionModeleLive) : []);
+/** Ce que montre le chip : la réalité de la session s'il en existe une,
+ *  sinon la surcharge demandée (pas encore de session). */
+const modeleAffiche = $derived(modeleEnCours ?? modeleChoisi);
+
+/** Change le modèle de la session courante. Chemin DOCUMENTÉ d'abord
+ *  (`set_config_option`, qui rend l'état complet), repli méthode historique
+ *  `set_model` pour un agent sans configOptions (rend alors null : pas
+ *  d'état à rafraîchir). Le -32601 « method not found » est masqué par le
+ *  transport en simple message — c'est lui qui déclenche le repli. */
+async function changerModeleSession(sid: string, id: string): Promise<ConfigOption[] | null> {
+  try {
+    return await client!.setConfigOption(sid, optionModeleLive?.id ?? "model", id);
+  } catch (e) {
+    if (!/method not found|-32601/i.test(String(e))) throw e;
+    await client!.setModel(sid, id);
+    return null;
+  }
+}
 
 /** Choix depuis le sélecteur. Renvoie null si appliqué, sinon le message
  *  d'erreur que le menu affichera en place (modèle refusé par le binaire). */
@@ -125,12 +163,14 @@ async function choisirModele(id: string | null): Promise<string | null> {
     return null;
   }
   try {
-    await client.setModel(sessionId, id);
+    const opts = await changerModeleSession(sessionId, id);
+    if (opts) optionsSession = opts;
     return null;
   } catch (e) {
     const msg = String(e);
     if (/model not found/i.test(msg)) return msg; // validation dans le menu
-    // Méthode absente ou autre panne : régime B — re-spawn au prochain reset.
+    // Ni l'une ni l'autre disponible : régime B — re-spawn au prochain reset,
+    // la config inline du spawn portera le choix.
     respawnRequis = true;
     pushItem({ kind: "agent", text: t("agent.model.prochaineSession", { id }) });
     return null;
@@ -368,6 +408,13 @@ function applyUpdate(u: SessionUpdate) {
       if (u.status === "failed") item.open = true;
       break;
     }
+    case "config_option_update": {
+      // L'agent a changé ses options LUI-MÊME (repli de fournisseur après une
+      // limite de débit, changement de mode…) : le chip reflète toujours SA
+      // déclaration — c'est elle qui fait foi, pas notre choix persisté.
+      if (Array.isArray(u.configOptions)) optionsSession = u.configOptions;
+      break;
+    }
     case "available_commands_update":
     case "usage_update":
       // Utiles au protocole, sans objet visuel dans ce panneau.
@@ -421,7 +468,9 @@ async function startSession() {
     });
     await client.start();
     offUpdate ??= client.onUpdate(applyUpdate);
-    sessionId = await client.newSession(root, await mcpServers(root));
+    const ses = await client.newSession(root, await mcpServers(root));
+    sessionId = ses.sessionId;
+    optionsSession = ses.configOptions;
     await appliquerModeleSession();
     status = "ready";
   } catch (e) {
@@ -434,25 +483,34 @@ async function startSession() {
   }
 }
 
-/** Applique le choix mémorisé à la session fraîche. Le spawn vient de
- *  recevoir la config, MAIS un processus réutilisé (`client ??=`) garde SON
- *  défaut d'origine : sans `set_model` explicite, une session neuve
- *  repartirait sur l'ancien modèle. */
+/** Applique la surcharge mémorisée à la session fraîche. La liste déclarée
+ *  par l'agent permet de valider SANS aller-retour : un modèle disparu du
+ *  binaire (désauthentifié, renommé) retombe sur le défaut au lieu de faire
+ *  échouer le premier prompt. */
 async function appliquerModeleSession() {
   if (!client || !sessionId || !modeleChoisi) return;
+  const choix = modeleChoisi;
+  const liste = modelesDisponibles;
+  if (liste.length > 0 && !liste.some((m) => m.id === choix)) {
+    ecrireModeleStocke(null);
+    modeleChoisi = null;
+    console.warn("[agent] modèle mémorisé absent de la liste de l'agent, retour au défaut :", choix);
+    return;
+  }
   try {
-    await client.setModel(sessionId, modeleChoisi);
+    const opts = await changerModeleSession(sessionId, choix);
+    if (opts) optionsSession = opts;
   } catch (e) {
     const msg = String(e);
     if (/model not found/i.test(msg)) {
-      // Modèle disparu du binaire (désauthentifié, renommé) : ne pas afficher
-      // un choix mensonger — retour au défaut, choix dépersisté.
+      // Refusé malgré la liste (course avec un changement amont) : ne pas
+      // afficher un choix mensonger — retour au défaut, choix dépersisté.
       ecrireModeleStocke(null);
       modeleChoisi = null;
-      console.warn("[agent] modèle mémorisé introuvable, retour au défaut :", msg);
+      console.warn("[agent] modèle mémorisé refusé par le binaire, retour au défaut :", msg);
     } else {
       respawnRequis = true;
-      console.warn("[agent] set_model indisponible, re-spawn au prochain reset :", msg);
+      console.warn("[agent] changement de modèle indisponible, re-spawn au prochain reset :", msg);
     }
   }
 }
@@ -648,11 +706,14 @@ onDestroy(() => {
     <span class="agent__title">{t("agent.title")}</span>
     <div class="agent__actions">
       <!-- Sélecteur de modèle : actif seulement sur session prête (D7 — un
-           switch pendant une génération ferait la course au prompt). -->
+           switch pendant une génération ferait la course au prompt). La liste
+           vient de l'agent (configOptions) ; le chip montre le modèle EN
+           COURS, pas seulement la surcharge demandée. -->
       <AgentModelSelect
         label={t("agent.model.label")}
-        value={modeleChoisi}
+        value={modeleAffiche}
         labelDefaut={t("agent.model.default")}
+        modeles={modelesDisponibles}
         disabled={status !== "ready"}
         onSelect={choisirModele}
       />

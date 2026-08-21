@@ -4,6 +4,11 @@
  * monté par `AgentModelSelect`) — même mécanisme que `TexDirectivePopup` :
  * échapper au clip des conteneurs et rester thémé.
  *
+ * La liste est celle que l'AGENT déclare (ACP v1 « Session Config Options »,
+ * voir `config-options.ts`) : elle arrive toute formée du panneau, aucun
+ * sondage du binaire ici. `modeles === null` = l'agent n'a rien déclaré
+ * (binaire ancien) → note + saisie libre `fournisseur/modèle`.
+ *
  * Forme EN CASCADE (retour d'usage : la liste plate à 12 px lisait mal) :
  * racine = « Défaut OpenCode » + une entrée par FOURNISSEUR, survol/clic
  * ouvre un sous-menu à côté (à gauche si la fenêtre manque à droite — le chip
@@ -11,17 +16,19 @@
  * rempli : navigation rapide dans un gros catalogue, cascade sinon. La saisie
  * libre `fournisseur/modèle` passe par ce même champ (action « Utiliser »).
  *
- * Sélection ASYNCHRONE : le switch passe par l'agent (`session/set_model`) et
- * peut être refusé — l'erreur s'affiche en place, le menu reste ouvert.
+ * Sélection ASYNCHRONE : le switch passe par l'agent (`set_config_option`,
+ * repli `set_model`) et peut être refusé — l'erreur s'affiche en place, le
+ * menu reste ouvert.
  */
-import { grouperParProvider, listerModeles, estIdModele, type ModeleDisponible } from "@/lib/agent/modeles";
-import { resolveAgentBinary } from "@/lib/agent/client";
+import { grouperParProvider, estIdModele, type ModeleDisponible } from "@/lib/agent/config-options";
 import { getT, language } from "@/lib/i18n";
 
 let {
   rect = null as DOMRect | null,
   value = null as string | null,
   labelDefaut = "",
+  /** Liste déclarée par l'agent ; null = pas de liste disponible. */
+  modeles = null as ModeleDisponible[] | null,
   triggerEl = null as HTMLElement | null,
   onSelect,
   onClose,
@@ -30,6 +37,7 @@ let {
   /** Choix courant persisté — `null` = Défaut OpenCode. */
   value?: string | null;
   labelDefaut?: string;
+  modeles?: ModeleDisponible[] | null;
   triggerEl?: HTMLElement | null;
   /** Renvoie null si le choix est appliqué, sinon le message d'erreur. */
   onSelect?: (id: string | null) => Promise<string | null>;
@@ -49,35 +57,19 @@ let pos = $state({ left: 8, top: 8 });
 let subPos = $state({ left: -9999, top: 0 });
 let requete = $state("");
 let searchEl = $state<HTMLInputElement | null>(null);
-let modeles = $state<ModeleDisponible[]>([]);
-let etat = $state<"chargement" | "pret" | "erreur">("chargement");
 let erreurInline = $state("");
-// Sélection en vol : on grise les items pour éviter un double set_model.
+// Sélection en vol : on grise les items pour éviter un double changement.
 let enCours = $state<string | null>(null);
 let providerOuvert = $state<string | null>(null);
 
-// Chargement paresseux à l'ouverture (cache du module : ~2 s payées une fois).
-$effect(() => {
-  let vivant = true;
-  listerModeles(resolveAgentBinary())
-    .then((m) => {
-      if (!vivant) return;
-      modeles = m;
-      etat = "pret";
-    })
-    .catch((e) => {
-      console.warn("[agent] liste des modèles indisponible :", e);
-      if (vivant) etat = "erreur";
-    });
-  return () => {
-    vivant = false;
-  };
-});
+/** Pas de liste déclarée par l'agent : menu réduit à la saisie libre. */
+const listeIndisponible = $derived(modeles === null);
 
 const filtres = $derived.by(() => {
+  const base = modeles ?? [];
   const q = requete.trim().toLowerCase();
-  if (!q) return modeles;
-  return modeles.filter((m) => m.id.toLowerCase().includes(q));
+  if (!q) return base;
+  return base.filter((m) => m.id.toLowerCase().includes(q));
 });
 const groupes = $derived(grouperParProvider(filtres));
 
@@ -130,6 +122,14 @@ function ouvrirProvider(e: MouseEvent, provider: string) {
     top: Math.max(8, Math.min(ligne.top - 4, window.innerHeight - SUB_MAX_H - 8)),
   };
   providerOuvert = provider;
+}
+
+/** Libellé d'un modèle dans le sous-menu : le slug après « provider/ » quand
+ *  l'id a cette forme, sinon le nom fourni par l'agent, sinon l'id complet. */
+function libelle(m: ModeleDisponible): string {
+  const p = providerOuvert ?? "";
+  if (p && m.id.startsWith(p + "/")) return m.id.slice(p.length + 1);
+  return m.nom ?? m.id;
 }
 
 function onSearchKeydown(e: KeyboardEvent) {
@@ -205,9 +205,7 @@ $effect(() => {
 
   {#if plat}
     <!-- Mode aplati : résultats tous fournisseurs confondus, identifiant complet. -->
-    {#if etat === "chargement"}
-      <div class="agent-model-menu__note">{t("agent.model.loading")}</div>
-    {:else if filtres.length === 0 && !saisieLibre}
+    {#if filtres.length === 0 && !saisieLibre}
       <div class="agent-model-menu__note">{t("agent.model.aucun")}</div>
     {:else}
       {#each filtres as m (m.id)}
@@ -250,9 +248,7 @@ $effect(() => {
 
     <div class="agent-model-menu__divider" aria-hidden="true"></div>
 
-    {#if etat === "chargement"}
-      <div class="agent-model-menu__note">{t("agent.model.loading")}</div>
-    {:else if etat === "erreur"}
+    {#if listeIndisponible}
       <div class="agent-model-menu__note">{t("agent.model.indisponible")}</div>
     {:else if groupes.size === 0}
       <div class="agent-model-menu__note">{t("agent.model.aucun")}</div>
@@ -300,7 +296,7 @@ $effect(() => {
         title={m.id}
         onclick={() => choisir(m.id)}
       >
-        <span class="agent-model-menu__modele-nom">{m.id.slice(providerOuvert.length + 1)}</span>
+        <span class="agent-model-menu__modele-nom">{libelle(m)}</span>
         {#if m.id === value}<i class="wxi-check agent-model-menu__check" aria-hidden="true"></i>{/if}
       </button>
     {/each}

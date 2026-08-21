@@ -3,6 +3,8 @@
 // `session/update` inconnu doit être conservé tel quel et affiché en repli
 // neutre par l'UI (D8 : rendu générique, jamais d'erreur sur l'inconnu).
 
+import type { ConfigOption } from "./config-options";
+
 /** Capacités déclarées à l'agent dans `initialize` (contrat — P3 : ne jamais
  *  promettre ce qui n'est pas implémenté à la phase courante). */
 export interface ClientCapabilities {
@@ -47,6 +49,9 @@ export interface SessionUpdate {
   rawInput?: unknown;
   rawOutput?: unknown;
   availableCommands?: Array<{ name: string; description?: string }>;
+  /** Variante `config_option_update` : l'agent a changé ses options LUI-MÊME
+   *  (repli de fournisseur, changement de mode…) — état complet, ACP v1. */
+  configOptions?: ConfigOption[];
   [key: string]: unknown;
 }
 

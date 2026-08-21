@@ -1,6 +1,7 @@
 <script lang="ts">
 import { mount, unmount } from "svelte";
 import AgentModelPopup from "./AgentModelPopup.svelte";
+import type { ModeleDisponible } from "@/lib/agent/config-options";
 
 /**
  * Sélecteur de modèle de l'assistant — le chip de l'en-tête du panneau
@@ -9,20 +10,26 @@ import AgentModelPopup from "./AgentModelPopup.svelte";
  * `document.body` : un `<select>` natif serait peint par WebKitGTK hors
  * thème, et le header étroit recliperait un popup rendu en place.
  *
- * La sélection est ASYNCHRONE (le switch passe par l'agent et peut être
- * refusé) : `onSelect` renvoie null si appliqué, sinon un message d'erreur
- * que le popup affiche en place. `value === null` = « Défaut OpenCode ».
+ * La liste vient du PARENT (options déclarées par l'agent via ACP, voir
+ * `config-options.ts`) : ce composant ne connaît ni le binaire ni le
+ * protocole. La sélection est ASYNCHRONE (le switch passe par l'agent et
+ * peut être refusé) : `onSelect` renvoie null si appliqué, sinon un message
+ * d'erreur que le popup affiche en place.
  */
 let {
   label = "",
   value = null as string | null,
   labelDefaut = "",
+  /** Modèles déclarés par la session courante ; null = pas de liste
+   *  (agent sans configOptions) → le popup dégrade en saisie libre. */
+  modeles = null as ModeleDisponible[] | null,
   disabled = false,
   onSelect,
 }: {
   label?: string;
   value?: string | null;
   labelDefaut?: string;
+  modeles?: ModeleDisponible[] | null;
   disabled?: boolean;
   onSelect?: (id: string | null) => Promise<string | null>;
 } = $props();
@@ -53,6 +60,7 @@ $effect(() => {
       rect,
       value,
       labelDefaut,
+      modeles,
       triggerEl,
       onSelect,
       onClose: close,

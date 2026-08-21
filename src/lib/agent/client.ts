@@ -17,6 +17,7 @@ import type {
   PromptResult,
   SessionUpdate,
 } from "./types";
+import type { ConfigOption } from "./config-options";
 import { STORAGE_KEYS } from "@/lib/storage";
 
 /** Id unique du processus agent dans le pont Rust (une session agent par
@@ -49,19 +50,34 @@ export interface McpServerDecl {
   headers: { name: string; value: string }[];
 }
 
+/** Résultat de `session/new` — l'identifiant ET les options de configuration
+ *  déclarées par l'agent (ACP v1 « Session Config Options », stabilisé) :
+ *  c'est par elles qu'on sait QUELS modèles sont utilisables et lequel tourne.
+ *  Tableau VIDE si l'agent n'en fournit pas (binaire ancien, autre
+ *  implémentation) — l'appelant dégrade, jamais d'erreur. */
+export interface SessionNouvelle {
+  sessionId: string;
+  configOptions: ConfigOption[];
+}
+
 export interface AgentClient {
   /** Spawn + initialize. Rejette avec `agent.notInstalled` si le binaire
    *  est absent (ENOENT) — l'UI affiche un message clair, jamais d'échec muet. */
   start(): Promise<InitializeResult>;
-  newSession(cwd: string, mcpServers?: McpServerDecl[]): Promise<string>;
+  newSession(cwd: string, mcpServers?: McpServerDecl[]): Promise<SessionNouvelle>;
   prompt(sessionId: string, text: string): Promise<PromptResult>;
   cancel(sessionId: string): Promise<void>;
-  /** Change le modèle de la session À CHAUD (sonde 2026-08-21 : méthode
-   *  `session/set_model`, non annoncée dans les capacités mais réelle sur
-   *  OpenCode 1.18.11 — appliquée immédiatement, fil de conversation gardé).
-   *  Rejette avec « model not found: X » si l'identifiant est inconnu du
-   *  binaire, et peut rejeter faute de méthode sur un agent plus ancien —
-   *  l'appelant décide alors du repli (régime B : config au prochain spawn). */
+  /** Change une option de configuration de la session À CHAUD — chemin
+   *  DOCUMENTÉ (ACP v1 : `session/set_config_option`, catégorie `model` pour
+   *  le modèle). La réponse porte l'état COMPLET des options (des choix
+   *  dépendants peuvent avoir suivi) ; l'appelant s'en sert pour rafraîchir
+   *  son affichage. Rejette si la méthode manque (-32601, agent ancien) ou si
+   *  la valeur est refusée — à l'appelant de distinguer et replier. */
+  setConfigOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]>;
+  /** Repli HISTORIQUE du changement de modèle (`session/set_model`) — non
+   *  documentée dans le protocole mais réelle sur OpenCode 1.18.11, gardée
+   *  pour les binaires sans configOptions. Ne rend PAS d'état : l'appelant ne
+   *  peut pas rafraîchir sa liste depuis cette réponse. */
   setModel(sessionId: string, modelId: string): Promise<void>;
   onUpdate(cb: (u: SessionUpdate) => void): () => void;
   stop(): Promise<void>;
@@ -118,13 +134,19 @@ export function createAgentClient(options: AgentClientOptions): AgentClient {
       }
     },
 
-    async newSession(cwd: string, mcpServers: McpServerDecl[] = []): Promise<string> {
+    async newSession(cwd: string, mcpServers: McpServerDecl[] = []): Promise<SessionNouvelle> {
       if (!started) throw new Error("agent non démarré (start() requis)");
       const result = (await transport.sendRequest("session/new", {
         cwd,
         mcpServers,
-      })) as { sessionId: string };
-      return result.sessionId;
+      })) as { sessionId?: string; configOptions?: unknown };
+      if (!result?.sessionId) throw new Error("session/new : sessionId absent de la réponse");
+      return {
+        sessionId: result.sessionId,
+        configOptions: Array.isArray(result.configOptions)
+          ? (result.configOptions as ConfigOption[])
+          : [],
+      };
     },
 
     async prompt(sessionId: string, text: string): Promise<PromptResult> {
@@ -139,6 +161,17 @@ export function createAgentClient(options: AgentClientOptions): AgentClient {
 
     async cancel(sessionId: string): Promise<void> {
       transport.sendNotification("session/cancel", { sessionId });
+    },
+
+    async setConfigOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]> {
+      // La spec garantit une réponse portant l'état complet — mais un agent
+      // défaillant peut répondre vide : tableau vide plutôt qu'exception.
+      const result = (await transport.sendRequest("session/set_config_option", {
+        sessionId,
+        configId,
+        value,
+      })) as { configOptions?: unknown } | undefined;
+      return Array.isArray(result?.configOptions) ? (result.configOptions as ConfigOption[]) : [];
     },
 
     async setModel(sessionId: string, modelId: string): Promise<void> {

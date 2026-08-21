@@ -58,6 +58,10 @@ retrouver dans une longue liste.
   tapez directement son identifiant `fournisseur/modèle` dans le champ de
   filtre et validez avec `Entrée`.
 
+Le sélecteur affiche le modèle **réellement en cours** : si OpenCode change de
+modèle de son propre chef — par exemple pour contourner une limite temporaire —,
+l'affichage suit.
+
 Le choix est conservé d'une session à l'autre et vaut pour tous vos projets.
 Revenir à **Défaut OpenCode** prend effet à la prochaine session (bouton
 *nouvelle session*).

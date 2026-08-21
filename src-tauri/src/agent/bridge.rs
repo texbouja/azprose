@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -188,90 +187,6 @@ pub fn acp_kill(state: State<'_, AcpBridgeState>, id: String) -> Result<(), Stri
         let _ = session.child.wait();
     }
     Ok(())
-}
-
-/// Exécute un processus PONCTUEL de l'agent et renvoie sa sortie standard.
-///
-/// Sert aux commandes d'interrogation du binaire — `opencode models` pour le
-/// sélecteur de modèle — qui n'ont ni session ni protocole : on lance, on
-/// capture, on rend. Distinct d'`acp_spawn` (processus long tenu en état) :
-/// mutualiser les deux imposerait un état « à moindre » sur le pont NDJSON.
-///
-/// Garde-fous mesurés en sonde (2026-08-21) : `opencode models` met ~2 s
-/// (processus bun froid) ; le délai est donc généreux mais BORNÉ — un binaire
-/// qui pend ne doit pas suspendre l'appel pour toujours. En échec, la fin de
-/// stderr est renvoyée (les messages CLI y vont, avec des codes ANSI que le
-/// front retire).
-#[tauri::command]
-pub fn acp_run_capture(
-    command: String,
-    args: Vec<String>,
-    env: Option<HashMap<String, String>>,
-) -> Result<String, String> {
-    const DELAI: Duration = Duration::from_secs(30);
-
-    let mut cmd = Command::new(&command);
-    cmd.args(&args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    if let Some(env_map) = env {
-        for (k, v) in &env_map {
-            cmd.env(k, v);
-        }
-    }
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("failed to run {command}: {e}"))?;
-    let mut stdout = child.stdout.take().ok_or("no stdout")?;
-    let stderr = child.stderr.take().ok_or("no stderr")?;
-
-    // Lecteurs en fils : stdout ET stderr doivent être drainés pendant
-    // l'attente, sinon un tampon plein bloque l'enfant sur son écriture.
-    let lect_out = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = stdout.read_to_string(&mut s);
-        s
-    });
-    let lect_err = std::thread::spawn(move || {
-        let mut s = String::new();
-        let _ = BufReader::new(stderr).read_to_string(&mut s);
-        s
-    });
-
-    // Attente bornée par scrutation : `Child::wait` n'a pas de délai dans std,
-    // et ajouter une crate pour trente lignes n'en valait pas la peine.
-    let echeance = Instant::now() + DELAI;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(st)) => break st,
-            Ok(None) => {
-                if Instant::now() >= echeance {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!("{command}: timeout after 30s"));
-                }
-                std::thread::sleep(Duration::from_millis(25));
-            }
-            Err(e) => return Err(format!("wait {command}: {e}")),
-        }
-    };
-
-    let sortie = lect_out.join().map_err(|_| "lecteur stdout paniqué")?;
-    let err = lect_err.join().map_err(|_| "lecteur stderr paniqué")?;
-
-    if !status.success() {
-        // Fin de stderr seulement : le début peut être verbeux sans intérêt.
-        let lignes: Vec<&str> = err.lines().collect();
-        let debut = lignes.len().saturating_sub(5);
-        let queue = lignes[debut..].join(" | ");
-        return Err(match status.code() {
-            Some(c) => format!("{command}: exit {c}: {queue}"),
-            None => format!("{command}: killed by signal: {queue}"),
-        });
-    }
-    Ok(sortie)
 }
 
 #[cfg(test)]
