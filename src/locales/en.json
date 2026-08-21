@@ -552,6 +552,7 @@
   "settings.fournisseursFiltre": "Filter by name or identifier…",
   "settings.fournisseursAucun": "No provider matches the filter.",
   "settings.fournisseursConnecte": "Connected",
+  "settings.fournisseursAvertissement": "Applied model kept: {id} stays active but no longer appears in the picker.",
   "settings.module.calendar": "Calendar",
   "settings.calendarExport": "Save calendar…",
   "settings.calendarImport": "Load calendar…",

@@ -26,6 +26,7 @@ import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
 import { programmesSelection } from "@/stores/programmes-selection.svelte";
 import { fournisseursSelection } from "@/stores/fournisseurs-selection.svelte";
+import { STORAGE_KEYS } from "@/lib/storage";
 import { parserCatalogue, trierCatalogue, type FournisseurCatalogue } from "@/lib/agent/catalogue";
 import { serveurCatalogue } from "@/lib/agent/serve";
 import { resolveAgentBinary } from "@/lib/agent/client";
@@ -221,6 +222,32 @@ async function rechargerFournisseurs() {
     console.warn("[settings] catalogue des fournisseurs indisponible :", e);
     fournisseursDispo = [];
     fournisseursErreur = true;
+  }
+}
+
+/** Modèle appliqué (`STORAGE_KEYS.agentModel`, écrit par le panneau) — null
+ *  = « Défaut OpenCode ». Lecture directe : le réglage n'en a besoin qu'au
+ *  moment de l'action, pas en continu. */
+function lireModeleApplique(): string | null {
+  try {
+    const brut = localStorage.getItem(STORAGE_KEYS.agentModel);
+    if (!brut) return null;
+    const v = JSON.parse(brut);
+    return typeof v === "string" && v ? v : null;
+  } catch { return null; }
+}
+
+/** Décoche/coche un fournisseur. Décocher ne désactive RIEN — mais si un
+ *  modèle de ce fournisseur est appliqué, il devient invisible dans le
+ *  sélecteur tout en restant actif : conséquence non évidente, on prévient
+ *  plutôt que d'interdire (arbitrage utilisateur). */
+function basculerFournisseur(f: FournisseurCatalogue) {
+  const etaitCoche = fournisseursSelection.current.includes(f.id);
+  fournisseursSelection.toggle(f.id);
+  if (!etaitCoche) return;
+  const applique = lireModeleApplique();
+  if (applique?.startsWith(f.id + "/")) {
+    notifications.setInfo(t("settings.fournisseursAvertissement", { id: applique }));
   }
 }
 
@@ -1472,7 +1499,7 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                       label={f.nom}
                       value={f.connecte || fournisseursSelection.current.includes(f.id)}
                       disabled={f.connecte}
-                      onchange={() => fournisseursSelection.toggle(f.id)}
+                      onchange={() => basculerFournisseur(f)}
                     />
                     <p class="mdv-fourn__meta">
                       {#if f.connecte}{t("settings.fournisseursConnecte")} · {f.modeles.length}

@@ -537,6 +537,7 @@
   "settings.fournisseursFiltre": "Filtrer par nom ou identifiant…",
   "settings.fournisseursAucun": "Aucun fournisseur ne correspond au filtre.",
   "settings.fournisseursConnecte": "Connecté",
+  "settings.fournisseursAvertissement": "Modèle appliqué conservé : {id} reste actif mais n'apparaît plus dans le sélecteur.",
   "settings.module.calendar": "Calendrier",
   "settings.calendarExport": "Enregistrer le calendrier…",
   "settings.calendarImport": "Charger un calendrier…",

@@ -89,19 +89,57 @@ describe("parserCatalogue (GET /provider)", () => {
 });
 
 describe("trierCatalogue (ordre de repos du menu)", () => {
-  test("connectés d'abord (ordre déclaré), puis le reste par nom insensible à la casse", () => {
+  test("connectés d'abord, puis ordre de popularité (maison, célébrités, agrégateurs)", () => {
     const trié = trierCatalogue(parserCatalogue(REPONSE_SONDE));
-    // anthropic connecté passe devant ; HPC-AI < OpenCode alphabétiquement.
-    expect(trié.map((f) => f.id)).toEqual(["anthropic", "hpc-ai", "opencode"]);
+    // anthropic connecté passe devant ; opencode (maison) avant les
+    // célébrités, anthropic suit, hpc-ai (agrégateur) ferme la marche.
+    expect(trié.map((f) => f.id)).toEqual(["anthropic", "opencode", "hpc-ai"]);
   });
 
-  test("sans connecté : pur ordre alphabétique ; égalité de nom départagée par id", () => {
+  test("ordre imposé des célébrités ; égalité de nom départagée par id", () => {
     const trié = trierCatalogue([
       { id: "zeta", nom: "Zorro", connecte: false, modeles: [] },
-      { id: "alpha", nom: "abandonné", connecte: false, modeles: [] },
-      { id: "b-bis", nom: "Abandonné", connecte: false, modeles: [] },
+      { id: "openai", nom: "OpenAI", connecte: false, modeles: [] },
+      { id: "deepseek", nom: "DeepSeek", connecte: false, modeles: [] },
+      { id: "anthropic", nom: "Anthropic", connecte: false, modeles: [] },
     ]);
-    expect(trié.map((f) => f.id)).toEqual(["alpha", "b-bis", "zeta"]);
+    // Ordre imposé (opencode absent de l'entrée) : openai, anthropic,
+    // deepseek — zeta inclassable ferme la marche.
+    expect(trié.map((f) => f.id)).toEqual(["openai", "anthropic", "deepseek", "zeta"]);
+  });
+
+  test("la famille reste groupée : variantes officielles derrière leur éditeur", () => {
+    const trié = trierCatalogue([
+      { id: "mistral", nom: "Mistral", connecte: false, modeles: [] },
+      { id: "google-vertex-anthropic", nom: "Vertex Anthropic", connecte: false, modeles: [] },
+      { id: "google-vertex", nom: "Vertex AI", connecte: false, modeles: [] },
+      { id: "google", nom: "Google", connecte: false, modeles: [] },
+      { id: "alibaba-token-plan", nom: "Alibaba Token Plan", connecte: false, modeles: [] },
+      { id: "alibaba-cn", nom: "Alibaba CN", connecte: false, modeles: [] },
+      { id: "moonshotai-cn", nom: "Moonshot CN", connecte: false, modeles: [] },
+      { id: "zhipuai-coding-plan", nom: "Zhipu Coding Plan", connecte: false, modeles: [] },
+    ]);
+    // Familles groupées (google*, alibaba*, moonshotai*) ; mistral = autre
+    // éditeur connu ; zhipuai-coding-plan = éditeur connu aussi (pas « zai »).
+    expect(trié.map((f) => f.id)).toEqual([
+      "google",
+      "google-vertex",
+      "google-vertex-anthropic",
+      "alibaba-cn",
+      "alibaba-token-plan",
+      "moonshotai-cn",
+      "mistral",
+      "zhipuai-coding-plan",
+    ]);
+  });
+
+  test("éditeurs connus avant les agrégateurs, le long tail ferme la marche", () => {
+    const trié = trierCatalogue([
+      { id: "inconnu-du-tail", nom: "Obscur", connecte: false, modeles: [] },
+      { id: "openrouter", nom: "OpenRouter", connecte: false, modeles: [] },
+      { id: "xai", nom: "xAI", connecte: false, modeles: [] },
+    ]);
+    expect(trié.map((f) => f.id)).toEqual(["xai", "openrouter", "inconnu-du-tail"]);
   });
 
   test("ne mute pas l'entrée", () => {

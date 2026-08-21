@@ -960,25 +960,45 @@ body:has(.mdv-overlay--settings) {
 }
 
 /* ── Fournisseurs de l'assistant (curation du sélecteur) ────────────────────
-   Liste plate filtrable : ~200 entrées ne se parcourent qu'au filtre, pas
-   besoin de groupes. Même rangée que les programmes (checkbox + méta muette).
-   Les connectés (coche verrouillée en tête de liste) se distinguent au
-   premier coup d'œil grâce à leur méta « Connecté ». */
+   Une rangée = UNE ligne (retour utilisateur 2026-08-21, il y a la place) :
+   nom du fournisseur à gauche (tronqué), méta id·nb modèles à droite. Les
+   connectés (coche verrouillée en tête de liste) se distinguent au premier
+   coup d'œil grâce à leur méta « Connecté ». */
 .mdv-fourn-liste {
   margin-top: 8px;
   max-height: 420px;
   overflow-y: auto;
 }
 .mdv-fourn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 2px;
   border-bottom: 1px solid var(--border);
 }
+/* SVAR Checkbox : .wx-checkbox porte max-width:var(--wx-input-width) et son
+   libellé ne tronque pas — on le laisse grandir jusqu'à la méta puis on
+   ellipse le texte (2e span du label, après la boîte à cocher). */
+.mdv-fourn .wx-checkbox {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+.mdv-fourn .wx-checkbox label span + span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .mdv-fourn__meta {
-  margin: 2px 0 0;
+  margin: 0;
+  flex: none;
+  max-width: 45%;
   font-size: 11px;
   color: var(--muted);
-  /* Un id de fournisseur n'a pas d'espace : sans ceci il élargirait la rangée. */
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Préambule LaTeX : occupe tout le reste du panneau ──────────────────────

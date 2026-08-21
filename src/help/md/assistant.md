@@ -99,13 +99,18 @@ afficher rendrait le menu illisible. Par défaut, la section *Autres
 fournisseurs* est donc vide — c'est vous qui la remplissez.
 
 Ouvrez **Réglages** (`⌘,`) → **Assistant IA** → **Fournisseurs**, et cochez
-ceux que vous voulez voir dans le menu. Un champ de filtre (nom ou
-identifiant) permet de se retrouver dans la liste complète.
+ceux que vous voulez voir dans le menu. La liste est rangée **par popularité** :
+la maison (OpenCode zen/go) et les grands éditeurs d'abord — OpenAI,
+Anthropic, Google, Alibaba, DeepSeek, Moonshot, Z.ai… — puis les agrégateurs
+et fournisseurs d'accès ; un champ de filtre (nom ou identifiant) permet de
+se retrouver dans la liste complète.
 
 - Les fournisseurs **connectés** apparaissent en tête, coche verrouillée :
   ils sont visibles dans le menu de toute façon, inutile de les cocher.
-- Décocher un fournisseur le retire du menu ; si l'un de ses modèles était
-  appliqué, il reste actif — il n'est juste plus proposé.
+- Décocher un fournisseur le retire du menu ; si l'un de ses modèles est
+  appliqué, il **reste actif** — il n'est juste plus proposé. AZprose vous
+  prévient dans ce cas : rien n'est cassé, mais pour retrouver ce modèle
+  dans le sélecteur, recochez le fournisseur.
 
 > [!tip] Le filtre du menu garde la saisie libre
 > Même sans fournisseur coché, taper directement un identifiant

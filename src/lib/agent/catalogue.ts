@@ -75,13 +75,113 @@ export function parserCatalogue(reponse: unknown): FournisseurCatalogue[] {
 
 /**
  * Ordre d'affichage : fournisseurs CONNECTÉS d'abord (dans l'ordre déclaré),
- * puis le reste du catalogue par nom. Un catalogue de 193 entrées ne se
- * navigue qu'avec le filtre — mais l'ordre de repos doit quand même donner
- * l'utile avant le possible.
+ * puis le reste du catalogue par POPULARITÉ (retour utilisateur 2026-08-21) :
+ * la maison (opencode zen/go), les éditeurs célèbres dans un ordre imposé,
+ * les autres éditeurs connus, enfin agrégateurs et fournisseurs d'accès ;
+ * le long tail inclassable ferme la marche, alphabétique au sein de chaque
+ * groupe.
  */
+// Ids VÉRIFIÉS sur le catalogue réel (OpenCode 1.18.11, `GET /provider` —
+// sonde du 2026-08-21) : jamais d'id deviné. Une « famille » = id exact ou
+// préfixe `id-`, pour que les variantes officielles (plans, -cn, vertex)
+// restent groupées avec leur éditeur (« google » attire google-vertex et
+// google-vertex-anthropic ; « moonshotai » attire moonshotai-cn — l'id réel
+// n'est PAS « moonshot » ; « zai » n'attire PAS zhipuai).
+const FAMILLES_CELEBRES = [
+  "opencode", // maison — zen/go, l'éditeur du produit lui-même
+  "openai",
+  "anthropic",
+  "google",
+  "alibaba", // + plans -cn/-coding-plan/-token-plan
+  "deepseek",
+  "moonshotai",
+  "zai", // + zai-coding-plan
+];
+
+/** Autres éditeurs de modèles connus (ordre alphabétique au sein du groupe). */
+const EDITEURS = [
+  "amazon-bedrock",
+  "azure",
+  "cohere",
+  "github-copilot",
+  "kimi-for-coding", // plan officiel de Moonshot, id sans le préfixe commun
+  "longcat",
+  "meta",
+  "minimax",
+  "mistral",
+  "nvidia",
+  "perplexity",
+  "sarvam",
+  "stepfun",
+  "tencent",
+  "thinkingmachines",
+  "upstage",
+  "watsonx",
+  "xiaomi",
+  "xai",
+  "zhipuai",
+];
+
+/** Agrégateurs et fournisseurs d'accès (gateways, clouds d'inférence). */
+const AGREGATEURS = [
+  "302ai",
+  "cerebras",
+  "chutes",
+  "cloudflare-ai-gateway",
+  "cloudflare-workers-ai",
+  "deepinfra",
+  "digitalocean",
+  "fireworks-ai",
+  "gitlab",
+  "groq",
+  "helicone",
+  "hetzner",
+  "hpc-ai",
+  "huggingface",
+  "infomaniak",
+  "io-net",
+  "lmstudio",
+  "llmgateway",
+  "modal",
+  "modelscope",
+  "nano-gpt",
+  "nebius",
+  "novita-ai",
+  "ollama-cloud",
+  "openrouter",
+  "ovhcloud",
+  "poe",
+  "requesty",
+  "scaleway",
+  "siliconflow",
+  "togetherai",
+  "venice",
+  "vercel",
+  "v0",
+  "vultr",
+];
+
+function familleDe(id: string, base: string): boolean {
+  return id === base || id.startsWith(base + "-");
+}
+
+/** Rang de popularité : index imposé pour les célébrités, sinon groupe
+ *  (éditeurs 100, agrégateurs 200, reste 300). */
+function rangFournisseur(id: string): number {
+  for (let i = 0; i < FAMILLES_CELEBRES.length; i++) {
+    if (familleDe(id, FAMILLES_CELEBRES[i])) return i;
+  }
+  if (EDITEURS.some((e) => familleDe(id, e))) return 100;
+  if (AGREGATEURS.some((a) => familleDe(id, a))) return 200;
+  return 300;
+}
+
 export function trierCatalogue(liste: FournisseurCatalogue[]): FournisseurCatalogue[] {
   return [...liste].sort((a, b) => {
     if (a.connecte !== b.connecte) return a.connecte ? -1 : 1;
+    const ra = rangFournisseur(a.id);
+    const rb = rangFournisseur(b.id);
+    if (ra !== rb) return ra < rb ? -1 : 1;
     const na = a.nom.toLowerCase();
     const nb = b.nom.toLowerCase();
     return na < nb ? -1 : na > nb ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
