@@ -64,6 +64,11 @@ export const STORAGE_KEYS = {
   // chemin du binaire : le choix suit l'utilisateur, pas le vault. Absent ou
   // vide = « Défaut OpenCode » (aucune surcharge injectée).
   agentModel: "mdview.agent.model",
+  // Fournisseurs cochés pour le menu du sélecteur (opt-in) — GLOBAL comme le
+  // modèle : c'est une préférence de lecture du catalogue, pas une donnée du
+  // vault. Les fournisseurs CONNECTÉS restent visibles même absents de la
+  // liste (ils sont actifs par nature).
+  agentFournisseurs: "mdview.agent.fournisseurs",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

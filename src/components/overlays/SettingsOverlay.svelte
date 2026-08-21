@@ -25,6 +25,10 @@ import { generalSettings, UI_FONT_PRESETS, UI_MONO_FONT_PRESETS, UI_SIDEBAR_FONT
 import { restartApp } from "@/lib/restart";
 import { calloutSettings, CALLOUT_COLORS, type CalloutNumbering } from "@/stores/callout-settings.svelte";
 import { programmesSelection } from "@/stores/programmes-selection.svelte";
+import { fournisseursSelection } from "@/stores/fournisseurs-selection.svelte";
+import { parserCatalogue, trierCatalogue, type FournisseurCatalogue } from "@/lib/agent/catalogue";
+import { serveurCatalogue } from "@/lib/agent/serve";
+import { resolveAgentBinary } from "@/lib/agent/client";
 import { grouperParMatiere, groupeOuvert } from "@/lib/programmes-groupes";
 import { latexSettings, type BibtexMode } from "@/stores/latex-settings.svelte";
 import { editorSettings, type EditorFontFamily } from "@/stores/editor-settings.svelte";
@@ -54,7 +58,7 @@ let {
   onClose: () => void;
 } = $props();
 
-type ModuleId = "general" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques" | "programmes";
+type ModuleId = "general" | "apercu" | "printing-general" | "printing-colles" | "presentation" | "mathjax" | "callouts" | "csv-general" | "latex-general" | "latex-build" | "editor" | "calendar" | "profile" | "appearance" | "colles-dates" | "colles-rubriques" | "programmes" | "fournisseurs";
 type SectionId = "markdown" | "general" | "latex" | "colles" | "printing" | "assistant";
 
 const SECTIONS: {
@@ -116,6 +120,7 @@ const SECTIONS: {
     toujoursGroupe: true,
     modules: [
       { id: "programmes", labelKey: "settings.module.programmes" },
+      { id: "fournisseurs", labelKey: "settings.module.fournisseurs" },
     ],
   },
   {
@@ -187,6 +192,43 @@ $effect(() => {
   if (activeModule !== "programmes") return;
   void rechargerProgrammes();
 });
+
+// ── Fournisseurs de l'assistant (curation du sélecteur de modèles) ─────────
+// Même voie que le panneau : `GET /provider` du serveur headless, chargé
+// paresseusement à l'ouverture du module. La sélection (coches) vit dans le
+// store GLOBAL `fournisseursSelection` — partagé avec le sélecteur.
+let fournisseursDispo = $state<FournisseurCatalogue[] | null>(null);
+let fournisseursErreur = $state(false);
+let filtreFournisseurs = $state("");
+
+const fournisseursAffiches = $derived.by(() => {
+  const liste = fournisseursDispo ?? [];
+  const q = filtreFournisseurs.trim().toLowerCase();
+  if (!q) return liste;
+  return liste.filter(
+    (f) => f.nom.toLowerCase().includes(q) || f.id.toLowerCase().includes(q),
+  );
+});
+
+async function rechargerFournisseurs() {
+  fournisseursDispo = null;
+  fournisseursErreur = false;
+  filtreFournisseurs = "";
+  try {
+    const rep = await serveurCatalogue.requete<unknown>(resolveAgentBinary(), "/provider");
+    fournisseursDispo = trierCatalogue(parserCatalogue(rep));
+  } catch (e) {
+    console.warn("[settings] catalogue des fournisseurs indisponible :", e);
+    fournisseursDispo = [];
+    fournisseursErreur = true;
+  }
+}
+
+$effect(() => {
+  if (activeModule !== "fournisseurs") return;
+  void rechargerFournisseurs();
+});
+
 let expandedSections = $state(
   new Set<SectionId>(["general", "markdown", "latex", "colles", "printing", "assistant"]),
 );
@@ -1403,6 +1445,44 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
                   {/if}
                 </div>
               {/each}
+            {/if}
+          {/if}
+
+          {#if activeModule === "fournisseurs"}
+            <p class="mdv-settings__section-title">{t("settings.fournisseursTitle")}</p>
+            <p class="mdv-settings__hint">{t("settings.fournisseursHint")}</p>
+
+            {#if fournisseursDispo === null}
+              <p class="mdv-settings__hint">{t("settings.fournisseursChargement")}</p>
+            {:else if fournisseursErreur}
+              <p class="mdv-settings__hint">{t("settings.fournisseursIndisponible")}</p>
+            {:else}
+              <Text
+                value={filtreFournisseurs}
+                placeholder={t("settings.fournisseursFiltre")}
+                onchange={(ev) => (filtreFournisseurs = String(ev.value))}
+              />
+
+              <div class="mdv-fourn-liste">
+                {#each fournisseursAffiches as f (f.id)}
+                  <div class="mdv-fourn">
+                    <!-- Connecté = actif par nature : coche verrouillée, la
+                         curation ne concerne que l'offre non connectée. -->
+                    <Checkbox
+                      label={f.nom}
+                      value={f.connecte || fournisseursSelection.current.includes(f.id)}
+                      disabled={f.connecte}
+                      onchange={() => fournisseursSelection.toggle(f.id)}
+                    />
+                    <p class="mdv-fourn__meta">
+                      {#if f.connecte}{t("settings.fournisseursConnecte")} · {f.modeles.length}
+                      {:else}{f.id} · {f.modeles.length}{/if}
+                    </p>
+                  </div>
+                {:else}
+                  <p class="mdv-settings__hint">{t("settings.fournisseursAucun")}</p>
+                {/each}
+              </div>
             {/if}
           {/if}
 

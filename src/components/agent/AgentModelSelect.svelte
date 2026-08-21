@@ -29,6 +29,9 @@ let {
   /** Catalogue complet trié ; null = pas encore chargé (chargement au 1er ouvert). */
   catalogue = null as FournisseurCatalogue[] | null,
   catalogueIndisponible = false,
+  /** Aucun fournisseur coché en réglages → note d'orientation, pas un
+   *  « tous déjà connectés » qui serait faux. */
+  aucunCoche = false,
   disabled = false,
   onSelect,
   onSelectCatalogue,
@@ -41,6 +44,7 @@ let {
   modeles?: ModeleDisponible[] | null;
   catalogue?: FournisseurCatalogue[] | null;
   catalogueIndisponible?: boolean;
+  aucunCoche?: boolean;
   disabled?: boolean;
   onSelect?: (id: string | null) => Promise<string | null>;
   onSelectCatalogue?: (id: string) => void;
@@ -77,6 +81,7 @@ $effect(() => {
       modeles,
       catalogue,
       catalogueIndisponible,
+      aucunCoche,
       triggerEl,
       onSelect,
       onSelectCatalogue,

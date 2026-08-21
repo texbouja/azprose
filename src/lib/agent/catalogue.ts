@@ -99,3 +99,18 @@ export function fournisseurDeId(
   }
   return null;
 }
+
+/**
+ * Applique la curation utilisateur au catalogue brut : ne gardent que les
+ * fournisseurs NON connectés ET cochés dans les réglages. Les connectés sont
+ * exclus ici car le sélecteur les affiche à part (section « Actifs » via
+ * `configOptions`) — et ils restent visibles même non cochés : actifs par
+ * nature, la curation ne concerne que l'offre possible.
+ */
+export function filtrerCatalogue(
+  liste: FournisseurCatalogue[],
+  selection: string[],
+): FournisseurCatalogue[] {
+  const coches = new Set(selection);
+  return liste.filter((f) => !f.connecte && coches.has(f.id));
+}

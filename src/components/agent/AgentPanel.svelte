@@ -28,11 +28,13 @@ import {
 import { STORAGE_KEYS } from "@/lib/storage";
 import { optionModele, modelesDeOption, type ConfigOption } from "@/lib/agent/config-options";
 import {
+  filtrerCatalogue,
   fournisseurDeId,
   parserCatalogue,
   trierCatalogue,
   type FournisseurCatalogue,
 } from "@/lib/agent/catalogue";
+import { fournisseursSelection } from "@/stores/fournisseurs-selection.svelte";
 import { serveurCatalogue } from "@/lib/agent/serve";
 import AgentModelSelect from "@/components/agent/AgentModelSelect.svelte";
 import AgentConnectDialog from "@/components/agent/AgentConnectDialog.svelte";
@@ -216,6 +218,17 @@ async function rafraichirCatalogue(): Promise<void> {
   catalogueErreur = false;
   await chargerCatalogue();
 }
+
+// ── Curation utilisateur (Réglages › Assistant IA › Fournisseurs) ───────────
+// Le catalogue brut compte ~193 entrées : la section « Autres fournisseurs »
+// ne montre que les fournisseurs COCHÉS en réglages. Les connectés sont déjà
+// exclus par filtrerCatalogue (affichés à part, visibles même non cochés).
+const cataloguePourMenu = $derived(
+  catalogue === null ? null : filtrerCatalogue(catalogue, fournisseursSelection.current),
+);
+/** Aucune coche = message d'orientation vers les réglages, pas un « tous déjà
+ *  connectés » qui serait faux. */
+const aucunFournisseurCoche = $derived(fournisseursSelection.current.length === 0);
 
 /** Flux de connexion en cours : dialogue rendu tant que non null. Le modèle
  *  visé est appliqué une fois le fournisseur authentifié. */
@@ -785,8 +798,9 @@ onDestroy(() => {
         value={modeleAffiche}
         labelDefaut={t("agent.model.default")}
         modeles={modelesDisponibles}
-        catalogue={catalogue}
+        catalogue={cataloguePourMenu}
         catalogueIndisponible={catalogueErreur}
+        aucunCoche={aucunFournisseurCoche}
         disabled={status !== "ready"}
         onSelect={choisirModele}
         onSelectCatalogue={choisirModeleCatalogue}

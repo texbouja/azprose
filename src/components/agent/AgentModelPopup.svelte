@@ -33,10 +33,15 @@ let {
   labelDefaut = "",
   /** Liste déclarée par l'agent ; null = pas de liste disponible. */
   modeles = null as ModeleDisponible[] | null,
-  /** Catalogue complet (`GET /provider`) déjà trié ; null = pas encore chargé. */
+  /** Catalogue complet (`GET /provider`) déjà trié ET CURATÉ par le panneau
+   *  (seuls les fournisseurs cochés en réglages, hors connectés) ; null =
+   *  pas encore chargé. */
   catalogue = null as FournisseurCatalogue[] | null,
   /** Le chargement a échoué (serveur injoignable) → note dédiée. */
   catalogueIndisponible = false,
+  /** Aucun fournisseur coché en réglages → la section vide oriente vers
+   *  Réglages › Assistant IA › Fournisseurs plutôt que d'affirmer faux. */
+  aucunCoche = false,
   triggerEl = null as HTMLElement | null,
   onSelect,
   onSelectCatalogue,
@@ -49,6 +54,7 @@ let {
   modeles?: ModeleDisponible[] | null;
   catalogue?: FournisseurCatalogue[] | null;
   catalogueIndisponible?: boolean;
+  aucunCoche?: boolean;
   triggerEl?: HTMLElement | null;
   /** Renvoie null si le choix est appliqué, sinon le message d'erreur. */
   onSelect?: (id: string | null) => Promise<string | null>;
@@ -90,8 +96,9 @@ const filtres = $derived.by(() => {
 });
 const groupes = $derived(grouperParProvider(filtres));
 
-/** Catalogue SANS les fournisseurs déjà connectés (ceux-là sont dans la
- *  section actifs — les lister deux fois semblerait un bug), avec modèles. */
+/** Catalogue reçu du panneau, déjà curé (cochés en réglages, hors connectés
+ *  qui sont dans la section actifs). Le garde `!connecte` reste par défense :
+ *  l'état peut changer entre le filtrage panneau et l'ouverture du menu. */
 const fournisseursCatalogue = $derived(
   (catalogue ?? []).filter((f) => !f.connecte && f.modeles.length > 0),
 );
@@ -337,9 +344,9 @@ $effect(() => {
       <div class="agent-model-menu__note">{t("agent.model.aucun")}</div>
     {/if}
 
-    <!-- Catalogue : tout ce que le serveur connaît MOINS les connectés.
-         null = pas encore chargé (chargement paresseux au 1er ouvert) ;
-         [] avec erreur = tentative échouée. -->
+    <!-- Catalogue : les fournisseurs cochés en réglages, hors connectés
+         (curé par le panneau). null = pas encore chargé (chargement
+         paresseux au 1er ouvert) ; [] avec erreur = tentative échouée. -->
     <div class="agent-model-menu__divider" aria-hidden="true"></div>
     <div class="agent-model-menu__section">{t("agent.model.catalogue")}</div>
     {#if catalogue === null}
@@ -347,7 +354,9 @@ $effect(() => {
     {:else if catalogueIndisponible}
       <div class="agent-model-menu__note">{t("agent.model.catalogueIndisponible")}</div>
     {:else if fournisseursCatalogue.length === 0}
-      <div class="agent-model-menu__note">{t("agent.model.aucunAutre")}</div>
+      <div class="agent-model-menu__note">
+        {aucunCoche ? t("agent.model.aucunCoche") : t("agent.model.aucunAutre")}
+      </div>
     {:else}
       {#each fournisseursCatalogue as f (f.id)}
         <button

@@ -7,6 +7,7 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
 import {
+  filtrerCatalogue,
   fournisseurDeId,
   parserCatalogue,
   trierCatalogue,
@@ -124,5 +125,25 @@ describe("fournisseurDeId (recherche par identifiant complet)", () => {
     expect(fournisseurDeId(catalogue, "opencodex/big-pickle")).toBe(null);
     expect(fournisseurDeId(catalogue, "big-pickle")).toBe(null);
     expect(fournisseurDeId([], "opencode/x")).toBe(null);
+  });
+});
+
+describe("filtrerCatalogue (curation utilisateur)", () => {
+  const catalogue = parserCatalogue(REPONSE_SONDE);
+
+  test("ne garde que les fournisseurs cochés ET non connectés", () => {
+    const visibles = filtrerCatalogue(catalogue, ["opencode", "anthropic"]);
+    // anthropic est connecté : visible par nature, jamais dans la section
+    // catalogue (le sélecteur l'affiche à part, via les actifs).
+    expect(visibles.map((f) => f.id)).toEqual(["opencode"]);
+  });
+
+  test("aucune coche → liste vide (opt-in assumé)", () => {
+    expect(filtrerCatalogue(catalogue, [])).toEqual([]);
+  });
+
+  test("id inconnu ignoré, entrée non mutée", () => {
+    expect(filtrerCatalogue(catalogue, ["inconnu", "hpc-ai"]).map((f) => f.id)).toEqual(["hpc-ai"]);
+    expect(catalogue.map((f) => f.id)).toEqual(["opencode", "hpc-ai", "anthropic"]);
   });
 });

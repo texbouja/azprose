@@ -49,9 +49,11 @@ L'en-tête du panneau porte un sélecteur **Modèle**, organisé en deux section
 
 - **Connectés** — les fournisseurs déjà authentifiés, dont les modèles sont
   immédiatement utilisables ;
-- **Autres fournisseurs** — le catalogue complet d'OpenCode (centaines de
-  fournisseurs, des milliers de modèles). Choisir un modèle de cette section
-  ouvre une **connexion intégrée** : voir plus bas.
+- **Autres fournisseurs** — ceux que vous avez choisis parmi le catalogue
+  complet d'OpenCode (centaines de fournisseurs, des milliers de modèles) ;
+  voir [Choisir les fournisseurs affichés](#choisir-les-fournisseurs-affichés)
+  plus bas. Choisir un modèle de cette section ouvre une **connexion
+  intégrée** : voir plus bas.
 
 Un champ de filtre permet de se retrouver dans une longue liste ; il fouille
 les deux sections à la fois.
@@ -89,6 +91,26 @@ nouvelle session (bouton ↺).
 
 > La connexion se fait depuis AZprose mais l'authentification appartient à
 > OpenCode : les modèles connectés ici le sont aussi pour l'usage en terminal.
+
+### Choisir les fournisseurs affichés
+
+Le catalogue complet compte près de **deux cents fournisseurs** : tout
+afficher rendrait le menu illisible. Par défaut, la section *Autres
+fournisseurs* est donc vide — c'est vous qui la remplissez.
+
+Ouvrez **Réglages** (`⌘,`) → **Assistant IA** → **Fournisseurs**, et cochez
+ceux que vous voulez voir dans le menu. Un champ de filtre (nom ou
+identifiant) permet de se retrouver dans la liste complète.
+
+- Les fournisseurs **connectés** apparaissent en tête, coche verrouillée :
+  ils sont visibles dans le menu de toute façon, inutile de les cocher.
+- Décocher un fournisseur le retire du menu ; si l'un de ses modèles était
+  appliqué, il reste actif — il n'est juste plus proposé.
+
+> [!tip] Le filtre du menu garde la saisie libre
+> Même sans fournisseur coché, taper directement un identifiant
+> `fournisseur/modèle` dans le champ du sélecteur fonctionne toujours — et
+> déclenche la connexion intégrée si nécessaire.
 
 ## Vous gardez la main sur les fichiers
 

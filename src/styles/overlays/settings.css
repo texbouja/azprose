@@ -959,6 +959,28 @@ body:has(.mdv-overlay--settings) {
   border-bottom: 0;
 }
 
+/* ── Fournisseurs de l'assistant (curation du sélecteur) ────────────────────
+   Liste plate filtrable : ~200 entrées ne se parcourent qu'au filtre, pas
+   besoin de groupes. Même rangée que les programmes (checkbox + méta muette).
+   Les connectés (coche verrouillée en tête de liste) se distinguent au
+   premier coup d'œil grâce à leur méta « Connecté ». */
+.mdv-fourn-liste {
+  margin-top: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.mdv-fourn {
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.mdv-fourn__meta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  /* Un id de fournisseur n'a pas d'espace : sans ceci il élargirait la rangée. */
+  overflow-wrap: anywhere;
+}
+
 /* ── Préambule LaTeX : occupe tout le reste du panneau ──────────────────────
    Le panneau est une colonne flex ; ce bloc prend l'espace restant et le
    champ le remplit. `min-height: 0` est indispensable — sans lui, un enfant
