@@ -58,19 +58,60 @@ export function extraireMentions(texte: string): MentionFichier[] {
   return out;
 }
 
-/** Filtrage de la liste de fichiers pour la complétion : sous-chaîne
- *  insensible à la casse sur le chemin relatif, tronqué au plafond du popup.
- *  Le fuzzy proprement dit serait un raffinement — sous-chaîne suffit v1. */
-export function filtrerFichiers(
-  fichiers: readonly EntreeFichier[],
+/** Filtrage générique pour la complétion : sous-chaîne insensible à la casse
+ *  sur le chemin relatif, tronqué au plafond du popup. Sert pour les fichiers
+ *  comme pour les candidats mixtes fichiers+dossiers. Le fuzzy proprement dit
+ *  serait un raffinement — sous-chaîne suffit v1. */
+export function filtrerParRel<T extends { rel: string }>(
+  items: readonly T[],
   query: string,
   max = 8,
-): EntreeFichier[] {
+): T[] {
   const aiguille = query.trim().toLowerCase();
   const base = aiguille
-    ? fichiers.filter((f) => f.rel.toLowerCase().includes(aiguille))
-    : fichiers;
+    ? items.filter((f) => f.rel.toLowerCase().includes(aiguille))
+    : items;
   return base.slice(0, max);
+}
+
+/** Un candidat de la liste de complétion : fichier OU dossier. */
+export interface CandidatCompletion {
+  /** Chaîne insérée après « @ » : « docs/a.md » ou « docs/ » (dossier). */
+  insertion: string;
+  /** Élément affiché en gras (« note.md », « cours »). */
+  nom: string;
+  /** Chemin complet d'affichage et de filtrage (« docs/cours/ »). */
+  rel: string;
+  dossier: boolean;
+}
+
+/** Candidats mixtes (dossiers puis fichiers) dérivés du listing des
+ *  FICHIERS seuls : un dossier apparaît s'il contient au moins un fichier
+ *  supporté — un dossier vide n'a rien à offrir à l'assistant de toute façon.
+ *  Tri par chemin d'insertion, le « / » final plaçant chaque dossier juste
+ *  avant ses enfants (« docs/ » < « docs/a.md »). */
+export function candidatsDe(
+  fichiers: readonly EntreeFichier[],
+): CandidatCompletion[] {
+  const dossiers = new Set<string>();
+  for (const f of fichiers) {
+    const segments = f.rel.split("/");
+    for (let i = 1; i < segments.length; i++) {
+      dossiers.add(segments.slice(0, i).join("/") + "/");
+    }
+  }
+  const candidats: CandidatCompletion[] = [...dossiers].map((d) => ({
+    insertion: d,
+    nom: d.slice(0, -1).split("/").pop() ?? d,
+    rel: d,
+    dossier: true,
+  }));
+  for (const f of fichiers) {
+    candidats.push({ insertion: f.rel, nom: f.name, rel: f.rel, dossier: false });
+  }
+  return candidats.sort((a, b) =>
+    a.insertion < b.insertion ? -1 : a.insertion > b.insertion ? 1 : 0,
+  );
 }
 
 /** URI file:// d'un chemin absolu. Linux/macOS direct ; Windows slashé et

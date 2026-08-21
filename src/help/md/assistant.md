@@ -45,11 +45,13 @@ bouton **stop** interrompt la réponse en cours.
 
 ## Joindre un fichier avec `@`
 
-Tapez **`@`** dans le champ de saisie : une liste de fichiers du coffre
-apparaît au-dessus du champ. Continuez à taper pour filtrer par chemin,
-naviguez aux flèches, validez avec `Entrée` ou `Tab` (`Échap` referme). Le
-chemin complet s'insère dans votre message — `@notes/cours/limites.md` — et
-vous pouvez mentionner plusieurs fichiers dans la même demande :
+Tapez **`@`** dans le champ de saisie : une liste de fichiers et de dossiers
+du coffre apparaît au-dessus du champ. Continuez à taper pour filtrer par
+chemin, naviguez aux flèches, validez avec `Entrée` ou `Tab` (`Échap`
+referme). Choisir un dossier laisse la liste ouverte pour descendre dans
+l'arborescence ; choisir un fichier insère son chemin complet —
+`@notes/cours/limites.md` — et vous pouvez mentionner plusieurs éléments
+dans la même demande :
 
 ```text
 Compare @notes/mpsi/limites.md et @notes/mp2/continuite.md : où divergent-ils ?
@@ -57,9 +59,10 @@ Compare @notes/mpsi/limites.md et @notes/mp2/continuite.md : où divergent-ils ?
 
 Le contenu des fichiers mentionnés **accompagne le message** : l'assistant
 n'a pas besoin d'aller les lire, il répond directement sur ce qu'ils
-contiennent. Seuls les fichiers texte éditables sont proposés (notes,
-LaTeX, tableurs) ; pour un PDF, demandez-le simplement par son nom — il ira
-le consulter lui-même.
+contiennent. Une mention de dossier n'attache rien — l'assistant explorera
+le dossier lui-même si votre demande le nécessite. Seuls les fichiers texte
+éditables sont proposés (notes, LaTeX, tableurs) ; pour un PDF, demandez-le
+simplement par son nom — il ira le consulter lui-même.
 
 ## Choisir le modèle
 

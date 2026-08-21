@@ -5,8 +5,9 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
 import {
+  candidatsDe,
   extraireMentions,
-  filtrerFichiers,
+  filtrerParRel,
   mentionAuCurseur,
   uriFichier,
 } from "../src/lib/agent/mentions";
@@ -66,17 +67,17 @@ const FICHIERS = [
   { name: "ab.tex", path: "/v/docs/ab.tex", rel: "docs/ab.tex" },
 ];
 
-describe("filtrerFichiers", () => {
+describe("filtrerParRel", () => {
   test("sous-chaîne insensible à la casse sur le chemin relatif", () => {
     // « docs/a » matche a.md ET ab.tex : sous-chaîne, pas de fuzzy.
-    expect(filtrerFichiers(FICHIERS, "DOCS/A").map((f) => f.rel)).toEqual([
+    expect(filtrerParRel(FICHIERS, "DOCS/A").map((f) => f.rel)).toEqual([
       "docs/a.md",
       "docs/ab.tex",
     ]);
   });
 
-  test("requête vide = premiers fichiers (tri amont conservé)", () => {
-    expect(filtrerFichiers(FICHIERS, "").map((f) => f.rel)).toEqual([
+  test("requête vide = premiers éléments (tri amont conservé)", () => {
+    expect(filtrerParRel(FICHIERS, "").map((f) => f.rel)).toEqual([
       "zeta.md",
       "docs/a.md",
       "docs/ab.tex",
@@ -84,7 +85,49 @@ describe("filtrerFichiers", () => {
   });
 
   test("plafond du popup", () => {
-    expect(filtrerFichiers(FICHIERS, "", 2)).toHaveLength(2);
+    expect(filtrerParRel(FICHIERS, "", 2)).toHaveLength(2);
+  });
+});
+
+describe("candidatsDe — dossiers dérivés des fichiers", () => {
+  test("dossiers imbriqués uniques avec « / » final, triés avant leurs enfants", () => {
+    const cands = candidatsDe([
+      { name: "a.md", path: "/v/docs/cours/a.md", rel: "docs/cours/a.md" },
+      { name: "b.md", path: "/v/docs/b.md", rel: "docs/b.md" },
+      { name: "z.md", path: "/v/z.md", rel: "z.md" },
+    ]);
+    // Tri par insertion : chaque dossier précède ses DESCENDANTS
+    // (« / » final < tout caractère), mais un frère plus court dans
+    // l'ordre alphabétique peut s'intercaler (« b » < « c »).
+    expect(cands.map((c) => c.insertion)).toEqual([
+      "docs/",
+      "docs/b.md",
+      "docs/cours/",
+      "docs/cours/a.md",
+      "z.md",
+    ]);
+    const dossiers = cands.filter((c) => c.dossier);
+    expect(dossiers.map((d) => [d.nom, d.rel])).toEqual([
+      ["docs", "docs/"],
+      ["cours", "docs/cours/"],
+    ]);
+  });
+
+  test("aucun doublon quand plusieurs fichiers partagent un dossier ; coffre plat = aucun dossier", () => {
+    const plat = candidatsDe([
+      { name: "a.md", path: "/v/a.md", rel: "a.md" },
+      { name: "b.md", path: "/v/b.md", rel: "b.md" },
+    ]);
+    expect(plat.every((c) => !c.dossier)).toBe(true);
+    const deux = candidatsDe([
+      { name: "a.md", path: "/v/d/a.md", rel: "d/a.md" },
+      { name: "b.md", path: "/v/d/b.md", rel: "d/b.md" },
+    ]);
+    expect(deux.filter((c) => c.dossier)).toHaveLength(1);
+  });
+
+  test("coffre vide → liste vide", () => {
+    expect(candidatsDe([])).toEqual([]);
   });
 });
 

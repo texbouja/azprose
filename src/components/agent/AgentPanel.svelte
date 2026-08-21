@@ -37,10 +37,12 @@ import {
 import { fournisseursSelection } from "@/stores/fournisseurs-selection.svelte";
 import { serveurCatalogue } from "@/lib/agent/serve";
 import {
+  candidatsDe,
   extraireMentions,
-  filtrerFichiers,
+  filtrerParRel,
   mentionAuCurseur,
   uriFichier,
+  type CandidatCompletion,
 } from "@/lib/agent/mentions";
 import { walkSupportedTextFiles, type FlatFileEntry } from "@/lib/files";
 import AgentModelSelect from "@/components/agent/AgentModelSelect.svelte";
@@ -761,8 +763,12 @@ async function assurerFichiersVault(): Promise<void> {
   }
 }
 
+/** Candidats mixtes (dossiers + fichiers) — recalculés une seule fois par
+ *  listing du coffre, pas à chaque frappe. */
+const candidatsVault = $derived(fichiersVault ? candidatsDe(fichiersVault) : []);
+
 const candidats = $derived(
-  completionOuverte ? filtrerFichiers(fichiersVault ?? [], completionQuery) : [],
+  completionOuverte ? filtrerParRel(candidatsVault, completionQuery) : [],
 );
 
 /** Recalcul après toute modification du texte ou déplacement du caret :
@@ -782,16 +788,19 @@ function verifierCompletion(): void {
 }
 
 /** Remplace le token en cours par le chemin complet (+ espace final) et
- *  rend le curseur à l'endroit de la poursuite de frappe. */
-function choisirCandidat(f: FlatFileEntry): void {
+ *  rend le curseur à l'endroit de la poursuite de frappe. Un DOSSIER laisse
+ *  le token ouvert : la liste rouvre immédiatement sur ses enfants — c'est
+ *  tout l'intérêt de les proposer. */
+function choisirCandidat(c: CandidatCompletion): void {
   const finToken = completionDebut + 1 + completionQuery.length;
-  const remplacement = "@" + f.rel + " ";
+  const remplacement = "@" + c.insertion + " ";
   draft = draft.slice(0, completionDebut) + remplacement + draft.slice(finToken);
   completionOuverte = false;
   const pos = completionDebut + remplacement.length;
   void tick().then(() => {
     textareaEl?.focus();
     textareaEl?.setSelectionRange(pos, pos);
+    if (c.dossier) verifierCompletion();
   });
 }
 
@@ -804,7 +813,10 @@ $effect(() => {
 
 /** Blocs ACP `resource_link` pour chaque mention résolvable du message —
  *  le serveur OpenCode y embarque le contenu (comportement TUI documenté).
- *  Une mention inconnue reste du simple texte : l'agent a ses outils fs. */
+ *  L'index ne contient que des FICHIERS : une mention de dossier
+ *  (« @notes/ ») n'y correspond pas et reste donc du texte — l'agent
+ *  explorera le dossier avec ses outils fs si besoin.
+ *  Une mention inconnue reste pareillement du simple texte. */
 function annexesFichier(texte: string): ContentBlock[] {
   const index = new Map((fichiersVault ?? []).map((f) => [f.rel, f]));
   return extraireMentions(texte)
@@ -1041,7 +1053,7 @@ onDestroy(() => {
       <!-- Liste de complétion @ : au-dessus du champ (portal inutile, le
            composer est fixe en bas du panneau et jamais clippé). -->
       <div bind:this={listeEl} class="agent__mention-liste" role="listbox" aria-label={t("agent.completionLabel")}>
-        {#each candidats as f, i (f.path)}
+        {#each candidats as f, i (f.rel)}
           <button
             type="button"
             role="option"
@@ -1055,7 +1067,8 @@ onDestroy(() => {
               choisirCandidat(f);
             }}
           >
-            <span class="agent__mention-nom">{f.name}</span>
+            <i class={"wxi-" + (f.dossier ? "folder" : "file")} aria-hidden="true"></i>
+            <span class="agent__mention-nom">{f.nom}</span>
             <span class="agent__mention-rel">{f.rel}</span>
           </button>
         {/each}
@@ -1437,6 +1450,14 @@ onDestroy(() => {
   .agent__mention-item:hover,
   .agent__mention-item.is-active {
     background: color-mix(in srgb, var(--fg) 8%, transparent);
+  }
+  /* Icône fichier/dossier du candidat — muette, elle ne doit pas voler
+     l'attention au nom et au chemin. */
+  .agent__mention-item .wxi-folder,
+  .agent__mention-item .wxi-file {
+    flex: none;
+    font-size: 14px;
+    color: var(--muted);
   }
   .agent__mention-nom {
     font-weight: 500;
