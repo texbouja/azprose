@@ -74,6 +74,15 @@ premier rappel et restitué quand vous redescendez jusqu'au bout. Dans une
 demande multiligne, les flèches ne rappellent l'historique qu'aux bornes —
 au milieu du texte, elles déplacent simplement le curseur.
 
+## Exporter la transcription
+
+L'icône **télécharger** dans l'en-tête du panneau écrit la conversation
+(demandes et réponses) dans un fichier Markdown horodaté —
+`.azprose/export/transcription-2026-08-21-143205.md` — et l'ouvre
+immédiatement dans un onglet de l'éditeur. Vous pouvez l'annoter, le lier
+depuis vos notes ou l'archiver ; les exports restent dans le dossier caché
+`.azprose/`, hors de votre arborescence de notes.
+
 ## Choisir le modèle
 
 L'en-tête du panneau porte un sélecteur **Modèle**, organisé en deux sections :

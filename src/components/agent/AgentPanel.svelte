@@ -50,7 +50,15 @@ import {
   cibleHistorique,
   entreeHistorique,
 } from "@/lib/agent/historique";
-import { walkSupportedTextFiles, type FlatFileEntry } from "@/lib/files";
+import { nomTranscription, transcriptionMarkdown } from "@/lib/agent/transcription";
+import { notifications } from "@/stores/notifications.svelte";
+import { mkdir } from "@tauri-apps/plugin-fs";
+import {
+  joinPath,
+  walkSupportedTextFiles,
+  writeText,
+  type FlatFileEntry,
+} from "@/lib/files";
 import AgentModelSelect from "@/components/agent/AgentModelSelect.svelte";
 import AgentConnectDialog from "@/components/agent/AgentConnectDialog.svelte";
 import { cleLibelleOutil, resumerOutil } from "@/lib/agent/outils";
@@ -928,6 +936,37 @@ function naviguerHistorique(delta: number): void {
   });
 }
 
+/** Export de la retranscription (équivalent /export TUI, adapté) : écrit
+ *  .azprose/export/transcription-….md dans le coffre puis ouvre le fichier
+ *  via une intention open-file — routage texte → tab éditeur main. Le
+ *  dossier .azprose étant invisible au coffre (préfixe point), l'export ne
+ *  pollue ni la navigation ni la complétion @. */
+const aTranscription = $derived(items.some((i) => i.kind === "user"));
+
+async function exporterTranscription(): Promise<void> {
+  const racine = getProjectRoot();
+  if (!racine || !aTranscription) return;
+  try {
+    const contenu = transcriptionMarkdown(
+      items.filter((i) => i.kind === "user" || i.kind === "agent"),
+      { modele: modeleAffiche || undefined },
+    );
+    const dossier = joinPath(racine, ".azprose/export");
+    await mkdir(dossier, { recursive: true });
+    const chemin = joinPath(dossier, nomTranscription());
+    await writeText(chemin, contenu);
+    window.dispatchEvent(
+      new CustomEvent("azprose:navigate", {
+        detail: { type: "open-file", path: chemin },
+      }),
+    );
+    notifications.setInfo(t("agent.exportOk"));
+  } catch (e) {
+    console.warn("[agent] export de la transcription :", e);
+    notifications.setInfo(t("agent.exportErreur"));
+  }
+}
+
 /** Blocs ACP `resource_link` pour chaque mention résolvable du message —
  *  le serveur OpenCode y embarque le contenu (comportement TUI documenté).
  *  L'index ne contient que des FICHIERS : une mention de dossier
@@ -1074,6 +1113,15 @@ onDestroy(() => {
         onSelectCatalogue={choisirModeleCatalogue}
         onOuvre={chargerCatalogue}
       />
+      <button
+        class="agent__iconbtn"
+        data-tooltip={t("agent.export")}
+        aria-label={t("agent.export")}
+        onclick={exporterTranscription}
+        disabled={!aTranscription || status === "starting"}
+      >
+        <i class="wxi-download"></i>
+      </button>
       <button
         class="agent__reset"
         data-tooltip={t("agent.reset")}
@@ -1285,7 +1333,8 @@ onDestroy(() => {
     align-items: center;
     gap: 6px;
   }
-  .agent__reset {
+  .agent__reset,
+  .agent__iconbtn {
     border: none;
     background: transparent;
     color: var(--muted);
@@ -1294,8 +1343,10 @@ onDestroy(() => {
     border-radius: var(--radius-sm);
     transition: background var(--dur-fast) var(--easing), color var(--dur-fast) var(--easing);
   }
-  .agent__reset:hover { background: var(--surface-hover); color: var(--fg); }
-  .agent__reset:disabled { opacity: 0.4; cursor: default; }
+  .agent__reset:hover,
+  .agent__iconbtn:hover { background: var(--surface-hover); color: var(--fg); }
+  .agent__reset:disabled,
+  .agent__iconbtn:disabled { opacity: 0.4; cursor: default; }
 
   .agent__feed {
     flex: 1;
