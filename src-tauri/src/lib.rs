@@ -445,6 +445,7 @@ pub fn run() {
             agent::bridge::acp_spawn,
             agent::bridge::acp_write,
             agent::bridge::acp_kill,
+            agent::bridge::acp_run_capture,
             agent::mcp::mcp_start,
             agent::mcp::mcp_stop,
             agent::programmes::programmes_lister,
