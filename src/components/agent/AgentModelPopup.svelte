@@ -91,8 +91,12 @@ const listeIndisponible = $derived(modeles === null);
 const filtres = $derived.by(() => {
   const base = modeles ?? [];
   const q = requete.trim().toLowerCase();
+  // Recherche sur l'identifiant ET le nom : « alpha » doit trouver
+  // « Ox Alpha Free (Unlimited) » même si l'id est x-preview-f-free.
   if (!q) return base;
-  return base.filter((m) => m.id.toLowerCase().includes(q));
+  return base.filter(
+    (m) => m.id.toLowerCase().includes(q) || (m.nom ?? "").toLowerCase().includes(q),
+  );
 });
 const groupes = $derived(grouperParProvider(filtres));
 
@@ -105,12 +109,18 @@ const fournisseursCatalogue = $derived(
 
 /** Mode aplati : le catalogue filtré aussi — un clic passe par
  *  onSelectCatalogue, qui sait retomber sur le choix normal si l'état a
- *  changé entre-temps (connexion faite par ailleurs). */
+ *  changé entre-temps (connexion faite par ailleurs). Recherche sur
+ *  l'identifiant ET le nom du modèle (même motif que la section connectés). */
 const cataloguePlat = $derived.by(() => {
   const q = requete.trim().toLowerCase();
   if (!q) return [];
-  return fournisseursCatalogue.flatMap((f) => f.modeles)
-    .filter((m) => m.id.toLowerCase().includes(q));
+  return fournisseursCatalogue
+    .flatMap((f) => f.modeles)
+    .filter(
+      (m) =>
+        m.id.toLowerCase().includes(q) ||
+        (m.nom ?? "").toLowerCase().includes(q),
+    );
 });
 
 /** Recherche active → liste APLATIE (tous fournisseurs confondus) : c'est le
