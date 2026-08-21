@@ -1483,14 +1483,17 @@ $effect(() => {
     if (mainTab) pm.main.setTabSource(mainTab.id, next);
     if (sideTab) pm.side.setTabSource(sideTab.id, next);
     _panelVersion++;
+    // Verrouille le mtime SYNCHRONIQUEMENT avant l'écriture disque (asynchrone) :
+    // le changement de focus (fermeture d'un menu, retour à la fenêtre) déclenche
+    // checkExternalChanges PENDANT l'écriture, et le `trackMtime` final est, lui,
+    // asynchrone. Sans ce sentinel, le mtime relevé à l'ouverture paraîtrait
+    // périmé et ce changement — un résultat PRÉVU de l'app, pas une modification
+    // externe — serait relu comme tel (toast de conflit). On pose une borne
+    // « jamais dépassée », remplacée par le mtime réel une fois l'écriture faite.
+    mtimeMap.set(target, Number.MAX_SAFE_INTEGER);
     // Écriture disque directe (le write-back colle la fait déjà côté side),
-    // puis reflets « propres » (savedContent = source) et resynchronisation du
-    // mtime. Le fichier .tex EST dans les tabs main, donc soumis à
-    // checkExternalChanges au focus : sans trackMtime, le mtime relevé à
-    // l'ouverture paraîtrait périmé et ce changement — un résultat PRÉVU de
-    // l'app, pas une modification externe — déclencherait le toast de conflit.
-    // On n'emprunte donc pas handleSave (cas particulier md + garde saveStatus
-    // hors sujet ici) : on reproduit son écriture, sans la friction.
+    // puis reflets « propres » (savedContent = source) — le fichier .tex EST
+    // dans les tabs main, il faut que `checkExternalChanges` le voie non-sale.
     void contentStore.persist(target)
       .then(async () => {
         if (mainTab) pm.main.setSavedContent(mainTab.id, contentStore.getSaved(target));
@@ -1498,8 +1501,12 @@ $effect(() => {
         _panelVersion++;
         await trackMtime(target);
       })
-      .catch((err: unknown) =>
-        console.error("azprose: tex-directive write-back failed", err));
+      .catch((err: unknown) => {
+        console.error("azprose: tex-directive write-back failed", err);
+        // Échec d'écriture : on restaure le mtime réel (le sentinel ne doit
+        // pas rester, il masquerait les vraies modifications externes).
+        void trackMtime(target);
+      });
   };
   window.addEventListener("azprose:tex-directive", onTexDirective);
   return () => window.removeEventListener("azprose:tex-directive", onTexDirective);
