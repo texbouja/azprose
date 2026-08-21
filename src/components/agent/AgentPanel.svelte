@@ -1200,7 +1200,9 @@ onDestroy(() => {
             onmousedown={(e) => {
               // Sans preventDefault, le clic retirerait le focus au champ.
               e.preventDefault();
-              choisirCandidat(f);
+              // Clic = Tab : un dossier se DÉROULE, seul Entrée le valide.
+              if (f.dossier) deroulerDossier(f);
+              else choisirCandidat(f);
             }}
           >
             <i class={"wxi-" + (f.dossier ? "folder" : "file")} aria-hidden="true"></i>

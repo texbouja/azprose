@@ -47,10 +47,10 @@ bouton **stop** interrompt la réponse en cours.
 
 Tapez **`@`** dans le champ de saisie : une liste de fichiers et de dossiers
 du coffre apparaît au-dessus du champ. Continuez à taper pour filtrer par
-chemin, naviguez aux flèches (`Échap` referme). `Entrée` et le clic valident :
-le chemin complet s'insère — `@notes/cours/limites.md` — brièvement surligné
-pour marquer l'insertion. Sur un **dossier**, `Tab` déroule au lieu de
-valider : la liste reste ouverte sur son contenu pour descendre dans
+chemin, naviguez aux flèches (`Échap` referme). `Entrée` valide : le chemin
+complet s'insère — `@notes/cours/limites.md` — brièvement surligné pour
+marquer l'insertion. Sur un **dossier**, `Tab` et le clic déroulent au lieu
+de valider : la liste reste ouverte sur son contenu pour descendre dans
 l'arborescence ; seul `Entrée` fige un dossier dans le message. Vous pouvez
 mentionner plusieurs éléments dans la même demande :
 
