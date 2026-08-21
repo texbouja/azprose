@@ -650,6 +650,7 @@
   "breadcrumb.nav": "Fenêtre de navigation",
   "agent.title": "Assistant IA",
   "agent.placeholder": "Votre demande…",
+  "agent.completionLabel": "Fichiers du coffre",
   "agent.send": "Envoyer",
   "agent.cancel": "stop",
   "agent.notInstalled": "Agent introuvable : installez OpenCode (ou renseignez son chemin dans les réglages).",

@@ -665,6 +665,7 @@
   "breadcrumb.nav": "Navigation window",
   "agent.title": "Assistant IA",
   "agent.placeholder": "Your request…",
+  "agent.completionLabel": "Vault files",
   "agent.send": "Send",
   "agent.cancel": "stop",
   "agent.notInstalled": "Agent not found: install OpenCode (or set its path in the settings).",

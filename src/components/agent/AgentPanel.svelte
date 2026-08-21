@@ -11,7 +11,7 @@ import { createAgentClient, resolveAgentBinary, type AgentClient, type McpServer
 import { invoke } from "@tauri-apps/api/core";
 import { synchroniserProgrammes, corpusDir } from "@/programmes";
 import { programmesSelection } from "@/stores/programmes-selection.svelte";
-import type { SessionUpdate } from "@/lib/agent/types";
+import type { SessionUpdate, ContentBlock } from "@/lib/agent/types";
 import {
   createAgentHandlers,
   type PermissionOption,
@@ -36,6 +36,13 @@ import {
 } from "@/lib/agent/catalogue";
 import { fournisseursSelection } from "@/stores/fournisseurs-selection.svelte";
 import { serveurCatalogue } from "@/lib/agent/serve";
+import {
+  extraireMentions,
+  filtrerFichiers,
+  mentionAuCurseur,
+  uriFichier,
+} from "@/lib/agent/mentions";
+import { walkSupportedTextFiles, type FlatFileEntry } from "@/lib/files";
 import AgentModelSelect from "@/components/agent/AgentModelSelect.svelte";
 import AgentConnectDialog from "@/components/agent/AgentConnectDialog.svelte";
 import { cleLibelleOutil, resumerOutil } from "@/lib/agent/outils";
@@ -683,11 +690,12 @@ async function send() {
   if (!text || !client || !sessionId || status === "busy") return;
   pushItem({ kind: "user", text });
   draft = "";
+  completionOuverte = false;
   status = "busy";
   awaiting = true;
   scrollToBottom();
   try {
-    await client.prompt(sessionId, text);
+    await client.prompt(sessionId, text, annexesFichier(text));
   } catch (e) {
     pushItem({ kind: "agent", text: t("agent.errorDetail", { message: String(e) }) });
   } finally {
@@ -730,11 +738,123 @@ function onFeedClick(e: MouseEvent) {
   }
 }
 
+// ── Complétion @fichiers (calque du « @ » de la TUI OpenCode) ───────────────
+// Le listing vient de walkSupportedTextFiles (JS existant, aucun backend) ;
+// à l'envoi, chaque mention devient un bloc resource_link dont le contenu
+// arrive à l'agent embarqué (mesuré sur le serveur ACP réel).
+let textareaEl = $state<HTMLTextAreaElement | null>(null);
+let listeEl = $state<HTMLElement | null>(null);
+/** Fichiers du coffre ; null = jamais listé (chargement au premier @). */
+let fichiersVault = $state<FlatFileEntry[] | null>(null);
+let completionOuverte = $state(false);
+let completionDebut = $state(0);
+let completionQuery = $state("");
+let completionIndex = $state(0);
+
+async function assurerFichiersVault(): Promise<void> {
+  if (fichiersVault !== null) return;
+  try {
+    fichiersVault = await walkSupportedTextFiles(getProjectRoot() ?? "/");
+  } catch (e) {
+    console.warn("[agent] liste des fichiers du coffre indisponible :", e);
+    fichiersVault = [];
+  }
+}
+
+const candidats = $derived(
+  completionOuverte ? filtrerFichiers(fichiersVault ?? [], completionQuery) : [],
+);
+
+/** Recalcul après toute modification du texte ou déplacement du caret :
+ *  token @ courant → popup ouvert dessus, ou fermé. */
+function verifierCompletion(): void {
+  const caret = textareaEl?.selectionStart ?? draft.length;
+  const m = mentionAuCurseur(draft, caret);
+  if (!m) {
+    completionOuverte = false;
+    return;
+  }
+  void assurerFichiersVault();
+  completionDebut = m.debut;
+  completionQuery = m.query;
+  completionIndex = 0;
+  completionOuverte = true;
+}
+
+/** Remplace le token en cours par le chemin complet (+ espace final) et
+ *  rend le curseur à l'endroit de la poursuite de frappe. */
+function choisirCandidat(f: FlatFileEntry): void {
+  const finToken = completionDebut + 1 + completionQuery.length;
+  const remplacement = "@" + f.rel + " ";
+  draft = draft.slice(0, completionDebut) + remplacement + draft.slice(finToken);
+  completionOuverte = false;
+  const pos = completionDebut + remplacement.length;
+  void tick().then(() => {
+    textareaEl?.focus();
+    textareaEl?.setSelectionRange(pos, pos);
+  });
+}
+
+/** L'item actif reste visible quand on navigue aux flèches. */
+$effect(() => {
+  void completionIndex;
+  if (!completionOuverte || !listeEl) return;
+  listeEl.querySelector(".is-active")?.scrollIntoView({ block: "nearest" });
+});
+
+/** Blocs ACP `resource_link` pour chaque mention résolvable du message —
+ *  le serveur OpenCode y embarque le contenu (comportement TUI documenté).
+ *  Une mention inconnue reste du simple texte : l'agent a ses outils fs. */
+function annexesFichier(texte: string): ContentBlock[] {
+  const index = new Map((fichiersVault ?? []).map((f) => [f.rel, f]));
+  return extraireMentions(texte)
+    .map((m) => index.get(m.chemin))
+    .filter((f): f is FlatFileEntry => f !== undefined)
+    .map((f) => ({
+      type: "resource_link",
+      uri: uriFichier(f.path),
+      name: f.name,
+      title: f.name,
+    }));
+}
+
 function onKeydown(e: KeyboardEvent) {
+  // Complétion ouverte avec des propositions : flèches/Entrée/Tab/Échap
+  // lui appartiennent — surtout Entrée, qui ne doit PAS envoyer.
+  if (completionOuverte && candidats.length > 0) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      completionIndex = Math.min(completionIndex + 1, candidats.length - 1);
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      completionIndex = Math.max(completionIndex - 1, 0);
+      return;
+    }
+    if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+      e.preventDefault();
+      choisirCandidat(candidats[completionIndex]);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      completionOuverte = false;
+      return;
+    }
+  } else if (completionOuverte && e.key === "Escape") {
+    completionOuverte = false;
+    return;
+  }
   // Entrée envoie, Maj+Entrée saute une ligne.
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     void send();
+    return;
+  }
+  // Le caret a pu quitter le token sans événement input : revérifier.
+  if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+    queueMicrotask(verifierCompletion);
   }
 }
 
@@ -917,9 +1037,37 @@ onDestroy(() => {
   </div>
 
   <div class="agent__composer">
+    {#if completionOuverte && candidats.length > 0}
+      <!-- Liste de complétion @ : au-dessus du champ (portal inutile, le
+           composer est fixe en bas du panneau et jamais clippé). -->
+      <div bind:this={listeEl} class="agent__mention-liste" role="listbox" aria-label={t("agent.completionLabel")}>
+        {#each candidats as f, i (f.path)}
+          <button
+            type="button"
+            role="option"
+            aria-selected={i === completionIndex}
+            class="agent__mention-item"
+            class:is-active={i === completionIndex}
+            title={f.rel}
+            onmousedown={(e) => {
+              // Sans preventDefault, le clic retirerait le focus au champ.
+              e.preventDefault();
+              choisirCandidat(f);
+            }}
+          >
+            <span class="agent__mention-nom">{f.name}</span>
+            <span class="agent__mention-rel">{f.rel}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
     <textarea
+      bind:this={textareaEl}
       bind:value={draft}
       onkeydown={onKeydown}
+      oninput={verifierCompletion}
+      onclick={verifierCompletion}
+      onblur={() => (completionOuverte = false)}
       placeholder={t("agent.placeholder")}
       rows="3"
       disabled={status !== "ready" && status !== "busy"}
@@ -1241,11 +1389,68 @@ onDestroy(() => {
   /* ── Composeur ────────────────────────────────────────────── */
   .agent__composer {
     flex: none;
+    position: relative;
     border-top: 1px solid var(--border);
     padding: 8px;
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  /* Liste de complétion @ : même échelle que le menu de modèles (items
+     12,5 px), ancrée au-dessus du composer entier. */
+  .agent__mention-liste {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: calc(100% - 4px);
+    max-height: 220px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 6px);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, white 4%, transparent) inset,
+      0 10px 28px rgba(var(--shadow-color), 0.22),
+      0 2px 8px rgba(var(--shadow-color), 0.08);
+    z-index: 20;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+  }
+  .agent__mention-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 10px;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-ui, system-ui);
+    font-size: 12.5px;
+    color: var(--fg);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .agent__mention-item:hover,
+  .agent__mention-item.is-active {
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+  }
+  .agent__mention-nom {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Chemin relatif : muet, tronqué à droite — c'est lui qui désambiguïse. */
+  .agent__mention-rel {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .agent__composer textarea {
     width: 100%;

@@ -13,6 +13,7 @@ import { createAcpTransport, type AcpTransport } from "./transport";
 import type {
   AgentRequest,
   ClientCapabilities,
+  ContentBlock,
   InitializeResult,
   PromptResult,
   SessionUpdate,
@@ -65,7 +66,11 @@ export interface AgentClient {
    *  est absent (ENOENT) — l'UI affiche un message clair, jamais d'échec muet. */
   start(): Promise<InitializeResult>;
   newSession(cwd: string, mcpServers?: McpServerDecl[]): Promise<SessionNouvelle>;
-  prompt(sessionId: string, text: string): Promise<PromptResult>;
+  prompt(
+    sessionId: string,
+    text: string,
+    annexes?: ContentBlock[],
+  ): Promise<PromptResult>;
   cancel(sessionId: string): Promise<void>;
   /** Change une option de configuration de la session À CHAUD — chemin
    *  DOCUMENTÉ (ACP v1 : `session/set_config_option`, catégorie `model` pour
@@ -149,12 +154,18 @@ export function createAgentClient(options: AgentClientOptions): AgentClient {
       };
     },
 
-    async prompt(sessionId: string, text: string): Promise<PromptResult> {
+    async prompt(
+      sessionId: string,
+      text: string,
+      annexes: ContentBlock[] = [],
+    ): Promise<PromptResult> {
       // Un prompt peut être long (génération LLM) : timeout très au-delà du
       // défaut du transport. L'annulation passe par cancel(), pas par un délai.
+      // Annexes = blocs ACP additionnels (resource_link des mentions @fichier)
+      // — le serveur les convertit en pièces jointes, contenu embarqué.
       return (await transport.sendRequest(
         "session/prompt",
-        { sessionId, prompt: [{ type: "text", text }] },
+        { sessionId, prompt: [{ type: "text", text }, ...annexes] },
         600_000,
       )) as PromptResult;
     },

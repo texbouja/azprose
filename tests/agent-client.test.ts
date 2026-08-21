@@ -161,6 +161,27 @@ test("prompt() envoie un bloc texte et retourne le stopReason", async () => {
   });
 });
 
+test("prompt() transmet les blocs annexes (mentions @fichier) après le texte", async () => {
+  const t = fakeTransport({
+    initialize: INIT_RESULT,
+    "session/new": { sessionId: "ses_1" },
+    "session/prompt": { stopReason: "end_turn" },
+  });
+  const client = createAgentClient({ cwd: "/vault", transport: t });
+  await client.start();
+  await client.newSession("/vault");
+  await client.prompt("ses_1", "vois @note.md", [
+    { type: "resource_link", uri: "file:///vault/note.md", name: "note.md", title: "note.md" },
+  ]);
+  expect(t.sent[2].params).toEqual({
+    sessionId: "ses_1",
+    prompt: [
+      { type: "text", text: "vois @note.md" },
+      { type: "resource_link", uri: "file:///vault/note.md", name: "note.md", title: "note.md" },
+    ],
+  });
+});
+
 test("cancel() envoie session/cancel en notification (sans réponse attendue)", async () => {
   const t = fakeTransport({ initialize: INIT_RESULT, "session/new": { sessionId: "ses_1" } });
   const client = createAgentClient({ cwd: "/vault", transport: t });
