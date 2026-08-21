@@ -1483,15 +1483,23 @@ $effect(() => {
     if (mainTab) pm.main.setTabSource(mainTab.id, next);
     if (sideTab) pm.side.setTabSource(sideTab.id, next);
     _panelVersion++;
-    if (mainTab && norm(pm.main.activePath ?? "") === target) {
-      // L'effet dirty s'exécute après le flush Svelte : pose explicite pour
-      // que handleSave() parte immédiatement (même logique que colle-eval).
-      saveStatus = "dirty";
-      void handleSave();
-    } else {
-      void contentStore.persist(target).catch((err: unknown) =>
-        console.error("azprose: tex-directive write-back direct failed", err));
-    }
+    // Écriture disque directe (le write-back colle la fait déjà côté side),
+    // puis reflets « propres » (savedContent = source) et resynchronisation du
+    // mtime. Le fichier .tex EST dans les tabs main, donc soumis à
+    // checkExternalChanges au focus : sans trackMtime, le mtime relevé à
+    // l'ouverture paraîtrait périmé et ce changement — un résultat PRÉVU de
+    // l'app, pas une modification externe — déclencherait le toast de conflit.
+    // On n'emprunte donc pas handleSave (cas particulier md + garde saveStatus
+    // hors sujet ici) : on reproduit son écriture, sans la friction.
+    void contentStore.persist(target)
+      .then(async () => {
+        if (mainTab) pm.main.setSavedContent(mainTab.id, contentStore.getSaved(target));
+        if (sideTab) pm.side.setSavedContent(sideTab.id, contentStore.getSaved(target));
+        _panelVersion++;
+        await trackMtime(target);
+      })
+      .catch((err: unknown) =>
+        console.error("azprose: tex-directive write-back failed", err));
   };
   window.addEventListener("azprose:tex-directive", onTexDirective);
   return () => window.removeEventListener("azprose:tex-directive", onTexDirective);
