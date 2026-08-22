@@ -7,6 +7,7 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
 import {
+  decouperIdModele,
   filtrerCatalogue,
   fournisseurDeId,
   parserCatalogue,
@@ -183,5 +184,27 @@ describe("filtrerCatalogue (curation utilisateur)", () => {
   test("id inconnu ignoré, entrée non mutée", () => {
     expect(filtrerCatalogue(catalogue, ["inconnu", "hpc-ai"]).map((f) => f.id)).toEqual(["hpc-ai"]);
     expect(catalogue.map((f) => f.id)).toEqual(["opencode", "hpc-ai", "anthropic"]);
+  });
+});
+
+describe("decouperIdModele (aide unique de découpage)", () => {
+  test("coupe au PREMIER « / » — la clé peut en contenir", () => {
+    expect(decouperIdModele("opencode/big-pickle")).toEqual({
+      fournisseur: "opencode",
+      modele: "big-pickle",
+    });
+    expect(decouperIdModele("hpc-ai/deepseek/deepseek-v4-flash")).toEqual({
+      fournisseur: "hpc-ai",
+      modele: "deepseek/deepseek-v4-flash",
+    });
+  });
+
+  test("formes sans fournisseur exploitable → null", () => {
+    // Le défaut corrigé : `slice(0, indexOf("/"))` rendait ici l'id amputé de
+    // son dernier caractère, chaîne passée telle quelle au diagnostic.
+    expect(decouperIdModele("gpt-5")).toBeNull();
+    expect(decouperIdModele("/big-pickle")).toBeNull();
+    expect(decouperIdModele("opencode/")).toBeNull();
+    expect(decouperIdModele("")).toBeNull();
   });
 });

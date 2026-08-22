@@ -228,6 +228,20 @@ export function trierCatalogue(liste: FournisseurCatalogue[]): FournisseurCatalo
   });
 }
 
+/** Les deux moitiés d'un identifiant complet `fournisseur/modèle`, coupé au
+ *  PREMIER « / » (la clé du modèle peut en contenir : hpc-ai/deepseek/…).
+ *  null si la forme n'y est pas — un identifiant sans « / », ou dont une
+ *  moitié est vide, n'a pas de fournisseur, et le prétendre produisait des
+ *  chaînes absurdes (`slice(0, -1)` rendait l'id amputé de son dernier
+ *  caractère). SEULE fonction autorisée à faire ce découpage. */
+export function decouperIdModele(
+  modeleId: string,
+): { fournisseur: string; modele: string } | null {
+  const i = modeleId.indexOf("/");
+  if (i <= 0 || i === modeleId.length - 1) return null;
+  return { fournisseur: modeleId.slice(0, i), modele: modeleId.slice(i + 1) };
+}
+
 /** Le fournisseur auquel appartient un identifiant de modèle complet.
  *  Préfixe exact `${id}/` — jamais une devinette de sous-chaîne. */
 export function fournisseurDeId(

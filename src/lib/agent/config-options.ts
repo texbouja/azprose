@@ -22,6 +22,8 @@
 // l'agent accepte une valeur hors liste SANS erreur — la validation est donc
 // NOTRE affaire : on n'envoie que des valeurs de la liste déclarée.
 
+import { decouperIdModele } from "./catalogue";
+
 /** Une valeur admise par une option `select` (forme ACP). */
 export interface ConfigOptionValeur {
   /** Identifiant de la valeur — ce qu'on renvoie à `set_config_option`. */
@@ -85,10 +87,11 @@ export function modelesDeOption(opt: ConfigOption | null | undefined): ModeleDis
     const id = typeof v?.value === "string" ? v.value : "";
     if (!id || vus.has(id)) continue;
     vus.add(id);
-    const i = id.indexOf("/");
+    // Id sans « / » : pas de fournisseur à en tirer — l'id entier fait office
+    // de groupe, plutôt qu'un préfixe inventé.
     resultats.push({
       id,
-      provider: i > 0 ? id.slice(0, i) : id,
+      provider: decouperIdModele(id)?.fournisseur ?? id,
       nom: typeof v.name === "string" && v.name ? v.name : undefined,
     });
   }

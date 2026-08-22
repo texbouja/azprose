@@ -28,6 +28,7 @@ import {
 import { STORAGE_KEYS } from "@/lib/storage";
 import { optionModele, modelesDeOption, type ConfigOption } from "@/lib/agent/config-options";
 import {
+  decouperIdModele,
   filtrerCatalogue,
   fournisseurDeId,
   parserCatalogue,
@@ -195,8 +196,9 @@ async function choisirModele(id: string | null): Promise<string | null> {
   // manque d'espace, même retour) et le menu se referme : le chip reste sur
   // le modèle précédent. Non concluant (pas de clé, réseau) → on applique
   // normalement ; le diagnostic post-envoi reste le filet.
-  if (id !== null && urlPasserelle(fournisseurId(id))) {
-    const refus = await verifierDisponibilitePasserelle(id);
+  const decoupe = id === null ? null : decouperIdModele(id);
+  if (decoupe && urlPasserelle(decoupe.fournisseur)) {
+    const refus = await verifierDisponibilitePasserelle(decoupe);
     if (refus) {
       notifications.showError(t("agent.quotaLimite", { message: refus }));
       return null;
@@ -231,11 +233,13 @@ async function choisirModele(id: string | null): Promise<string | null> {
 /** Interroge la passerelle du fournisseur maison : 429 → le motif verbatim
  *  (sera affiché en couleur erreur dans le menu) ; tout autre cas → null,
  *  le choix suit son cours normal. */
-async function verifierDisponibilitePasserelle(modeleId: string): Promise<string | null> {
+async function verifierDisponibilitePasserelle(
+  decoupe: { fournisseur: string; modele: string },
+): Promise<string | null> {
   const verdict = await diagnostiquerQuota({
-    fournisseur: fournisseurId(modeleId),
-    modele: modeleId.slice(modeleId.indexOf("/") + 1),
-    cle: await cleLocale(fournisseurId(modeleId)),
+    fournisseur: decoupe.fournisseur,
+    modele: decoupe.modele,
+    cle: await cleLocale(decoupe.fournisseur),
     fetchImpl: tauriFetch as unknown as typeof fetch,
   });
   return verdict ? verdict.message : null;
@@ -764,12 +768,12 @@ async function cleLocale(fournisseur: string): Promise<string | null> {
  *  message réel dans le fil ; non concluant → on ne conclut rien. */
 async function diagnostiquerSilence(modeleId: string, avant: number): Promise<void> {
   if (status !== "busy" || !sessionId || updatesRecus !== avant) return;
-  const slash = modeleId.indexOf("/");
-  if (slash === -1) return;
+  const decoupe = decouperIdModele(modeleId);
+  if (!decoupe) return;
   const verdict = await diagnostiquerQuota({
-    fournisseur: fournisseurId(modeleId),
-    modele: modeleId.slice(slash + 1),
-    cle: await cleLocale(fournisseurId(modeleId)),
+    fournisseur: decoupe.fournisseur,
+    modele: decoupe.modele,
+    cle: await cleLocale(decoupe.fournisseur),
     fetchImpl: tauriFetch as unknown as typeof fetch,
   });
   if (!verdict || status !== "busy" || updatesRecus !== avant) return;
@@ -779,10 +783,6 @@ async function diagnostiquerSilence(modeleId: string, avant: number): Promise<vo
   status = "ready";
   awaiting = false;
   void finishTurnRendering();
-}
-
-function fournisseurId(modeleId: string): string {
-  return modeleId.slice(0, modeleId.indexOf("/"));
 }
 
 async function send() {
@@ -820,7 +820,12 @@ async function send() {
 
 async function cancel() {
   if (client && sessionId) await client.cancel(sessionId);
+  // `awaiting` autant que `status` : sur un prompt qui ne résout pas (la
+  // boucle de réessai serveur ignore session/cancel), le `finally` de send()
+  // n'arrivera qu'au chien de garde — d'ici là la saisie était réactivée
+  // pendant que l'indicateur de frappe tournait encore.
   status = "ready";
+  awaiting = false;
   void finishTurnRendering();
 }
 
@@ -1194,6 +1199,10 @@ onMount(() => {
 });
 onDestroy(() => {
   offUpdate?.();
+  // Minuteries de rendu : armées, elles muteraient l'état d'un composant
+  // démonté (le throttle de rendu survit 80 ms à la fermeture du panneau).
+  if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+  if (liveTypesetTimer) { clearTimeout(liveTypesetTimer); liveTypesetTimer = null; }
   void client?.stop();
   // Le serveur de catalogue vit autant que le panneau (décision paresseux-
   // puis-maintenu) : sans ce kill, il resterait orphelin jusqu'à la fermeture
