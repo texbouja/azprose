@@ -26,6 +26,15 @@ import {
   type ToolDiff,
 } from "@/lib/agent/context";
 import { STORAGE_KEYS } from "@/lib/storage";
+import {
+  ecrirePin,
+  epingler,
+  essayer,
+  lirePin,
+  modeleVoulu as modeleVouluDe,
+  oublier,
+  type EtatModele,
+} from "@/lib/agent/modele-defaut";
 import { optionModele, modelesDeOption, type ConfigOption } from "@/lib/agent/config-options";
 import {
   decouperIdModele,
@@ -151,23 +160,17 @@ let handlers = $state<ReturnType<typeof createAgentHandlers> | null>(null);
 // OpenCode ». Il part dans la config du spawn (clé `model`, documentée) et
 // s'applique à chaque session fraîche par set_config_option — un processus
 // réutilisé garde sinon SON défaut d'origine.
-function lireModeleStocke(): string | null {
-  try {
-    const brut = localStorage.getItem(STORAGE_KEYS.agentModel);
-    if (!brut) return null;
-    const v = JSON.parse(brut);
-    return typeof v === "string" && v ? v : null;
-  } catch { return null; }
-}
-
-function ecrireModeleStocke(id: string | null): void {
-  try {
-    if (id) localStorage.setItem(STORAGE_KEYS.agentModel, JSON.stringify(id));
-    else localStorage.removeItem(STORAGE_KEYS.agentModel);
-  } catch { /* stockage indisponible : le choix ne survivra pas à la fenêtre */ }
-}
-
-let modeleChoisi = $state<string | null>(lireModeleStocke());
+// Actif vs défaut : toute la logique (essai, pin radio, oubli, migration de
+// la clé persistée) vit dans `modele-defaut.ts`, module pur et testé.
+const stockageModele = typeof localStorage !== "undefined" ? localStorage : null;
+let etatModele = $state<EtatModele>({
+  pin: lirePin(stockageModele, STORAGE_KEYS.agentModel),
+  session: null,
+});
+/** Le DÉFAUT (persisté) — ce que le pin du menu montre comme acquis. */
+const modelePin = $derived(etatModele.pin);
+/** Ce qu'on demande à l'agent : l'essai en cours, sinon le défaut. */
+const modeleVoulu = $derived(modeleVouluDe(etatModele));
 let respawnRequis = false;
 /** État VIVANT des options de la session courante — la source d'affichage. */
 let optionsSession = $state<ConfigOption[]>([]);
@@ -183,7 +186,7 @@ const modeleEnCours = $derived(
 const modelesDisponibles = $derived(optionModeleLive ? modelesDeOption(optionModeleLive) : []);
 /** Ce que montre le chip : la réalité de la session s'il en existe une,
  *  sinon la surcharge demandée (pas encore de session). */
-const modeleAffiche = $derived(modeleEnCours ?? modeleChoisi);
+const modeleAffiche = $derived(modeleEnCours ?? modeleVoulu);
 
 /** Change le modèle de la session courante. Chemin DOCUMENTÉ d'abord
  *  (`set_config_option`, qui rend l'état complet), repli méthode historique
@@ -217,9 +220,10 @@ function statutResolu(source: SourceStatut) {
   canal = canalConditionResolue(canal, source);
 }
 
-/** Choix depuis le sélecteur. Renvoie null si appliqué, sinon le message
- *  d'erreur que le menu affichera en place (modèle refusé par le binaire). */
-async function choisirModele(id: string | null): Promise<string | null> {
+/** Clic sur une LIGNE du sélecteur : applique maintenant, pour cette session
+ *  — ne persiste rien (le défaut, c'est le pin). Renvoie null si appliqué,
+ *  sinon le message d'erreur que le menu affichera en place. */
+async function choisirModele(id: string): Promise<string | null> {
   // Un choix de modèle EST une action de l'utilisateur : les infos périmées
   // meurent ici (jamais par une horloge).
   canal = canalActionUtilisateur(canal);
@@ -230,7 +234,7 @@ async function choisirModele(id: string | null): Promise<string | null> {
   // l'utilisateur en prenne acte) et le menu se referme : le chip reste sur
   // le modèle précédent. Non concluant (pas de clé, réseau) → on applique
   // normalement ; le diagnostic post-envoi reste le filet.
-  const decoupe = id === null ? null : decouperIdModele(id);
+  const decoupe = decouperIdModele(id);
   if (decoupe && urlPasserelle(decoupe.fournisseur)) {
     const refus = await verifierDisponibilitePasserelle(decoupe);
     if (refus) {
@@ -238,17 +242,9 @@ async function choisirModele(id: string | null): Promise<string | null> {
       return null;
     }
   }
-  ecrireModeleStocke(id);
-  modeleChoisi = id;
-  // Pas de session prête : le choix s'appliquera au spawn / à la prochaine
-  // session — persister suffit.
+  etatModele = essayer(etatModele, id);
+  // Pas de session prête : le choix s'appliquera à la session à venir.
   if (!client || !sessionId || status !== "ready") return null;
-  if (id === null) {
-    // Le protocole n'a pas de « unset » : revenir au défaut prendra effet à
-    // la prochaine session, qui naîtra sans surcharge.
-    statut("info", "modele", t("agent.model.defautProchaine"));
-    return null;
-  }
   try {
     const opts = await changerModeleSession(sessionId, id);
     if (opts) optionsSession = opts;
@@ -262,6 +258,18 @@ async function choisirModele(id: string | null): Promise<string | null> {
     statut("info", "modele", t("agent.model.prochaineSession", { id }));
     return null;
   }
+}
+
+/** Clic sur le PIN : ce modèle devient le défaut — persisté, appliqué aux
+ *  prochaines sessions, et appliqué tout de suite si la session est prête.
+ *  Sélection unique : recliquer le pin de l'épinglé est sans effet (le menu
+ *  garde déjà ce garde-fou, on ne l'inverse pas ici). */
+function epinglerModele(id: string): void {
+  const nouveau = epingler(etatModele, id);
+  if (nouveau === etatModele) return; // déjà épinglé : sans effet
+  etatModele = nouveau;
+  ecrirePin(stockageModele, STORAGE_KEYS.agentModel, id);
+  void choisirModele(id);
 }
 
 /** Interroge la passerelle du fournisseur maison : 429 → le motif verbatim
@@ -639,7 +647,10 @@ async function startSession() {
       // Contexte d'environnement : instructions (fichier $APPDATA, hors
       // vault) + config inline (external_directory: ask) + modèle choisi —
       // voir context.ts.
-      env: buildAgentEnv(await ensureAgentInstructions(root), modeleChoisi ?? undefined),
+      // Aucun modèle voulu → AUCUNE clé `model` dans la config du spawn :
+      // OpenCode applique alors sa propre chaîne de priorité (`opencode.json`
+      // compris). C'est le comportement du premier lancement.
+      env: buildAgentEnv(await ensureAgentInstructions(root), modeleVoulu ?? undefined),
       onServerRequest: (req) => handlers!.handle(req),
     });
     await client.start();
@@ -663,17 +674,16 @@ async function startSession() {
   }
 }
 
-/** Applique la surcharge mémorisée à la session fraîche. La liste déclarée
- *  par l'agent permet de valider SANS aller-retour : un modèle disparu du
- *  binaire (désauthentifié, renommé) retombe sur le défaut au lieu de faire
- *  échouer le premier prompt. */
+/** Applique le modèle voulu (essai en cours, sinon pin) à la session
+ *  fraîche. La liste déclarée par l'agent permet de valider SANS
+ *  aller-retour : un modèle disparu du binaire (désauthentifié, renommé)
+ *  retombe sur le défaut au lieu de faire échouer le premier prompt. */
 async function appliquerModeleSession() {
-  if (!client || !sessionId || !modeleChoisi) return;
-  const choix = modeleChoisi;
+  const choix = modeleVoulu;
+  if (!client || !sessionId || !choix) return;
   const liste = modelesDisponibles;
   if (liste.length > 0 && !liste.some((m) => m.id === choix)) {
-    ecrireModeleStocke(null);
-    modeleChoisi = null;
+    oublierModeleVoulu();
     console.warn("[agent] modèle mémorisé absent de la liste de l'agent, retour au défaut :", choix);
     return;
   }
@@ -685,14 +695,21 @@ async function appliquerModeleSession() {
     if (/model not found/i.test(msg)) {
       // Refusé malgré la liste (course avec un changement amont) : ne pas
       // afficher un choix mensonger — retour au défaut, choix dépersisté.
-      ecrireModeleStocke(null);
-      modeleChoisi = null;
+      oublierModeleVoulu();
       console.warn("[agent] modèle mémorisé refusé par le binaire, retour au défaut :", msg);
     } else {
       respawnRequis = true;
       console.warn("[agent] changement de modèle indisponible, re-spawn au prochain reset :", msg);
     }
   }
+}
+
+/** Le modèle voulu est inapplicable : on l'oublie (essai d'abord, pin
+ *  ensuite — voir `oublier`). Le disque suit si le pin a bougé. */
+function oublierModeleVoulu(): void {
+  const nouveau = oublier(etatModele);
+  if (nouveau.pin !== etatModele.pin) ecrirePin(stockageModele, STORAGE_KEYS.agentModel, nouveau.pin);
+  etatModele = nouveau;
 }
 
 /** Serveur MCP d'AZprose, démarré et déclaré à la session (R1).
@@ -1298,7 +1315,7 @@ onDestroy(() => {
       <AgentModelSelect
         label={t("agent.model.label")}
         value={modeleAffiche}
-        labelDefaut={t("agent.model.default")}
+        pin={modelePin}
         modeles={modelesDisponibles}
         catalogue={cataloguePourMenu}
         catalogueIndisponible={catalogueErreur}
@@ -1306,6 +1323,7 @@ onDestroy(() => {
         disabled={status !== "ready"}
         onSelect={choisirModele}
         onSelectCatalogue={choisirModeleCatalogue}
+        onEpingler={epinglerModele}
         onOuvre={chargerCatalogue}
       />
       <button

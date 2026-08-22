@@ -9,8 +9,18 @@
  * sondage du binaire ici. `modeles === null` = l'agent n'a rien déclaré
  * (binaire ancien) → note + saisie libre `fournisseur/modèle`.
  *
+ * ACTIF vs DÉFAUT — deux gestes distincts (décision utilisateur 2026-08-22).
+ * Auparavant confondus : cliquer une ligne persistait le choix, donc ESSAYER
+ * un modèle changeait le défaut pour toujours, en silence.
+ *   · clic sur la ligne → applique MAINTENANT, pour cette session ;
+ *   · clic sur le PIN   → devient le défaut (persisté, prochaines sessions).
+ * Le pin est un bouton RADIO, pas une case à cocher : cliquer le pin de
+ * l'épinglé n'a aucun effet, il y a toujours au plus un défaut. L'ancienne
+ * entrée « Défaut OpenCode » a disparu — ce n'était pas un modèle mais un
+ * `choisir(null)` déguisé en ligne sélectionnable.
+ *
  * Forme EN CASCADE à DEUX SECTIONS (retour d'usage + décision 2026-08-21) :
- * racine = « Défaut OpenCode » + section ACTIFS (fournisseurs connectés, liste
+ * racine = section ACTIFS (fournisseurs connectés, liste
  * déclarée par l'agent via ACP) puis section CATALOGUE (les autres, voie
  * documentée `GET /provider` du serveur headless). Un fournisseur non
  * connecté s'ouvre comme les autres ; choisir un de ses modèles déclenche
@@ -30,7 +40,9 @@ import { getT, language } from "@/lib/i18n";
 let {
   rect = null as DOMRect | null,
   value = null as string | null,
-  labelDefaut = "",
+  /** Modèle ÉPINGLÉ (le défaut persisté) ; null = aucun, l'assistant suit
+   *  alors le comportement par défaut ou configuré d'OpenCode. */
+  pin = null as string | null,
   /** Liste déclarée par l'agent ; null = pas de liste disponible. */
   modeles = null as ModeleDisponible[] | null,
   /** Catalogue complet (`GET /provider`) déjà trié ET CURATÉ par le panneau
@@ -45,21 +57,25 @@ let {
   triggerEl = null as HTMLElement | null,
   onSelect,
   onSelectCatalogue,
+  onEpingler,
   onClose,
 }: {
   rect?: DOMRect | null;
-  /** Choix courant persisté — `null` = Défaut OpenCode. */
+  /** Modèle ACTIF dans la session (ce que le chip montre). */
   value?: string | null;
-  labelDefaut?: string;
+  pin?: string | null;
   modeles?: ModeleDisponible[] | null;
   catalogue?: FournisseurCatalogue[] | null;
   catalogueIndisponible?: boolean;
   aucunCoche?: boolean;
   triggerEl?: HTMLElement | null;
   /** Renvoie null si le choix est appliqué, sinon le message d'erreur. */
-  onSelect?: (id: string | null) => Promise<string | null>;
+  onSelect?: (id: string) => Promise<string | null>;
   /** Modèle d'un fournisseur NON connecté → dialogue de connexion (panneau). */
   onSelectCatalogue?: (id: string) => void;
+  /** Épingle ce modèle comme défaut. Le menu reste OUVERT : épingler n'est
+   *  pas choisir, l'utilisateur peut vouloir enchaîner sur un clic de ligne. */
+  onEpingler?: (id: string) => void;
   onClose?: () => void;
 } = $props();
 
@@ -139,10 +155,10 @@ const saisieLibre = $derived.by(() => {
   return q;
 });
 
-async function choisir(id: string | null) {
+async function choisir(id: string) {
   if (!onSelect || enCours !== null) return;
   erreurInline = "";
-  enCours = id ?? "∅";
+  enCours = id;
   try {
     const err = await onSelect(id);
     if (err) {
@@ -155,6 +171,14 @@ async function choisir(id: string | null) {
   } finally {
     enCours = null;
   }
+}
+
+/** Épingle : sélection UNIQUE, pas une bascule — recliquer le pin de
+ *  l'épinglé ne le dépingle pas (décision utilisateur 2026-08-22). Il y a
+ *  donc toujours au plus un défaut, et on n'en sort que par un autre pin. */
+function epingler(id: string) {
+  if (!onEpingler || enCours !== null || id === pin) return;
+  onEpingler(id);
 }
 
 /** Choix d'un modèle NON connecté : le panneau ouvre son dialogue de
@@ -254,6 +278,23 @@ $effect(() => {
 });
 </script>
 
+{#snippet pinBtn(id: string)}
+  <!-- Le pin fait le DÉFAUT, la ligne fait l'ACTIF. Toujours rendu (jamais
+       seulement au survol) : une affordance invisible ne s'apprend pas. -->
+  <button
+    type="button"
+    class="agent-model-menu__pin"
+    class:is-pinned={id === pin}
+    aria-pressed={id === pin}
+    disabled={enCours !== null}
+    title={id === pin ? t("agent.model.pinActuel") : t("agent.model.pin")}
+    aria-label={id === pin ? t("agent.model.pinActuel") : t("agent.model.pin")}
+    onclick={() => epingler(id)}
+  >
+    <i class={id === pin ? "wxi-pin" : "wxi-pin-outline"} aria-hidden="true"></i>
+  </button>
+{/snippet}
+
 <div
   bind:this={ref}
   class="agent-model-menu"
@@ -279,17 +320,20 @@ $effect(() => {
       <div class="agent-model-menu__note">{t("agent.model.aucun")}</div>
     {:else}
       {#each filtres as m (m.id)}
-        <button
-          type="button"
-          role="menuitem"
-          class="agent-model-menu__item agent-model-menu__item--mono"
-          class:is-selected={m.id === value}
-          disabled={enCours !== null}
-          title={m.id}
-          onclick={() => choisir(m.id)}
-        >
-          {m.id}
-        </button>
+        <div class="agent-model-menu__ligne">
+          <button
+            type="button"
+            role="menuitem"
+            class="agent-model-menu__item agent-model-menu__item--mono"
+            class:is-selected={m.id === value}
+            disabled={enCours !== null}
+            title={m.id}
+            onclick={() => choisir(m.id)}
+          >
+            {m.id}
+          </button>
+          {@render pinBtn(m.id)}
+        </div>
       {/each}
       {#each cataloguePlat as m (m.id)}
         <button
@@ -316,20 +360,11 @@ $effect(() => {
       </button>
     {/if}
   {:else}
-    <!-- Mode cascade : défaut, puis ACTIFS (connectés), puis CATALOGUE. -->
-    <button
-      type="button"
-      role="menuitem"
-      class="agent-model-menu__item agent-model-menu__defaut"
-      class:is-selected={value === null}
-      disabled={enCours !== null}
-      onclick={() => choisir(null)}
-    >
-      {labelDefaut}
-    </button>
-
+    <!-- Mode cascade : ACTIFS (connectés) puis CATALOGUE. Plus d'entrée
+         « Défaut OpenCode » : le défaut est le modèle ÉPINGLÉ, et aucun pin
+         signifie « suivre le comportement par défaut ou configuré
+         d'OpenCode » — un état, pas une ligne de menu. -->
     {#if !listeIndisponible && groupes.size > 0}
-      <div class="agent-model-menu__divider" aria-hidden="true"></div>
       <div class="agent-model-menu__section">{t("agent.model.actifs")}</div>
       {#each [...groupes] as [provider, liste] (provider)}
         <button
@@ -403,18 +438,23 @@ $effect(() => {
     style="position:fixed;left:{subPos.left}px;top:{subPos.top}px"
   >
     {#each sousMenu as m (m.id)}
-      <button
-        type="button"
-        role="menuitem"
-        class="agent-model-menu__item agent-model-menu__modele"
-        class:is-selected={m.id === value}
-        disabled={enCours !== null}
-        title={m.id}
-        onclick={() => (sousMenuCatalogue ? choisirCatalogue(m.id) : choisir(m.id))}
-      >
-        <span class="agent-model-menu__modele-nom">{libelle(m)}</span>
-        {#if m.id === value}<i class="wxi-check agent-model-menu__check" aria-hidden="true"></i>{/if}
-      </button>
+      <div class="agent-model-menu__ligne">
+        <button
+          type="button"
+          role="menuitem"
+          class="agent-model-menu__item agent-model-menu__modele"
+          class:is-selected={m.id === value}
+          disabled={enCours !== null}
+          title={m.id}
+          onclick={() => (sousMenuCatalogue ? choisirCatalogue(m.id) : choisir(m.id))}
+        >
+          <span class="agent-model-menu__modele-nom">{libelle(m)}</span>
+          {#if m.id === value}<i class="wxi-check agent-model-menu__check" aria-hidden="true"></i>{/if}
+        </button>
+        <!-- Pas de pin sur le catalogue : épingler un modèle d'un
+             fournisseur non connecté produirait un défaut inapplicable. -->
+        {#if !sousMenuCatalogue}{@render pinBtn(m.id)}{/if}
+      </div>
     {/each}
   </div>
 {/if}
@@ -492,8 +532,49 @@ $effect(() => {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .agent-model-menu__defaut {
-    font-weight: 500;
+  /* Ligne = modèle + pin. Le bouton de modèle prend toute la place restante ;
+     le pin garde une largeur fixe pour que les icônes s'alignent. */
+  .agent-model-menu__ligne {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+  }
+  .agent-model-menu__ligne .agent-model-menu__item {
+    flex: 1;
+    min-width: 0;
+  }
+  .agent-model-menu__pin {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: color-mix(in srgb, var(--muted) 55%, transparent);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .agent-model-menu__pin:hover:not(:disabled) {
+    color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+  }
+  /* L'épinglé est ACQUIS : plein, à l'accent, et son bouton n'a plus d'effet
+     (sélection unique) — le curseur le dit. */
+  .agent-model-menu__pin.is-pinned {
+    color: var(--accent);
+    cursor: default;
+  }
+  .agent-model-menu__pin.is-pinned:hover {
+    background: transparent;
+  }
+  .agent-model-menu__pin:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .agent-model-menu__divider {
     height: 1px;

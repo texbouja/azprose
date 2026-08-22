@@ -22,7 +22,8 @@ import type { FournisseurCatalogue } from "@/lib/agent/catalogue";
 let {
   label = "",
   value = null as string | null,
-  labelDefaut = "",
+  /** Modèle ÉPINGLÉ = le défaut persisté (null = suivre OpenCode). */
+  pin = null as string | null,
   /** Modèles déclarés par la session courante ; null = pas de liste
    *  (agent sans configOptions) → le popup dégrade en saisie libre. */
   modeles = null as ModeleDisponible[] | null,
@@ -35,19 +36,22 @@ let {
   disabled = false,
   onSelect,
   onSelectCatalogue,
+  /** Épingle un modèle comme défaut (persisté par le panneau). */
+  onEpingler,
   /** Première ouverture du menu : charge paresseuse du catalogue (panneau). */
   onOuvre,
 }: {
   label?: string;
   value?: string | null;
-  labelDefaut?: string;
+  pin?: string | null;
   modeles?: ModeleDisponible[] | null;
   catalogue?: FournisseurCatalogue[] | null;
   catalogueIndisponible?: boolean;
   aucunCoche?: boolean;
   disabled?: boolean;
-  onSelect?: (id: string | null) => Promise<string | null>;
+  onSelect?: (id: string) => Promise<string | null>;
   onSelectCatalogue?: (id: string) => void;
+  onEpingler?: (id: string) => void;
   onOuvre?: () => void;
 } = $props();
 
@@ -77,7 +81,7 @@ $effect(() => {
     props: {
       rect,
       value,
-      labelDefaut,
+      pin,
       modeles,
       catalogue,
       catalogueIndisponible,
@@ -85,6 +89,7 @@ $effect(() => {
       triggerEl,
       onSelect,
       onSelectCatalogue,
+      onEpingler,
       onClose: close,
     },
   });
@@ -107,7 +112,10 @@ $effect(() => {
   title={label}
 >
   <span class="agent-model__label">{label}</span>
-  <span class="agent-model__value">{value ?? labelDefaut}</span>
+  <!-- Le chip montre l'ACTIF, jamais l'épinglé : l'écart entre les deux est
+       une information (« j'essaie autre chose »), pas une incohérence. Le
+       tiret ne dure que le temps du démarrage de la session. -->
+  <span class="agent-model__value">{value ?? "—"}</span>
   <i class="wxi-chevron-down agent-model__arrow" aria-hidden="true"></i>
 </button>
 
