@@ -122,8 +122,7 @@ const EDITEURS = [
   "zhipuai",
 ];
 
-/** Agrégateurs et fournisseurs d'accès (gateways, clouds d'inférence). */
-const AGREGATEURS = [
+/** Agrégateurs et fournisseurs d'accès (gateways, clouds d'inférence). */const AGREGATEURS = [
   "302ai",
   "cerebras",
   "chutes",
@@ -160,6 +159,47 @@ const AGREGATEURS = [
   "v0",
   "vultr",
 ];
+
+/** Fournisseurs POPULAIRES dont la connexion officielle est une simple clé
+ *  API, alors que `GET /provider/auth` ne déclare AUCUNE méthode (mesuré
+ *  2026-08-22 : anthropic, google, deepseek… tous `null`). Pour ceux-ci le
+ *  dialogue propose directement le formulaire de clé — `PUT /auth/{id}` est
+ *  générique et le serveur les marque connectés immédiatement (validé de
+ *  bout en bout). Hors liste (locaux type ollama/lmstudio qui exigent une
+ *  URL, clouds à credentials composés type bedrock) : comportement inchangé. */
+export const CLE_API_SANS_METHODE: ReadonlySet<string> = new Set([
+  // Familles célèbres (hors maison opencode, déjà connectée d'office)
+  "anthropic",
+  "google",
+  "deepseek",
+  "moonshotai",
+  "alibaba",
+  "zai",
+  "zhipuai",
+  // Éditeurs officiels documentés par OpenCode
+  "mistral",
+  "perplexity",
+  "nvidia",
+  "meta",
+  "cohere",
+  "groq",
+  "huggingface",
+  "cloudflare-ai-gateway",
+  "kimi-for-coding",
+  "minimax",
+  "longcat",
+  "upstage",
+  "stepfun",
+  // Agrégateurs majeurs à clé unique
+  "openrouter",
+  "cerebras",
+  "togetherai",
+  "fireworks-ai",
+  "deepinfra",
+  "nano-gpt",
+  "chutes",
+  "modelscope",
+]);
 
 function familleDe(id: string, base: string): boolean {
   return id === base || id.startsWith(base + "-");

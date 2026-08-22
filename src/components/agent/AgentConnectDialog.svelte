@@ -20,6 +20,7 @@ import { getT, language } from "@/lib/i18n";
 import { serveurCatalogue } from "@/lib/agent/serve";
 import { resolveAgentBinary } from "@/lib/agent/client";
 import type { FournisseurCatalogue } from "@/lib/agent/catalogue";
+import { CLE_API_SANS_METHODE } from "@/lib/agent/catalogue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 let {
@@ -40,6 +41,13 @@ type MethodeAuth = { type?: string; label?: string };
 
 /** null = méthodes en cours de récupération. */
 let methodes = $state<MethodeAuth[] | null>(null);
+/** Populaire à clé API sans méthode déclarée : formulaire direct, et le
+ *  bouton « Retour » referme (il n'y a pas de liste de méthodes derrière). */
+let sansMethode = $derived(
+  methodes !== null &&
+    methodes.length === 0 &&
+    CLE_API_SANS_METHODE.has(fournisseur.id),
+);
 let etat = $state<"methodes" | "cle" | "oauth">("methodes");
 let cle = $state("");
 let enVol = $state(false);
@@ -57,6 +65,12 @@ onMount(async () => {
       resolveAgentBinary(), "/provider/auth",
     );
     methodes = carte[fournisseur.id] ?? [];
+    // Priorité aux fournisseurs populaires (retour utilisateur 2026-08-22) :
+    // sans méthode DÉCLARÉE mais à clé API officielle connue → formulaire
+    // direct. PUT /auth/{id} est générique ; validé de bout en bout.
+    if (methodes.length === 0 && CLE_API_SANS_METHODE.has(fournisseur.id)) {
+      etat = "cle";
+    }
   } catch (e) {
     methodes = [];
     erreur = String(e);
@@ -183,6 +197,9 @@ function onKeydown(e: KeyboardEvent) {
         </button>
       {/each}
     {:else if etat === "cle"}
+      {#if sansMethode}
+        <div class="agent-connect__note">{t("agent.connect.cleSansMethode")}</div>
+      {/if}
       <label class="agent-connect__champ">
         <span>{t("agent.connect.cleLabel")}</span>
         <!-- password : la clé ne doit pas rester lisible à l'écran -->
@@ -195,7 +212,11 @@ function onKeydown(e: KeyboardEvent) {
         />
       </label>
       <div class="agent-connect__actions">
-        <button type="button" class="agent-connect__retour" onclick={() => (etat = "methodes")}>
+        <button
+          type="button"
+          class="agent-connect__retour"
+          onclick={() => (sansMethode ? onFerme() : (etat = "methodes"))}
+        >
           {t("agent.connect.retour")}
         </button>
         <button

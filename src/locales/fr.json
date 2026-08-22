@@ -686,6 +686,7 @@
   "agent.connect.titre": "Connecter {nom}",
   "agent.connect.chargement": "Récupération des méthodes de connexion…",
   "agent.connect.aucuneMethode": "Aucune méthode de connexion déclarée pour ce fournisseur.",
+  "agent.connect.cleSansMethode": "Ce fournisseur n'annonce pas de méthode : collez sa clé API officielle, créée sur son site.",
   "agent.connect.oauth": "Se connecter dans le navigateur",
   "agent.connect.api": "Clé API",
   "agent.connect.cleLabel": "Clé API",

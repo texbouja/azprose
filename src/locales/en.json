@@ -701,6 +701,7 @@
   "agent.connect.titre": "Connect {nom}",
   "agent.connect.chargement": "Fetching sign-in methods…",
   "agent.connect.aucuneMethode": "No sign-in method declared for this provider.",
+  "agent.connect.cleSansMethode": "This provider announces no method: paste its official API key, created on its site.",
   "agent.connect.oauth": "Sign in via browser",
   "agent.connect.api": "API key",
   "agent.connect.cleLabel": "API key",
