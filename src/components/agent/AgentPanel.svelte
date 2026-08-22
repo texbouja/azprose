@@ -1585,6 +1585,11 @@ onDestroy(() => {
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    /* `min-width: 0` : sans lui, la largeur INTRINSÈQUE du contenu (un bloc
+       de code, un tableau) remonte au conteneur du tab, qui s'élargit — et
+       la tabaction s'étire avec lui. Le panneau ne doit jamais exporter la
+       largeur de ce qu'il contient. */
+    min-width: 0;
     color: var(--fg);
     background: var(--bg);
     /* Couleurs de diff (pas de token sémantique add/del dans le thème). */
@@ -1631,15 +1636,20 @@ onDestroy(() => {
   .agent__feed {
     flex: 1;
     overflow-y: auto;
-    /* Aucun défilement HORIZONTAL : un enfant trop large serait rogné et ses
-       bordures apparaîtraient coupées. C'est la contrainte de largeur des
-       enfants ci-dessous qui règle le problème à la source. */
-    overflow-x: hidden;
+    /* Défilement HORIZONTAL dans la zone de messages, bornée à la largeur du
+       tab. `hidden` rognait les bordures d'un enfant récalcitrant sans rien
+       donner pour aller voir ; surtout, il ne suffisait pas à empêcher la
+       largeur intrinsèque de remonter et d'étirer la tabaction — c'est le
+       `min-width: 0` de `.agent` qui s'en charge, et ce scroll qui rend le
+       débordement consultable. Blocs de code, diffs et tableaux gardent en
+       plus leur propre scroll : celui-ci n'est que le dernier recours. */
+    overflow-x: auto;
     padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 10px;
     min-height: 0;
+    min-width: 0;
   }
   /* Largeur de LECTURE conventionnelle : le panneau latéral peut être élargi
      bien au-delà du confort de lecture. Le fil se cale au centre plutôt que de

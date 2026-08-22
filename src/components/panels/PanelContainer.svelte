@@ -122,7 +122,10 @@ function handleViewerFullscreen() {
       />
     </div>
   {/if}
-  <div class="panel-viewport" bind:this={viewportEl} style="position:relative;flex:1;min-height:0;display:grid;grid-template-rows:1fr">
+  <!-- `min-width:0` pour la même raison que le conteneur de tab plus bas :
+       le viewport est un enfant flex, et sans lui il se laisse pousser à la
+       largeur de son contenu au lieu de tenir celle du panneau. -->
+  <div class="panel-viewport" bind:this={viewportEl} style="position:relative;flex:1;min-width:0;min-height:0;display:grid;grid-template-rows:1fr">
     {#if !isCsvPreview && !isCustomTab && !isSpreadsheetTab && !isDataFilterTab}
     <TabActions
       {activeTab}
@@ -141,7 +144,11 @@ function handleViewerFullscreen() {
     />
     {/if}
     {#each tabs as tab (tab.id)}
-      <div style={tab.id === activeTabId ? 'display:grid;grid-template-rows:1fr;min-height:0' : 'display:none'}>
+      <!-- `min-width:0` : un élément de grille refuse par défaut de passer sous
+           la largeur intrinsèque de son contenu. Sans lui, un tab au contenu
+           large (bloc de code de l'assistant, tableau) élargit la piste, donc
+           le viewport, donc la TabActions qui le surplombe. -->
+      <div style={tab.id === activeTabId ? 'display:grid;grid-template-rows:1fr;min-height:0;min-width:0' : 'display:none'}>
         <ContentRenderer
           {tab}
           panelId={panel.id}
