@@ -1904,6 +1904,16 @@ let cmds = $derived(
     onDismiss={notifications.dismissInfoToast}
   />
 
+  <!-- Refus passerelle / indiponnibilité modèle : canal toast (retour
+       utilisateur 2026-08-22 — le menu déroulant manque d'espace). -->
+  <Toast
+    open={notifications.errorToast != null && notifications.loadError == null}
+    message={notifications.errorToast ?? ""}
+    variant="error"
+    durationMs={null}
+    onDismiss={notifications.dismissError}
+  />
+
   <Toast
     open={updateAvail != null && notifications.loadError == null}
     message={updateInstalling

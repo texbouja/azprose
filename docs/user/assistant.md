@@ -121,18 +121,28 @@ Revenir à **Défaut OpenCode** prend effet à la prochaine session (bouton
 
 ### Connecter un fournisseur
 
-Choisir un modèle dans la section *Autres fournisseurs* ouvre un dialogue de
-connexion. Selon ce que le fournisseur propose :
+Le chemin complet : **Réglages** (`⌘,`) → *Assistant IA* → *Fournisseurs*,
+cochez le fournisseur voulu — puis, dans l'en-tête du panneau assistant,
+**Modèle** → section *Autres fournisseurs* → cliquez l'un de ses modèles. Le
+dialogue de connexion s'ouvre. Selon ce que le fournisseur propose :
 
 - **Clé API** — collez la clé obtenue sur le site du fournisseur ; elle est
   enregistrée dans le stockage d'OpenCode, comme le ferait `opencode auth login`.
+  C'est la voie des grands fournisseurs (Anthropic, Google, DeepSeek…),
+  même quand OpenCode n'annonce pas de méthode pour eux.
 - **Navigateur** — votre navigateur s'ouvre sur la page d'authentification du
-  fournisseur (ChatGPT, Anthropic…) ; AZprose détecte la connexion dès qu'elle
-  est confirmée.
+  fournisseur (ChatGPT, GitHub Copilot…) ; AZprose détecte la connexion dès
+  qu'elle est confirmée.
 
 Une fois connecté, le modèle demandé est appliqué et le fournisseur rejoint la
 section *Connectés*. Si le modèle n'est pas actif immédiatement, lancez une
 nouvelle session (bouton ↺).
+
+> [!note] Validation à la sélection
+> Pour les fournisseurs maison d'OpenCode (*zen/go*), AZprose interroge la
+> passerelle dès que vous choisissez le modèle : si votre forfait est épuisé,
+> le refus exact s'affiche en toast erreur — avec le délai de réinitialisation
+> — et le modèle précédent reste actif.
 
 > La connexion se fait depuis AZprose mais l'authentification appartient à
 > OpenCode : les modèles connectés ici le sont aussi pour l'usage en terminal.

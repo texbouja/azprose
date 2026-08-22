@@ -187,17 +187,20 @@ async function changerModeleSession(sid: string, id: string): Promise<ConfigOpti
 }
 
 /** Choix depuis le sélecteur. Renvoie null si appliqué, sinon le message
- *  d'erreur que le menu affichera en place (modèle refusé par le binaire ou
- *  par la passerelle). */
+ *  d'erreur que le menu affichera en place (modèle refusé par le binaire). */
 async function choisirModele(id: string | null): Promise<string | null> {
   // Validation passerelle AVANT application (retour utilisateur 2026-08-22) :
-  // un modèle maison bloqué (quota hebdo…) est refusé en ~1 s À LA SÉLECTION
-  // avec le motif réel — le chip ne change pas, le menu reste ouvert sur le
-  // message en couleur erreur. Non concluant (pas de clé, réseau) → on
-  // applique normalement ; le diagnostic post-envoi reste le filet.
+  // un modèle maison bloqué (quota hebdo…) est refusé en ~1 s À LA SÉLECTION.
+  // Le motif verbatim sort en TOAST erreur (canal naturel — le menu déroulant
+  // manque d'espace, même retour) et le menu se referme : le chip reste sur
+  // le modèle précédent. Non concluant (pas de clé, réseau) → on applique
+  // normalement ; le diagnostic post-envoi reste le filet.
   if (id !== null && urlPasserelle(fournisseurId(id))) {
     const refus = await verifierDisponibilitePasserelle(id);
-    if (refus) return refus;
+    if (refus) {
+      notifications.showError(t("agent.quotaLimite", { message: refus }));
+      return null;
+    }
   }
   ecrireModeleStocke(id);
   modeleChoisi = id;
