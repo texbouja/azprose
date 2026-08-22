@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   diagnostiquerQuota,
+  urlDuMessage,
   urlPasserelle,
 } from "../src/lib/agent/quota";
 
@@ -88,4 +89,33 @@ describe("diagnostiquerQuota", () => {
     });
     expect(v).toBe(null);
   });
+});
+
+describe("urlDuMessage (lien du pied de panneau)", () => {
+  test("extrait l'URL d'espace de travail du 429 verbatim", () => {
+    expect(urlDuMessage(CORPS_429.error.message)).toBe(
+      "https://opencode.ai/workspace/wrk_x/go",
+    );
+  });
+
+  test("la ponctuation de fin de phrase ne fait pas partie du lien", () => {
+    expect(urlDuMessage("Voir https://opencode.ai/workspace.")).toBe(
+      "https://opencode.ai/workspace",
+    );
+  });
+
+  test("message sans URL → undefined (pas de bouton « Ouvrir »)", () => {
+    expect(urlDuMessage("Weekly usage limit reached.")).toBeUndefined();
+  });
+});
+
+test("le verdict porte l'URL quand le message en cite une", async () => {
+  const v = await diagnostiquerQuota({
+    fournisseur: "opencode-go",
+    modele: "ox-alpha-free",
+    cle: "sk-x",
+    fetchImpl: (async () =>
+      new Response(JSON.stringify(CORPS_429), { status: 429 })) as unknown as typeof fetch,
+  });
+  expect(v?.url).toBe("https://opencode.ai/workspace/wrk_x/go");
 });

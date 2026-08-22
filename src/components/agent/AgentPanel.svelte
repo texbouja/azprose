@@ -35,6 +35,19 @@ import {
   trierCatalogue,
   type FournisseurCatalogue,
 } from "@/lib/agent/catalogue";
+import {
+  actionUtilisateur as canalActionUtilisateur,
+  canalVide,
+  conditionResolue as canalConditionResolue,
+  debutDeTour as canalDebutDeTour,
+  estBloquant,
+  fermer as canalFermer,
+  finDeTour as canalFinDeTour,
+  poser as canalPoser,
+  type MessageStatut,
+  type SourceStatut,
+} from "@/lib/agent/canal-statut";
+import AgentStatusLine from "@/components/agent/AgentStatusLine.svelte";
 import { fournisseursSelection } from "@/stores/fournisseurs-selection.svelte";
 import { serveurCatalogue } from "@/lib/agent/serve";
 import {
@@ -52,7 +65,7 @@ import {
   entreeHistorique,
 } from "@/lib/agent/historique";
 import { nomTranscription, transcriptionMarkdown } from "@/lib/agent/transcription";
-import { diagnostiquerQuota, urlPasserelle } from "@/lib/agent/quota";
+import { diagnostiquerQuota, urlPasserelle, type VerdictQuota } from "@/lib/agent/quota";
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
 import { mkdir } from "@tauri-apps/plugin-fs";
@@ -187,20 +200,41 @@ async function changerModeleSession(sid: string, id: string): Promise<ConfigOpti
   }
 }
 
+// ── Canal d'infrastructure (pied de panneau) ────────────────────────────────
+// Critère de routage : est-ce que ça figurerait dans la transcription
+// exportée ? Oui → le fil (pushItem). Non → ici. La machine (priorité, durées
+// de vie) vit dans canal-statut.ts, module pur et testé ; le composant ne
+// fait que du câblage — AgentPanel n'a pas de test de rendu.
+let canal = $state(canalVide());
+const messageStatut = $derived(canal.message);
+const statutBloquant = $derived(estBloquant(canal));
+
+function statut(niveau: MessageStatut["niveau"], source: SourceStatut, texte: string, url?: string) {
+  canal = canalPoser(canal, { niveau, texte, source, ...(url ? { url } : {}) });
+}
+/** Une condition observable s'est résolue → son message tombe seul. */
+function statutResolu(source: SourceStatut) {
+  canal = canalConditionResolue(canal, source);
+}
+
 /** Choix depuis le sélecteur. Renvoie null si appliqué, sinon le message
  *  d'erreur que le menu affichera en place (modèle refusé par le binaire). */
 async function choisirModele(id: string | null): Promise<string | null> {
+  // Un choix de modèle EST une action de l'utilisateur : les infos périmées
+  // meurent ici (jamais par une horloge).
+  canal = canalActionUtilisateur(canal);
   // Validation passerelle AVANT application (retour utilisateur 2026-08-22) :
   // un modèle maison bloqué (quota hebdo…) est refusé en ~1 s À LA SÉLECTION.
-  // Le motif verbatim sort en TOAST erreur (canal naturel — le menu déroulant
-  // manque d'espace, même retour) et le menu se referme : le chip reste sur
+  // Le motif verbatim part au PIED DE PANNEAU en erreur bloquante (plus de
+  // toast : il s'efface tout seul, or ce refus doit rester jusqu'à ce que
+  // l'utilisateur en prenne acte) et le menu se referme : le chip reste sur
   // le modèle précédent. Non concluant (pas de clé, réseau) → on applique
   // normalement ; le diagnostic post-envoi reste le filet.
   const decoupe = id === null ? null : decouperIdModele(id);
   if (decoupe && urlPasserelle(decoupe.fournisseur)) {
     const refus = await verifierDisponibilitePasserelle(decoupe);
     if (refus) {
-      notifications.showError(t("agent.quotaLimite", { message: refus }));
+      statut("erreur", "quota", t("agent.quotaLimite", { message: refus.message }), refus.url);
       return null;
     }
   }
@@ -212,7 +246,7 @@ async function choisirModele(id: string | null): Promise<string | null> {
   if (id === null) {
     // Le protocole n'a pas de « unset » : revenir au défaut prendra effet à
     // la prochaine session, qui naîtra sans surcharge.
-    pushItem({ kind: "agent", text: t("agent.model.defautProchaine") });
+    statut("info", "modele", t("agent.model.defautProchaine"));
     return null;
   }
   try {
@@ -225,7 +259,7 @@ async function choisirModele(id: string | null): Promise<string | null> {
     // Ni l'une ni l'autre disponible : régime B — re-spawn au prochain reset,
     // la config inline du spawn portera le choix.
     respawnRequis = true;
-    pushItem({ kind: "agent", text: t("agent.model.prochaineSession", { id }) });
+    statut("info", "modele", t("agent.model.prochaineSession", { id }));
     return null;
   }
 }
@@ -235,14 +269,13 @@ async function choisirModele(id: string | null): Promise<string | null> {
  *  le choix suit son cours normal. */
 async function verifierDisponibilitePasserelle(
   decoupe: { fournisseur: string; modele: string },
-): Promise<string | null> {
-  const verdict = await diagnostiquerQuota({
+): Promise<VerdictQuota | null> {
+  return await diagnostiquerQuota({
     fournisseur: decoupe.fournisseur,
     modele: decoupe.modele,
     cle: await cleLocale(decoupe.fournisseur),
     fetchImpl: tauriFetch as unknown as typeof fetch,
   });
-  return verdict ? verdict.message : null;
 }
 
 // ── Catalogue complet des fournisseurs (voie serveur headless) ──────────────
@@ -262,10 +295,15 @@ async function chargerCatalogue(): Promise<void> {
     const rep = await serveurCatalogue.requete<unknown>(resolveAgentBinary(), "/provider");
     catalogue = trierCatalogue(parserCatalogue(rep));
     catalogueErreur = false;
+    statutResolu("catalogue"); // condition observable : le catalogue est là
   } catch (e) {
     console.warn("[agent] catalogue des fournisseurs indisponible :", e);
     catalogue = [];
     catalogueErreur = true;
+    // Avertissement, pas erreur bloquante : le sélecteur reste utilisable
+    // avec les modèles déclarés par l'agent. Le menu porte déjà sa propre
+    // mention en place ; le pied la double pour qui a refermé le menu.
+    statut("avertissement", "catalogue", t("agent.model.catalogueIndisponible"));
   }
 }
 
@@ -311,7 +349,7 @@ async function connexionReussie(): Promise<void> {
   await rafraichirCatalogue();
   if (!modeleId) return;
   await choisirModele(modeleId);
-  pushItem({ kind: "agent", text: t("agent.model.connecteNote") });
+  statut("info", "modele", t("agent.model.connecteNote"));
 }
 
 /** Rend une demande de permission dans le fil et suspend jusqu'au clic. */
@@ -611,9 +649,13 @@ async function startSession() {
     optionsSession = ses.configOptions;
     await appliquerModeleSession();
     status = "ready";
+    // Condition observable résolue : une session tourne, donc « agent
+    // introuvable » n'a plus lieu d'être — l'erreur bloquante tombe seule.
+    statutResolu("agent");
   } catch (e) {
     if (e instanceof Error && e.name === "AgentNotInstalledError") {
       status = "not-installed";
+      statut("erreur", "agent", t("agent.notInstalled"));
     } else {
       status = "error";
       errorMessage = String(e);
@@ -764,8 +806,13 @@ async function cleLocale(fournisseur: string): Promise<string | null> {
 
 /** Prompt muet depuis DELAI_DIAGNOSTIC_MS sur un modèle maison → on demande
  *  son avis à la passerelle (clé locale, micro-requête) : un 429 y est
- *  explicite (« Weekly usage limit reached. Resets in … »). Verdict →
- *  message réel dans le fil ; non concluant → on ne conclut rien. */
+ *  explicite (« Weekly usage limit reached. Resets in … »).
+ *
+ *  Cas MIXTE, le seul du panneau : le tour meurt pour de bon, donc le fil
+ *  garde une marque brève (« tour interrompu » — sans elle la transcription
+ *  exportée montrerait une question sans réponse ni raison), et la RAISON
+ *  verbatim part au pied de panneau, où elle survit au tour et porte le lien
+ *  vers l'espace de travail. Non concluant → on ne conclut rien. */
 async function diagnostiquerSilence(modeleId: string, avant: number): Promise<void> {
   if (status !== "busy" || !sessionId || updatesRecus !== avant) return;
   const decoupe = decouperIdModele(modeleId);
@@ -778,10 +825,12 @@ async function diagnostiquerSilence(modeleId: string, avant: number): Promise<vo
   });
   if (!verdict || status !== "busy" || updatesRecus !== avant) return;
   quotaSignale = true;
-  pushItem({ kind: "agent", text: t("agent.quotaLimite", { message: verdict.message }) });
+  pushItem({ kind: "agent", text: t("agent.tourInterrompu") });
+  statut("erreur", "quota", t("agent.quotaLimite", { message: verdict.message }), verdict.url);
   void client?.cancel(sessionId); // la boucle serveur, au cas où elle s'arrête
   status = "ready";
   awaiting = false;
+  canal = canalFinDeTour(canal);
   void finishTurnRendering();
 }
 
@@ -793,6 +842,9 @@ async function send() {
   completionOuverte = false;
   histPos = -1; // nouvel envoi = retour au brouillon vivant
   quotaSignale = false;
+  // Envoyer EST une action de l'utilisateur (les infos meurent), et ouvre un
+  // tour (les avertissements se décomptent dessus).
+  canal = canalDebutDeTour(canalActionUtilisateur(canal));
   status = "busy";
   awaiting = true;
   // Diagnostic de quota (mesures 2026-08-22) : sur forfait Go épuisé, la
@@ -814,6 +866,7 @@ async function send() {
     clearTimeout(gardien);
     status = "ready";
     awaiting = false;
+    canal = canalFinDeTour(canal);
     void finishTurnRendering();
   }
 }
@@ -826,6 +879,7 @@ async function cancel() {
   // pendant que l'indicateur de frappe tournait encore.
   status = "ready";
   awaiting = false;
+  canal = canalFinDeTour(canalActionUtilisateur(canal));
   void finishTurnRendering();
 }
 
@@ -1226,6 +1280,15 @@ onDestroy(() => {
 
   <div class="agent__header">
     <span class="agent__title">{t("agent.title")}</span>
+    {#if statutBloquant}
+      <!-- Marqueur persistant : le pied peut sortir du champ de vision, pas
+           l'en-tête. Contre l'accoutumance périphérique (retour utilisateur). -->
+      <i
+        class="wxi-alert-circle agent__marqueur"
+        data-tooltip={messageStatut?.texte}
+        aria-hidden="true"
+      ></i>
+    {/if}
     <div class="agent__actions">
       <!-- Sélecteur de modèle : actif seulement sur session prête (D7 — un
            switch pendant une génération ferait la course au prompt). Deux
@@ -1268,9 +1331,10 @@ onDestroy(() => {
 
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions — clic délégué sur les <a> du rendu markdown, même motif que la preview -->
   <div class="agent__feed" bind:this={feedEl} onclick={onFeedClick}>
-    {#if status === "not-installed"}
-      <div class="agent__notice">{t("agent.notInstalled")}</div>
-    {:else if status === "error"}
+    <!-- « agent introuvable » a quitté le fil pour le canal d'infrastructure
+         (il ne figurerait pas dans une transcription exportée) ; l'erreur de
+         session et le démarrage restent ici, ils qualifient LE fil. -->
+    {#if status === "error"}
       <div class="agent__notice">{t("agent.error")}{errorMessage ? ` — ${errorMessage}` : ""}</div>
     {:else if status === "starting"}
       <div class="agent__notice">{t("agent.starting")}</div>
@@ -1423,6 +1487,11 @@ onDestroy(() => {
     </div>
   </div>
 
+  <!-- Canal d'infrastructure : SOUS le composer, en pied de panneau. Ni la
+       StatusBar globale (centrée document, et l'assistant peut être fermé),
+       ni un toast (qui s'efface tout seul). -->
+  <AgentStatusLine message={messageStatut} onFerme={() => (canal = canalFermer(canal))} />
+
   {#if connexion}
     <!-- Dialogue de connexion d'un fournisseur du catalogue : modal sur toute
          la fenêtre (le sélecteur derrière n'a plus de sens pendant le flux). -->
@@ -1460,6 +1529,14 @@ onDestroy(() => {
     flex: none;
   }
   .agent__title { font-weight: 600; font-size: 12px; letter-spacing: 0.02em; }
+  /* Marqueur d'erreur bloquante : `margin-right: auto` pour qu'il colle au
+     titre au lieu de se centrer entre lui et les actions. */
+  .agent__marqueur {
+    color: var(--color-error);
+    font-size: 14px;
+    margin-left: 6px;
+    margin-right: auto;
+  }
   .agent__actions {
     display: flex;
     align-items: center;

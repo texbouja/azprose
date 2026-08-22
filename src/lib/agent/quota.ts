@@ -26,6 +26,17 @@ export function urlPasserelle(fournisseur: string): string | null {
 export interface VerdictQuota {
   /** Message VERBATIM de la passerelle (« Weekly usage limit reached. … »). */
   message: string;
+  /** URL d'espace de travail citée dans le message, s'il y en a une — le
+   *  pied de panneau en fait un lien : le refus dit quoi faire, encore
+   *  faut-il pouvoir y aller en un clic. */
+  url?: string;
+}
+
+/** Première URL http(s) du message. La ponctuation finale d'une phrase
+ *  (« … sur https://opencode.ai/workspace. ») ne fait pas partie du lien. */
+export function urlDuMessage(message: string): string | undefined {
+  const m = /https?:\/\/[^\s<>"')\]]+/.exec(message);
+  return m ? m[0].replace(/[.,;:!?]+$/, "") : undefined;
 }
 
 export interface DepsQuota {
@@ -63,7 +74,9 @@ export async function diagnostiquerQuota(
       error?: { message?: unknown };
     } | null;
     const message = corps?.error?.message;
-    return typeof message === "string" && message ? { message } : null;
+    if (typeof message !== "string" || !message) return null;
+    const url = urlDuMessage(message);
+    return url ? { message, url } : { message };
   } catch {
     // Passerelle injoignable : diagnostic impossible, pas une conclusion.
     return null;
