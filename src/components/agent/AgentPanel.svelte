@@ -51,7 +51,7 @@ import {
   entreeHistorique,
 } from "@/lib/agent/historique";
 import { nomTranscription, transcriptionMarkdown } from "@/lib/agent/transcription";
-import { diagnostiquerQuota } from "@/lib/agent/quota";
+import { diagnostiquerQuota, urlPasserelle } from "@/lib/agent/quota";
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
 import { mkdir } from "@tauri-apps/plugin-fs";
@@ -187,8 +187,18 @@ async function changerModeleSession(sid: string, id: string): Promise<ConfigOpti
 }
 
 /** Choix depuis le sélecteur. Renvoie null si appliqué, sinon le message
- *  d'erreur que le menu affichera en place (modèle refusé par le binaire). */
+ *  d'erreur que le menu affichera en place (modèle refusé par le binaire ou
+ *  par la passerelle). */
 async function choisirModele(id: string | null): Promise<string | null> {
+  // Validation passerelle AVANT application (retour utilisateur 2026-08-22) :
+  // un modèle maison bloqué (quota hebdo…) est refusé en ~1 s À LA SÉLECTION
+  // avec le motif réel — le chip ne change pas, le menu reste ouvert sur le
+  // message en couleur erreur. Non concluant (pas de clé, réseau) → on
+  // applique normalement ; le diagnostic post-envoi reste le filet.
+  if (id !== null && urlPasserelle(fournisseurId(id))) {
+    const refus = await verifierDisponibilitePasserelle(id);
+    if (refus) return refus;
+  }
   ecrireModeleStocke(id);
   modeleChoisi = id;
   // Pas de session prête : le choix s'appliquera au spawn / à la prochaine
@@ -213,6 +223,19 @@ async function choisirModele(id: string | null): Promise<string | null> {
     pushItem({ kind: "agent", text: t("agent.model.prochaineSession", { id }) });
     return null;
   }
+}
+
+/** Interroge la passerelle du fournisseur maison : 429 → le motif verbatim
+ *  (sera affiché en couleur erreur dans le menu) ; tout autre cas → null,
+ *  le choix suit son cours normal. */
+async function verifierDisponibilitePasserelle(modeleId: string): Promise<string | null> {
+  const verdict = await diagnostiquerQuota({
+    fournisseur: fournisseurId(modeleId),
+    modele: modeleId.slice(modeleId.indexOf("/") + 1),
+    cle: await cleLocale(fournisseurId(modeleId)),
+    fetchImpl: tauriFetch as unknown as typeof fetch,
+  });
+  return verdict ? verdict.message : null;
 }
 
 // ── Catalogue complet des fournisseurs (voie serveur headless) ──────────────
@@ -717,6 +740,21 @@ let updatesRecus = 0;
 let quotaSignale = false;
 const DELAI_DIAGNOSTIC_MS = 15_000;
 
+/** Clé API locale d'un fournisseur connecté, relue de GET /provider brut
+ *  (le parseur du catalogue jette ce champ). null = introuvable/indispo —
+ *  les appelants traitent ça comme « diagnostic non concluant ». */
+async function cleLocale(fournisseur: string): Promise<string | null> {
+  try {
+    const rep = await serveurCatalogue.requete<{
+      all?: { id?: unknown; key?: unknown }[];
+    }>(resolveAgentBinary(), "/provider");
+    const brut = rep.all?.find((p) => p.id === fournisseur);
+    return typeof brut?.key === "string" && brut.key ? brut.key : null;
+  } catch {
+    return null; // serveur headless indisponible : diagnostic impossible
+  }
+}
+
 /** Prompt muet depuis DELAI_DIAGNOSTIC_MS sur un modèle maison → on demande
  *  son avis à la passerelle (clé locale, micro-requête) : un 429 y est
  *  explicite (« Weekly usage limit reached. Resets in … »). Verdict →
@@ -725,22 +763,10 @@ async function diagnostiquerSilence(modeleId: string, avant: number): Promise<vo
   if (status !== "busy" || !sessionId || updatesRecus !== avant) return;
   const slash = modeleId.indexOf("/");
   if (slash === -1) return;
-  let cle: string | null = null;
-  try {
-    // La clé des fournisseurs connectés vient de GET /provider (le parseur
-    // du catalogue la jette : on relit la réponse brute, localement).
-    const rep = await serveurCatalogue.requete<{
-      all?: { id?: unknown; key?: unknown }[];
-    }>(resolveAgentBinary(), "/provider");
-    const brut = rep.all?.find((p) => p.id === fournisseurId(modeleId));
-    cle = typeof brut?.key === "string" && brut.key ? brut.key : null;
-  } catch {
-    return; // serveur headless indisponible : diagnostic impossible
-  }
   const verdict = await diagnostiquerQuota({
     fournisseur: fournisseurId(modeleId),
     modele: modeleId.slice(slash + 1),
-    cle,
+    cle: await cleLocale(fournisseurId(modeleId)),
     fetchImpl: tauriFetch as unknown as typeof fetch,
   });
   if (!verdict || status !== "busy" || updatesRecus !== avant) return;
