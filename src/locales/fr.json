@@ -657,6 +657,7 @@
   "agent.copierMarkdown": "Copier en Markdown",
   "agent.copieOk": "Copié en Markdown",
   "agent.copieErreur": "Copie impossible",
+  "agent.quotaLimite": "Le fournisseur refuse pour l'instant : {message}",
   "agent.send": "Envoyer",
   "agent.cancel": "stop",
   "agent.notInstalled": "Agent introuvable : installez OpenCode (ou renseignez son chemin dans les réglages).",

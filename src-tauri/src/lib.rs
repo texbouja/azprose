@@ -414,6 +414,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
+        // Diagnostic de quota : la passerelle opencode.ai ne publie pas
+        // d'en-têtes CORS — le fetch du webview est bloqué, celui du plugin
+        // (cadré par la capability http) passe.
+        .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
             take_pending_open_files,
             store_project_folder,

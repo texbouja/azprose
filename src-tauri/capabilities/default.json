@@ -31,6 +31,13 @@
     "dialog:default",
     "fs:default",
     {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://opencode.ai/*" },
+        { "url": "https://*.opencode.ai/*" }
+      ]
+    },
+    {
       "identifier": "fs:scope",
       "allow": [
         { "path": "**/.agent" },

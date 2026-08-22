@@ -51,9 +51,13 @@ import {
   entreeHistorique,
 } from "@/lib/agent/historique";
 import { nomTranscription, transcriptionMarkdown } from "@/lib/agent/transcription";
+import { diagnostiquerQuota } from "@/lib/agent/quota";
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
 import { mkdir } from "@tauri-apps/plugin-fs";
+// Le fetch du webview est bloqué par l'absence de CORS chez opencode.ai ;
+// celui du plugin http passe (capability cadrée sur https://opencode.ai/*).
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import {
   joinPath,
   walkSupportedTextFiles,
@@ -423,6 +427,7 @@ async function finishTurnRendering() {
 }
 
 function applyUpdate(u: SessionUpdate) {
+  updatesRecus++; // tout signe de vie repousse le diagnostic de silence
   switch (u.sessionUpdate) {
     case "agent_message_chunk":
     case "user_message_chunk": {
@@ -702,6 +707,55 @@ async function programmesActifs() {
   }
 }
 
+/** Signes de vie du prompt en cours (tout session/update) — sert au
+ *  diagnostic de silence : si le compteur n'a pas bougé depuis l'envoi,
+ *  l'agent n'a RIEN émis. */
+let updatesRecus = 0;
+/** Un verdict de quota a déjà été affiché pour ce tour : l'erreur générique
+ *  du chien de garde (qui rejeta plus tard la promesse suspendue) ne doit
+ *  pas se superposer. */
+let quotaSignale = false;
+const DELAI_DIAGNOSTIC_MS = 15_000;
+
+/** Prompt muet depuis DELAI_DIAGNOSTIC_MS sur un modèle maison → on demande
+ *  son avis à la passerelle (clé locale, micro-requête) : un 429 y est
+ *  explicite (« Weekly usage limit reached. Resets in … »). Verdict →
+ *  message réel dans le fil ; non concluant → on ne conclut rien. */
+async function diagnostiquerSilence(modeleId: string, avant: number): Promise<void> {
+  if (status !== "busy" || !sessionId || updatesRecus !== avant) return;
+  const slash = modeleId.indexOf("/");
+  if (slash === -1) return;
+  let cle: string | null = null;
+  try {
+    // La clé des fournisseurs connectés vient de GET /provider (le parseur
+    // du catalogue la jette : on relit la réponse brute, localement).
+    const rep = await serveurCatalogue.requete<{
+      all?: { id?: unknown; key?: unknown }[];
+    }>(resolveAgentBinary(), "/provider");
+    const brut = rep.all?.find((p) => p.id === fournisseurId(modeleId));
+    cle = typeof brut?.key === "string" && brut.key ? brut.key : null;
+  } catch {
+    return; // serveur headless indisponible : diagnostic impossible
+  }
+  const verdict = await diagnostiquerQuota({
+    fournisseur: fournisseurId(modeleId),
+    modele: modeleId.slice(slash + 1),
+    cle,
+    fetchImpl: tauriFetch as unknown as typeof fetch,
+  });
+  if (!verdict || status !== "busy" || updatesRecus !== avant) return;
+  quotaSignale = true;
+  pushItem({ kind: "agent", text: t("agent.quotaLimite", { message: verdict.message }) });
+  void client?.cancel(sessionId); // la boucle serveur, au cas où elle s'arrête
+  status = "ready";
+  awaiting = false;
+  void finishTurnRendering();
+}
+
+function fournisseurId(modeleId: string): string {
+  return modeleId.slice(0, modeleId.indexOf("/"));
+}
+
 async function send() {
   const text = draft.trim();
   if (!text || !client || !sessionId || status === "busy") return;
@@ -709,14 +763,26 @@ async function send() {
   draft = "";
   completionOuverte = false;
   histPos = -1; // nouvel envoi = retour au brouillon vivant
+  quotaSignale = false;
   status = "busy";
   awaiting = true;
+  // Diagnostic de quota (mesures 2026-08-22) : sur forfait Go épuisé, la
+  // passerelle répond en ~0,5 s par un 429 EXPLICITE alors que le prompt ACP,
+  // lui, reste suspendu indéfiniment. Après DELAI sans AUCUN update, on
+  // interroge la passerelle directement : verdict → message réel dans le fil ;
+  // non concluant → on laisse le chien de garde d'inactivité agir.
+  const avant = updatesRecus;
+  const modeleId = modeleAffiche ?? "";
+  const gardien = setTimeout(() => void diagnostiquerSilence(modeleId, avant), DELAI_DIAGNOSTIC_MS);
   scrollToBottom();
   try {
     await client.prompt(sessionId, text, annexesFichier(text));
   } catch (e) {
-    pushItem({ kind: "agent", text: t("agent.errorDetail", { message: String(e) }) });
+    if (!quotaSignale) {
+      pushItem({ kind: "agent", text: t("agent.errorDetail", { message: String(e) }) });
+    }
   } finally {
+    clearTimeout(gardien);
     status = "ready";
     awaiting = false;
     void finishTurnRendering();
