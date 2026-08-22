@@ -32,18 +32,47 @@ export interface AcpTransport {
   kill(): Promise<void>;
 }
 
+/** Dépendances Tauri injectables (jamais mock.module — règle P6). Sans
+ *  elles, un échec de `acp_spawn` n'était testable qu'en simulant le
+ *  transport entier, c'est-à-dire en sautant justement le code fautif. */
+export interface DepsTransport {
+  invoquer(commande: string, args: Record<string, unknown>): Promise<unknown>;
+  ecouter(nom: string, cb: (charge: unknown) => void): Promise<() => void>;
+}
+
+function depsParDefaut(): DepsTransport {
+  return {
+    invoquer: (commande, args) => invoke(commande, args),
+    ecouter: (nom, cb) => listen(nom, (ev) => cb(ev.payload)),
+  };
+}
+
 export function createAcpTransport(
   id: string,
   command: string,
   args: string[],
   env?: Record<string, string>,
+  depsPartielles?: Partial<DepsTransport>,
 ): AcpTransport {
+  const deps: DepsTransport = { ...depsParDefaut(), ...depsPartielles };
   let spawnPromise: Promise<void> | null = null;
   let reqId = 0;
   const pending = new Map<number | string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   const notifHandlers: Array<(method: string, params: unknown) => void> = [];
   let serverReqHandler: ((req: AgentRequest) => Promise<unknown> | unknown) | null = null;
   let dead = false;
+  // Désabonnements des trois écouteurs Tauri. L'id de processus étant
+  // CONSTANT, des écouteurs laissés vivants après destruction du panneau
+  // captent les événements du panneau suivant (stderr journalisé N fois
+  // après N ouvertures) — modèle correct recopié de serve.ts.
+  let desabonnements: Array<() => void> = [];
+
+  const desabonnerTout = () => {
+    for (const off of desabonnements) {
+      try { off(); } catch { /* écouteur déjà retiré */ }
+    }
+    desabonnements = [];
+  };
 
   const routeMessage = (raw: string) => {
     let msg: any;
@@ -92,62 +121,91 @@ export function createAcpTransport(
   const ensureSpawned = (): Promise<void> => {
     if (!spawnPromise) {
       spawnPromise = (async () => {
-        await invoke("acp_spawn", { id, command, args, env: env ?? null });
-        await listen<{ id: string; data: string }>("acp://output", (ev) => {
-          if (ev.payload.id === id) routeMessage(ev.payload.data);
-        });
-        await listen<{ id: string; data: string }>("acp://stderr", (ev) => {
-          if (ev.payload.id === id) console.log(`[agent:stderr] ${ev.payload.data.trimEnd()}`);
-        });
-        await listen<unknown>("acp://exit", (ev) => {
-          // Le pont Rust émet l'id NU ici (contrairement à output/stderr qui
-          // portent {id, data}) — on tolère les deux formes par prudence.
-          const charge = ev.payload as string | { id?: string };
-          const sortiId = typeof charge === "string" ? charge : charge?.id;
-          if (sortiId !== id) return;
-          dead = true;
-          console.warn(`[agent] processus terminé — id=${id}`);
-          // Toute requête en vol est rejetée : sans ça elle attendrait son
-          // timeout alors que le processus n'existe plus.
-          for (const [rid, p] of pending) {
-            clearTimeout(p.timer);
-            p.reject(new Error("agent process exited"));
-            pending.delete(rid);
-          }
-        });
+        await deps.invoquer("acp_spawn", { id, command, args, env: env ?? null });
+        desabonnements.push(
+          await deps.ecouter("acp://output", (charge) => {
+            const p = charge as { id?: unknown; data?: unknown };
+            if (p.id === id && typeof p.data === "string") routeMessage(p.data);
+          }),
+        );
+        desabonnements.push(
+          await deps.ecouter("acp://stderr", (charge) => {
+            const p = charge as { id?: unknown; data?: unknown };
+            if (p.id === id && typeof p.data === "string") console.log(`[agent:stderr] ${p.data.trimEnd()}`);
+          }),
+        );
+        desabonnements.push(
+          await deps.ecouter("acp://exit", (charge) => {
+            // Le pont Rust émet l'id NU ici (contrairement à output/stderr qui
+            // portent {id, data}) — on tolère les deux formes par prudence.
+            const c = charge as string | { id?: string };
+            const sortiId = typeof c === "string" ? c : c?.id;
+            if (sortiId !== id) return;
+            dead = true;
+            console.warn(`[agent] processus terminé — id=${id}`);
+            // Toute requête en vol est rejetée : sans ça elle attendrait son
+            // timeout alors que le processus n'existe plus.
+            for (const [rid, p] of pending) {
+              clearTimeout(p.timer);
+              p.reject(new Error("agent process exited"));
+              pending.delete(rid);
+            }
+            // Le transport est définitivement mort (`dead` barre toute
+            // requête ultérieure) : ses écouteurs n'ont plus rien à écouter.
+            desabonnerTout();
+          }),
+        );
       })();
     }
     return spawnPromise;
   };
 
-  const write = (payload: unknown) => {
-    void ensureSpawned().then(() => {
-      invoke("acp_write", { id, content: JSON.stringify(payload) })
-        .catch((e) => console.error("[agent] écriture échouée :", e));
-    });
+  /** Écrit une trame NDJSON, en garantissant le spawn au préalable. Rejette —
+   *  c'est à l'appelant de décider quoi faire du rejet. */
+  const ecrire = async (payload: unknown): Promise<void> => {
+    await ensureSpawned();
+    await deps.invoquer("acp_write", { id, content: JSON.stringify(payload) });
+  };
+
+  /** Variante « au fil de l'eau » pour les trames sans réponse attendue
+   *  (notifications, réponses aux requêtes de l'agent) : personne n'attend,
+   *  donc l'échec ne peut que se journaliser. */
+  const ecrireDetache = (payload: unknown) => {
+    void ecrire(payload).catch((e) => console.error("[agent] écriture échouée :", e));
   };
 
   const self: AcpTransport = {
-    sendRequest(method, params, timeoutMs = 30_000) {
-      return new Promise((resolve, reject) => {
-        if (dead) { reject(new Error("agent process exited")); return; }
-        const id = ++reqId;
+    async sendRequest(method, params, timeoutMs = 30_000) {
+      if (dead) throw new Error("agent process exited");
+      // Le spawn est attendu AVANT d'armer la minuterie, et son rejet est
+      // propagé tel quel : sinon un binaire absent se traduisait par 30 s
+      // d'attente puis un « sendRequest timeout », chaîne que la détection
+      // d'« agent introuvable » (client.ts) ne reconnaît pas — la bannière
+      // dédiée, pourtant traduite et câblée, ne s'affichait jamais.
+      await ensureSpawned();
+      const rid = ++reqId;
+      return await new Promise<unknown>((resolve, reject) => {
         const timer = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`sendRequest timeout: ${method} (id=${id})`));
+          pending.delete(rid);
+          reject(new Error(`sendRequest timeout: ${method} (id=${rid})`));
         }, timeoutMs);
-        pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
-        write({ jsonrpc: "2.0", id, method, params: params ?? {} });
+        pending.set(rid, { resolve, reject, timer });
+        // Écriture échouée = réponse impossible : inutile d'attendre le délai.
+        ecrire({ jsonrpc: "2.0", id: rid, method, params: params ?? {} }).catch((e) => {
+          if (!pending.delete(rid)) return;
+          clearTimeout(timer);
+          reject(e instanceof Error ? e : new Error(String(e)));
+        });
       });
     },
     sendNotification(method, params) {
-      write({ jsonrpc: "2.0", method, params: params ?? {} });
+      ecrireDetache({ jsonrpc: "2.0", method, params: params ?? {} });
     },
     respond(id, result) {
-      write({ jsonrpc: "2.0", id, result });
+      ecrireDetache({ jsonrpc: "2.0", id, result });
     },
     respondError(id, code, message) {
-      write({ jsonrpc: "2.0", id, error: { code, message } });
+      ecrireDetache({ jsonrpc: "2.0", id, error: { code, message } });
     },
     onNotification(handler) {
       notifHandlers.push(handler);
@@ -160,7 +218,8 @@ export function createAcpTransport(
       serverReqHandler = handler;
     },
     async kill() {
-      try { await invoke("acp_kill", { id }); } catch { /* déjà mort */ }
+      desabonnerTout();
+      try { await deps.invoquer("acp_kill", { id }); } catch { /* déjà mort */ }
     },
   };
 
