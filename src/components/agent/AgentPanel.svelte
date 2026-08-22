@@ -74,7 +74,13 @@ import {
   entreeHistorique,
 } from "@/lib/agent/historique";
 import { nomTranscription, transcriptionMarkdown } from "@/lib/agent/transcription";
-import { diagnostiquerQuota, urlPasserelle, type VerdictQuota } from "@/lib/agent/quota";
+import {
+  diagnostiquerQuota,
+  estPasserelleMaison,
+  type RaisonIndeterminee,
+  type ResultatQuota,
+} from "@/lib/agent/quota";
+import { parserConfigProviders, type FournisseurLocal } from "@/lib/agent/config-providers";
 import { notifications } from "@/stores/notifications.svelte";
 import { contextMenu } from "@/stores/context-menu.svelte";
 import { mkdir } from "@tauri-apps/plugin-fs";
@@ -232,15 +238,17 @@ async function choisirModele(id: string): Promise<string | null> {
   // Le motif verbatim part au PIED DE PANNEAU en erreur bloquante (plus de
   // toast : il s'efface tout seul, or ce refus doit rester jusqu'à ce que
   // l'utilisateur en prenne acte) et le menu se referme : le chip reste sur
-  // le modèle précédent. Non concluant (pas de clé, réseau) → on applique
-  // normalement ; le diagnostic post-envoi reste le filet.
+  // le modèle précédent. Non concluant → on applique quand même, mais on le
+  // DIT (avertissement) : un échec de vérification n'est pas un feu vert.
   const decoupe = decouperIdModele(id);
-  if (decoupe && urlPasserelle(decoupe.fournisseur)) {
-    const refus = await verifierDisponibilitePasserelle(decoupe);
-    if (refus) {
-      statut("erreur", "quota", t("agent.quotaLimite", { message: refus.message }), refus.url);
+  if (decoupe) {
+    const verdict = await verifierPasserelle(decoupe);
+    if (verdict.etat === "refus") {
+      statut("erreur", "quota", t("agent.quotaLimite", { message: verdict.message }), verdict.url);
       return null;
     }
+    if (verdict.etat === "indetermine") signalerIndetermine(verdict.raison);
+    else if (verdict.etat === "sain") statutResolu("quota");
   }
   etatModele = essayer(etatModele, id);
   // Pas de session prête : le choix s'appliquera à la session à venir.
@@ -275,16 +283,6 @@ function epinglerModele(id: string): void {
 /** Interroge la passerelle du fournisseur maison : 429 → le motif verbatim
  *  (sera affiché en couleur erreur dans le menu) ; tout autre cas → null,
  *  le choix suit son cours normal. */
-async function verifierDisponibilitePasserelle(
-  decoupe: { fournisseur: string; modele: string },
-): Promise<VerdictQuota | null> {
-  return await diagnostiquerQuota({
-    fournisseur: decoupe.fournisseur,
-    modele: decoupe.modele,
-    cle: await cleLocale(decoupe.fournisseur),
-    fetchImpl: tauriFetch as unknown as typeof fetch,
-  });
-}
 
 // ── Catalogue complet des fournisseurs (voie serveur headless) ──────────────
 // Le contrat ACP ne rend que l'UTILISABLE ici et maintenant ; le catalogue
@@ -806,19 +804,45 @@ let updatesRecus = 0;
 let quotaSignale = false;
 const DELAI_DIAGNOSTIC_MS = 15_000;
 
-/** Clé API locale d'un fournisseur connecté, relue de GET /provider brut
- *  (le parseur du catalogue jette ce champ). null = introuvable/indispo —
- *  les appelants traitent ça comme « diagnostic non concluant ». */
-async function cleLocale(fournisseur: string): Promise<string | null> {
+/** Infos LOCALES d'un fournisseur (clé, URL d'API) — `/config/providers`,
+ *  23,9 Ko, au lieu des 5,3 Mo de `/provider` qu'on parsait pour en tirer
+ *  une seule chaîne. `ok: false` = serveur injoignable : c'est un ÉCHEC de
+ *  vérification, jamais un feu vert. */
+async function infosFournisseur(
+  fournisseur: string,
+): Promise<{ ok: true; infos: FournisseurLocal | null } | { ok: false }> {
   try {
-    const rep = await serveurCatalogue.requete<{
-      all?: { id?: unknown; key?: unknown }[];
-    }>(resolveAgentBinary(), "/provider");
-    const brut = rep.all?.find((p) => p.id === fournisseur);
-    return typeof brut?.key === "string" && brut.key ? brut.key : null;
+    const rep = await serveurCatalogue.requete<unknown>(
+      resolveAgentBinary(),
+      "/config/providers",
+    );
+    return { ok: true, infos: parserConfigProviders(rep).get(fournisseur) ?? null };
   } catch {
-    return null; // serveur headless indisponible : diagnostic impossible
+    return { ok: false };
   }
+}
+
+/** Diagnostic complet d'une passerelle : infos locales puis sonde. */
+async function verifierPasserelle(decoupe: {
+  fournisseur: string;
+  modele: string;
+}): Promise<ResultatQuota> {
+  if (!estPasserelleMaison(decoupe.fournisseur)) return { etat: "hors-sujet" };
+  const rep = await infosFournisseur(decoupe.fournisseur);
+  if (!rep.ok) return { etat: "indetermine", raison: "cle-introuvable" };
+  return await diagnostiquerQuota({
+    fournisseur: decoupe.fournisseur,
+    modele: decoupe.modele,
+    cle: rep.infos?.cle,
+    urlDeclaree: rep.infos?.urlApi,
+    fetchImpl: tauriFetch as unknown as typeof fetch,
+  });
+}
+
+/** Un diagnostic non concluant se DIT — c'est la moitié qui manquait : un
+ *  échec de vérification passait pour un feu vert silencieux. */
+function signalerIndetermine(raison: RaisonIndeterminee): void {
+  statut("avertissement", "quota", t(`agent.quotaIndetermine.${raison}`));
 }
 
 /** Prompt muet depuis DELAI_DIAGNOSTIC_MS sur un modèle maison → on demande
@@ -834,13 +858,15 @@ async function diagnostiquerSilence(modeleId: string, avant: number): Promise<vo
   if (status !== "busy" || !sessionId || updatesRecus !== avant) return;
   const decoupe = decouperIdModele(modeleId);
   if (!decoupe) return;
-  const verdict = await diagnostiquerQuota({
-    fournisseur: decoupe.fournisseur,
-    modele: decoupe.modele,
-    cle: await cleLocale(decoupe.fournisseur),
-    fetchImpl: tauriFetch as unknown as typeof fetch,
-  });
-  if (!verdict || status !== "busy" || updatesRecus !== avant) return;
+  const verdict = await verifierPasserelle(decoupe);
+  if (status !== "busy" || updatesRecus !== avant) return;
+  if (verdict.etat === "indetermine") {
+    // Le tour continue (le chien de garde d'inactivité reste le filet) mais
+    // l'utilisateur sait qu'on n'a pas pu conclure.
+    signalerIndetermine(verdict.raison);
+    return;
+  }
+  if (verdict.etat !== "refus") return;
   quotaSignale = true;
   pushItem({ kind: "agent", text: t("agent.tourInterrompu") });
   statut("erreur", "quota", t("agent.quotaLimite", { message: verdict.message }), verdict.url);
