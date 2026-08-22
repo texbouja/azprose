@@ -117,10 +117,11 @@ const filtres = $derived.by(() => {
 const groupes = $derived(grouperParProvider(filtres));
 
 /** Catalogue reçu du panneau, déjà curé (cochés en réglages, hors connectés
- *  qui sont dans la section actifs). Le garde `!connecte` reste par défense :
- *  l'état peut changer entre le filtrage panneau et l'ouverture du menu. */
+ *  qui sont dans la section actifs — le panneau seul connaît l'état vivant
+ *  de connexion, tiré des `configOptions`). Ne reste ici que le filtre de
+ *  bon sens : un fournisseur sans modèle n'a pas de sous-menu à ouvrir. */
 const fournisseursCatalogue = $derived(
-  (catalogue ?? []).filter((f) => !f.connecte && f.modeles.length > 0),
+  (catalogue ?? []).filter((f) => f.modeles.length > 0),
 );
 
 /** Mode aplati : le catalogue filtré aussi — un clic passe par

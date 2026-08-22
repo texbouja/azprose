@@ -49,10 +49,17 @@ const REPONSE_SONDE = {
 };
 
 describe("parserCatalogue (GET /provider)", () => {
-  test("parse la forme mesurée : ordre conservé, état de connexion posé", () => {
+  test("parse la forme mesurée : ordre du serveur conservé", () => {
     const catalogue = parserCatalogue(REPONSE_SONDE);
     expect(catalogue.map((f) => f.id)).toEqual(["opencode", "hpc-ai", "anthropic"]);
-    expect(catalogue.map((f) => f.connecte)).toEqual([false, false, true]);
+  });
+
+  test("le catalogue est PUREMENT STATIQUE : pas d'état de connexion dedans", () => {
+    // L'état de connexion est volatil et le catalogue se persiste : les
+    // mélanger obligeait à écrire une logique d'invalidation. Il vient
+    // désormais des configOptions de la session vivante.
+    const [opencode] = parserCatalogue(REPONSE_SONDE);
+    expect(Object.keys(opencode).sort()).toEqual(["id", "modeles", "nom"]);
   });
 
   test("identifiant complet = fournisseur + clé, même quand la clé contient un /", () => {
@@ -78,23 +85,23 @@ describe("parserCatalogue (GET /provider)", () => {
     expect(parserCatalogue({ all: "pas-un-tableau" })).toEqual([]);
   });
 
-  test("connected absent ou déchets → aucun fournisseur connecté", () => {
-    const catalogue = parserCatalogue({ all: REPONSE_SONDE.all.slice(0, 3) });
-    expect(catalogue.every((f) => !f.connecte)).toBe(true);
-    const bizarre = parserCatalogue({
-      all: [{ id: "a" }],
-      connected: [42, null, true],
-    });
-    expect(bizarre[0].connecte).toBe(false);
+  test("le champ `connected` de la réponse est délibérément ignoré", () => {
+    const catalogue = parserCatalogue({ all: [{ id: "a" }], connected: ["a"] });
+    expect(catalogue[0]).toEqual({ id: "a", nom: "a", modeles: [] });
   });
 });
 
 describe("trierCatalogue (ordre de repos du menu)", () => {
   test("connectés d'abord, puis ordre de popularité (maison, célébrités, agrégateurs)", () => {
-    const trié = trierCatalogue(parserCatalogue(REPONSE_SONDE));
-    // anthropic connecté passe devant ; opencode (maison) avant les
-    // célébrités, anthropic suit, hpc-ai (agrégateur) ferme la marche.
+    // Les connectés viennent de l'APPELANT (configOptions de la session),
+    // plus d'un drapeau porté par l'entrée.
+    const trié = trierCatalogue(parserCatalogue(REPONSE_SONDE), new Set(["anthropic"]));
     expect(trié.map((f) => f.id)).toEqual(["anthropic", "opencode", "hpc-ai"]);
+  });
+
+  test("sans ensemble de connectés : popularité seule (catalogue relu du disque)", () => {
+    const trié = trierCatalogue(parserCatalogue(REPONSE_SONDE));
+    expect(trié.map((f) => f.id)).toEqual(["opencode", "anthropic", "hpc-ai"]);
   });
 
   test("ordre imposé des célébrités ; égalité de nom départagée par id", () => {
@@ -171,7 +178,7 @@ describe("filtrerCatalogue (curation utilisateur)", () => {
   const catalogue = parserCatalogue(REPONSE_SONDE);
 
   test("ne garde que les fournisseurs cochés ET non connectés", () => {
-    const visibles = filtrerCatalogue(catalogue, ["opencode", "anthropic"]);
+    const visibles = filtrerCatalogue(catalogue, ["opencode", "anthropic"], new Set(["anthropic"]));
     // anthropic est connecté : visible par nature, jamais dans la section
     // catalogue (le sélecteur l'affiche à part, via les actifs).
     expect(visibles.map((f) => f.id)).toEqual(["opencode"]);

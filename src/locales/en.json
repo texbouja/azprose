@@ -551,6 +551,8 @@
   "settings.fournisseursIndisponible": "Catalog unavailable (server unreachable).",
   "settings.fournisseursFiltre": "Filter by name or identifier…",
   "settings.fournisseursAucun": "No provider matches the filter.",
+  "settings.fournisseursCacheVide": "No catalogue stored yet — use “Reload catalogue”.",
+  "settings.fournisseursRecharger": "Reload catalogue",
   "settings.fournisseursConnecte": "Connected",
   "settings.fournisseursAvertissement": "Applied model kept: {id} stays active but no longer appears in the picker.",
   "settings.module.calendar": "Calendar",

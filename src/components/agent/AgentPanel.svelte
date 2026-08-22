@@ -99,6 +99,7 @@ import { cleLibelleOutil, resumerOutil } from "@/lib/agent/outils";
 import { getProjectRoot } from "@/lib/session";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { ecrireCatalogueCache, lireCatalogueCache } from "@/lib/agent/catalogue-store";
 import { getT, language } from "@/lib/i18n";
 // Pipeline « chat » : même processus que la preview (renderChatMarkdown dans
 // markdown/render.ts), classe .mdv-prose pour la même typographie.
@@ -280,31 +281,44 @@ function epinglerModele(id: string): void {
   void choisirModele(id);
 }
 
-/** Interroge la passerelle du fournisseur maison : 429 → le motif verbatim
- *  (sera affiché en couleur erreur dans le menu) ; tout autre cas → null,
- *  le choix suit son cours normal. */
-
-// ── Catalogue complet des fournisseurs (voie serveur headless) ──────────────
+// ── Catalogue complet des fournisseurs ──────────────────────────────────────
 // Le contrat ACP ne rend que l'UTILISABLE ici et maintenant ; le catalogue
 // ENTIER (193 fournisseurs à charge réelle) vient de `GET /provider` — voie
-// documentée d'OpenCode — servi par le MÊME binaire en mode `serve`. Cycle
-// paresseux : premier spawn à la première ouverture du menu, réutilisé
-// ensuite, tué avec le panneau (décision 2026-08-21).
+// documentée d'OpenCode — servi par le MÊME binaire en mode `serve`.
+//
+// Depuis le 2026-08-22 il est PERSISTÉ (palier global, `catalogue-cache.ts`) :
+// ouvrir le menu ne lance plus `opencode serve`, il lit un fichier. Le serveur
+// ne se lance plus que pour se CONNECTER et pour VÉRIFIER une passerelle —
+// les deux seuls moments où un délai de lancement est légitime, parce que
+// l'utilisateur y attend visiblement quelque chose.
 let catalogue = $state<FournisseurCatalogue[] | null>(null);
 let catalogueErreur = $state(false);
+/** Version du binaire, annoncée à l'initialize — clé de validité du cache. */
+let versionAgent = $state<string | null>(null);
 
-async function chargerCatalogue(): Promise<void> {
-  // Prêt → ne rien faire ; échec précédent ([] + erreur) → réessayer à
-  // chaque ouverture, le serveur a pu démarrer entre-temps.
-  if (catalogue !== null && !catalogueErreur) return;
+/** Lecture disque, au montage. ASYNCHRONE : c'est le prix du hors-quota, et
+ *  `catalogue === null` (« pas encore chargé ») est un état déjà connu du
+ *  code. Silencieux : un cache absent est le cas normal du premier lancement. */
+async function chargerCatalogueDepuisCache(): Promise<void> {
+  if (catalogue !== null) return;
+  const donnees = await lireCatalogueCache(versionAgent);
+  if (donnees) catalogue = donnees;
+}
+
+/** Récupère le catalogue AUPRÈS DU SERVEUR (donc en le lançant si besoin) et
+ *  le persiste. Appelé à la demande — bouton « Recharger » des réglages — et
+ *  gratuitement après une connexion réussie, le serveur tournant déjà. */
+async function rechargerCatalogue(): Promise<void> {
   try {
     const rep = await serveurCatalogue.requete<unknown>(resolveAgentBinary(), "/provider");
-    catalogue = trierCatalogue(parserCatalogue(rep));
+    const donnees = parserCatalogue(rep);
+    catalogue = donnees;
     catalogueErreur = false;
     statutResolu("catalogue"); // condition observable : le catalogue est là
+    await ecrireCatalogueCache(donnees, versionAgent);
   } catch (e) {
     console.warn("[agent] catalogue des fournisseurs indisponible :", e);
-    catalogue = [];
+    catalogue ??= [];
     catalogueErreur = true;
     // Avertissement, pas erreur bloquante : le sélecteur reste utilisable
     // avec les modèles déclarés par l'agent. Le menu porte déjà sa propre
@@ -313,20 +327,29 @@ async function chargerCatalogue(): Promise<void> {
   }
 }
 
-/** Après connexion réussie : le fournisseur doit QUITTER la section catalogue
- *  pour rejoindre les actifs — l'état `connected` du serveur est LA vérité. */
-async function rafraichirCatalogue(): Promise<void> {
-  catalogue = null;
-  catalogueErreur = false;
-  await chargerCatalogue();
+/** Ouverture du menu : plus aucun accès réseau ni lancement de serveur — le
+ *  cache suffit. Un catalogue absent se recharge depuis les réglages. */
+async function chargerCatalogue(): Promise<void> {
+  await chargerCatalogueDepuisCache();
+  catalogue ??= [];
 }
 
 // ── Curation utilisateur (Réglages › Assistant IA › Fournisseurs) ───────────
 // Le catalogue brut compte ~193 entrées : la section « Autres fournisseurs »
-// ne montre que les fournisseurs COCHÉS en réglages. Les connectés sont déjà
-// exclus par filtrerCatalogue (affichés à part, visibles même non cochés).
+// ne montre que les fournisseurs COCHÉS en réglages. Les connectés en sont
+// exclus — ils s'affichent à part, section « Actifs ».
+/** Fournisseurs CONNECTÉS, dérivés de la session vivante (`configOptions`)
+ *  plutôt que d'un drapeau persisté avec le catalogue, qui serait périmé. */
+const fournisseursConnectes = $derived(
+  new Set(modelesDisponibles.map((m) => m.provider)),
+);
+const catalogueTrie = $derived(
+  catalogue === null ? null : trierCatalogue(catalogue, fournisseursConnectes),
+);
 const cataloguePourMenu = $derived(
-  catalogue === null ? null : filtrerCatalogue(catalogue, fournisseursSelection.current),
+  catalogueTrie === null
+    ? null
+    : filtrerCatalogue(catalogueTrie, fournisseursSelection.current, fournisseursConnectes),
 );
 /** Aucune coche = message d'orientation vers les réglages, pas un « tous déjà
  *  connectés » qui serait faux. */
@@ -340,19 +363,19 @@ let connexion = $state<{ fournisseur: FournisseurCatalogue; modeleId: string } |
  *  entre-temps) → chemin normal du sélecteur ; sinon → dialogue. */
 function choisirModeleCatalogue(modeleId: string): void {
   const f = fournisseurDeId(catalogue ?? [], modeleId);
-  if (!f || f.connecte) {
+  if (!f || fournisseursConnectes.has(f.id)) {
     void choisirModele(modeleId);
     return;
   }
   connexion = { fournisseur: f, modeleId };
 }
 
-/** Le serveur confirme la connexion (`connected`) : rafraîchir le catalogue,
- *  appliquer le modèle demandé, prévenir qu'un ↺ peut être nécessaire. */
+/** Le serveur confirme la connexion : rechargement GRATUIT du catalogue — le
+ *  serveur tourne déjà à cet instant, c'est le meilleur moment pour le faire. */
 async function connexionReussie(): Promise<void> {
   const modeleId = connexion?.modeleId;
   connexion = null;
-  await rafraichirCatalogue();
+  await rechargerCatalogue();
   if (!modeleId) return;
   await choisirModele(modeleId);
   statut("info", "modele", t("agent.model.connecteNote"));
@@ -651,7 +674,11 @@ async function startSession() {
       env: buildAgentEnv(await ensureAgentInstructions(root), modeleVoulu ?? undefined),
       onServerRequest: (req) => handlers!.handle(req),
     });
-    await client.start();
+    const init = await client.start();
+    // La version du binaire conditionne la validité du cache de catalogue :
+    // c'est la seule chose qui puisse en changer le contenu.
+    versionAgent = typeof init?.agentInfo?.version === "string" ? init.agentInfo.version : null;
+    void chargerCatalogueDepuisCache();
     offUpdate ??= client.onUpdate(applyUpdate);
     const ses = await client.newSession(root, await mcpServers(root));
     sessionId = ses.sessionId;

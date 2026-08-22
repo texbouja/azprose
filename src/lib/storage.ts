@@ -60,10 +60,17 @@ export const STORAGE_KEYS = {
   // Chemin explicite vers le binaire de l'agent (surcharge du PATH) —
   // sert à la veille : pointer une version candidate avant de l'adopter.
   agentBinaryPath: "mdview.agent.binaryPath",
-  // Modèle choisi pour l'assistant (équivalent `/models`) — GLOBAL comme le
-  // chemin du binaire : le choix suit l'utilisateur, pas le vault. Absent ou
-  // vide = « Défaut OpenCode » (aucune surcharge injectée).
+  // Modèle ÉPINGLÉ = le défaut de l'assistant — GLOBAL comme le chemin du
+  // binaire : le choix suit l'utilisateur, pas le vault. Absent ou vide =
+  // aucun pin, l'assistant suit le comportement par défaut ou configuré
+  // d'OpenCode. (Portait la « surcharge globale » avant le 2026-08-22 : cette
+  // valeur devient le pin initial, cf. `modele-defaut.ts`.)
   agentModel: "mdview.agent.model",
+  // Dernière version connue du binaire OpenCode. Sert de clé de validité au
+  // catalogue persisté pour les lecteurs qui n'ont pas de session ACP sous la
+  // main (les réglages) : sans elle, ils devraient lancer le serveur juste
+  // pour savoir s'ils ont le droit de lire un fichier.
+  agentBinaryVersion: "mdview.agent.binaryVersion",
   // Fournisseurs cochés pour le menu du sélecteur (opt-in) — GLOBAL comme le
   // modèle : c'est une préférence de lecture du catalogue, pas une donnée du
   // vault. Les fournisseurs CONNECTÉS restent visibles même absents de la

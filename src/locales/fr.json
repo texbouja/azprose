@@ -536,6 +536,8 @@
   "settings.fournisseursIndisponible": "Catalogue indisponible (serveur injoignable).",
   "settings.fournisseursFiltre": "Filtrer par nom ou identifiant…",
   "settings.fournisseursAucun": "Aucun fournisseur ne correspond au filtre.",
+  "settings.fournisseursCacheVide": "Aucun catalogue en mémoire — utilisez « Recharger le catalogue ».",
+  "settings.fournisseursRecharger": "Recharger le catalogue",
   "settings.fournisseursConnecte": "Connecté",
   "settings.fournisseursAvertissement": "Modèle appliqué conservé : {id} reste actif mais n'apparaît plus dans le sélecteur.",
   "settings.module.calendar": "Calendrier",

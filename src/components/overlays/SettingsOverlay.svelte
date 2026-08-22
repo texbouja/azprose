@@ -28,6 +28,11 @@ import { programmesSelection } from "@/stores/programmes-selection.svelte";
 import { fournisseursSelection } from "@/stores/fournisseurs-selection.svelte";
 import { STORAGE_KEYS } from "@/lib/storage";
 import { parserCatalogue, trierCatalogue, type FournisseurCatalogue } from "@/lib/agent/catalogue";
+import {
+  ecrireCatalogueCache,
+  lireCatalogueCache,
+  versionDuServeur,
+} from "@/lib/agent/catalogue-store";
 import { serveurCatalogue } from "@/lib/agent/serve";
 import { resolveAgentBinary } from "@/lib/agent/client";
 import { grouperParMatiere, groupeOuvert } from "@/lib/programmes-groupes";
@@ -195,11 +200,14 @@ $effect(() => {
 });
 
 // ── Fournisseurs de l'assistant (curation du sélecteur de modèles) ─────────
-// Même voie que le panneau : `GET /provider` du serveur headless, chargé
-// paresseusement à l'ouverture du module. La sélection (coches) vit dans le
-// store GLOBAL `fournisseursSelection` — partagé avec le sélecteur.
+// Le catalogue est PERSISTÉ (palier global) : à l'ouverture du module on le
+// relit du disque, sans lancer `opencode serve`. Le rafraîchir est une
+// INTENTION — le bouton « Recharger », qui seul paie le lancement du serveur
+// et réécrit le cache. La sélection (coches) vit dans le store GLOBAL
+// `fournisseursSelection`, partagé avec le sélecteur du panneau.
 let fournisseursDispo = $state<FournisseurCatalogue[] | null>(null);
 let fournisseursErreur = $state(false);
+let fournisseursRechargement = $state(false);
 let filtreFournisseurs = $state("");
 
 const fournisseursAffiches = $derived.by(() => {
@@ -211,17 +219,36 @@ const fournisseursAffiches = $derived.by(() => {
   );
 });
 
-async function rechargerFournisseurs() {
+/** Ouverture du module : disque seulement. Cache absent ou périmé (binaire
+ *  mis à jour) → liste vide + invite à recharger, jamais un lancement de
+ *  serveur subi. */
+async function chargerFournisseursDepuisCache() {
   fournisseursDispo = null;
   fournisseursErreur = false;
   filtreFournisseurs = "";
+  const donnees = await lireCatalogueCache();
+  fournisseursDispo = donnees ? trierCatalogue(donnees) : [];
+}
+
+/** Bouton « Recharger le catalogue » : la seule voie qui lance le serveur —
+ *  une INTENTION explicite, donc un délai légitime. Réécrit le cache. */
+async function rechargerFournisseurs() {
+  if (fournisseursRechargement) return;
+  fournisseursRechargement = true;
+  fournisseursErreur = false;
   try {
-    const rep = await serveurCatalogue.requete<unknown>(resolveAgentBinary(), "/provider");
-    fournisseursDispo = trierCatalogue(parserCatalogue(rep));
+    const binaire = resolveAgentBinary();
+    const requete = <T,>(chemin: string) => serveurCatalogue.requete<T>(binaire, chemin);
+    const version = await versionDuServeur(requete);
+    const donnees = parserCatalogue(await requete<unknown>("/provider"));
+    fournisseursDispo = trierCatalogue(donnees);
+    await ecrireCatalogueCache(donnees, version);
   } catch (e) {
     console.warn("[settings] catalogue des fournisseurs indisponible :", e);
-    fournisseursDispo = [];
+    fournisseursDispo ??= [];
     fournisseursErreur = true;
+  } finally {
+    fournisseursRechargement = false;
   }
 }
 
@@ -253,7 +280,7 @@ function basculerFournisseur(f: FournisseurCatalogue) {
 
 $effect(() => {
   if (activeModule !== "fournisseurs") return;
-  void rechargerFournisseurs();
+  void chargerFournisseursDepuisCache();
 });
 
 let expandedSections = $state(
@@ -1479,6 +1506,21 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
             <p class="mdv-settings__section-title">{t("settings.fournisseursTitle")}</p>
             <p class="mdv-settings__hint">{t("settings.fournisseursHint")}</p>
 
+            <!-- Le catalogue vient du DISQUE ; le rafraîchir est une
+                 intention explicite, seule voie qui lance `opencode serve`. -->
+            <div class="mdv-settings__row">
+              <button
+                type="button"
+                class="mdv-settings__restart"
+                disabled={fournisseursRechargement}
+                onclick={rechargerFournisseurs}
+              >
+                {fournisseursRechargement
+                  ? t("settings.fournisseursChargement")
+                  : t("settings.fournisseursRecharger")}
+              </button>
+            </div>
+
             {#if fournisseursDispo === null}
               <p class="mdv-settings__hint">{t("settings.fournisseursChargement")}</p>
             {:else if fournisseursErreur}
@@ -1493,21 +1535,19 @@ const HEADING_FONT_OPTIONS: { value: HeadingFont; labelKey: string }[] = [
               <div class="mdv-fourn-liste">
                 {#each fournisseursAffiches as f (f.id)}
                   <div class="mdv-fourn">
-                    <!-- Connecté = actif par nature : coche verrouillée, la
-                         curation ne concerne que l'offre non connectée. -->
                     <Checkbox
                       label={f.nom}
-                      value={f.connecte || fournisseursSelection.current.includes(f.id)}
-                      disabled={f.connecte}
+                      value={fournisseursSelection.current.includes(f.id)}
                       onchange={() => basculerFournisseur(f)}
                     />
-                    <p class="mdv-fourn__meta">
-                      {#if f.connecte}{t("settings.fournisseursConnecte")} · {f.modeles.length}
-                      {:else}{f.id} · {f.modeles.length}{/if}
-                    </p>
+                    <p class="mdv-fourn__meta">{f.id} · {f.modeles.length}</p>
                   </div>
                 {:else}
-                  <p class="mdv-settings__hint">{t("settings.fournisseursAucun")}</p>
+                  <p class="mdv-settings__hint">
+                    {t(fournisseursDispo.length === 0
+                      ? "settings.fournisseursCacheVide"
+                      : "settings.fournisseursAucun")}
+                  </p>
                 {/each}
               </div>
             {/if}

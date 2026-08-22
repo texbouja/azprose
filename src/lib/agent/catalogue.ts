@@ -23,29 +23,29 @@ export interface ModeleCatalogue {
   nom?: string;
 }
 
-/** Un fournisseur du catalogue, avec son état de connexion. */
+/**
+ * Un fournisseur du catalogue. **Purement statique** : l'état de connexion
+ * n'est PAS ici (il l'était jusqu'au 2026-08-22). Il est volatil — une
+ * connexion faite ailleurs le périme — alors que le catalogue, lui, se
+ * persiste sur disque. Mélanger les deux obligeait à écrire une logique
+ * d'invalidation ; les séparer la supprime. L'état vivant vient des
+ * `configOptions` de la session, qui en sont déjà la source d'affichage.
+ */
 export interface FournisseurCatalogue {
   id: string;
   nom: string;
-  /** Authentifié sur cette machine → modèles immédiatement utilisables. */
-  connecte: boolean;
   modeles: ModeleCatalogue[];
 }
 
 /**
  * Parse la réponse de `GET /provider`. Défensif : entrées non conformes
- * ignorées, doublons dédupliqués, `connected` absent → aucun. L'ordre du
- * serveur est conservé (le tri d'affichage est l'affaire de trierCatalogue).
+ * ignorées, doublons dédupliqués. L'ordre du serveur est conservé (le tri
+ * d'affichage est l'affaire de trierCatalogue). Le champ `connected` de la
+ * réponse est délibérément IGNORÉ — voir `FournisseurCatalogue`.
  */
 export function parserCatalogue(reponse: unknown): FournisseurCatalogue[] {
-  const r = (reponse ?? {}) as {
-    all?: unknown;
-    connected?: unknown;
-  };
+  const r = (reponse ?? {}) as { all?: unknown };
   if (!Array.isArray(r.all)) return [];
-  const connectes = new Set(
-    Array.isArray(r.connected) ? r.connected.filter((c): c is string => typeof c === "string") : [],
-  );
   const vus = new Set<string>();
   const resultats: FournisseurCatalogue[] = [];
   for (const brut of r.all) {
@@ -66,7 +66,6 @@ export function parserCatalogue(reponse: unknown): FournisseurCatalogue[] {
     resultats.push({
       id: p.id,
       nom: typeof p.name === "string" && p.name ? p.name : p.id,
-      connecte: connectes.has(p.id),
       modeles,
     });
   }
@@ -216,9 +215,17 @@ function rangFournisseur(id: string): number {
   return 300;
 }
 
-export function trierCatalogue(liste: FournisseurCatalogue[]): FournisseurCatalogue[] {
+/** `connectes` = ids présents dans les `configOptions` de la session, passés
+ *  par l'appelant. Vide = tri par popularité seule (cas du catalogue relu du
+ *  disque, avant qu'une session n'ait déclaré quoi que ce soit). */
+export function trierCatalogue(
+  liste: FournisseurCatalogue[],
+  connectes: ReadonlySet<string> = new Set(),
+): FournisseurCatalogue[] {
   return [...liste].sort((a, b) => {
-    if (a.connecte !== b.connecte) return a.connecte ? -1 : 1;
+    const ca = connectes.has(a.id);
+    const cb = connectes.has(b.id);
+    if (ca !== cb) return ca ? -1 : 1;
     const ra = rangFournisseur(a.id);
     const rb = rangFournisseur(b.id);
     if (ra !== rb) return ra < rb ? -1 : 1;
@@ -255,16 +262,21 @@ export function fournisseurDeId(
 }
 
 /**
- * Applique la curation utilisateur au catalogue brut : ne gardent que les
+ * Applique la curation utilisateur au catalogue : ne gardent que les
  * fournisseurs NON connectés ET cochés dans les réglages. Les connectés sont
  * exclus ici car le sélecteur les affiche à part (section « Actifs » via
  * `configOptions`) — et ils restent visibles même non cochés : actifs par
  * nature, la curation ne concerne que l'offre possible.
+ *
+ * `connectes` vient des `configOptions` de la session VIVANTE, plus d'un
+ * drapeau porté par l'entrée : le catalogue peut avoir été relu du disque,
+ * son instantané de connexion serait périmé.
  */
 export function filtrerCatalogue(
   liste: FournisseurCatalogue[],
   selection: string[],
+  connectes: ReadonlySet<string> = new Set(),
 ): FournisseurCatalogue[] {
   const coches = new Set(selection);
-  return liste.filter((f) => !f.connecte && coches.has(f.id));
+  return liste.filter((f) => !connectes.has(f.id) && coches.has(f.id));
 }
