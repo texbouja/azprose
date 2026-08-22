@@ -10,6 +10,7 @@
 // garde-fou réel côté OpenCode est `session/request_permission` (phase 4).
 
 import { createAcpTransport, type AcpTransport } from "./transport";
+import { surveillerSilence } from "./silence";
 import type {
   AgentRequest,
   ClientCapabilities,
@@ -24,6 +25,12 @@ import { STORAGE_KEYS } from "@/lib/storage";
 /** Id unique du processus agent dans le pont Rust (une session agent par
  *  fenêtre projet — D10 : conversation en mémoire, neuve à chaque lancement). */
 const AGENT_PROCESS_ID = "agent";
+
+/** Silence maximal d'un prompt avant abandon : une génération saine émet
+ *  des updates en continu ; 90 s sans AUCUN signe de vie = boucle de
+ *  réessai serveur (quota épuisé…) — on rend la main avec une erreur
+ *  explicite plutôt qu'un spinner de 10 minutes. */
+const INACTIVITE_PROMPT_MS = 90_000;
 
 export interface AgentClientOptions {
   /** Racine du vault — `cwd` de la session (D13). */
@@ -154,7 +161,7 @@ export function createAgentClient(options: AgentClientOptions): AgentClient {
       };
     },
 
-    async prompt(
+    prompt(
       sessionId: string,
       text: string,
       annexes: ContentBlock[] = [],
@@ -163,11 +170,26 @@ export function createAgentClient(options: AgentClientOptions): AgentClient {
       // défaut du transport. L'annulation passe par cancel(), pas par un délai.
       // Annexes = blocs ACP additionnels (resource_link des mentions @fichier)
       // — le serveur les convertit en pièces jointes, contenu embarqué.
-      return (await transport.sendRequest(
-        "session/prompt",
-        { sessionId, prompt: [{ type: "text", text }, ...annexes] },
-        600_000,
-      )) as PromptResult;
+      //
+      // Chien de garde d'inactivité (mesures 2026-08-22, sondes sonde-go-*):
+      // sur certaines erreurs (quota hebdo épuisé), OpenCode RETENTE en
+      // boucle sans aucune notification — ni réponse, ni effet à cancel().
+      // Sans ce chien : spinner infini jusqu'au timeout total (10 min).
+      // Une génération saine émet des updates en continu, elle ne déclenchera
+      // jamais le rejet ; chaque notification réarme le compteur.
+      const surveillance = surveillerSilence(
+        transport.sendRequest(
+          "session/prompt",
+          { sessionId, prompt: [{ type: "text", text }, ...annexes] },
+          600_000,
+        ) as Promise<PromptResult>,
+        INACTIVITE_PROMPT_MS,
+      );
+      const off = transport.onNotification(() => surveillance.battre());
+      return surveillance.resultat.finally(() => {
+        off();
+        surveillance.arreter();
+      });
     },
 
     async cancel(sessionId: string): Promise<void> {
