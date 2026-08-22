@@ -26,9 +26,10 @@ L'assistant ne contient aucun modèle : il s'appuie sur un programme séparé,
 > contente de dialoguer avec le programme que vous avez configuré. Le choix du
 > modèle, lui, se fait dans le panneau même — voir plus bas.
 
-Si l'assistant affiche « Agent introuvable », c'est qu'OpenCode n'est pas
-accessible : vérifiez qu'il est installé et qu'il répond à la commande
-`opencode` dans un terminal.
+Si le **pied du panneau** affiche « Agent introuvable » en rouge, c'est
+qu'OpenCode n'est pas accessible : vérifiez qu'il est installé et qu'il répond
+à la commande `opencode` dans un terminal. Le message disparaît de lui-même
+dès qu'une session démarre.
 
 ## Ouvrir l'assistant
 
@@ -42,6 +43,29 @@ bouton **stop** interrompt la réponse en cours.
 > Certains modèles exposent leur raisonnement avant de répondre. Il s'affiche
 > replié sous le libellé *réflexion* — dépliez-le si vous voulez suivre son
 > cheminement, ignorez-le sinon.
+
+## Le bandeau du bas
+
+Le **pied du panneau** est réservé à ce qui concerne la *tuyauterie* :
+connexion, catalogue, quota, changement de modèle. Rien de tout cela
+n'appartient à la conversation, et rien de tout cela ne figure donc dans une
+transcription exportée. Le corps du panneau, lui, reste la discussion.
+
+Trois niveaux, avec chacun sa durée de vie :
+
+| Couleur | Ce que c'est | Combien de temps |
+|---|---|---|
+| discret | une information | jusqu'à votre prochaine action dans le panneau |
+| accentué | un avertissement | jusqu'à la fin de l'échange suivant |
+| rouge | un blocage | jusqu'à ce que la cause disparaisse, ou que vous fermiez le message |
+
+Un blocage ajoute aussi une **pastille rouge dans l'en-tête** du panneau : le
+bas de l'écran est facile à ne pas voir, l'en-tête beaucoup moins. Quand le
+message cite une adresse — le refus d'une passerelle indique souvent où
+réactiver son forfait —, un bouton **Ouvrir** vous y emmène.
+
+Un message plus grave chasse un message plus léger, jamais l'inverse : une
+information périmée ne réapparaît pas une fois l'erreur résolue.
 
 ## Joindre un fichier avec `@`
 
@@ -103,21 +127,34 @@ L'en-tête du panneau porte un sélecteur **Modèle**, organisé en deux section
 Un champ de filtre permet de se retrouver dans une longue liste ; il fouille
 les deux sections à la fois.
 
-- **Défaut OpenCode** ne surcharge rien : c'est OpenCode qui choisit son
-  modèle par défaut.
-- Choisir un modèle l'applique **immédiatement**, sans perdre la conversation
-  en cours.
-- Si votre modèle n'apparaît pas — fournisseur récent, modèle confidentiel —,
-  tapez directement son identifiant `fournisseur/modèle` dans le champ de
-  filtre et validez avec `Entrée`.
+Si votre modèle n'apparaît pas — fournisseur récent, modèle confidentiel —,
+tapez directement son identifiant `fournisseur/modèle` dans le champ de filtre
+et validez avec `Entrée`.
 
 Le sélecteur affiche le modèle **réellement en cours** : si OpenCode change de
 modèle de son propre chef — par exemple pour contourner une limite temporaire —,
 l'affichage suit.
 
-Le choix est conservé d'une session à l'autre et vaut pour tous vos projets.
-Revenir à **Défaut OpenCode** prend effet à la prochaine session (bouton
-*nouvelle session*).
+### Essayer un modèle, ou en faire son défaut
+
+Ce sont deux gestes différents, sur la même ligne du menu :
+
+| Geste | Effet |
+|---|---|
+| clic sur la **ligne** | applique le modèle **tout de suite**, pour la session en cours — rien n'est mémorisé |
+| clic sur la **punaise**, à droite | ce modèle devient votre **défaut** : mémorisé, appliqué à chaque nouvelle session, et appliqué immédiatement |
+
+Essayer un modèle ne change donc plus votre défaut à votre insu. La punaise
+pleine, en couleur d'accent, marque le défaut actuel ; il n'y en a **qu'un**,
+et recliquer sa punaise ne fait rien — pour en changer, punaisez-en un autre.
+
+> [!note] Tant que rien n'est punaisé
+> AZprose n'impose aucun modèle : l'assistant suit le comportement par défaut
+> d'OpenCode, y compris ce que vous avez pu écrire dans votre `opencode.json`.
+> C'est l'état de départ, pas un réglage manquant. Dès que vous punaisez un
+> modèle, en revanche, il passe devant.
+
+Le défaut vaut pour tous vos projets, comme le chemin du binaire.
 
 ### Connecter un fournisseur
 
@@ -141,8 +178,13 @@ nouvelle session (bouton ↺).
 > [!note] Validation à la sélection
 > Pour les fournisseurs maison d'OpenCode (*zen/go*), AZprose interroge la
 > passerelle dès que vous choisissez le modèle : si votre forfait est épuisé,
-> le refus exact s'affiche en toast erreur — avec le délai de réinitialisation
-> — et le modèle précédent reste actif.
+> le refus exact s'affiche **en pied de panneau**, en rouge — avec le délai de
+> réinitialisation et un bouton vers votre espace de travail — et le modèle
+> précédent reste actif.
+>
+> Si la vérification **n'aboutit pas** (passerelle injoignable, clé
+> introuvable), le modèle est appliqué quand même, mais le pied du panneau le
+> dit en avertissement. « Pas pu vérifier » n'est pas « tout va bien ».
 
 > La connexion se fait depuis AZprose mais l'authentification appartient à
 > OpenCode : les modèles connectés ici le sont aussi pour l'usage en terminal.
@@ -160,8 +202,8 @@ Anthropic, Google, Alibaba, DeepSeek, Moonshot, Z.ai… — puis les agrégateur
 et fournisseurs d'accès ; un champ de filtre (nom ou identifiant) permet de
 se retrouver dans la liste complète.
 
-- Les fournisseurs **connectés** apparaissent en tête, coche verrouillée :
-  ils sont visibles dans le menu de toute façon, inutile de les cocher.
+- Les fournisseurs **connectés** apparaissent en tête : ils sont visibles dans
+  le menu de toute façon, cochés ou non.
 - Décocher un fournisseur le retire du menu ; si l'un de ses modèles est
   appliqué, il **reste actif** — il n'est juste plus proposé. AZprose vous
   prévient dans ce cas : rien n'est cassé, mais pour retrouver ce modèle
@@ -171,6 +213,24 @@ se retrouver dans la liste complète.
 > Même sans fournisseur coché, taper directement un identifiant
 > `fournisseur/modèle` dans le champ du sélecteur fonctionne toujours — et
 > déclenche la connexion intégrée si nécessaire.
+
+### Recharger le catalogue
+
+Le catalogue est **conservé sur votre machine** après sa première
+récupération : ouvrir le menu des modèles ne demande plus rien à OpenCode, la
+liste s'affiche instantanément. Elle ne bouge que si vous le demandez, avec le
+bouton **Recharger le catalogue** en haut de *Réglages* → *Assistant IA* →
+*Fournisseurs*. C'est la seule action qui lance le serveur d'OpenCode : elle
+prend quelques secondes, et c'est normal.
+
+Rechargez après avoir **mis à jour OpenCode** (le catalogue mémorisé est alors
+ignoré, la liste apparaît vide jusqu'au rechargement), ou si un fournisseur
+que vous savez récent ne figure pas dans la liste. Une connexion réussie
+rafraîchit le catalogue toute seule — le serveur tourne déjà à cet instant.
+
+Ce fichier vit dans le dossier applicatif d'AZprose, à côté du corpus des
+programmes ; il ne contient **aucune clé d'API** et n'est pas déposé dans vos
+coffres.
 
 ## Vous gardez la main sur les fichiers
 
