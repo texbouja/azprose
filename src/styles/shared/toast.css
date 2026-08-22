@@ -50,6 +50,18 @@
   text-overflow: ellipsis;
 }
 
+/* Variante multi-ligne (diagnostics longs) : le texte se replie et l'URL
+   éventuelle casse — la FIN du message (délai de réouverture…) doit rester
+   visible. La pilule devient carte, l'icône s'aligne en haut. */
+.mdv-toast--multiline {
+  align-items: flex-start;
+  border-radius: 14px;
+}
+.mdv-toast--multiline .mdv-toast__msg {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .mdv-toast__action {
   flex-shrink: 0;
   font-family: var(--font-mono);

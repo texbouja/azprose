@@ -28,6 +28,7 @@ let {
   secondAction = undefined,
   variant = "error",
   durationMs = undefined,
+  multiline = false,
 }: {
   open: boolean;
   message: string;
@@ -36,6 +37,9 @@ let {
   secondAction?: ToastAction;
   variant?: "error" | "info";
   durationMs?: number | null;
+  /** Messages longs (diagnostics fournisseur…) : le texte passe en
+   *  multi-ligne au lieu d'être ellipsé — la fin du message compte. */
+  multiline?: boolean;
 } = $props();
 
 const DEFAULT_DURATION: Record<"error" | "info", number | null> = {
@@ -78,7 +82,7 @@ let art = $derived(variant === "info" ? exciteUrl : sadUrl);
 
 {#if open}
   <div
-    class="mdv-toast mdv-toast--{variant}{leaving ? " is-leaving" : ""}"
+    class="mdv-toast mdv-toast--{variant}{multiline ? " mdv-toast--multiline" : ""}{leaving ? " is-leaving" : ""}"
     role={variant === "error" ? "alert" : "status"}
   >
     <img
