@@ -675,11 +675,13 @@ impl ServerHandler for AzproseTools {
         // défaut, jamais par expression de structure.
         let mut info = ServerInfo::default();
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
-        info.instructions = Some(
-            "Données du vault AZprose (lecture seule). Interroger ces outils \
-             plutôt que de deviner ou de lire les fichiers de configuration."
-                .into(),
-        );
+        // Le schéma essentiel voyage ICI, avant tout appel d'outil : c'est ce
+        // qui fait répondre au PREMIER appel plutôt qu'au troisième.
+        let facts = self.root.facts();
+        info.instructions = Some(instructions_serveur(
+            facts.root.as_deref(),
+            facts.colleur_name.as_deref(),
+        ));
         info
     }
 }
@@ -854,8 +856,12 @@ CREATE TEMP VIEW v_colle_jetons AS
   )
   SELECT tableur, ligne, jeton FROM decoupe WHERE jeton <> '';
 
+-- SURENSEMBLE de v_colles : toutes ses colonnes, plus l'élève. Mesuré le
+-- 2026-08-23 : la vue n'exposait ni `jour` ni `salle`, et le modèle a demandé
+-- `salle` dès sa première requête — un tour perdu pour une omission sans
+-- raison. Une vue doit porter ce qu'on lui demandera naturellement.
 CREATE TEMP VIEW v_colle_eleves AS
-  SELECT c.classe, c.date, c.horaire, c.colleur, c.matiere,
+  SELECT c.classe, c.date, c.jour, c.horaire, c.groupe, c.colleur, c.matiere, c.salle,
          e.code, e.nom, e.prenom, e.email,
          'groupe' AS designation, c.tableur, c.ligne
     FROM v_colles c
@@ -863,7 +869,7 @@ CREATE TEMP VIEW v_colle_eleves AS
       ON lower(trim(e.classe)) = lower(trim(c.classe))
      AND lower(trim(e.groupe)) = lower(trim(c.groupe))
   UNION ALL
-  SELECT c.classe, c.date, c.horaire, c.colleur, c.matiere,
+  SELECT c.classe, c.date, c.jour, c.horaire, c.groupe, c.colleur, c.matiere, c.salle,
          e.code, e.nom, e.prenom, e.email,
          'code' AS designation, c.tableur, c.ligne
     FROM v_colles c
@@ -983,6 +989,34 @@ fn schema_base(root: &str, colleur: Option<&str>) -> Result<serde_json::Value, S
 
     let colles = vue_posee(&conn, "v_colles");
 
+    // Résumé des colles. Mesuré le 2026-08-23 : sans la PÉRIODE, un modèle à
+    // qui l'on demande « le 8 décembre » choisit l'année en devinant — il a
+    // cherché 2025-12-08, n'a rien trouvé, et a dû sonder la base pour
+    // découvrir que l'année scolaire courait sur 2026-2027. Un tour perdu
+    // pour une borne que la base connaît.
+    let resume_colles = if colles {
+        conn.query_row(
+            "SELECT MIN(date), MAX(date), COUNT(*),
+                    (SELECT COUNT(DISTINCT colleur) FROM v_colles WHERE colleur <> ''),
+                    (SELECT group_concat(DISTINCT classe) FROM v_colles)
+               FROM v_colles",
+            [],
+            |r| {
+                Ok(serde_json::json!({
+                    "periode": format!("{} → {}",
+                        r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        r.get::<_, Option<String>>(1)?.unwrap_or_default()),
+                    "seances": r.get::<_, i64>(2)?,
+                    "colleurs_distincts": r.get::<_, i64>(3)?,
+                    "classes": r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                }))
+            },
+        )
+        .ok()
+    } else {
+        None
+    };
+
     // Les vues, avec leur rôle en une ligne.
     let mut vues = serde_json::Map::new();
     vues.insert("v_cellules".into(), serde_json::json!(
@@ -995,7 +1029,7 @@ fn schema_base(root: &str, colleur: Option<&str>) -> Result<serde_json::Value, S
         vues.insert("v_colles".into(), serde_json::json!(
             "(classe, date, jour, horaire, groupe, colleur, matiere, salle, tableur, ligne) — les colles, déjà pivotées. UNE ligne par séance."));
         vues.insert("v_colle_eleves".into(), serde_json::json!(
-            "(classe, date, horaire, colleur, matiere, code, nom, prenom, email, designation, tableur, ligne) — les ÉLÈVES de chaque colle, groupe ou rattrapage résolus."));
+            "(classe, date, jour, horaire, groupe, colleur, matiere, salle, code, nom, prenom, email, designation, tableur, ligne) — SURENSEMBLE de v_colles, une ligne PAR ÉLÈVE. Groupes et rattrapages résolus. C'est la vue à utiliser pour toute question portant sur des élèves."));
     }
 
     // Les pièges. Sans eux, un modèle lit les tables et conclut faux.
@@ -1016,10 +1050,67 @@ fn schema_base(root: &str, colleur: Option<&str>) -> Result<serde_json::Value, S
         "tables": tables,
         "vues": vues,
         "tableaux": tableaux,
+        "colles": resume_colles,
         "pieges": pieges,
         // Qui est l'utilisateur — pour qu'il n'ait pas à se présenter.
         "colleur": colleur.filter(|c| !c.trim().is_empty()),
     }))
+}
+
+/// Ce que le serveur annonce au modèle À L'OUVERTURE DE SESSION, avant tout
+/// appel d'outil.
+///
+/// Mesuré le 2026-08-23 : une question simple coûtait CINQ appels, dont le
+/// premier n'était que `base_schema`. Or l'essentiel de ce schéma tient en
+/// quelques lignes, et le protocole offre un endroit pour les dire
+/// gratuitement. Les mettre ici, c'est répondre au premier appel au lieu du
+/// troisième. `base_schema` reste, pour le détail.
+fn instructions_serveur(root: Option<&str>, colleur: Option<&str>) -> String {
+    let mut t = String::from(
+        "Données du vault AZprose, en LECTURE SEULE (outil `base_interroger`, SQL SELECT/WITH/EXPLAIN). \
+         Interroger ces outils plutôt que de deviner ou de lire les fichiers de configuration.\n\n\
+         VUES prêtes à l'emploi — les préférer TOUJOURS aux tables brutes :\n\
+         · v_cellules(tableur, ligne, colonne, valeur) — n'importe quel tableau, titres de colonnes joints.\n\
+         · v_tableurs(tableur, colonnes, lignes) — catalogue.\n\
+         · v_calendrier(...) — les événements propres du calendrier.\n",
+    );
+
+    let resume = root.and_then(|r| ouvrir_lecture(r).ok()).and_then(|conn| {
+        if !vue_posee(&conn, "v_colles") { return None; }
+        conn.query_row(
+            "SELECT MIN(date), MAX(date), COUNT(*) FROM v_colles",
+            [],
+            |r| Ok((
+                r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                r.get::<_, i64>(2)?,
+            )),
+        ).ok()
+    });
+
+    if let Some((debut, fin, n)) = resume {
+        t.push_str(
+            "· v_colles(classe, date, jour, horaire, groupe, colleur, matiere, salle) — une ligne par SÉANCE.\n\
+             · v_colle_eleves(… mêmes colonnes … + code, nom, prenom, email) — une ligne par ÉLÈVE de chaque colle,\n\
+             \x20 groupes ET rattrapages résolus. C'est la vue de toute question portant sur des élèves.\n\n",
+        );
+        t.push_str(&format!(
+            "COLLES : {n} séances, du {debut} au {fin}. Une date sans année désigne cette période — ne pas la deviner.\n"
+        ));
+        t.push_str(
+            "Le colleur s'écrit avec sa civilité (« M. BOUJAIDA ») : comparer par LIKE sur le nom, jamais par égalité.\n\
+             `horaire` est du TEXTE (« 13h-14h ») : trier sur `date`, jamais sur `horaire`.\n\
+             `calendar_events` ne contient PAS les colles ; elles sont projetées depuis le colloscope.\n",
+        );
+    } else {
+        t.push_str("\nAucun colloscope importé : les vues v_colles et v_colle_eleves n'existent pas.\n");
+    }
+
+    if let Some(c) = colleur.filter(|c| !c.trim().is_empty()) {
+        t.push_str(&format!("\nL'UTILISATEUR est le colleur « {c} » — « mes colles » le désigne.\n"));
+    }
+    t.push_str("\n`base_schema` donne le détail complet (toutes les tables, un échantillon par tableau).");
+    t
 }
 
 /// Exécute une requête de consultation sur `.azprose/data.db`.
@@ -1641,6 +1732,67 @@ mod tests {
         assert!(pieges.contains("rattrapage"), "le piège des codes élèves manque");
         // L'utilisateur n'a plus à se présenter.
         assert_eq!(s["colleur"], "Boujaida");
+    }
+
+    #[test]
+    fn v_colle_eleves_porte_tout_ce_que_porte_v_colles() {
+        // Mesuré : le modèle a demandé `salle` dès sa première requête et a
+        // perdu un tour parce que la vue ne l'exposait pas. Une vue doit
+        // porter ce qu'on lui demandera naturellement.
+        let eleves = vec![serde_json::json!({
+            "code": "INS-A/2025", "nom": "BOUJAIDA", "prenom": "Yasmine",
+            "classe": "MP-2", "groupe": "G6", "email": ""
+        })];
+        let dir = vault_avec_colloscope(
+            &eleves,
+            &[["2026-12-08", "G6", "Maths", "M. BOUJAIDA", "Mardi", "13h-14h", "MP*2"]],
+        );
+        let v = query_readonly(
+            dir.path().to_str().unwrap(),
+            "SELECT jour, salle, groupe, matiere FROM v_colle_eleves",
+        )
+        .expect("les colonnes de v_colles doivent exister sur v_colle_eleves");
+        assert_eq!(v["lignes"][0][0], "Mardi");
+        assert_eq!(v["lignes"][0][1], "MP*2");
+        assert_eq!(v["lignes"][0][2], "G6");
+    }
+
+    #[test]
+    fn le_schema_borne_la_periode_des_colles() {
+        // Sans période, « le 8 décembre » fait deviner l'année : le modèle a
+        // cherché 2025 puis sondé la base pour trouver 2026. Un tour perdu.
+        let dir = vault_avec_colloscope(
+            &[],
+            &[
+                ["2026-09-14", "G6", "M", "M. B", "Lundi", "9h-10h", ""],
+                ["2027-04-16", "G6", "M", "M. B", "Vendredi", "9h-10h", ""],
+            ],
+        );
+        let s = schema_base(dir.path().to_str().unwrap(), None).unwrap();
+        assert_eq!(s["colles"]["periode"], "2026-09-14 → 2027-04-16");
+        assert_eq!(s["colles"]["seances"], 2);
+    }
+
+    #[test]
+    fn les_instructions_de_session_evitent_le_premier_appel() {
+        // L'essentiel doit voyager AVANT tout appel d'outil : les vues, la
+        // période, l'identité. C'est ce qui fait répondre au premier appel.
+        let dir = vault_avec_colloscope(
+            &[],
+            &[["2026-12-08", "G6", "M", "M. BOUJAIDA", "Mardi", "13h-14h", ""]],
+        );
+        let t = instructions_serveur(dir.path().to_str(), Some("Boujaida"));
+        assert!(t.contains("v_colle_eleves"), "les vues doivent être annoncées");
+        assert!(t.contains("2026-12-08"), "la période doit être annoncée");
+        assert!(t.contains("Boujaida"), "l'identité doit être annoncée");
+        assert!(t.contains("LIKE"), "la règle de civilité doit être annoncée");
+    }
+
+    #[test]
+    fn les_instructions_sans_projet_ne_mentent_pas() {
+        let t = instructions_serveur(None, None);
+        assert!(t.contains("Aucun colloscope"));
+        assert!(!t.contains("v_colles("), "ne pas annoncer une vue absente");
     }
 
     #[test]
