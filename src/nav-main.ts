@@ -5,6 +5,7 @@ import "./styles/core.css";
 import "./styles/fonts-ui.css";
 import { initBoot } from "@/shell/boot";
 import { initPresentation } from "@/shell/presentation";
+import { initPreferences } from "@/shell/preferences";
 // Import STATIQUE (l'ancien main.ts l'importait dynamiquement, pour éviter
 // de charger le mauvais composant selon ?browse=) : ce point d'entrée ne
 // sert QUE NAV, plus besoin de brancher entre deux composants au runtime.
@@ -21,6 +22,10 @@ import BrowseApp from "./browse-app.svelte";
 // propre à PROJET.
 initBoot();
 initPresentation();
+// Même filet que PROJET : les préférences globales sont partagées par les
+// deux fenêtres, la restauration doit donc valoir pour l'une comme pour
+// l'autre — celle qui démarre la première remet la clé manquante.
+await initPreferences();
 
 const target = document.getElementById("root")!;
 mount(BrowseApp, { target });

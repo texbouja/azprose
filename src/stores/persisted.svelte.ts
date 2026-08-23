@@ -9,9 +9,29 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+/** Filet de durabilité, branché au boot (`preferences-miroir-store`). Injecté
+ *  plutôt qu'importé : ce module est chargé par des tests qui n'ont ni Tauri
+ *  ni disque, et il ne doit rien savoir de l'un ni de l'autre. */
+let apresEcriture: (() => void) | null = null;
+export function brancherMiroirPreferences(hook: () => void): void {
+  apresEcriture = hook;
+}
+
+/** Un relecteur par clé de préférence globale — voir `relirePreferences`. */
+const relecteurs = new Map<string, () => void>();
+
+/** Relit ces clés depuis le stockage. Appelé APRÈS la restauration du miroir,
+ *  pour les stores déjà construits avec la valeur par défaut. */
+export function relirePreferences(cles: readonly string[]): void {
+  for (const k of cles) relecteurs.get(k)?.();
+}
+
 function save<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    // Point d'écriture UNIQUE de toutes les préférences globales : c'est ici,
+    // et nulle part ailleurs, qu'on sait qu'il y a quelque chose à recopier.
+    apresEcriture?.();
   } catch {
     // ignore quota / serialization errors
   }
@@ -41,6 +61,18 @@ export function persistedState<T>(
 ) {
   let value = $state(normalize ? normalize(load(key, initial)) : load(key, initial));
   const norm = (v: T): T => (normalize ? normalize(v) : v);
+
+  // Relecture après restauration du miroir. Les stores se construisent à
+  // l'IMPORT du module, donc avant que le miroir (lecture disque, asynchrone)
+  // n'ait pu remettre une clé manquante : sans ce chemin, une préférence
+  // restaurée ne serait vue qu'au lancement suivant. On réemprunte la voie
+  // déjà prévue pour une écriture venue d'une autre fenêtre — `onExternal`
+  // compris, sans quoi les effets de bord (police, échelle) ne seraient pas
+  // rejoués.
+  relecteurs.set(key, () => {
+    value = norm(load(key, initial));
+    onExternal?.(value);
+  });
 
   if (typeof window !== "undefined") {
     window.addEventListener("storage", (e) => {

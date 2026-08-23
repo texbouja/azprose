@@ -6,6 +6,7 @@ import "./styles/core.css";
 import "./styles/fonts-ui.css";
 import { initBoot } from "@/shell/boot";
 import { initPresentation } from "@/shell/presentation";
+import { initPreferences } from "@/shell/preferences";
 
 // Point d'entrée de la fenêtre PROJET SEULE (vague 2, phase 2.2) — NAV a
 // désormais son propre point d'entrée dédié, nav.html/nav-main.ts. AVANT tout
@@ -13,6 +14,10 @@ import { initPresentation } from "@/shell/presentation";
 // puis thème + polices (presentation.ts).
 initBoot();
 initPresentation();
+// Filet de durabilité des préférences globales, et relecture des clés
+// restaurées. Attendu AVANT le mount : mieux vaut retarder l'affichage de
+// quelques millisecondes que peindre avec des réglages par défaut.
+await initPreferences();
 
 const target = document.getElementById("root")!;
 const { default: App } = await import("./app.svelte");
