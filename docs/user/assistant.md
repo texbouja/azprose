@@ -274,6 +274,29 @@ donnent la réponse qui fait foi.
 > corromprait. AZprose interdit purement et simplement cet accès à l'assistant,
 > et lui fournit à la place un moyen de la consulter proprement.
 
+### Ce qu'il voit de vos tableaux
+
+Vos tableurs sont stockés cellule par cellule, une forme commode pour
+l'application mais illisible telle quelle. L'assistant n'y accède donc pas
+directement : il dispose de **vues** qui lui présentent vos données comme vous
+les voyez — vos tableaux avec leurs titres de colonnes, vos colles avec leur
+date, leur groupe et leur salle, et **les élèves de chaque colle**, y compris
+quand il s'agit d'un rattrapage pour deux ou trois d'entre eux.
+
+Il connaît aussi votre **nom de colleur** (*Réglages* → *Profil*). Vous n'avez
+plus à vous présenter : « ai-je des colles jeudi ? » suffit.
+
+> [!warning] Le calendrier ne contient pas vos colles
+> Vous les y voyez, mais elles n'y sont pas *stockées* : elles sont affichées
+> depuis le colloscope. L'assistant en est prévenu et va les chercher au bon
+> endroit — sans quoi il vous répondrait que votre calendrier est vide.
+
+> [!tip] S'il ne peut pas tout lire, il le dit
+> Une question trop large renvoie beaucoup de lignes ; l'assistant n'en reçoit
+> qu'une partie, et il en est **averti explicitement** avec le nombre manquant.
+> C'est voulu : mieux vaut qu'il demande de préciser que de conclure d'un
+> extrait pris pour un tout.
+
 ## Le respect du programme officiel
 
 C'est la fonction pensée pour l'enseignement en classe préparatoire :

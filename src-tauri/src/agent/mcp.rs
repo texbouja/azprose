@@ -75,6 +75,16 @@ pub struct VaultFacts {
     pub programmes: Vec<String>,
     #[serde(default)]
     pub callouts: Vec<CalloutInfo>,
+    /// Nom de colleur de l'utilisateur (`Réglages › Profil`), tel qu'il figure
+    /// dans le colloscope importé.
+    ///
+    /// Sans lui, l'utilisateur devait se présenter à chaque conversation —
+    /// « je suis le colleur M. Boujaida » — pour obtenir SES colles, alors que
+    /// l'application le sait. Le nom SEUL : ni l'email, ni à plus forte raison
+    /// le mot de passe d'application, n'ont rien à faire dans le contexte d'un
+    /// modèle.
+    #[serde(default)]
+    pub colleur_name: Option<String>,
 }
 
 /// Poignée partagée entre la commande Tauri et le serveur : l'utilisateur peut
@@ -167,6 +177,27 @@ impl AzproseTools {
             { "nom": "pdf/rectangle/", "role": "Cache régénérable des régions PDF.", "format": "dossier", "editable": "sans valeur, suppression sans risque" },
         ]})
         .to_string()
+    }
+
+    /// Schéma de la base, ses vues de lecture, et **les pièges à connaître**.
+    ///
+    /// Un appel remplace la demi-douzaine de requêtes de découverte
+    /// (`sqlite_master`, `PRAGMA table_info` × N, échantillons) que le modèle
+    /// devait faire avant d'écrire sa vraie requête — chacune coûtant un tour
+    /// complet, soit 3 à 4 secondes de latence mesurées.
+    #[tool(
+        name = "base_schema",
+        description = "Schéma de la base du vault, vues de lecture disponibles, catalogue des tableaux et pièges à connaître. À appeler AVANT base_interroger.",
+        annotations(read_only_hint = true)
+    )]
+    pub async fn base_schema(&self) -> String {
+        let Some(root) = self.root.root() else {
+            return serde_json::json!({ "erreur": "aucun projet ouvert" }).to_string();
+        };
+        match schema_base(&root, self.root.facts().colleur_name.as_deref()) {
+            Ok(v) => v.to_string(),
+            Err(e) => serde_json::json!({ "erreur": e }).to_string(),
+        }
     }
 
     /// Interroge la base SQLite du vault (`.azprose/data.db`) en LECTURE SEULE.
@@ -873,6 +904,124 @@ fn ouvrir_lecture(root: &str) -> Result<rusqlite::Connection, String> {
     Ok(conn)
 }
 
+/// Une vue existe-t-elle sur cette connexion ? (les `temp` ne figurent pas
+/// dans `sqlite_master` de la base principale.)
+fn vue_posee(conn: &rusqlite::Connection, nom: &str) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM temp.sqlite_master WHERE type='view' AND name=?1",
+        [nom],
+        |_| Ok(()),
+    )
+    .is_ok()
+}
+
+/// Schéma, catalogue et pièges — la réponse de `base_schema`.
+fn schema_base(root: &str, colleur: Option<&str>) -> Result<serde_json::Value, String> {
+    let conn = ouvrir_lecture(root)?;
+
+    // Tables réelles et leurs colonnes.
+    let mut tables = serde_json::Map::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+            .map_err(|e| e.to_string())?;
+        let noms: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        for nom in noms {
+            let mut c = conn
+                .prepare(&format!("PRAGMA table_info({nom})"))
+                .map_err(|e| e.to_string())?;
+            let cols: Vec<String> = c
+                .query_map([], |r| r.get::<_, String>(1))
+                .map_err(|e| e.to_string())?
+                .filter_map(Result::ok)
+                .collect();
+            tables.insert(nom, serde_json::json!(cols));
+        }
+    }
+
+    // Catalogue des tableaux NON VIDES, avec titres et un échantillon — c'est
+    // l'échantillon qui donne le format des dates sans requête dédiée.
+    let mut tableaux = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT tableur, colonnes, lignes FROM v_tableurs ORDER BY tableur")
+            .map_err(|e| e.to_string())?;
+        let entrees: Vec<(String, i64, i64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        for (nom, colonnes, lignes) in entrees {
+            let mut t = conn
+                .prepare(
+                    "SELECT colonne, valeur FROM v_cellules
+                      WHERE tableur = ?1 AND ligne = (SELECT MIN(ligne) FROM v_cellules WHERE tableur = ?1)",
+                )
+                .map_err(|e| e.to_string())?;
+            let mut echantillon = serde_json::Map::new();
+            let mut titres = Vec::new();
+            for r in t
+                .query_map([&nom], |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)))
+                .map_err(|e| e.to_string())?
+                .flatten()
+            {
+                if let Some(titre) = r.0 {
+                    titres.push(titre.clone());
+                    echantillon.insert(titre, serde_json::json!(r.1.unwrap_or_default()));
+                }
+            }
+            tableaux.push(serde_json::json!({
+                "nom": nom, "colonnes": colonnes, "lignes": lignes,
+                "titres": titres, "premiere_ligne": echantillon,
+            }));
+        }
+    }
+
+    let colles = vue_posee(&conn, "v_colles");
+
+    // Les vues, avec leur rôle en une ligne.
+    let mut vues = serde_json::Map::new();
+    vues.insert("v_cellules".into(), serde_json::json!(
+        "(tableur, ligne, colonne, valeur) — les cellules AVEC le titre de leur colonne. Pivoter avec MAX(CASE WHEN colonne='X' THEN valeur END) … GROUP BY tableur, ligne."));
+    vues.insert("v_tableurs".into(), serde_json::json!(
+        "(tableur, colonnes, lignes) — catalogue ; les tableaux sans aucune cellule en sont exclus."));
+    vues.insert("v_calendrier".into(), serde_json::json!(
+        "(id, texte, debut, fin, journee, calendrier, rrule) — les événements PROPRES du calendrier."));
+    if colles {
+        vues.insert("v_colles".into(), serde_json::json!(
+            "(classe, date, jour, horaire, groupe, colleur, matiere, salle, tableur, ligne) — les colles, déjà pivotées. UNE ligne par séance."));
+        vues.insert("v_colle_eleves".into(), serde_json::json!(
+            "(classe, date, horaire, colleur, matiere, code, nom, prenom, email, designation, tableur, ligne) — les ÉLÈVES de chaque colle, groupe ou rattrapage résolus."));
+    }
+
+    // Les pièges. Sans eux, un modèle lit les tables et conclut faux.
+    let mut pieges = vec![
+        serde_json::json!("Les valeurs d'un tableau sont en EAV dans `spreadsheet_cells` (spreadsheet_id, row_index, col_index, value) et les TITRES de colonnes dans `spreadsheet_columns`. Ne pas les lire directement : passer par `v_cellules`, qui fait la jointure."),
+        serde_json::json!("`base_interroger` s'arrête à 500 lignes. Un résultat tronqué le DIT (champ `tronque`) : ne jamais conclure d'un résultat tronqué, affiner ou agréger."),
+    ];
+    if colles {
+        pieges.push(serde_json::json!("`calendar_events` ne contient PAS les colles — l'utilisateur les voit pourtant dans son calendrier, où elles sont PROJETÉES depuis le colloscope. Pour les colles, interroger `v_colles`, jamais `v_calendrier`."));
+        pieges.push(serde_json::json!("La cellule `Groupe` d'une colle désigne SOIT un groupe, SOIT une liste de codes élèves séparés par une virgule (un rattrapage). Un `WHERE groupe='G6'` rate les rattrapages : passer par `v_colle_eleves`."));
+        pieges.push(serde_json::json!("Les noms de colleur s'écrivent avec une civilité dans le colloscope (« M. BOUJAIDA ») : comparer avec LIKE sur le nom de famille, jamais par égalité stricte."));
+        pieges.push(serde_json::json!("`horaire` est du TEXTE (« 13h-14h ») : il ne se trie ni ne se compare comme une heure. Trier sur `date`, pas sur `horaire`."));
+    } else {
+        pieges.push(serde_json::json!("Aucun colloscope n'est importé dans ce projet : les vues `v_colles` et `v_colle_eleves` n'existent pas."));
+    }
+
+    Ok(serde_json::json!({
+        "tables": tables,
+        "vues": vues,
+        "tableaux": tableaux,
+        "pieges": pieges,
+        // Qui est l'utilisateur — pour qu'il n'ait pas à se présenter.
+        "colleur": colleur.filter(|c| !c.trim().is_empty()),
+    }))
+}
+
 /// Exécute une requête de consultation sur `.azprose/data.db`.
 fn query_readonly(root: &str, sql: &str) -> Result<serde_json::Value, String> {
     is_readonly_sql(sql)?;
@@ -885,13 +1034,26 @@ fn query_readonly(root: &str, sql: &str) -> Result<serde_json::Value, String> {
     let mut lignes: Vec<Vec<serde_json::Value>> = Vec::new();
     let mut rows = stmt.query([]).map_err(|e| format!("exécution : {e}"))?;
     // Borne dure : une réponse d'outil part dans la fenêtre de contexte du
-    // modèle. Mieux vaut une troncature annoncée qu'un contexte saturé.
+    // modèle.
+    //
+    // Le plafond ne bouge PAS. Le vrai danger n'est pas le contexte saturé,
+    // c'est le modèle qui raisonne sur un résultat partiel EN LE CROYANT
+    // COMPLET, et conclut faux — un plafond plus haut ne ferait que déplacer
+    // le seuil auquel il se trompe. Ce qui change, c'est que la troncature se
+    // DIT : combien de lignes rendues, combien il y en avait, et quoi faire.
+    // Les requêtes qui atteignaient 500 étaient d'ailleurs celles que les
+    // vues suppriment (3 136 cellules brutes d'un colloscope contre 448
+    // lignes par `v_colles`).
     const MAX: usize = 500;
     let mut tronque = false;
+    // On lit UNE ligne de plus que le plafond : c'est ce qui distingue « 500
+    // pile » d'« au moins 501 », sans payer un COUNT(*) sur chaque requête.
+    let mut total_au_moins = 0usize;
     while let Some(row) = rows.next().map_err(|e| format!("lecture : {e}"))? {
+        total_au_moins += 1;
         if lignes.len() >= MAX {
             tronque = true;
-            break;
+            continue; // on continue de compter, sans accumuler
         }
         let mut out = Vec::with_capacity(n);
         for i in 0..n {
@@ -909,7 +1071,24 @@ fn query_readonly(root: &str, sql: &str) -> Result<serde_json::Value, String> {
         }
         lignes.push(out);
     }
-    Ok(serde_json::json!({ "colonnes": colonnes, "lignes": lignes, "tronque": tronque }))
+    let rendues = lignes.len();
+    let mut sortie = serde_json::json!({
+        "colonnes": colonnes,
+        "lignes": lignes,
+        "tronque": tronque,
+        "rendues": rendues,
+    });
+    if tronque {
+        sortie["total"] = serde_json::json!(total_au_moins);
+        // La phrase compte autant que le chiffre : c'est elle qui empêche de
+        // conclure d'un extrait pris pour un tout.
+        sortie["avertissement"] = serde_json::json!(format!(
+            "Résultat PARTIEL : {rendues} lignes rendues sur {total_au_moins} correspondantes. \
+             Ne rien conclure de cet extrait — affiner le filtre, ou agréger \
+             (COUNT, GROUP BY) plutôt que lister."
+        ));
+    }
+    Ok(sortie)
 }
 
 fn read_math_preamble(root: &str) -> Option<String> {
@@ -1433,6 +1612,80 @@ mod tests {
             attendu.sort();
             assert_eq!(obtenu, attendu, "cas « {} »", cas["nom"].as_str().unwrap());
         }
+    }
+
+    #[test]
+    fn schema_annonce_les_vues_le_catalogue_et_les_pieges() {
+        let eleves = vec![serde_json::json!({
+            "code": "INS-A/2025", "nom": "BOUJAIDA", "prenom": "Yasmine",
+            "classe": "MP-2", "groupe": "G6", "email": ""
+        })];
+        let dir = vault_avec_colloscope(
+            &eleves,
+            &[["2026-11-20", "G6", "Maths", "M. BOUJAIDA", "Vendredi", "15h-16h", "A"]],
+        );
+        let s = schema_base(dir.path().to_str().unwrap(), Some("Boujaida")).unwrap();
+
+        // Les vues métier sont annoncées quand un colloscope existe.
+        assert!(s["vues"]["v_colles"].is_string());
+        assert!(s["vues"]["v_colle_eleves"].is_string());
+        // Le catalogue porte les titres ET un échantillon : c'est lui qui
+        // donne le format des dates sans requête dédiée.
+        let colloscope = s["tableaux"].as_array().unwrap().iter()
+            .find(|t| t["nom"].as_str() == Some("Colloscope — MP-2")).expect("tableau absent");
+        assert_eq!(colloscope["premiere_ligne"]["Date"], "2026-11-20");
+        assert!(colloscope["titres"].as_array().unwrap().iter().any(|t| t == "Horaire"));
+        // Les pièges qui empêchent une réponse fausse.
+        let pieges = s["pieges"].to_string();
+        assert!(pieges.contains("calendar_events"), "le piège du calendrier manque");
+        assert!(pieges.contains("rattrapage"), "le piège des codes élèves manque");
+        // L'utilisateur n'a plus à se présenter.
+        assert_eq!(s["colleur"], "Boujaida");
+    }
+
+    #[test]
+    fn schema_sans_colloscope_le_dit_au_lieu_de_se_taire() {
+        let dir = vault_avec_colloscope(&[], &[]);
+        // Pas de config de colloscope : on réécrit une config vide.
+        fs::write(dir.path().join(".azprose/config.json"), "{}").unwrap();
+        let s = schema_base(dir.path().to_str().unwrap(), None).unwrap();
+        assert!(s["vues"]["v_colles"].is_null(), "vue annoncée alors qu'elle n'existe pas");
+        assert!(s["pieges"].to_string().contains("Aucun colloscope"));
+        assert!(s["colleur"].is_null(), "pas de nom → pas de champ menteur");
+    }
+
+    #[test]
+    fn un_nom_de_colleur_vide_ne_compte_pas() {
+        let dir = vault_avec_colloscope(&[], &[["2026-11-20", "G6", "M", "C", "V", "9h-10h", ""]]);
+        let s = schema_base(dir.path().to_str().unwrap(), Some("   ")).unwrap();
+        assert!(s["colleur"].is_null());
+    }
+
+    #[test]
+    fn la_troncature_dit_combien_il_manque() {
+        // Le point : un résultat partiel ne doit pas pouvoir passer pour un
+        // tout. On vérifie le compte ET la phrase.
+        let dir = vault_avec_colloscope(&[], &[["2026-11-20", "G6", "M", "C", "V", "9h-10h", ""]]);
+        let root = dir.path().to_str().unwrap();
+        let v = query_readonly(
+            root,
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 600) SELECT i FROM n",
+        )
+        .unwrap();
+        assert_eq!(v["tronque"], true);
+        assert_eq!(v["rendues"], 500);
+        assert_eq!(v["total"], 600);
+        assert!(v["avertissement"].as_str().unwrap().contains("PARTIEL"));
+    }
+
+    #[test]
+    fn un_resultat_complet_ne_porte_pas_davertissement() {
+        let dir = vault_avec_colloscope(&[], &[["2026-11-20", "G6", "M", "C", "V", "9h-10h", ""]]);
+        let v = query_readonly(dir.path().to_str().unwrap(), "SELECT 1").unwrap();
+        assert_eq!(v["tronque"], false);
+        assert_eq!(v["rendues"], 1);
+        assert!(v["avertissement"].is_null(), "pas d'alarme quand tout va bien");
+        assert!(v["total"].is_null());
     }
 
     #[test]

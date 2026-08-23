@@ -11,6 +11,7 @@ import { createAgentClient, resolveAgentBinary, type AgentClient, type McpServer
 import { invoke } from "@tauri-apps/api/core";
 import { synchroniserProgrammes, corpusDir } from "@/programmes";
 import { programmesSelection } from "@/stores/programmes-selection.svelte";
+import { userProfile } from "@/stores/user-profile.svelte";
 import type { SessionUpdate, ContentBlock } from "@/lib/agent/types";
 import {
   createAgentHandlers,
@@ -806,6 +807,10 @@ async function mcpServers(root: string): Promise<McpServerDecl[]> {
         // les dix programmes livrés et rendait de la chimie à une question de
         // mathématiques (2026-08-19).
         programmes: [...programmesSelection.current],
+        // Le nom de colleur SEUL — pour que l'assistant n'ait pas à demander
+        // « qui êtes-vous ? » avant de rendre vos colles. Jamais l'email, et
+        // à plus forte raison jamais le mot de passe d'application.
+        colleurName: userProfile.current.colleurName || null,
         preambuleMath: mathJaxPreamble.current || null,
         callouts: calloutSettings.current.map((c) => ({
           nom: c.name,
