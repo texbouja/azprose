@@ -13,6 +13,43 @@
 import type { ColloscopeEleve } from "./colloscope";
 import { ecrireEleves, formaterHoraire, type SeanceSituee } from "./projection";
 
+/** Une ligne de tableau de classe, telle que la stocke le tableur. */
+export type LigneColloscope = string[];
+
+/**
+ * Lignes d'un colloscope précédent à REPORTER dans le tableau régénéré.
+ *
+ * Le ré-import supprime les tableaux et les recrée : sans cette règle, les
+ * rattrapages programmés depuis le calendrier disparaîtraient. Perdre un
+ * décalage est bénin ; perdre une séance de rattrapage ne l'est pas.
+ *
+ * Le marqueur n'est pas positionnel mais SÉMANTIQUE : une ligne générée par
+ * l'expansion porte un libellé de GROUPE (il vient de la rotation), une ligne
+ * ajoutée par l'utilisateur porte des CODES ÉLÈVES. On reporte donc les lignes
+ * qui ne désignent pas un groupe connu — et seulement si la nouvelle expansion
+ * ne les produit pas déjà, pour ne jamais créer de doublon.
+ */
+export function lignesAPreserver(
+  anciennes: LigneColloscope[],
+  nouvelles: LigneColloscope[],
+  groupesConnus: Iterable<string>,
+  colonnes: ColonnesColloscope = COLONNES_PAR_DEFAUT,
+): LigneColloscope[] {
+  const norm = (v: string | undefined) => (v ?? "").trim().toLowerCase();
+  const groupes = new Set([...groupesConnus].map(norm));
+  const cleLigne = (l: LigneColloscope) =>
+    [colonnes.date, colonnes.groupe, colonnes.matiere, colonnes.colleur, colonnes.horaire, colonnes.salle]
+      .map((i) => norm(l[i]))
+      .join(" ");
+  const dejaProduites = new Set(nouvelles.map(cleLigne));
+
+  return anciennes.filter((l) => {
+    if (!l.some((c) => (c ?? "").trim() !== "")) return false; // ligne vide
+    if (groupes.has(norm(l[colonnes.groupe]))) return false; // ligne générée
+    return !dejaProduites.has(cleLigne(l)); // et pas déjà reproduite
+  });
+}
+
 /** Une cellule à écrire — forme attendue par `spreadsheetSaveCells`. */
 export interface CelluleAEcrire {
   row_index: number;
@@ -166,10 +203,16 @@ export interface Rattrapage {
 export function ligneRattrapage(
   r: Rattrapage,
   rowIndex: number,
-  eleves: ColloscopeEleve[],
+  _eleves: ColloscopeEleve[],
   colonnes: ColonnesColloscope = COLONNES_PAR_DEFAUT,
 ): CelluleAEcrire[] {
-  const valeurGroupe = ecrireEleves(r.eleves, eleves, r.classe);
+  // Un rattrapage désigne TOUJOURS ses élèves par leurs codes, même quand ils
+  // forment un groupe entier. Deux raisons : c'est une séance exceptionnelle
+  // pour des personnes nommées, et surtout c'est ce qui le rend
+  // RECONNAISSABLE — une ligne générée porte un libellé de groupe, une ligne
+  // ajoutée porte des codes. C'est ce marqueur qui permet au ré-import de
+  // préserver les rattrapages (voir `lignesAPreserver`).
+  const valeurGroupe = r.eleves.map((e) => e.code).join(",");
   const horaire = formaterHoraire({ debutMin: minutesDe(r.debut), finMin: minutesDe(r.fin) });
   const par = (col: number, value: string) => ({ row_index: rowIndex, col_index: col, value });
   return [

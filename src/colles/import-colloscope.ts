@@ -26,6 +26,7 @@ import type { ColumnDef } from "@/spreadsheet/types";
 import type { ImportResult } from "@/lib/spreadsheet/import";
 import { buildColloscope, type ColloscopeData, type ColloscopeSeance } from "@/colles/colloscope";
 import type { SeanceSituee } from "@/colles/projection";
+import { lignesAPreserver } from "@/colles/ecriture-colloscope";
 import { collesSettings } from "@/stores/colles-settings.svelte";
 
 // ── Colonnes des tableaux créés ────────────────────────────────────────────
@@ -126,6 +127,10 @@ export async function importColloscope(
 
   const sourceName = opts?.sourceName ?? path.split("/").pop()?.replace(/\.(xlsx|csv|tsv)$/i, "") ?? path;
 
+  // Ré-import : relire les lignes AJOUTÉES par l'utilisateur (rattrapages)
+  // AVANT de supprimer les tableaux — après, elles seraient perdues.
+  const ajoutsPrecedents = await lireAjoutsPrecedents(cs.colloscope);
+
   // Ré-import : nettoyer les tableaux précédents du mapping (s'ils existent).
   await deletePreviousColloscope(cs.colloscope);
 
@@ -139,12 +144,37 @@ export async function importColloscope(
   // construction (le tableau fusionné de ~1800 lignes était trop lent).
   const classes = [...data.classes].sort((a, b) => a.localeCompare(b, "fr"));
   const colloscopeSpreadsheetIds: Record<string, string> = {};
+  // Groupes connus de la NOUVELLE liste d'élèves : c'est eux qui distinguent
+  // une ligne générée (libellé de groupe) d'un rattrapage (codes élèves).
+  const groupesParClasse = new Map<string, Set<string>>();
+  for (const e of data.eleves) {
+    if (!e.groupe) continue;
+    const s = groupesParClasse.get(e.classe) ?? new Set<string>();
+    s.add(e.groupe);
+    groupesParClasse.set(e.classe, s);
+  }
+
   for (const classe of classes) {
     const seances = data.seances
       .filter((s) => s.classe === classe)
       .sort((a, b) => a.date.localeCompare(b.date));
+    const generees = seances.map(seanceToRow);
+    // Les rattrapages du précédent tableau sont reportés EN FIN : ils gardent
+    // ainsi leur place au-delà des lignes régénérées, et les identités
+    // `colle:…:{rowIndex}` des lignes générées restent celles de l'expansion.
+    const preservees = lignesAPreserver(
+      ajoutsPrecedents.get(classe) ?? [],
+      generees,
+      groupesParClasse.get(classe) ?? [],
+    );
     const id = crypto.randomUUID();
-    await spreadsheetCreate(id, colloscopeTableName(classe), COLLOSCOPE_COLUMNS, seances.map(seanceToRow), path);
+    await spreadsheetCreate(
+      id,
+      colloscopeTableName(classe),
+      COLLOSCOPE_COLUMNS,
+      [...generees, ...preservees],
+      path,
+    );
     colloscopeSpreadsheetIds[classe] = id;
   }
 
@@ -168,6 +198,27 @@ export async function importColloscope(
   }));
 
   return result;
+}
+
+/** Lignes brutes des tableaux de classe du précédent import, par classe.
+ *  Lues AVANT la suppression : c'est la seule fenêtre où elles existent
+ *  encore. Toute erreur est avalée — ne pas pouvoir relire un ancien tableau
+ *  ne doit pas empêcher l'import, seulement priver du report. */
+async function lireAjoutsPrecedents(
+  prev: { colloscopeSpreadsheetIds: Record<string, string> } | null,
+): Promise<Map<string, string[][]>> {
+  const parClasse = new Map<string, string[][]>();
+  if (!prev) return parClasse;
+  for (const [classe, id] of Object.entries(prev.colloscopeSpreadsheetIds ?? {})) {
+    if (!id) continue;
+    try {
+      const tab = await spreadsheetGet(id);
+      parClasse.set(classe, tab.data);
+    } catch (err) {
+      console.warn("[colloscope] ancien tableau illisible, report impossible", classe, err);
+    }
+  }
+  return parClasse;
 }
 
 /** Supprime les tableaux d'un précédent import (no-op si null). */

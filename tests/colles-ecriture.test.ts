@@ -15,6 +15,7 @@ import {
   isoDe,
   jourDe,
   ligneRattrapage,
+  lignesAPreserver,
   reperer,
 } from "../src/colles/ecriture-colloscope";
 
@@ -161,9 +162,66 @@ describe("rattrapage", () => {
     expect(new Set(cellules.map((c) => c.row_index))).toEqual(new Set([448]));
   });
 
-  test("un rattrapage pour tout un groupe s'écrit par son libellé", () => {
+  test("un rattrapage écrit TOUJOURS des codes, même pour un groupe entier", () => {
+    // Contrairement à `changerEleves`, qui rend son libellé à un groupe
+    // complet pour la lisibilité. Ici c'est la RECONNAISSABILITÉ qui prime :
+    // un libellé de groupe rendrait le rattrapage indiscernable d'une ligne
+    // générée, donc perdu au ré-import (voir `lignesAPreserver`).
     const g6 = ELEVES.filter((e) => e.groupe === "G6");
     const cellules = ligneRattrapage({ ...R, eleves: g6 }, 448, ELEVES);
-    expect(parColonne(cellules).groupe).toBe("G6");
+    expect(parColonne(cellules).groupe).toBe("INS-A/2025,INS-B/2025");
+  });
+});
+
+describe("report des rattrapages au ré-import", () => {
+  // Ordre COLLOSCOPE_COLUMNS : Date, Groupe, Matière, Colleur, Jour, Horaire, Salle
+  const generee = (date, groupe) => [date, groupe, "Maths", "M. BOUJAIDA", "Vendredi", "15h-16h", "MP*2"];
+  const rattrapage = ["2026-11-24", "INS-A/2025", "Maths", "M. BOUJAIDA", "Mardi", "13h-14h", "MP*2"];
+  const GROUPES = ["G6", "G2"];
+
+  test("un rattrapage est reporté, les lignes générées ne le sont pas", () => {
+    // Sans cette règle, un ré-import effacerait une séance de rattrapage
+    // programmée — perdre un décalage est bénin, perdre celle-ci ne l'est pas.
+    const anciennes = [generee("2026-11-20", "G6"), generee("2026-11-27", "G2"), rattrapage];
+    const nouvelles = [generee("2026-11-20", "G6"), generee("2026-11-27", "G2")];
+    expect(lignesAPreserver(anciennes, nouvelles, GROUPES)).toEqual([rattrapage]);
+  });
+
+  test("une ligne générée disparue de la nouvelle expansion n'est PAS ressuscitée", () => {
+    const anciennes = [generee("2026-11-20", "G6")];
+    expect(lignesAPreserver(anciennes, [], GROUPES)).toEqual([]);
+  });
+
+  test("un rattrapage déjà reproduit par la nouvelle expansion n'est pas dupliqué", () => {
+    // La garantie « jamais deux fois le même » vaut aussi ici.
+    expect(lignesAPreserver([rattrapage], [rattrapage], GROUPES)).toEqual([]);
+  });
+
+  test("lignes vides ignorées", () => {
+    expect(lignesAPreserver([["", "", "", "", "", "", ""]], [], GROUPES)).toEqual([]);
+  });
+
+  test("aucun colloscope précédent → rien à reporter", () => {
+    expect(lignesAPreserver([], [generee("2026-11-20", "G6")], GROUPES)).toEqual([]);
+  });
+
+  test("un rattrapage pour PLUSIEURS élèves reste reconnaissable", () => {
+    const multi = ["2026-11-24", "INS-A/2025,INS-B/2025", "Maths", "M. B", "Mardi", "13h-14h", ""];
+    expect(lignesAPreserver([multi], [], GROUPES)).toEqual([multi]);
+  });
+
+  test("un rattrapage pour tout un groupe reste reporté (codes, pas libellé)", () => {
+    // C'est pourquoi `ligneRattrapage` écrit TOUJOURS des codes : un libellé
+    // de groupe le rendrait indiscernable d'une ligne générée, donc perdu.
+    const eleves = [
+      { code: "INS-A/2025", nom: "A", prenom: "a", classe: "MP-2", groupe: "G6", email: "" },
+      { code: "INS-B/2025", nom: "B", prenom: "b", classe: "MP-2", groupe: "G6", email: "" },
+    ];
+    const cellules = ligneRattrapage(
+      { classe: "MP-2", debut: new Date(2026, 10, 24, 13, 0), fin: new Date(2026, 10, 24, 14, 0),
+        matiere: "Maths", colleur: "M. B", salle: "", eleves },
+      448, eleves,
+    );
+    expect(parColonne(cellules).groupe).toBe("INS-A/2025,INS-B/2025");
   });
 });
