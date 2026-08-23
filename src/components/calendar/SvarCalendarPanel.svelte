@@ -25,12 +25,28 @@
   import { notifications } from "@/stores/notifications.svelte";
   import { confirm } from "@tauri-apps/plugin-dialog";
   import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
-  import { projeterColles, type SeanceSituee } from "@/colles/projection";
+  import {
+    CALENDRIER_COLLES,
+    decouperIdColle,
+    estIdColle,
+    projeterColles,
+    type SeanceSituee,
+  } from "@/colles/projection";
+  import {
+    COLONNES_PAR_DEFAUT,
+    changerEleves,
+    deplacerSeance,
+    ligneRattrapage,
+    reperer,
+    type CelluleAEcrire,
+    type ColonnesColloscope,
+  } from "@/colles/ecriture-colloscope";
   import { readColloscope } from "@/colles/import-colloscope";
+  import { spreadsheetGet, spreadsheetSaveCells } from "@/spreadsheet/store";
   import type { ColloscopeEleve } from "@/colles/colloscope";
   import { userProfile } from "@/stores/user-profile.svelte";
   import { collesSettings } from "@/stores/colles-settings.svelte";
-  import { dataBus } from "@/lib/data/bus";
+  import { createOrigin, dataBus } from "@/lib/data/bus";
   import { ofType } from "@/lib/data/events";
 
   const words = { ...fr, ...frCore };
@@ -38,6 +54,21 @@
   const RFC_DAY_MAP = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
   let api: CalendarInstanceApi | null = $state(null);
+
+  // ── Colles projetées depuis le colloscope ────────────────
+  // Le calendrier est une VUE du colloscope, au même titre que la grille l'est
+  // d'un tableur : la donnée reste dans `spreadsheet_cells`, on ne la recopie
+  // JAMAIS dans `calendar_events`. C'est ce qui rend le doublon impossible —
+  // il n'y a rien à accumuler d'un import à l'autre.
+  // Déclaré ICI, avant `editorItems`, qui consomme `nomsEleves`.
+  let seancesColloscope = $state<SeanceSituee[]>([]);
+  let elevesColloscope = $state<ColloscopeEleve[]>([]);
+
+  /** « NOM Prénom » — la MÊME forme que celle produite par la projection,
+   *  pour que la saisie et l'affichage se correspondent. */
+  const nomsEleves = $derived(
+    elevesColloscope.map((e) => `${e.nom} ${e.prenom}`.trim()).filter(Boolean),
+  );
 
   // ── Read the currently-selected event's start date from the Calendar's
   //    internal reactive editorData. This is the source of truth — the
@@ -63,16 +94,10 @@
     { comp: "text", key: "location", label: "Lieu" },
     { comp: PriorityEditor as any, key: "priority", label: "Priorité" },
     { comp: RecurrenceEditor as any, key: "rrule", label: "Récurrence", eventStartDate },
-    { comp: PersonCombo as any, key: "persons", label: "Assigné à" },
+    // Les élèves du colloscope alimentent la complétion : c'est par ce champ
+    // qu'on désigne les concernés d'un rattrapage, et donc sa classe.
+    { comp: PersonCombo as any, key: "persons", label: "Assigné à", suggestions: nomsEleves },
   ]);
-
-  // ── Colles projetées depuis le colloscope ────────────────
-  // Le calendrier est une VUE du colloscope, au même titre que la grille l'est
-  // d'un tableur : la donnée reste dans `spreadsheet_cells`, on ne la recopie
-  // JAMAIS dans `calendar_events`. C'est ce qui rend le doublon impossible —
-  // il n'y a rien à accumuler d'un import à l'autre.
-  let seancesColloscope = $state<SeanceSituee[]>([]);
-  let elevesColloscope = $state<ColloscopeEleve[]>([]);
 
   async function chargerColloscope() {
     const data = await readColloscope();
@@ -94,15 +119,95 @@
       Object.values(collesSettings.current.colloscope?.colloscopeSpreadsheetIds ?? {}),
     );
     if (ids.size === 0) return;
-    const sub = dataBus.subscribe(ofType("cells-changed"), (ev) => {
-      if (ids.has(ev.spreadsheetId)) void chargerColloscope();
-    });
+    const sub = dataBus.subscribe(
+      ofType("cells-changed"),
+      (ev) => {
+        if (ids.has(ev.spreadsheetId)) void chargerColloscope();
+      },
+      { skipOrigin: origineCalendrier },
+    );
     return () => sub.unsubscribe();
   });
 
   function isoLocal(d: Date): string {
     const p = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  // ── Écriture retour : calendrier → colloscope ────────────
+  // Routage par PRÉFIXE d'identifiant. Un `colle:…` ne touche jamais
+  // `store.events` : il part dans `spreadsheet_cells`, et revient par la
+  // projection. Un seul chemin, donc jamais deux fois le même événement —
+  // c'est l'ajout optimiste qui produisait les doublons d'autrefois.
+
+  function seanceDeId(id: string): SeanceSituee | null {
+    const adr = decouperIdColle(id);
+    if (!adr) return null;
+    return (
+      seancesColloscope.find(
+        (s) => s.spreadsheetId === adr.spreadsheetId && s.rowIndex === adr.rowIndex,
+      ) ?? null
+    );
+  }
+
+  /** Pousse les cellules et annonce le changement — c'est ce signal, et lui
+   *  seul, qui fera réapparaître la séance à sa nouvelle place. */
+  async function ecrireDansColloscope(spreadsheetId: string, cellules: CelluleAEcrire[]) {
+    if (cellules.length === 0) return;
+    await spreadsheetSaveCells(spreadsheetId, cellules);
+    // Le tableur et la grille ouverts se rechargent ; nous, on se recharge à
+    // la main puisqu'on ignore notre propre émission (skip self).
+    dataBus.emit({ type: "cells-changed", spreadsheetId, origin: origineCalendrier });
+    await chargerColloscope();
+  }
+
+  const origineCalendrier = createOrigin("calendrier-colles");
+
+  async function deplacerColle(seance: SeanceSituee, debut: Date, fin: Date) {
+    const colonnes = await colonnesDe(seance.spreadsheetId);
+    const { cellules, genre } = deplacerSeance(seance, debut, fin, colonnes);
+    if (genre === "aucun") return;
+    try {
+      await ecrireDansColloscope(seance.spreadsheetId, cellules);
+      notifications.setInfo(genre === "ajournement" ? "Colle ajournée" : "Colle décalée");
+    } catch (err) {
+      notifications.showError(`Report impossible : ${String(err)}`);
+      void chargerColloscope(); // la vue reprend l'état réel de la base
+    }
+  }
+
+  /** Changement des concernés d'une colle. Un sous-ensemble d'un groupe
+   *  s'écrit en codes élèves, l'ensemble complet redevient le libellé du
+   *  groupe (règle miroir de la lecture). */
+  async function changerElevesColle(seance: SeanceSituee, noms: unknown) {
+    const choisis = elevesDepuisNoms(noms);
+    if (choisis.length === 0) return; // vider la liste ne veut rien dire ici
+    const colonnes = await colonnesDe(seance.spreadsheetId);
+    const cellules = changerEleves(seance, choisis, elevesColloscope, colonnes);
+    if (cellules.length === 0) return;
+    try {
+      await ecrireDansColloscope(seance.spreadsheetId, cellules);
+      notifications.setInfo("Élèves de la colle mis à jour");
+    } catch (err) {
+      notifications.showError(`Modification impossible : ${String(err)}`);
+      void chargerColloscope();
+    }
+  }
+
+  /** Titres de colonnes du tableau, relus une fois puis mémorisés : écrire à
+   *  la mauvaise position serait pire que de ne pas écrire. */
+  const colonnesConnues = new Map<string, ColonnesColloscope>();
+  async function colonnesDe(spreadsheetId: string): Promise<ColonnesColloscope> {
+    const connu = colonnesConnues.get(spreadsheetId);
+    if (connu) return connu;
+    try {
+      const tab = await spreadsheetGet(spreadsheetId);
+      const c = reperer(tab.columns.map((col) => col.title ?? ""));
+      colonnesConnues.set(spreadsheetId, c);
+      return c;
+    } catch {
+      return COLONNES_PAR_DEFAUT;
+    }
   }
 
   // ── Expand recurring events for the visible range ────────
@@ -208,6 +313,18 @@
     if (!action || !context) return;
     const bid = baseId(String(context.id));
 
+    // Suppression d'une colle : REFUSÉE (arbitrage 2026-08-23). Supprimer la
+    // ligne décalerait les 447 suivantes et invaliderait toutes les identités
+    // déjà projetées ; et une colle se retire du colloscope, pas de sa vue.
+    if (estIdColle(bid)) {
+      if (String(action.id).startsWith("delete")) {
+        notifications.showError(
+          "Une colle ne se supprime pas depuis le calendrier — retirez-la du colloscope.",
+        );
+      }
+      return;
+    }
+
     // Auto-convert: if the event is not in the store but is a colle event,
     // create a non-recurring copy in the store so the user can act on it.
     let existing = store.events.find((e) => e.id === bid);
@@ -269,8 +386,80 @@
     return id.replace(/__\d+$/, "").replace(/__r\d+$/, "");
   }
 
+  /** Élèves désignés par les noms saisis (« NOM Prénom », la forme que produit
+   *  la projection). */
+  function elevesDepuisNoms(noms: unknown): ColloscopeEleve[] {
+    if (!Array.isArray(noms)) return [];
+    const cle = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+    const index = new Map(
+      elevesColloscope.map((e) => [cle(`${e.nom} ${e.prenom}`), e]),
+    );
+    return noms
+      .map((n) => index.get(cle(String(n))))
+      .filter((e): e is ColloscopeEleve => e !== undefined);
+  }
+
+  /**
+   * Création dans le calendrier « Colles » = un RATTRAPAGE, donc une ligne
+   * ajoutée au colloscope de la classe. La classe se déduit des élèves
+   * choisis : sans eux, on ne saurait pas dans quel tableau écrire — on
+   * refuse plutôt que de deviner.
+   */
+  async function creerRattrapage(event: CalendarEvent) {
+    const choisis = elevesDepuisNoms(event.persons);
+    if (choisis.length === 0) {
+      notifications.showError(
+        "Un rattrapage a besoin d'élèves : renseignez-les dans « Assigné à ».",
+      );
+      return;
+    }
+    const classes = new Set(choisis.map((e) => e.classe));
+    if (classes.size > 1) {
+      notifications.showError("Un rattrapage ne peut concerner qu'une seule classe.");
+      return;
+    }
+    const classe = [...classes][0];
+    const spreadsheetId = collesSettings.current.colloscope?.colloscopeSpreadsheetIds?.[classe];
+    if (!spreadsheetId) {
+      notifications.showError(`Aucun colloscope importé pour la classe ${classe}.`);
+      return;
+    }
+    try {
+      const tab = await spreadsheetGet(spreadsheetId);
+      const cellules = ligneRattrapage(
+        {
+          classe,
+          debut: event.start as Date,
+          fin: event.end as Date,
+          matiere: String(event.text ?? "").trim(),
+          colleur: userProfile.current.colleurName,
+          salle: String(event.location ?? "").trim(),
+          eleves: choisis,
+        },
+        // EN FIN de tableau : insérer au milieu décalerait les lignes
+        // suivantes et invaliderait les identités déjà projetées.
+        tab.data.length,
+        elevesColloscope,
+        await colonnesDe(spreadsheetId),
+      );
+      await ecrireDansColloscope(spreadsheetId, cellules);
+      notifications.setInfo(`Rattrapage ajouté au colloscope ${classe}`);
+    } catch (err) {
+      notifications.showError(`Rattrapage impossible : ${String(err)}`);
+    }
+  }
+
   function onAddEvent({ event }: { event: CalendarEvent }) {
     if (!(event.start instanceof Date) || !(event.end instanceof Date)) return;
+
+    // Le calendrier « Colles » n'accueille pas d'événements propres : ce qu'on
+    // y crée devient une ligne du colloscope, et revient par la projection.
+    // Aucun ajout local — c'est cet ajout optimiste qui produisait autrefois
+    // le même événement en double.
+    if (event.calendarId === CALENDRIER_COLLES) {
+      void creerRattrapage(event);
+      return;
+    }
     const data: CalendarEventData = {
       id: String(event.id),
       text: event.text || "",
@@ -289,6 +478,19 @@
 
   function onUpdateEvent({ id, event }: { id: string; event: CalendarEvent }) {
     const bid = baseId(id);
+
+    // Une colle n'est pas un événement du calendrier : elle vit dans le
+    // colloscope. On la réécrit là-bas, et elle nous revient par la projection.
+    if (estIdColle(bid)) {
+      const seance = seanceDeId(bid);
+      if (!seance) return;
+      if (event.start instanceof Date && event.end instanceof Date) {
+        void deplacerColle(seance, event.start, event.end);
+      }
+      if ("persons" in event) void changerElevesColle(seance, event.persons);
+      return;
+    }
+
     const existing = store.events.find((e) => e.id === bid);
     if (!existing) return;
 
