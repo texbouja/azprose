@@ -25,6 +25,7 @@ import { spreadsheetCreate, spreadsheetDelete, spreadsheetGet } from "@/spreadsh
 import type { ColumnDef } from "@/spreadsheet/types";
 import type { ImportResult } from "@/lib/spreadsheet/import";
 import { buildColloscope, type ColloscopeData, type ColloscopeSeance } from "@/colles/colloscope";
+import type { SeanceSituee } from "@/colles/projection";
 import { collesSettings } from "@/stores/colles-settings.svelte";
 
 // ── Colonnes des tableaux créés ────────────────────────────────────────────
@@ -183,8 +184,15 @@ async function deletePreviousColloscope(prev: { elevesSpreadsheetId: string; col
   }
 }
 
+/** Comme `ColloscopeData`, mais chaque séance porte son ADRESSE SOURCE
+ *  (`spreadsheetId`, `rowIndex`). C'est ce qui permet à une vue — le
+ *  calendrier — de réécrire la bonne cellule sans deviner. */
+export interface ColloscopeSitue extends Omit<ColloscopeData, "seances"> {
+  seances: SeanceSituee[];
+}
+
 /** Données complètes du colloscope courant (lecture directe depuis la db). */
-export async function readColloscope(): Promise<ColloscopeData | null> {
+export async function readColloscope(): Promise<ColloscopeSitue | null> {
   const cs = collesSettings.current;
   if (!cs.colloscope) return null;
   try {
@@ -201,10 +209,13 @@ export async function readColloscope(): Promise<ColloscopeData | null> {
     // d'une colonne — les tableaux n'ont pas de colonne « Classe »). Colonnes :
     // Date/Groupe/Matière/Colleur/Jour/Horaire/Salle (ordre COLLOSCOPE_COLUMNS).
     const classes = Object.keys(cs.colloscope.colloscopeSpreadsheetIds).sort((a, b) => a.localeCompare(b, "fr"));
-    const seances: ColloscopeSeance[] = [];
+    const seances: SeanceSituee[] = [];
     for (const classe of classes) {
-      const tab = await spreadsheetGet(cs.colloscope.colloscopeSpreadsheetIds[classe]);
-      for (const r of tab.data) {
+      const spreadsheetId = cs.colloscope.colloscopeSpreadsheetIds[classe];
+      const tab = await spreadsheetGet(spreadsheetId);
+      // `entries()` et non `for…of` : le rang de la ligne EST son adresse.
+      // Les lignes vides sont sautées sans décaler les suivantes.
+      for (const [rowIndex, r] of tab.data.entries()) {
         if (!r.some((c) => c !== "")) continue;
         seances.push({
           classe,
@@ -215,6 +226,8 @@ export async function readColloscope(): Promise<ColloscopeData | null> {
           jour: r[4] ?? "",
           horaire: r[5] ?? "",
           salle: r[6] ?? "",
+          spreadsheetId,
+          rowIndex,
         });
       }
     }

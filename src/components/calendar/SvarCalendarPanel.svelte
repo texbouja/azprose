@@ -25,6 +25,13 @@
   import { notifications } from "@/stores/notifications.svelte";
   import { confirm } from "@tauri-apps/plugin-dialog";
   import { exportCalendar, importCalendar } from "@/lib/calendar-persistence";
+  import { projeterColles, type SeanceSituee } from "@/colles/projection";
+  import { readColloscope } from "@/colles/import-colloscope";
+  import type { ColloscopeEleve } from "@/colles/colloscope";
+  import { userProfile } from "@/stores/user-profile.svelte";
+  import { collesSettings } from "@/stores/colles-settings.svelte";
+  import { dataBus } from "@/lib/data/bus";
+  import { ofType } from "@/lib/data/events";
 
   const words = { ...fr, ...frCore };
   const store = getCalendarStore();
@@ -59,6 +66,45 @@
     { comp: PersonCombo as any, key: "persons", label: "Assigné à" },
   ]);
 
+  // ── Colles projetées depuis le colloscope ────────────────
+  // Le calendrier est une VUE du colloscope, au même titre que la grille l'est
+  // d'un tableur : la donnée reste dans `spreadsheet_cells`, on ne la recopie
+  // JAMAIS dans `calendar_events`. C'est ce qui rend le doublon impossible —
+  // il n'y a rien à accumuler d'un import à l'autre.
+  let seancesColloscope = $state<SeanceSituee[]>([]);
+  let elevesColloscope = $state<ColloscopeEleve[]>([]);
+
+  async function chargerColloscope() {
+    const data = await readColloscope();
+    seancesColloscope = data?.seances ?? [];
+    elevesColloscope = data?.eleves ?? [];
+  }
+
+  $effect(() => {
+    // Dépendance explicite : un ré-import change les identifiants de tableaux.
+    void collesSettings.current.colloscope;
+    void chargerColloscope();
+  });
+
+  // Canal de fraîcheur, sens base → calendrier : une cellule modifiée dans un
+  // tableau du colloscope (par le tableur, la grille, ou notre propre écriture
+  // retour) fait recharger la projection. Une seule voie de rafraîchissement.
+  $effect(() => {
+    const ids = new Set(
+      Object.values(collesSettings.current.colloscope?.colloscopeSpreadsheetIds ?? {}),
+    );
+    if (ids.size === 0) return;
+    const sub = dataBus.subscribe(ofType("cells-changed"), (ev) => {
+      if (ids.has(ev.spreadsheetId)) void chargerColloscope();
+    });
+    return () => sub.unsubscribe();
+  });
+
+  function isoLocal(d: Date): string {
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
   // ── Expand recurring events for the visible range ────────
   const expandedEvents = $derived.by<CalendarEvent[]>(() => {
     const rangeStart = new Date();
@@ -67,6 +113,23 @@
     rangeEnd.setMonth(rangeEnd.getMonth() + 12);
 
     const result: CalendarEvent[] = [];
+
+    // Les colles d'ABORD, et surtout : elles ne transitent jamais par
+    // `store.events`, dont chaque affectation déclenche un replace-all de
+    // `calendar_events`. La séparation est structurelle, pas une discipline.
+    const { evenements, doublons } = projeterColles(
+      seancesColloscope,
+      elevesColloscope,
+      {
+        colleurName: userProfile.current.colleurName,
+        debut: isoLocal(rangeStart),
+        fin: isoLocal(rangeEnd),
+      },
+    );
+    result.push(...(evenements as CalendarEvent[]));
+    if (doublons > 0) {
+      console.warn(`[colles] ${doublons} ligne(s) en double dans le colloscope, ignorée(s)`);
+    }
 
     for (const ev of store.events) {
       // Guard: some events may arrive from SVAR before start/end are resolved
