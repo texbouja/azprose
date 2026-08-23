@@ -32,6 +32,7 @@
     projeterColles,
     type SeanceSituee,
   } from "@/colles/projection";
+  import { colleursDuColloscope, memeColleur } from "@/colles/colloscope";
   import {
     COLONNES_PAR_DEFAUT,
     changerEleves,
@@ -119,10 +120,19 @@
   // Première version : un toast. Mauvais choix — un message fugace pour la
   // condition même qui fait croire à une panne, alors que l'utilisateur a
   // dit rater les signalements passagers. Bandeau persistant, donc, qui
-  // disparaît de lui-même dès que le nom est renseigné.
-  const inviteProfil = $derived(
-    seancesColloscope.length > 0 && !userProfile.current.colleurName.trim(),
-  );
+  // disparaît de lui-même dès que la situation se résout.
+  //
+  // DEUX situations, pas une : le nom absent, et le nom qui ne correspond à
+  // aucun colleur du colloscope (une faute de frappe, un homonyme écrit
+  // autrement). La seconde est la plus traître — tout paraît réglé, et rien
+  // ne s'affiche.
+  const alerteColleur = $derived.by(() => {
+    if (seancesColloscope.length === 0) return null;
+    const nom = userProfile.current.colleurName.trim();
+    if (!nom) return { genre: "absent" as const, colleurs: [] as string[] };
+    if (seancesColloscope.some((s) => memeColleur(s.colleur, nom))) return null;
+    return { genre: "inconnu" as const, colleurs: colleursDuColloscope(seancesColloscope) };
+  });
 
   // Canal de fraîcheur, sens base → calendrier : une cellule modifiée dans un
   // tableau du colloscope (par le tableur, la grille, ou notre propre écriture
@@ -644,15 +654,22 @@
 </script>
 
 <div class="svar-calendar-panel">
-    {#if inviteProfil}
+    {#if alerteColleur}
       <!-- Persistant, pas fugace : c'est l'explication d'un calendrier qui
            semble vide alors qu'un colloscope est chargé. -->
       <div class="cal-invite" role="status">
         <i class="wxi-info" aria-hidden="true"></i>
         <span>
-          Un colloscope est chargé, mais vos colles ne peuvent pas être
-          reconnues : renseignez votre <strong>nom de colleur</strong> dans
-          Réglages › Profil.
+          {#if alerteColleur.genre === "absent"}
+            Un colloscope est chargé, mais vos colles ne peuvent pas être
+            reconnues : renseignez votre <strong>nom de colleur</strong> dans
+            Réglages › Profil.
+          {:else}
+            Aucune colle au nom de
+            <strong>{userProfile.current.colleurName}</strong> dans le
+            colloscope. Les colleurs qui y figurent :
+            <em>{alerteColleur.colleurs.join(", ")}</em>.
+          {/if}
         </span>
         <!-- La section est passée par intention ; `openSettings` l'ignore
              aujourd'hui (elle ouvre l'overlay sans naviguer) — d'où le

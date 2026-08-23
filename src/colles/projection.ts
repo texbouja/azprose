@@ -17,7 +17,7 @@
 // rotation des groupes et les vacances ont déjà été résolues à l'import.
 
 import type { CalendarEventData } from "@/lib/calendar-types";
-import type { ColloscopeEleve, ColloscopeSeance } from "./colloscope";
+import { memeColleur, normalizeColleur, type ColloscopeEleve, type ColloscopeSeance } from "./colloscope";
 
 /** Catégorie de calendrier des colles — voir `calendar-categories.ts`. */
 export const CALENDRIER_COLLES = "colles";
@@ -55,34 +55,13 @@ export function decouperIdColle(
 }
 
 // ── Comparaison de noms de colleur ──────────────────────────────────────────
-
-/** Civilités à ignorer : le colloscope écrit « M. BOUJAIDA », le profil
- *  contient « Boujaida ». */
-const CIVILITES = /^(m|mr|mme|mlle|pr|prof|dr)\.?\s+/;
-
-/** Forme comparable d'un nom : sans accents, sans casse, sans civilité, sans
- *  espaces superflus. */
-export function normaliserColleur(nom: string): string {
-  return nom
-    .normalize("NFD")
-    // Plage des diacritiques combinantes U+0300–U+036F, que NFD vient de
-    // détacher des lettres. Les caractères sont ici sous leur forme brute :
-    // ils ne s'affichent pas isolément, d'où ce commentaire.
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(CIVILITES, "")
-    .trim();
-}
-
-/** Deux écritures désignent-elles le même colleur ? Deux noms vides ne se
- *  correspondent PAS : sans nom, on ne prétend reconnaître personne. */
-export function memeColleur(a: string, b: string): boolean {
-  const na = normaliserColleur(a);
-  const nb = normaliserColleur(b);
-  return na.length > 0 && na === nb;
-}
+//
+// UNE seule implémentation pour toute l'application (`colloscope.ts`). Il y en
+// a eu deux un temps, et elles divergeaient : celle des notes quotidiennes
+// n'ôtait pas la civilité, si bien qu'un profil « Boujaida » ne reconnaissait
+// aucune séance de « M. BOUJAIDA » — sans rien signaler. Ne pas en réintroduire
+// une troisième ici.
+export { memeColleur, normalizeColleur as normaliserColleur } from "./colloscope";
 
 // ── Résolution des élèves ───────────────────────────────────────────────────
 
@@ -273,7 +252,7 @@ export function projeterColles(
   options: OptionsProjection,
 ): ResultatProjection {
   const { colleurName, debut, fin } = options;
-  if (!normaliserColleur(colleurName)) return { evenements: [], doublons: 0 };
+  if (!normalizeColleur(colleurName)) return { evenements: [], doublons: 0 };
 
   const vues = new Set<string>();
   const evenements: CalendarEventData[] = [];

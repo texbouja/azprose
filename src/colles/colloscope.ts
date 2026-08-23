@@ -417,14 +417,37 @@ export function buildColloscope(
 
 // ── Croisement avec le profil (créneaux « à moi ») ─────────────────────────
 
-/** Normalise un nom de colleur pour comparaison ("M, KANTARA" ≡ "M. KANTARA"). */
+/** Civilités : le colloscope écrit « M. BOUJAIDA », le profil « Boujaida ».
+ *  Retirées AVANT l'élagage des non-alphanumériques — sinon le point tombe
+ *  d'abord et le « m » reste collé au nom. */
+const CIVILITES = /^(m|mr|mme|mlle|pr|prof|dr)[.,]?\s+/;
+
+/**
+ * Normalise un nom de colleur pour comparaison ("M, KANTARA" ≡ "M. KANTARA"
+ * ≡ "Kantara").
+ *
+ * ⚠️ La civilité est retirée depuis le 2026-08-23. Sans cela, un profil
+ * renseigné « Boujaida » ne reconnaissait AUCUNE séance de « M. BOUJAIDA » —
+ * échec silencieux : la note quotidienne s'affichait sans colles, sans rien
+ * signaler. Même défaut que celui rencontré côté calendrier.
+ */
 export function normalizeColleur(s: string): string {
   return s
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(CIVILITES, "")
     .replace(/[^a-z0-9]+/g, "")
     .trim();
+}
+
+/** Deux écritures désignent-elles le même colleur ? Deux noms vides ne se
+ *  correspondent PAS : sans nom renseigné, on ne reconnaît personne. */
+export function memeColleur(a: string, b: string): boolean {
+  const na = normalizeColleur(a);
+  return na.length > 0 && na === normalizeColleur(b);
 }
 
 /** Séances dont le colleur correspond au nom de colleur du profil. */
@@ -433,6 +456,17 @@ export function seancesDuColleur(
   colleurName: string,
 ): ColloscopeSeance[] {
   if (!colleurName.trim()) return [];
-  const needle = normalizeColleur(colleurName);
-  return seances.filter((s) => normalizeColleur(s.colleur) === needle);
+  return seances.filter((s) => memeColleur(s.colleur, colleurName));
+}
+
+/** Les colleurs distincts que cite le colloscope, tels qu'ils y sont écrits.
+ *  Sert à DIRE à l'utilisateur pourquoi son nom ne reconnaît rien — une liste
+ *  vaut mieux qu'un « aucune colle » sans explication. */
+export function colleursDuColloscope(seances: ColloscopeSeance[]): string[] {
+  const vus = new Map<string, string>();
+  for (const s of seances) {
+    const k = normalizeColleur(s.colleur);
+    if (k && !vus.has(k)) vus.set(k, s.colleur.trim());
+  }
+  return [...vus.values()].sort((a, b) => a.localeCompare(b, "fr"));
 }

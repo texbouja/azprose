@@ -11,6 +11,7 @@ import type { ImportResult } from "@/lib/spreadsheet/import";
 import {
   buildColloscope,
   classifySheet,
+  colleursDuColloscope,
   expandColloscope,
   inVacances,
   normalizeColleur,
@@ -415,16 +416,35 @@ describe("seancesDuColleur", () => {
     { classe: "MPs-2", date: "2025-09-17", groupe: "G1", matiere: "F", colleur: "MME. BENKIRANE", jour: "Mercredi", horaire: "14h", salle: "S12" },
   ];
 
-  it("normalise les variantes M. / M, / espaces", () => {
-    expect(normalizeColleur("M. TAIBI")).toBe("mtaibi");
-    expect(normalizeColleur("M, KANTARA")).toBe("mkantara");
-    expect(normalizeColleur("MME. Benkirane")).toBe("mmebenkirane");
+  it("normalise les variantes M. / M, / espaces — ET ôte la civilité", () => {
+    // Changement du 2026-08-23 : la civilité tombe. Avant, « M. TAIBI » rendait
+    // « mtaibi », si bien qu'un profil renseigné « Taibi » ne reconnaissait
+    // AUCUNE de ses séances — la note quotidienne s'affichait vide, sans rien
+    // signaler. C'est le défaut que ce changement corrige.
+    expect(normalizeColleur("M. TAIBI")).toBe("taibi");
+    expect(normalizeColleur("M, KANTARA")).toBe("kantara");
+    expect(normalizeColleur("MME. Benkirane")).toBe("benkirane");
+    expect(normalizeColleur("Taibi")).toBe("taibi");
   });
 
-  it("filtre les séances du colleur du profil", () => {
+  it("filtre les séances du colleur du profil, civilité ou non", () => {
     expect(seancesDuColleur(seances, "M, KANTARA").map((s) => s.date)).toEqual(["2025-09-16"]);
     expect(seancesDuColleur(seances, "M. KANTARA").map((s) => s.date)).toEqual(["2025-09-16"]);
+    // Le cas qui échouait : le profil sans civilité.
+    expect(seancesDuColleur(seances, "Kantara").map((s) => s.date)).toEqual(["2025-09-16"]);
+    expect(seancesDuColleur(seances, "Benkirane").map((s) => s.date)).toEqual(["2025-09-17"]);
     expect(seancesDuColleur(seances, "Inconnu")).toEqual([]);
     expect(seancesDuColleur(seances, "")).toEqual([]);
+  });
+
+  it("colleursDuColloscope liste les colleurs cités, tels qu'écrits", () => {
+    // Sert à DIRE pourquoi un nom ne reconnaît rien, plutôt que d'afficher
+    // un calendrier vide sans explication.
+    expect(colleursDuColloscope(seances)).toEqual([
+      "M, KANTARA",
+      "M. TAIBI",
+      "MME. BENKIRANE",
+    ]);
+    expect(colleursDuColloscope([])).toEqual([]);
   });
 });
