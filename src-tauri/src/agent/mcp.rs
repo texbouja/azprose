@@ -1102,6 +1102,23 @@ fn instructions_serveur(root: Option<&str>, colleur: Option<&str>) -> String {
              `horaire` est du TEXTE (« 13h-14h ») : trier sur `date`, jamais sur `horaire`.\n\
              `calendar_events` ne contient PAS les colles ; elles sont projetées depuis le colloscope.\n",
         );
+        // Un exemple TRAVAILLÉ, et non une description de plus. Mesuré le
+        // 2026-08-23 : le modèle interrogeait v_colle_eleves une PREMIÈRE fois
+        // sans sélectionner nom/prenom — il obtenait donc chaque séance
+        // répétée autant de fois qu'elle a d'élèves, jetait ce résultat, et
+        // reposait la même question. Deux appels pour une seule réponse.
+        let filtre = colleur
+            .filter(|c| !c.trim().is_empty())
+            .map(|c| format!("'%{}%'", c.trim().replace('\'', "''")))
+            .unwrap_or_else(|| "'%NOM%'".to_string());
+        t.push_str(&format!(
+            "\nUNE SEULE requête suffit pour « quels élèves ai-je en colle tel jour ? » —\n\
+             v_colle_eleves porte AUSSI les colonnes de la séance :\n\
+             \x20 SELECT horaire, groupe, salle, nom, prenom FROM v_colle_eleves\n\
+             \x20  WHERE date='{debut}' AND colleur LIKE {filtre} ORDER BY horaire, nom;\n\
+             Attention : cette vue rend UNE LIGNE PAR ÉLÈVE. Omettre nom/prenom fait\n\
+             apparaître chaque séance en autant d'exemplaires qu'elle a d'élèves.\n"
+        ));
     } else {
         t.push_str("\nAucun colloscope importé : les vues v_colles et v_colle_eleves n'existent pas.\n");
     }
@@ -1786,6 +1803,11 @@ mod tests {
         assert!(t.contains("2026-12-08"), "la période doit être annoncée");
         assert!(t.contains("Boujaida"), "l'identité doit être annoncée");
         assert!(t.contains("LIKE"), "la règle de civilité doit être annoncée");
+        // L'exemple travaillé : c'est lui qui fait tenir la réponse en UN
+        // appel, la description seule n'y suffisait pas (mesuré).
+        assert!(t.contains("SELECT horaire, groupe, salle, nom, prenom"), "l'exemple manque");
+        assert!(t.contains("LIKE '%Boujaida%'"), "l'exemple doit porter le vrai nom");
+        assert!(t.contains("UNE LIGNE PAR ÉLÈVE"), "l'avertissement de répétition manque");
     }
 
     #[test]
