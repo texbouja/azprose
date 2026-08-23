@@ -47,6 +47,7 @@
   import { userProfile } from "@/stores/user-profile.svelte";
   import { collesSettings } from "@/stores/colles-settings.svelte";
   import { createOrigin, dataBus } from "@/lib/data/bus";
+  import { overlays } from "@/stores/overlays.svelte";
   import { ofType } from "@/lib/data/events";
 
   const words = { ...fr, ...frCore };
@@ -112,19 +113,16 @@
   });
 
   // Un colloscope importé mais AUCUNE colle affichée, faute de savoir qui est
-  // l'utilisateur : sans cette invite, le calendrier reste vide sans dire
-  // pourquoi. Une seule fois par ouverture du panneau — c'est un rappel, pas
-  // une alarme.
-  let inviteProfilFaite = false;
-  $effect(() => {
-    if (inviteProfilFaite) return;
-    if (seancesColloscope.length === 0) return;
-    if (userProfile.current.colleurName.trim()) return;
-    inviteProfilFaite = true;
-    notifications.setInfo(
-      "Colloscope détecté : renseignez votre nom de colleur dans Réglages › Profil pour voir vos colles.",
-    );
-  });
+  // l'utilisateur. C'est l'état où la fonction PARAÎT cassée : il doit se voir
+  // et RESTER visible.
+  //
+  // Première version : un toast. Mauvais choix — un message fugace pour la
+  // condition même qui fait croire à une panne, alors que l'utilisateur a
+  // dit rater les signalements passagers. Bandeau persistant, donc, qui
+  // disparaît de lui-même dès que le nom est renseigné.
+  const inviteProfil = $derived(
+    seancesColloscope.length > 0 && !userProfile.current.colleurName.trim(),
+  );
 
   // Canal de fraîcheur, sens base → calendrier : une cellule modifiée dans un
   // tableau du colloscope (par le tableur, la grille, ou notre propre écriture
@@ -646,6 +644,24 @@
 </script>
 
 <div class="svar-calendar-panel">
+    {#if inviteProfil}
+      <!-- Persistant, pas fugace : c'est l'explication d'un calendrier qui
+           semble vide alors qu'un colloscope est chargé. -->
+      <div class="cal-invite" role="status">
+        <i class="wxi-info" aria-hidden="true"></i>
+        <span>
+          Un colloscope est chargé, mais vos colles ne peuvent pas être
+          reconnues : renseignez votre <strong>nom de colleur</strong> dans
+          Réglages › Profil.
+        </span>
+        <!-- La section est passée par intention ; `openSettings` l'ignore
+             aujourd'hui (elle ouvre l'overlay sans naviguer) — d'où le
+             libellé, qui ne promet pas d'atterrir sur le profil. -->
+        <button type="button" onclick={() => overlays.openSettings("profile")}>
+          Ouvrir les réglages
+        </button>
+      </div>
+    {/if}
     <Locale {words}>
       <ContextMenu {api} options={menuOptions} filter={menuFilter} onclick={handleContextMenu}>
           <Calendar
@@ -688,6 +704,43 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+
+  /* Bandeau d'invite : discret mais PERSISTANT — il explique un calendrier
+     qui paraît vide, il ne doit pas s'effacer tout seul. Couleurs aux tokens. */
+  .cal-invite {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    color: var(--fg);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  }
+  .cal-invite i {
+    flex: none;
+    font-size: 14px;
+    color: var(--accent);
+  }
+  .cal-invite span {
+    flex: 1;
+    min-width: 0;
+  }
+  .cal-invite button {
+    flex: none;
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .cal-invite button:hover {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
   }
 
   /* ── Prevent selection bleeding during drag ──────────── */
