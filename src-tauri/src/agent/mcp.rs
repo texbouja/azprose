@@ -1066,9 +1066,24 @@ fn schema_base(root: &str, colleur: Option<&str>) -> Result<serde_json::Value, S
 /// gratuitement. Les mettre ici, c'est répondre au premier appel au lieu du
 /// troisième. `base_schema` reste, pour le détail.
 fn instructions_serveur(root: Option<&str>, colleur: Option<&str>) -> String {
-    let mut t = String::from(
+    // La date du jour n'était fournie NULLE PART. « Le troisième mardi de
+    // janvier », « la semaine prochaine », « depuis un mois » : toute question
+    // temporelle en dépend, et le modèle s'en tirait en inférant l'année
+    // depuis la période des colles — quand elle existe.
+    let aujourdhui = chrono::Local::now();
+    let jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+    let jour = jours[chrono::Datelike::weekday(&aujourdhui).num_days_from_monday() as usize];
+
+    let mut t = format!(
+        "Aujourd'hui : {jour} {}.\n\n",
+        aujourdhui.format("%Y-%m-%d")
+    );
+    t.push_str(
         "Données du vault AZprose, en LECTURE SEULE (outil `base_interroger`, SQL SELECT/WITH/EXPLAIN). \
          Interroger ces outils plutôt que de deviner ou de lire les fichiers de configuration.\n\n\
+         `base_interroger` accepte PLUSIEURS instructions séparées par « ; » en un seul appel, \
+         et rend un résultat par instruction : explorer et répondre dans le MÊME appel plutôt \
+         qu'en plusieurs tours.\n\n\
          VUES prêtes à l'emploi — les préférer TOUJOURS aux tables brutes :\n\
          · v_cellules(tableur, ligne, colonne, valeur) — n'importe quel tableau, titres de colonnes joints.\n\
          · v_tableurs(tableur, colonnes, lignes) — catalogue.\n\
@@ -1130,12 +1145,103 @@ fn instructions_serveur(root: Option<&str>, colleur: Option<&str>) -> String {
     t
 }
 
-/// Exécute une requête de consultation sur `.azprose/data.db`.
+/// Découpe une suite d'instructions, si et seulement si CHACUNE est une
+/// instruction de consultation valide.
+///
+/// Pourquoi ce « si et seulement si ». Découper sur « ; » est naïf : un
+/// point-virgule dans un littéral (`LIKE '%;%'`, réel — un rattrapage sépare
+/// ses codes élèves ainsi) casserait la requête en fragments absurdes. Mais
+/// alors ces fragments ne passent pas la liste blanche, on rend `None`, et
+/// l'appelant refuse — comme avant. **Le pire cas est un refus, jamais une
+/// exécution imprévue.**
+fn decouper_instructions(sql: &str) -> Option<Vec<String>> {
+    let morceaux: Vec<String> = sql
+        .split(';')
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty())
+        .collect();
+    if morceaux.len() < 2 {
+        return None;
+    }
+    if morceaux.iter().all(|m| is_readonly_sql(m).is_ok()) {
+        Some(morceaux)
+    } else {
+        None
+    }
+}
+
+/// Exécute une ou PLUSIEURS instructions de consultation.
+///
+/// Le modèle explorait en plusieurs tours — sonder, puis répondre — parce
+/// qu'un appel ne portait qu'une requête. Or un tour coûte 3 à 4 secondes de
+/// latence, là où un shell sqlite en enchaîne dix en trois. Une seule
+/// connexion, un seul aller-retour : c'est ce qui rend l'exploration gratuite,
+/// et cela vaut pour TOUTE question, pas pour une forme particulière.
+///
+/// Forme de la réponse : inchangée pour une instruction seule (rien à casser),
+/// `{resultats: [...]}` pour une suite.
 fn query_readonly(root: &str, sql: &str) -> Result<serde_json::Value, String> {
+    if let Some(morceaux) = decouper_instructions(sql) {
+        let conn = ouvrir_lecture(root)?;
+        let mut resultats = Vec::with_capacity(morceaux.len());
+        for m in &morceaux {
+            match executer_une(&conn, m) {
+                Ok(v) => resultats.push(v),
+                // Une instruction fautive n'annule pas les précédentes : le
+                // modèle voit ce qui a marché ET ce qui a échoué, en un tour.
+                Err(e) => resultats.push(serde_json::json!({ "requete": m, "erreur": e })),
+            }
+        }
+        return Ok(serde_json::json!({ "resultats": resultats }));
+    }
     is_readonly_sql(sql)?;
     let conn = ouvrir_lecture(root)?;
+    executer_une(&conn, sql)
+}
 
-    let mut stmt = conn.prepare(sql).map_err(|e| format!("requête invalide : {e}"))?;
+/// Sur « no such column », dit QUELLES colonnes existent dans les tables et
+/// vues que la requête mentionne.
+///
+/// Mesuré le 2026-08-23 : le modèle a demandé une colonne absente et a perdu
+/// un tour entier à le découvrir. Une erreur qui se contente de refuser fait
+/// payer un aller-retour ; une erreur qui enseigne n'en fait payer aucun.
+fn aide_colonnes(conn: &rusqlite::Connection, sql: &str, erreur: &str) -> String {
+    if !erreur.contains("no such column") {
+        return String::new();
+    }
+    // Objets connus, vues temporaires comprises (elles ne figurent pas dans
+    // le `sqlite_master` de la base principale).
+    let mut noms: Vec<String> = Vec::new();
+    for source in ["sqlite_master", "temp.sqlite_master"] {
+        if let Ok(mut s) = conn.prepare(&format!(
+            "SELECT name FROM {source} WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%'"
+        )) {
+            if let Ok(it) = s.query_map([], |r| r.get::<_, String>(0)) {
+                noms.extend(it.flatten());
+            }
+        }
+    }
+    let minuscule = sql.to_lowercase();
+    let mut aide = String::new();
+    for nom in noms {
+        if !minuscule.contains(&nom.to_lowercase()) {
+            continue;
+        }
+        let Ok(mut s) = conn.prepare(&format!("PRAGMA table_info({nom})")) else { continue };
+        let Ok(it) = s.query_map([], |r| r.get::<_, String>(1)) else { continue };
+        let cols: Vec<String> = it.flatten().collect();
+        if !cols.is_empty() {
+            aide.push_str(&format!("\n  colonnes de {nom} : {}", cols.join(", ")));
+        }
+    }
+    aide
+}
+
+/// Une instruction, déjà validée, sur une connexion déjà ouverte.
+fn executer_une(conn: &rusqlite::Connection, sql: &str) -> Result<serde_json::Value, String> {
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| format!("requête invalide : {e}{}", aide_colonnes(conn, sql, &e.to_string())))?;
     let colonnes: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
     let n = colonnes.len();
 
@@ -1749,6 +1855,76 @@ mod tests {
         assert!(pieges.contains("rattrapage"), "le piège des codes élèves manque");
         // L'utilisateur n'a plus à se présenter.
         assert_eq!(s["colleur"], "Boujaida");
+    }
+
+    #[test]
+    fn plusieurs_instructions_en_un_seul_appel() {
+        // Le levier général : explorer ET répondre dans le même tour.
+        let dir = vault_avec_colloscope(&[], &[["2026-12-08", "G6", "M", "M. B", "Mardi", "9h-10h", ""]]);
+        let v = query_readonly(
+            dir.path().to_str().unwrap(),
+            "SELECT COUNT(*) FROM v_colles; SELECT date FROM v_colles",
+        )
+        .unwrap();
+        let r = v["resultats"].as_array().expect("un résultat par instruction");
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[0]["lignes"][0][0], 1);
+        assert_eq!(r[1]["lignes"][0][0], "2026-12-08");
+    }
+
+    #[test]
+    fn une_instruction_fautive_nannule_pas_les_autres() {
+        // Le modèle doit voir ce qui a marché ET ce qui a échoué, en un tour.
+        let dir = vault_avec_colloscope(&[], &[["2026-12-08", "G6", "M", "M. B", "Mardi", "9h-10h", ""]]);
+        let v = query_readonly(
+            dir.path().to_str().unwrap(),
+            "SELECT date FROM v_colles; SELECT inexistante FROM v_colles",
+        )
+        .unwrap();
+        let r = v["resultats"].as_array().unwrap();
+        assert_eq!(r[0]["lignes"][0][0], "2026-12-08");
+        assert!(r[1]["erreur"].as_str().unwrap().contains("no such column"));
+    }
+
+    #[test]
+    fn une_instruction_seule_garde_sa_forme() {
+        // Rien à casser pour l'immense majorité des appels.
+        let dir = vault_avec_colloscope(&[], &[["2026-12-08", "G6", "M", "M. B", "Mardi", "9h-10h", ""]]);
+        let v = query_readonly(dir.path().to_str().unwrap(), "SELECT 1").unwrap();
+        assert!(v["resultats"].is_null());
+        assert_eq!(v["rendues"], 1);
+    }
+
+    #[test]
+    fn une_suite_contenant_une_ecriture_est_refusee_en_entier() {
+        // La garde d'origine tient : « SELECT 1; DROP TABLE t » ne passe pas.
+        let dir = vault_avec_colloscope(&[], &[["2026-12-08", "G6", "M", "M. B", "Mardi", "9h-10h", ""]]);
+        let root = dir.path().to_str().unwrap();
+        assert!(query_readonly(root, "SELECT 1; DROP TABLE spreadsheets").is_err());
+        assert!(query_readonly(root, "SELECT 1; DELETE FROM spreadsheet_cells").is_err());
+        // Le tableau est toujours là.
+        assert!(query_readonly(root, "SELECT COUNT(*) FROM spreadsheets").is_ok());
+    }
+
+    #[test]
+    fn lerreur_de_colonne_dit_lesquelles_existent() {
+        // Une erreur qui refuse coûte un aller-retour ; une erreur qui
+        // enseigne n'en coûte aucun.
+        let dir = vault_avec_colloscope(&[], &[["2026-12-08", "G6", "M", "M. B", "Mardi", "9h-10h", "A"]]);
+        let e = query_readonly(dir.path().to_str().unwrap(), "SELECT inexistante FROM v_colles")
+            .err()
+            .expect("un refus était attendu");
+        assert!(e.contains("colonnes de v_colles"), "l'aide manque : {e}");
+        assert!(e.contains("horaire"), "les colonnes réelles doivent être listées : {e}");
+    }
+
+    #[test]
+    fn les_instructions_donnent_la_date_du_jour() {
+        // Rien ne la fournissait : toute question temporelle en dépend.
+        let t = instructions_serveur(None, None);
+        let aujourdhui = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert!(t.contains(&aujourdhui), "la date du jour manque");
+        assert!(t.contains("PLUSIEURS instructions"), "le mode suite doit être annoncé");
     }
 
     #[test]
