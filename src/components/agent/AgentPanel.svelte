@@ -141,9 +141,45 @@ let errorMessage = $state("");
 let draft = $state("");
 let feedEl = $state<HTMLElement | null>(null);
 let nextId = 0;
-// « L'agent écrit… » : armé à l'envoi, désarmé au premier contenu RÉEL
-// (réflexion, message, outil) — jamais sur les notifications techniques.
+// « L'agent écrit… » : armé à l'envoi, désarmé au premier contenu VISIBLE
+// (message, outil) — jamais sur les notifications techniques, et pas non
+// plus sur une réflexion, qui est repliée donc immobile.
 let awaiting = $state(false);
+
+/** Secondes écoulées depuis l'envoi, affichées à côté de l'indicateur.
+ *  Mesuré le 2026-08-23 : 3,4 à 4,1 s avant le premier chunk sur la
+ *  passerelle maison, et un tour peut rester muet trois minutes. Des points
+ *  animés seuls ne distinguent pas la 1ʳᵉ seconde de la 20ᵉ ; le compteur ne
+ *  promet rien, il rend l'attente lisible. */
+let attenteSecondes = $state(0);
+let attenteTimer: ReturnType<typeof setInterval> | null = null;
+
+function arreterAttente() {
+  if (attenteTimer) {
+    clearInterval(attenteTimer);
+    attenteTimer = null;
+  }
+  attenteSecondes = 0;
+}
+
+// Une seule source de vérité : le compteur suit `awaiting`, plutôt que d'être
+// armé et désarmé sur les cinq sites qui manipulent l'indicateur.
+$effect(() => {
+  if (!awaiting) {
+    arreterAttente();
+    return;
+  }
+  const depart = Date.now();
+  attenteSecondes = 0;
+  attenteTimer = setInterval(() => {
+    attenteSecondes = Math.floor((Date.now() - depart) / 1000);
+  }, 1000);
+  return arreterAttente;
+});
+
+/** Sous ce seuil, pas de compteur : une réponse rapide ne doit pas faire
+ *  clignoter un chiffre au passage. */
+const SEUIL_COMPTEUR_S = 2;
 
 let client: AgentClient | null = null;
 let sessionId = $state<string | null>(null);
@@ -547,7 +583,11 @@ function applyUpdate(u: SessionUpdate) {
       break;
     }
     case "agent_thought_chunk": {
-      awaiting = false;
+      // `awaiting` reste VRAI, contrairement aux autres chunks : une
+      // réflexion est repliée par défaut, donc immobile à l'écran. Éteindre
+      // l'indicateur ici donnait une attente qui semblait s'interrompre deux
+      // fois — mesuré 2026-08-23 : sur `opencode/big-pickle`, le premier
+      // chunk est TOUJOURS une réflexion, et le texte arrive bien après.
       const key = u.messageId ?? "?";
       const existing = messageItems.get(`thought:${key}`);
       const text = u.content?.text ?? "";
@@ -1327,6 +1367,7 @@ onDestroy(() => {
   // démonté (le throttle de rendu survit 80 ms à la fermeture du panneau).
   if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
   if (liveTypesetTimer) { clearTimeout(liveTypesetTimer); liveTypesetTimer = null; }
+  arreterAttente();
   void client?.stop();
   // Le serveur de catalogue vit autant que le panneau (décision paresseux-
   // puis-maintenu) : sans ce kill, il resterait orphelin jusqu'à la fermeture
@@ -1492,9 +1533,18 @@ onDestroy(() => {
 
     {#if awaiting}
       <!-- Indicateur d'attente (convention chat/VSCode) : affiché entre
-           l'envoi et le premier contenu réel, jamais après. -->
+           l'envoi et le premier contenu VISIBLE. Il survit à une réflexion,
+           qui est repliée donc immobile — sans quoi l'attente semblait
+           s'interrompre alors que l'agent travaillait toujours. -->
       <div class="agent__typing" aria-label={t("agent.thinking")} role="status">
-        <span></span><span></span><span></span>
+        <span class="agent__typing-point"></span>
+        <span class="agent__typing-point"></span>
+        <span class="agent__typing-point"></span>
+        {#if attenteSecondes >= SEUIL_COMPTEUR_S}
+          <!-- `aria-hidden` : le compteur change chaque seconde ; un lecteur
+               d'écran le relirait sans fin. L'`aria-label` porte le sens. -->
+          <span class="agent__typing-duree" aria-hidden="true">{attenteSecondes} s</span>
+        {/if}
       </div>
     {/if}
   </div>
@@ -1713,18 +1763,31 @@ onDestroy(() => {
     padding: 6px 2px;
     align-items: center;
   }
-  .agent__typing span {
+  /* Classe explicite plutôt que `.agent__typing span` : le compteur est un
+     span lui aussi, et héritait de la pastille animée. */
+  .agent__typing-point {
     width: 5px;
     height: 5px;
     border-radius: 50%;
     background: var(--muted);
     animation: agent-typing 1.2s infinite ease-in-out;
   }
-  .agent__typing span:nth-child(2) { animation-delay: 0.15s; }
-  .agent__typing span:nth-child(3) { animation-delay: 0.3s; }
+  .agent__typing-point:nth-child(2) { animation-delay: 0.15s; }
+  .agent__typing-point:nth-child(3) { animation-delay: 0.3s; }
+  /* Discret : il informe, il ne réclame pas l'attention. Chiffres tabulaires
+     pour que le passage de 9 à 10 ne décale pas la ligne. */
+  .agent__typing-duree {
+    margin-left: 3px;
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
   @keyframes agent-typing {
     0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
     30% { transform: translateY(-3px); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .agent__typing-point { animation: none; opacity: 0.6; }
   }
 
   /* ── Réflexion : discrète, repliée ────────────────────────── */
