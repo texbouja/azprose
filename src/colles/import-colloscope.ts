@@ -75,6 +75,11 @@ export interface ColloscopeImportResult {
   seanceCount: number;
   /** Nombre d'élèves importés. */
   eleveCount: number;
+  /** Rattrapages du précédent colloscope reportés dans les nouveaux tableaux.
+   *  Remonté pour être DIT à l'utilisateur : un import écrase les séances
+   *  générées (donc les décalages et ajournements saisis au calendrier), mais
+   *  pas les rattrapages — la distinction mérite d'être annoncée. */
+  rattrapagesPreserves: number;
 }
 
 /**
@@ -144,6 +149,7 @@ export async function importColloscope(
   // construction (le tableau fusionné de ~1800 lignes était trop lent).
   const classes = [...data.classes].sort((a, b) => a.localeCompare(b, "fr"));
   const colloscopeSpreadsheetIds: Record<string, string> = {};
+  let rattrapagesPreserves = 0;
   // Groupes connus de la NOUVELLE liste d'élèves : c'est eux qui distinguent
   // une ligne générée (libellé de groupe) d'un rattrapage (codes élèves).
   const groupesParClasse = new Map<string, Set<string>>();
@@ -167,6 +173,7 @@ export async function importColloscope(
       generees,
       groupesParClasse.get(classe) ?? [],
     );
+    rattrapagesPreserves += preservees.length;
     const id = crypto.randomUUID();
     await spreadsheetCreate(
       id,
@@ -184,6 +191,7 @@ export async function importColloscope(
     source: sourceName,
     seanceCount: data.seances.length,
     eleveCount: data.eleves.length,
+    rattrapagesPreserves,
   };
 
   // Persister le mapping dans cfg.colles (setter → localStorage + config.json).

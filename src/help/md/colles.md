@@ -94,6 +94,59 @@ La magie opère dans la **vue Liens** (voir [[vue-liens|La vue Liens]]) :
 > [!tip] Le triptyque gagnant
 > **Note quotidienne** (le déroulé) + **wikilinks** (les relations) + **backlinks** (les historiques automatiques). Trois gestes simples, une organisation qui se maintient toute seule.
 
+## Vos colles dans le calendrier
+
+Une fois le colloscope importé, **vos séances apparaissent d'elles-mêmes dans
+le calendrier**, dans une catégorie *Colles* qui a sa propre couleur et se
+masque d'un clic comme les autres.
+
+> [!important] Renseignez votre nom de colleur
+> Seules **vos** colles s'affichent, reconnues par *Réglages* (`⌘,`) → *Profil*
+> → **Nom de colleur**. Tant que ce champ est vide, le calendrier n'en montre
+> aucune — un colloscope en compte plusieurs centaines, réparties entre tous
+> les colleurs de l'établissement. Écrivez-le comme il vous chante : la casse,
+> les accents et la civilité n'ont pas d'importance, `Boujaida` reconnaît
+> `M. BOUJAIDA`.
+
+Chaque séance porte **les élèves concernés**, pas seulement le nom du groupe :
+c'est ce qui permet de traiter les absences.
+
+### Décaler, ajourner
+
+Glissez une colle dans la journée pour la **décaler**, ou vers un autre jour
+pour l'**ajourner** — les reports ne sont pas rares. Dans les deux cas, c'est
+le **colloscope lui-même** qui est corrigé : le tableau et la grille suivent
+aussitôt, et vous retrouverez le changement en imprimant vos planches.
+
+> [!note] Le calendrier ne stocke rien
+> Vos colles ne sont pas recopiées dans le calendrier : elles y sont
+> *affichées* depuis le colloscope. C'est ce qui garantit qu'une même séance
+> ne peut jamais apparaître en double, et qu'un ré-import ne laisse pas
+> derrière lui les colles de l'import précédent.
+
+### Programmer un rattrapage
+
+Un élève manque à l'appel ? Créez un événement dans le calendrier *Colles*,
+indiquez les élèves concernés dans **Assigné à** — la liste se complète toute
+seule avec les élèves du colloscope — et le rattrapage **s'ajoute au
+colloscope** de leur classe.
+
+C'est aussi ainsi qu'on restreint une séance existante à une partie du groupe :
+modifiez ses élèves, et la séance ne vaudra plus que pour eux.
+
+> [!warning] Une colle ne se supprime pas depuis le calendrier
+> L'application refuse, et c'est volontaire : une colle se retire du
+> colloscope, pas de la vue qui l'affiche.
+
+### Ce qu'un ré-import écrase, et ce qu'il garde
+
+Réimporter un colloscope **régénère** les séances : vos décalages et vos
+ajournements sont donc remplacés par ce que dit le nouveau fichier. C'est le
+comportement voulu — le fichier fait foi.
+
+Vos **rattrapages, eux, sont conservés** et reportés dans les nouveaux
+tableaux. L'application vous dit combien, à la fin de l'import.
+
 ## Aller plus loin
 
 Le module colles de l'application propose en plus :

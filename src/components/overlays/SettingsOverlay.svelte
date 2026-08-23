@@ -439,8 +439,14 @@ async function importColloscopeFromSheets(chosen: ImportResult[]) {
   colloscopeBusy = true;
   try {
     const res = await importColloscope(path, { sheets: chosen });
+    // Dire ce qui a été ÉCRASÉ autant que ce qui a été importé : les séances
+    // régénérées emportent les décalages et ajournements saisis au calendrier.
+    // Les rattrapages, eux, sont reportés — la distinction n'est pas devinable.
+    const reportes = res.rattrapagesPreserves > 0
+      ? ` · ${res.rattrapagesPreserves} rattrapage(s) reporté(s)`
+      : "";
     notifications.setInfo(
-      `Colloscope importé : ${res.eleveCount} élèves, ${res.seanceCount} séances (${res.source})`,
+      `Colloscope importé : ${res.eleveCount} élèves, ${res.seanceCount} séances (${res.source})${reportes}`,
     );
   } catch (err) {
     console.error("[colloscope] import failed:", err);

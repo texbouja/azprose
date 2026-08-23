@@ -111,6 +111,21 @@
     void chargerColloscope();
   });
 
+  // Un colloscope importé mais AUCUNE colle affichée, faute de savoir qui est
+  // l'utilisateur : sans cette invite, le calendrier reste vide sans dire
+  // pourquoi. Une seule fois par ouverture du panneau — c'est un rappel, pas
+  // une alarme.
+  let inviteProfilFaite = false;
+  $effect(() => {
+    if (inviteProfilFaite) return;
+    if (seancesColloscope.length === 0) return;
+    if (userProfile.current.colleurName.trim()) return;
+    inviteProfilFaite = true;
+    notifications.setInfo(
+      "Colloscope détecté : renseignez votre nom de colleur dans Réglages › Profil pour voir vos colles.",
+    );
+  });
+
   // Canal de fraîcheur, sens base → calendrier : une cellule modifiée dans un
   // tableau du colloscope (par le tableur, la grille, ou notre propre écriture
   // retour) fait recharger la projection. Une seule voie de rafraîchissement.
