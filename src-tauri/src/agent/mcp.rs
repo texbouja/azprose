@@ -684,9 +684,177 @@ fn is_readonly_sql(sql: &str) -> Result<(), String> {
     }
 }
 
-/// Exécute une requête de consultation sur `.azprose/data.db`.
-fn query_readonly(root: &str, sql: &str) -> Result<serde_json::Value, String> {
-    is_readonly_sql(sql)?;
+/// Vues de lecture posées avant CHAQUE requête du modèle.
+///
+/// Elles ne changent rien à la base : `CREATE TEMP VIEW` est accepté sur une
+/// connexion `SQLITE_OPEN_READ_ONLY` parce que les objets `temp` vivent dans
+/// une base à part, en mémoire. Vérifié avant d'écrire ce code.
+///
+/// POURQUOI. La donnée d'un tableur est en EAV — `spreadsheet_cells` porte
+/// `(spreadsheet_id, row_index, col_index, value)` et les TITRES vivent dans
+/// une autre table. Toute lecture lisible exigeait donc du modèle une jointure
+/// plus un pivot, qu'il ne pouvait écrire qu'après trois ou quatre requêtes de
+/// découverte. Ces vues lui donnent le schéma tel qu'on le PENSE, au lieu du
+/// schéma tel qu'il est stocké.
+const VUES_LECTURE: &str = "
+CREATE TEMP VIEW v_cellules AS
+  SELECT s.name AS tableur, c.row_index AS ligne, col.title AS colonne, c.value AS valeur
+    FROM spreadsheet_cells c
+    JOIN spreadsheets s ON s.id = c.spreadsheet_id
+    LEFT JOIN spreadsheet_columns col
+      ON col.spreadsheet_id = c.spreadsheet_id AND col.col_index = c.col_index;
+
+CREATE TEMP VIEW v_tableurs AS
+  SELECT s.name AS tableur,
+         (SELECT COUNT(*) FROM spreadsheet_columns k WHERE k.spreadsheet_id = s.id) AS colonnes,
+         (SELECT COUNT(DISTINCT x.row_index) FROM spreadsheet_cells x WHERE x.spreadsheet_id = s.id) AS lignes
+    FROM spreadsheets s
+   WHERE EXISTS (SELECT 1 FROM spreadsheet_cells c WHERE c.spreadsheet_id = s.id);
+
+CREATE TEMP VIEW v_calendrier AS
+  SELECT e.id, e.text AS texte, e.start AS debut, e.end AS fin,
+         e.all_day AS journee, e.calendar_id AS calendrier,
+         json_extract(e.data, '$.rrule') AS rrule
+    FROM calendar_events e;
+";
+
+/// Identifiants des tableaux du colloscope, lus de `.azprose/config.json`.
+///
+/// Par la CONFIG et non par le nom des tableaux : « Colloscope — MP-2 » est
+/// une convention d'affichage, la config porte la correspondance exacte
+/// classe → identifiant. Même motif que `read_math_preamble`.
+fn colloscope_ids(root: &str) -> Option<(String, Vec<(String, String)>)> {
+    let path = std::path::Path::new(root).join(".azprose/config.json");
+    let raw = std::fs::read_to_string(path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let co = json.get("colles")?.get("colloscope")?;
+    let eleves = co.get("elevesSpreadsheetId")?.as_str()?.to_string();
+    let classes = co.get("colloscopeSpreadsheetIds")?.as_object()?;
+    let mut ids = Vec::new();
+    for (classe, v) in classes {
+        if let Some(sid) = v.as_str() {
+            ids.push((classe.clone(), sid.to_string()));
+        }
+    }
+    if eleves.is_empty() || ids.is_empty() { return None; }
+    Some((eleves, ids))
+}
+
+/// Un identifiant est-il un UUID bien formé ?
+///
+/// Ces identifiants viennent de NOTRE config, mais ils finissent concaténés
+/// dans du SQL : une chaîne bâtie par concaténation reste une chaîne bâtie par
+/// concaténation. On ne laisse passer que la forme attendue.
+fn est_uuid(s: &str) -> bool {
+    s.len() == 36
+        && s.as_bytes().iter().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => *b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        })
+}
+
+/// Vues MÉTIER des colles. Posées seulement si un colloscope est importé —
+/// une vue absente vaut mieux qu'une vue vide, qu'on prendrait pour
+/// « aucune colle ».
+///
+/// ⚠️ `v_colle_eleves` REJOUE EN SQL la règle de `resoudreEleves`
+/// (`src/colles/projection.ts`) : la cellule `Groupe` désigne soit un groupe
+/// connu de la classe, soit une liste de codes élèves (un rattrapage). Les
+/// deux implémentations DOIVENT rester d'accord — c'est l'objet du jeu de
+/// fixtures partagé `tests/fixtures/colles-resolution.json`, consommé par
+/// `tests/colles-projection.test.ts` ET par le test cargo de ce module. Une
+/// divergence silencieuse entre deux implémentations d'une même règle a déjà
+/// coûté des semaines d'échec muet sur les notes quotidiennes (2026-08-23).
+fn poser_vues_colles(conn: &rusqlite::Connection, root: &str) {
+    let Some((eleves_id, classes)) = colloscope_ids(root) else { return };
+    if !est_uuid(&eleves_id) || !classes.iter().all(|(_, s)| est_uuid(s)) {
+        eprintln!("[mcp] identifiants de colloscope inattendus, vues métier non posées");
+        return;
+    }
+    let valeurs: Vec<String> = classes
+        .iter()
+        .map(|(classe, sid)| format!("('{}','{}')", classe.replace('\'', "''"), sid))
+        .collect();
+
+    let sql = format!(
+        "
+CREATE TEMP TABLE _colloscopes(classe TEXT, sid TEXT);
+INSERT INTO _colloscopes VALUES {valeurs};
+
+CREATE TEMP VIEW v_eleves AS
+  SELECT MAX(CASE WHEN col.title='Code'   THEN c.value END) AS code,
+         MAX(CASE WHEN col.title='Nom'    THEN c.value END) AS nom,
+         MAX(CASE WHEN col.title='Prénom' THEN c.value END) AS prenom,
+         MAX(CASE WHEN col.title='Classe' THEN c.value END) AS classe,
+         MAX(CASE WHEN col.title='Groupe' THEN c.value END) AS groupe,
+         MAX(CASE WHEN col.title='Email'  THEN c.value END) AS email
+    FROM spreadsheet_cells c
+    JOIN spreadsheet_columns col
+      ON col.spreadsheet_id = c.spreadsheet_id AND col.col_index = c.col_index
+   WHERE c.spreadsheet_id = '{eleves_id}'
+   GROUP BY c.row_index
+  HAVING code IS NOT NULL AND code <> '';
+
+CREATE TEMP VIEW v_colles AS
+  SELECT k.classe AS classe,
+    MAX(CASE WHEN col.title='Date'    THEN c.value END) AS date,
+    MAX(CASE WHEN col.title='Jour'    THEN c.value END) AS jour,
+    MAX(CASE WHEN col.title='Horaire' THEN c.value END) AS horaire,
+    MAX(CASE WHEN col.title='Groupe'  THEN c.value END) AS groupe,
+    MAX(CASE WHEN col.title='Colleur' THEN c.value END) AS colleur,
+    MAX(CASE WHEN col.title='Matière' THEN c.value END) AS matiere,
+    MAX(CASE WHEN col.title='Salle'   THEN c.value END) AS salle,
+    c.spreadsheet_id AS tableur, c.row_index AS ligne
+  FROM spreadsheet_cells c
+  JOIN _colloscopes k ON k.sid = c.spreadsheet_id
+  LEFT JOIN spreadsheet_columns col
+    ON col.spreadsheet_id = c.spreadsheet_id AND col.col_index = c.col_index
+  GROUP BY c.spreadsheet_id, c.row_index
+  HAVING date IS NOT NULL AND date <> '';
+
+CREATE TEMP VIEW v_colle_jetons AS
+  WITH RECURSIVE decoupe(tableur, ligne, reste, jeton) AS (
+    SELECT tableur, ligne, replace(groupe, ';', ',') || ',', '' FROM v_colles
+    UNION ALL
+    SELECT tableur, ligne,
+           substr(reste, instr(reste, ',') + 1),
+           trim(substr(reste, 1, instr(reste, ',') - 1))
+      FROM decoupe WHERE reste <> ''
+  )
+  SELECT tableur, ligne, jeton FROM decoupe WHERE jeton <> '';
+
+CREATE TEMP VIEW v_colle_eleves AS
+  SELECT c.classe, c.date, c.horaire, c.colleur, c.matiere,
+         e.code, e.nom, e.prenom, e.email,
+         'groupe' AS designation, c.tableur, c.ligne
+    FROM v_colles c
+    JOIN v_eleves e
+      ON lower(trim(e.classe)) = lower(trim(c.classe))
+     AND lower(trim(e.groupe)) = lower(trim(c.groupe))
+  UNION ALL
+  SELECT c.classe, c.date, c.horaire, c.colleur, c.matiere,
+         e.code, e.nom, e.prenom, e.email,
+         'code' AS designation, c.tableur, c.ligne
+    FROM v_colles c
+    JOIN v_colle_jetons j ON j.tableur = c.tableur AND j.ligne = c.ligne
+    JOIN v_eleves e
+      ON lower(trim(e.classe)) = lower(trim(c.classe))
+     AND lower(trim(e.code))   = lower(trim(j.jeton))
+   WHERE NOT EXISTS (
+     SELECT 1 FROM v_eleves g
+      WHERE lower(trim(g.classe)) = lower(trim(c.classe))
+        AND lower(trim(g.groupe)) = lower(trim(c.groupe)));
+",
+        valeurs = valeurs.join(",")
+    );
+
+    if let Err(e) = conn.execute_batch(&sql) {
+        eprintln!("[mcp] vues des colles non posées : {e}");
+    }
+}
+
+/// Ouvre la base en LECTURE SEULE et y pose les vues de lecture.
+fn ouvrir_lecture(root: &str) -> Result<rusqlite::Connection, String> {
     let path = std::path::Path::new(root).join(".azprose/data.db");
     if !path.exists() {
         return Err("aucune base de données dans ce projet".into());
@@ -696,6 +864,19 @@ fn query_readonly(root: &str, sql: &str) -> Result<serde_json::Value, String> {
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
     )
     .map_err(|e| format!("ouverture impossible : {e}"))?;
+    // Une vue qui échoue ne doit pas priver le modèle de la base : il lui
+    // reste les tables réelles. On journalise et on continue.
+    if let Err(e) = conn.execute_batch(VUES_LECTURE) {
+        eprintln!("[mcp] vues de lecture non posées : {e}");
+    }
+    poser_vues_colles(&conn, root);
+    Ok(conn)
+}
+
+/// Exécute une requête de consultation sur `.azprose/data.db`.
+fn query_readonly(root: &str, sql: &str) -> Result<serde_json::Value, String> {
+    is_readonly_sql(sql)?;
+    let conn = ouvrir_lecture(root)?;
 
     let mut stmt = conn.prepare(sql).map_err(|e| format!("requête invalide : {e}"))?;
     let colonnes: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
@@ -1097,6 +1278,161 @@ mod tests {
         let dir = vault_with_config("{}");
         let err = query_readonly(dir.path().to_str().unwrap(), "SELECT 1").err().expect("un refus etait attendu");
         assert!(err.contains("aucune base"), "message inattendu : {err}");
+    }
+
+    // ── Vues de lecture ─────────────────────────────────────────────────────
+
+    /// Coffre jouable : la base, son schéma, un tableau « Élèves » et un
+    /// colloscope — plus la config qui les désigne.
+    fn vault_avec_colloscope(
+        eleves: &[serde_json::Value],
+        lignes_colles: &[[&str; 7]],
+    ) -> tempfile::TempDir {
+        vault_avec_colloscope_de("MP-2", eleves, lignes_colles)
+    }
+
+    /// `classe` : celle que la config déclare pour le tableau de colles. Les
+    /// vues en tirent la classe de chaque ligne — c'est ce qui permet de
+    /// tester le scope (un même libellé de groupe dans deux classes).
+    fn vault_avec_colloscope_de(
+        classe: &str,
+        eleves: &[serde_json::Value],
+        lignes_colles: &[[&str; 7]],
+    ) -> tempfile::TempDir {
+        const E: &str = "aaaaaaaa-0000-4000-8000-000000000001";
+        const C: &str = "aaaaaaaa-0000-4000-8000-000000000002";
+        let dir = vault_with_config(&format!(
+            r#"{{"colles":{{"colloscope":{{"elevesSpreadsheetId":"{E}",
+               "colloscopeSpreadsheetIds":{{"{classe}":"{C}"}}}}}}}}"#
+        ));
+        let conn = rusqlite::Connection::open(dir.path().join(".azprose/data.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE spreadsheets(id TEXT PRIMARY KEY, name TEXT);
+             CREATE TABLE spreadsheet_columns(spreadsheet_id TEXT, col_index INT, title TEXT);
+             CREATE TABLE spreadsheet_cells(spreadsheet_id TEXT, row_index INT, col_index INT, value TEXT);
+             CREATE TABLE calendar_events(id TEXT, text TEXT, start TEXT, end TEXT,
+                                          all_day INT, calendar_id TEXT, data TEXT);",
+        )
+        .unwrap();
+        conn.execute("INSERT INTO spreadsheets VALUES (?1, 'Élèves')", [E]).unwrap();
+        conn.execute("INSERT INTO spreadsheets VALUES (?1, 'Colloscope — MP-2')", [C]).unwrap();
+        for (i, t) in ["Code", "Nom", "Prénom", "Classe", "Groupe", "Email"].iter().enumerate() {
+            conn.execute("INSERT INTO spreadsheet_columns VALUES (?1, ?2, ?3)",
+                rusqlite::params![E, i as i64, t]).unwrap();
+        }
+        for (i, t) in ["Date", "Groupe", "Matière", "Colleur", "Jour", "Horaire", "Salle"].iter().enumerate() {
+            conn.execute("INSERT INTO spreadsheet_columns VALUES (?1, ?2, ?3)",
+                rusqlite::params![C, i as i64, t]).unwrap();
+        }
+        for (r, e) in eleves.iter().enumerate() {
+            for (i, k) in ["code", "nom", "prenom", "classe", "groupe", "email"].iter().enumerate() {
+                conn.execute("INSERT INTO spreadsheet_cells VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![E, r as i64, i as i64, e[*k].as_str().unwrap_or("")]).unwrap();
+            }
+        }
+        for (r, l) in lignes_colles.iter().enumerate() {
+            for (i, v) in l.iter().enumerate() {
+                conn.execute("INSERT INTO spreadsheet_cells VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![C, r as i64, i as i64, v]).unwrap();
+            }
+        }
+        dir
+    }
+
+    fn colonne_texte(root: &str, sql: &str) -> Vec<String> {
+        let v = query_readonly(root, sql).expect("requête refusée");
+        v["lignes"].as_array().unwrap().iter()
+            .map(|l| l[0].as_str().unwrap_or("").to_string())
+            .collect()
+    }
+
+    #[test]
+    fn vues_generiques_rendent_le_schema_tel_quon_le_pense() {
+        let dir = vault_avec_colloscope(&[], &[["2026-11-20", "G6", "Maths", "M. B", "V", "15h-16h", "A"]]);
+        let root = dir.path().to_str().unwrap();
+        // v_cellules : la jointure EAV + titres, déjà faite.
+        assert_eq!(
+            colonne_texte(root, "SELECT valeur FROM v_cellules WHERE colonne='Horaire'"),
+            vec!["15h-16h"]
+        );
+        // v_tableurs : les tableaux SANS cellule sont exclus (ici « Élèves »).
+        assert_eq!(
+            colonne_texte(root, "SELECT tableur FROM v_tableurs ORDER BY tableur"),
+            vec!["Colloscope — MP-2"]
+        );
+    }
+
+    #[test]
+    fn les_vues_ne_desserrent_pas_la_lecture_seule() {
+        // Poser des vues TEMP ne doit pas rendre la base inscriptible : c'est
+        // toute la raison pour laquelle on s'autorise à en poser.
+        let dir = vault_avec_colloscope(&[], &[["2026-11-20", "G6", "M", "C", "V", "9h-10h", ""]]);
+        let root = dir.path().to_str().unwrap();
+        // Refus en amont, par la liste blanche…
+        assert!(query_readonly(root, "DELETE FROM spreadsheet_cells").is_err());
+        // …et refus de SQLite lui-même si l'on contourne la liste blanche.
+        let conn = ouvrir_lecture(root).unwrap();
+        assert!(conn.execute("DELETE FROM spreadsheet_cells", []).is_err());
+    }
+
+    #[test]
+    fn pas_de_colloscope_pas_de_vues_metier() {
+        // Une vue absente vaut mieux qu'une vue vide, qu'on prendrait pour
+        // « aucune colle ».
+        let dir = vault_with_config("{}");
+        rusqlite::Connection::open(dir.path().join(".azprose/data.db"))
+            .unwrap()
+            .execute_batch("CREATE TABLE spreadsheets(id TEXT, name TEXT);
+                            CREATE TABLE spreadsheet_columns(spreadsheet_id TEXT, col_index INT, title TEXT);
+                            CREATE TABLE spreadsheet_cells(spreadsheet_id TEXT, row_index INT, col_index INT, value TEXT);
+                            CREATE TABLE calendar_events(id TEXT, text TEXT, start TEXT, end TEXT, all_day INT, calendar_id TEXT, data TEXT);")
+            .unwrap();
+        let root = dir.path().to_str().unwrap();
+        assert!(query_readonly(root, "SELECT * FROM v_cellules").is_ok(), "les vues génériques restent");
+        assert!(query_readonly(root, "SELECT * FROM v_colles").is_err(), "les vues métier ne doivent PAS exister");
+    }
+
+    #[test]
+    fn identifiants_non_uuid_refuses() {
+        // Ces identifiants finissent concaténés dans du SQL : on ne laisse
+        // passer que la forme attendue.
+        assert!(est_uuid("aaaaaaaa-0000-4000-8000-000000000001"));
+        assert!(!est_uuid("'; DROP TABLE spreadsheets; --"));
+        assert!(!est_uuid("aaaaaaaa-0000-4000-8000-00000000000"));
+        assert!(!est_uuid("zzzzzzzz-0000-4000-8000-000000000001"));
+    }
+
+    /// LE test qui rend tenable la duplication de `resoudreEleves` en SQL :
+    /// les mêmes fixtures que `tests/colles-projection.test.ts`, les mêmes
+    /// résultats attendus. Si l'une des deux implémentations bouge sans
+    /// l'autre, l'un des deux tests tombe.
+    #[test]
+    fn vues_colles_accordent_avec_le_typescript() {
+        let brut = fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tests/fixtures/colles-resolution.json"),
+        )
+        .expect("fixtures partagées introuvables");
+        let fx: serde_json::Value = serde_json::from_str(&brut).unwrap();
+        let eleves: Vec<serde_json::Value> = fx["eleves"].as_array().unwrap().clone();
+
+        for cas in fx["cas"].as_array().unwrap() {
+            // Le colloscope est déclaré POUR LA CLASSE du cas : c'est ainsi
+            // que la ligne appartient vraiment à cette classe, et que le
+            // scope se teste au lieu d'être supposé.
+            let dir = vault_avec_colloscope_de(
+                cas["classe"].as_str().unwrap(),
+                &eleves,
+                &[["2026-11-20", cas["groupe"].as_str().unwrap(), "Maths", "M. B", "Vendredi", "15h-16h", ""]],
+            );
+            let root = dir.path().to_str().unwrap();
+            let mut obtenu = colonne_texte(root, "SELECT code FROM v_colle_eleves ORDER BY code");
+            obtenu.sort();
+            let mut attendu: Vec<String> = cas["attendu"].as_array().unwrap().iter()
+                .map(|c| c.as_str().unwrap().to_string()).collect();
+            attendu.sort();
+            assert_eq!(obtenu, attendu, "cas « {} »", cas["nom"].as_str().unwrap());
+        }
     }
 
     #[test]

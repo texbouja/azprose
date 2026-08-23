@@ -246,3 +246,20 @@ describe("projection", () => {
     expect(projeterColles(s, ELEVES, PLAGE).evenements[0].persons).toEqual(["INS-INEXISTANT/2025"]);
   });
 });
+
+// ── Fixtures PARTAGÉES avec le SQL ──────────────────────────────────────────
+// Le même fichier est consommé par le test cargo des vues `v_colle_eleves`
+// (src-tauri/src/agent/mcp.rs). Les deux implémentations de la règle
+// « la cellule Groupe désigne un groupe OU des codes élèves » doivent rendre
+// les mêmes élèves — sans ce garde-fou, elles divergeraient en silence, comme
+// l'ont fait les deux normalisations de nom de colleur avant le 2026-08-23.
+import fixtures from "./fixtures/colles-resolution.json";
+
+describe("résolution des élèves — accord avec l'implémentation SQL", () => {
+  for (const cas of fixtures.cas) {
+    test(cas.nom, () => {
+      const r = resoudreEleves(cas.groupe, fixtures.eleves, cas.classe);
+      expect(r.eleves.map((e) => e.code).sort()).toEqual([...cas.attendu].sort());
+    });
+  }
+});

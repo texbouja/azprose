@@ -1,0 +1,83 @@
+{
+  "_comment": [
+    "Jeu de fixtures PARTAGÉ entre deux implémentations d'une même règle :",
+    "  · TypeScript — `resoudreEleves` (src/colles/projection.ts), consommé par",
+    "    tests/colles-projection.test.ts ;",
+    "  · SQL — la vue `v_colle_eleves` (src-tauri/src/agent/mcp.rs), consommée",
+    "    par le test cargo `vues_colles_accordent_avec_le_typescript`.",
+    "",
+    "POURQUOI ce fichier existe. La cellule `Groupe` d'un colloscope désigne",
+    "SOIT un groupe connu de la classe, SOIT une liste de codes élèves (un",
+    "rattrapage). Deux implémentations de cette règle, c'est le risque qu'elles",
+    "divergent en silence — ce qui est arrivé le 2026-08-23 avec la",
+    "normalisation des noms de colleur : les notes quotidiennes n'affichaient",
+    "plus rien depuis des semaines, sans que rien ne le signale.",
+    "",
+    "Les deux tests DOIVENT rendre les mêmes élèves pour chaque cas ci-dessous.",
+    "Toucher l'une des implémentations sans l'autre fait échouer l'un des deux."
+  ],
+
+  "eleves": [
+    { "code": "INS-A/2025", "nom": "BOUJAIDA",    "prenom": "Yasmine", "classe": "MP-2", "groupe": "G6", "email": "" },
+    { "code": "INS-B/2025", "nom": "EL MOUJAHID", "prenom": "Anas",    "classe": "MP-2", "groupe": "G6", "email": "" },
+    { "code": "INS-C/2025", "nom": "BENALI",      "prenom": "Salma",   "classe": "MP-2", "groupe": "G2", "email": "" },
+    { "code": "INS-D/2025", "nom": "OUENZAR",     "prenom": "Nour",    "classe": "MP-1", "groupe": "G6", "email": "" }
+  ],
+
+  "cas": [
+    {
+      "nom": "groupe entier",
+      "classe": "MP-2",
+      "groupe": "G6",
+      "attendu": ["INS-A/2025", "INS-B/2025"]
+    },
+    {
+      "nom": "le groupe est scopé à la CLASSE — même libellé, autre classe",
+      "classe": "MP-1",
+      "groupe": "G6",
+      "attendu": ["INS-D/2025"]
+    },
+    {
+      "nom": "un seul code : un rattrapage",
+      "classe": "MP-2",
+      "groupe": "INS-A/2025",
+      "attendu": ["INS-A/2025"]
+    },
+    {
+      "nom": "plusieurs codes, séparés par une virgule",
+      "classe": "MP-2",
+      "groupe": "INS-A/2025,INS-C/2025",
+      "attendu": ["INS-A/2025", "INS-C/2025"]
+    },
+    {
+      "nom": "séparateur point-virgule et espaces superflus",
+      "classe": "MP-2",
+      "groupe": " INS-A/2025 ;  INS-B/2025 ",
+      "attendu": ["INS-A/2025", "INS-B/2025"]
+    },
+    {
+      "nom": "libellé inconnu du registre : AUCUN élève, jamais une devinette",
+      "classe": "MP-2",
+      "groupe": "Groupe fantôme",
+      "attendu": []
+    },
+    {
+      "nom": "code inconnu : les autres passent quand même",
+      "classe": "MP-2",
+      "groupe": "INS-A/2025,INS-INEXISTANT/2025",
+      "attendu": ["INS-A/2025"]
+    },
+    {
+      "nom": "cellule vide",
+      "classe": "MP-2",
+      "groupe": "",
+      "attendu": []
+    },
+    {
+      "nom": "un code d'une AUTRE classe ne résout pas",
+      "classe": "MP-2",
+      "groupe": "INS-D/2025",
+      "attendu": []
+    }
+  ]
+}
