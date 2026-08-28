@@ -17,7 +17,7 @@ import SlideModeRadio from "./SlideModeRadio.svelte";
 import TexDirectiveSelect from "./TexDirectiveSelect.svelte";
 import type { Tab, RenderMode } from "@/lib/panel-store";
 import { pinnedHistory, getPinnedNavActions } from "@/stores/pinned-history.svelte";
-import { readDirective, AZ_PALETTES, AZ_MEDIA } from "@/latex/preamble-directives";
+import { readDirective, supportsAzDirectives, AZ_PALETTES, AZ_MEDIA } from "@/latex/preamble-directives";
 
 // Register SlideModeRadio as a custom toolbar item
 registerToolbarItem("slide-mode-radio", SlideModeRadio);
@@ -137,6 +137,11 @@ let isTex = $derived(ext === "tex");
 // encore sauvegardé. `null` = directive absente du préambule.
 let texColors = $derived(isTex ? readDirective(activeTab?.source ?? "", "colors") : null);
 let texMedia = $derived(isTex ? readDirective(activeTab?.source ?? "", "geometry") : null);
+// Palette et média n'existent que dans les classes du kit (`azdoc`, plus tard
+// `azdev`/`aznote`). Ailleurs — un `article`, un fragment inclus sans
+// `\documentclass` — poser la directive casserait la compilation : les deux
+// sélecteurs sont donc grisés plutôt qu'actifs et nuisibles.
+let texAzkit = $derived(isTex && supportsAzDirectives(activeTab?.source ?? ""));
 
 // Écrit dans le fichier via le canal app (`azprose:tex-directive`) — c'est
 // app.svelte qui détient le store de contenu (autorité) et la sauvegarde.
@@ -215,9 +220,11 @@ let mainItems = $derived.by(() => {
     { spacer: true },
     { comp: "tex-directive-select", text: t("tabs.theme"), value: texColors,
       options: [...AZ_PALETTES], pinned: true,
+      disabled: !texAzkit, disabledTitle: t("tabs.azkitOnly"),
       handler: (_item: unknown, value: string) => chooseTexDirective("colors", value) },
     { comp: "tex-directive-select", text: t("tabs.media"), value: texMedia,
       options: [...AZ_MEDIA], pinned: true,
+      disabled: !texAzkit, disabledTitle: t("tabs.azkitOnly"),
       handler: (_item: unknown, value: string) => chooseTexDirective("geometry", value) },
     { comp: "button", icon: "wxi-file-down", text: t("tabs.build"),
       handler: () => onLatexBuild?.() },

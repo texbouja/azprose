@@ -104,6 +104,61 @@ export function readDirective(source: string, kind: DirectiveKind): string | nul
 }
 
 /**
+ * Les classes du kit qui comprennent `\azcolors` et `\azgeometry`. Hors de
+ * cette liste, les deux sélecteurs n'ont aucun sens : les poser produirait un
+ * document qui ne compile plus.
+ *
+ * `azdev` et `aznote` ne sont pas encore migrées ; elles figurent ici pour que
+ * leur arrivée ne demande rien d'autre que d'écrire la classe.
+ */
+export const CLASSES_AZKIT = ["azdoc", "azdev", "aznote"] as const;
+
+/**
+ * Séparateur TeX entre les morceaux d'une instruction : espaces, sauts de
+ * ligne, **et commentaires de fin de ligne**.
+ *
+ * C'est le second point qui compte. `\documentclass` s'étale volontiers sur
+ * plusieurs lignes, et la façon TeX de couper une ligne est justement le `%`
+ * final — qui avale le saut de ligne. Un simple `\s*` raterait
+ * `\documentclass%\n[a4paper]{azdoc}`, pourtant parfaitement légal.
+ */
+const SEP = "(?:\\s|%[^\\n]*\\r?\\n)*";
+
+/**
+ * Nom de la classe déclarée par le premier `\documentclass` ACTIF du
+ * préambule, ou `null` s'il n'y en a pas (fragment inclus, fichier non TeX).
+ *
+ * L'analyse reste textuelle, comme le reste du module. Elle tolère :
+ * l'instruction répartie sur plusieurs lignes, les commentaires de
+ * continuation, les espaces autour du nom, et un `\documentclass` commenté —
+ * qui est ignoré, comme il se doit.
+ */
+export function readDocumentClass(source: string): string | null {
+  const limit = preambleEnd(source);
+  const re = new RegExp(`\\\\documentclass${SEP}(\\[[^\\]]*\\])?${SEP}\\{([^{}]*)\\}`, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) !== null) {
+    if (m.index >= limit) break;
+    if (isCommented(source, m.index)) continue;
+    const nom = m[2].trim();
+    return nom === "" ? null : nom;
+  }
+  return null;
+}
+
+/**
+ * Le document accepte-t-il les réglages de palette et de média ?
+ *
+ * Sert à GRISER les deux sélecteurs de la barre d'actions : proposer une
+ * palette à un `article` ou à un fragment inclus n'aurait aucun sens, et la
+ * poser casserait la compilation.
+ */
+export function supportsAzDirectives(source: string): boolean {
+  const nom = readDocumentClass(source);
+  return nom !== null && (CLASSES_AZKIT as readonly string[]).includes(nom);
+}
+
+/**
  * Point d'insertion quand la directive manque : la fin de la ligne portant
  * `\documentclass`. C'est là que les réglages du kit se lisent, et cela
  * garantit qu'ils précèdent tout `\usepackage` que l'utilisateur aurait posé.

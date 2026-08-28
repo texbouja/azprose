@@ -248,6 +248,7 @@
   "tabs.buildPdf": "Compiler PDF",
   "tabs.theme": "Thème",
   "tabs.media": "Média",
+  "tabs.azkitOnly": "Réservé aux documents de classe azdoc",
   "tabs.exportPdf": "Export PDF",
   "tabs.colles": "Colles",
   "config.warnings": "config.json contient des clés invalides ou inconnues — elles ont été ignorées",

@@ -263,6 +263,7 @@
   "tabs.buildPdf": "Build PDF",
   "tabs.theme": "Theme",
   "tabs.media": "Media",
+  "tabs.azkitOnly": "Only for documents using the azdoc class",
   "tabs.exportPdf": "Export PDF",
   "tabs.colles": "Oral sheets",
   "config.warnings": "config.json has invalid or unknown keys — they were ignored",

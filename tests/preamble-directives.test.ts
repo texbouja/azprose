@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   AZ_MEDIA,
   AZ_PALETTES,
+  readDocumentClass,
   readDirective,
+  supportsAzDirectives,
   setDirective,
 } from "@/latex/preamble-directives";
 
@@ -124,5 +126,69 @@ describe("les listes proposées", () => {
     expect([...AZ_MEDIA]).toEqual(
       ["print", "2print", "lsprint", "tablet", "lstablet", "phone", "book"],
     );
+  });
+});
+
+// ── Classe du document : les sélecteurs n'ont de sens que pour le kit ───────
+// `\azcolors` et `\azgeometry` n'existent que dans `azdoc` (et bientôt
+// `azdev`/`aznote`). Les proposer ailleurs produirait un document qui ne
+// compile plus — d'où le grisage, et d'où cette détection.
+
+describe("classe du document", () => {
+  test("forme courante, avec ou sans options", () => {
+    expect(readDocumentClass("\\documentclass{azdoc}")).toBe("azdoc");
+    expect(readDocumentClass("\\documentclass[azbloc]{azdoc}")).toBe("azdoc");
+    expect(readDocumentClass("\\documentclass[12pt,a4paper]{article}")).toBe("article");
+  });
+
+  test("l'instruction s'étale sur PLUSIEURS LIGNES", () => {
+    expect(readDocumentClass("\\documentclass\n  [azbloc]\n  {azdoc}")).toBe("azdoc");
+    expect(readDocumentClass("\\documentclass[\n  azbloc,\n  a4paper\n]{azdoc}")).toBe("azdoc");
+  });
+
+  test("continuation par « % » en fin de ligne — la coupure TeX habituelle", () => {
+    // C'est le cas qu'un simple `\s*` raterait : le `%` avale le saut de ligne.
+    expect(readDocumentClass("\\documentclass%\n[azbloc]{azdoc}")).toBe("azdoc");
+    expect(readDocumentClass("\\documentclass[azbloc]% choix du moteur\n{azdoc}")).toBe("azdoc");
+    expect(readDocumentClass("\\documentclass% pourquoi\n% encore un commentaire\n{azdoc}")).toBe("azdoc");
+  });
+
+  test("espaces autour du nom", () => {
+    expect(readDocumentClass("\\documentclass{ azdoc }")).toBe("azdoc");
+    expect(readDocumentClass("\\documentclass {azdoc}")).toBe("azdoc");
+  });
+
+  test("un \\documentclass COMMENTÉ est ignoré", () => {
+    expect(readDocumentClass("% \\documentclass{article}\n\\documentclass{azdoc}")).toBe("azdoc");
+    expect(readDocumentClass("% \\documentclass{article}\n")).toBeNull();
+  });
+
+  test("rien à trouver : fragment inclus, groupe vide, corps du document", () => {
+    expect(readDocumentClass("\\section{Titre}\nDu texte.")).toBeNull();
+    expect(readDocumentClass("\\documentclass{}")).toBeNull();
+    // Après \begin{document}, ce n'est plus une déclaration mais du texte cité.
+    expect(readDocumentClass("\\begin{document}\n\\documentclass{azdoc}")).toBeNull();
+  });
+});
+
+describe("les sélecteurs sont-ils actifs ?", () => {
+  test("actifs pour les classes du kit, y compris celles à venir", () => {
+    expect(supportsAzDirectives("\\documentclass[azbloc]{azdoc}")).toBe(true);
+    expect(supportsAzDirectives("\\documentclass{azdev}")).toBe(true);
+    expect(supportsAzDirectives("\\documentclass{aznote}")).toBe(true);
+    expect(supportsAzDirectives(DOC)).toBe(true);
+  });
+
+  test("grisés partout ailleurs", () => {
+    expect(supportsAzDirectives("\\documentclass{article}")).toBe(false);
+    expect(supportsAzDirectives("\\documentclass{azsubdoc}")).toBe(false);
+    // Fragment inclus : pas de \documentclass du tout.
+    expect(supportsAzDirectives("\\section{Réduction}")).toBe(false);
+    expect(supportsAzDirectives("")).toBe(false);
+  });
+
+  test("un nom qui COMMENCE par une classe du kit ne compte pas", () => {
+    // `azdocx` n'est pas `azdoc` : l'appartenance est exacte, pas un préfixe.
+    expect(supportsAzDirectives("\\documentclass{azdocx}")).toBe(false);
   });
 });

@@ -22,11 +22,18 @@ let {
   text = "",
   value = null as string | null,
   options = [] as readonly string[],
+  disabled = false,
+  disabledTitle = "",
   onchange,
 }: {
   text?: string;
   value?: string | null;
   options?: readonly string[];
+  /** Le document ne comprend pas ces directives (classe hors azkit). */
+  disabled?: boolean;
+  /** Infobulle expliquant POURQUOI c'est grisé — un bouton inerte sans raison
+   *  est plus déroutant qu'un bouton absent. */
+  disabledTitle?: string;
   onchange?: (ev: { value: string }) => void;
 } = $props();
 
@@ -34,8 +41,15 @@ let open = $state(false);
 let triggerEl = $state<HTMLButtonElement | null>(null);
 
 function toggle() {
+  if (disabled) return;
   open = !open;
 }
+
+// Le menu ne doit pas survivre à une désactivation : changer d'onglet pour un
+// document non-azkit pendant que le menu est ouvert le laisserait flotter.
+$effect(() => {
+  if (disabled && open) open = false;
+});
 
 function close() {
   open = false;
@@ -78,9 +92,10 @@ $effect(() => {
   class:is-open={open}
   bind:this={triggerEl}
   onclick={toggle}
+  {disabled}
   aria-haspopup="listbox"
   aria-expanded={open}
-  title={text}
+  title={disabled && disabledTitle ? disabledTitle : text}
 >
   <span class="tex-directive__label">{text}</span>
   <span class="tex-directive__value">{value ?? "—"}</span>
@@ -107,9 +122,15 @@ $effect(() => {
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .tex-directive:hover,
+  .tex-directive:hover:not(:disabled),
   .tex-directive.is-open {
     border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  }
+  /* Grisé : le document ne déclare pas une classe du kit. Même opacité que
+     les autres boutons désactivés de la barre. */
+  .tex-directive:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
   .tex-directive:focus-visible {
     outline: none;
