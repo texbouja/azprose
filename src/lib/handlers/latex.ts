@@ -1,7 +1,7 @@
 import type { HandlerContext, FileHandler } from "./types"
 import { extFromPath } from "@/lib/editor-languages"
 import { invoke } from "@tauri-apps/api/core"
-import { autoBuildIfDepChanged, clearLatexDeps, handleLatexBuild, setupLatexLogListener } from "@/latex"
+import { applyDetectedRoot, autoBuildIfDepChanged, clearLatexDeps, handleLatexBuild, setupLatexLogListener } from "@/latex"
 import { diagnosticsStore } from "@/stores/diagnostics.svelte" // statique : déjà eager (app.svelte) — l'import() ne découpait aucun chunk
 
 export function createLatexHandler(context: HandlerContext): FileHandler {
@@ -56,12 +56,19 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
         const p = ctx.activePath()
         if (p !== lastPath) {
           lastPath = p
-          if (p && extFromPath(p) === "tex" && !ctx.ls.rootFilePath) {
+          // Détection à CHAQUE changement d'onglet .tex — plus seulement
+          // quand aucune racine n'est connue. L'ancienne garde
+          // (`!ctx.ls.rootFilePath`) faisait hériter la racine d'un document
+          // à l'autre : après avoir compilé `A/master.tex`, ouvrir
+          // `B/master.tex` laissait la racine sur A, et « compiler »
+          // recompilait A. Voir `applyDetectedRoot`.
+          if (p && extFromPath(p) === "tex") {
             invoke<{ root_file: string | null; method: string }>("latex_find_root", { path: p })
               .then((res: { root_file: string | null; method: string }) => {
-                if (res.root_file && res.root_file !== p) {
-                  ctx.ls.rootFilePath = res.root_file
-                }
+                // L'onglet a pu changer pendant l'aller-retour : ne rien
+                // appliquer si la réponse ne concerne plus le fichier actif.
+                if (ctx.activePath() !== p) return
+                applyDetectedRoot(ctx.ls, res.root_file ?? p)
               })
               .catch(() => {})
           }
