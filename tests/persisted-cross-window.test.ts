@@ -107,6 +107,50 @@ test("onExternal n'est PAS appelé lors d'une écriture locale (déjà joué par
   expect(s.current).toBe("ecriture-locale");
 });
 
+// CLES_PAR_FENETRE — les clés qui décrivent l'état d'UNE fenêtre ne doivent
+// jamais être réécrites par une autre. Régression gardée : le boot d'une fenêtre
+// sur le projet B remplaçait l'arborescence affichée par la fenêtre restée sur A
+// (`mdview.folders`), et tout clic dans cet arbre écrivait ensuite des chemins
+// étrangers dans la session, les brouillons et la base du coffre A.
+
+import { STORAGE_KEYS, CLES_PAR_FENETRE } from "../src/lib/storage";
+
+test("mdview.folders est déclarée par fenêtre", () => {
+  expect(CLES_PAR_FENETRE.has(STORAGE_KEYS.folders)).toBe(true);
+});
+
+test("une clé par fenêtre IGNORE l'écriture d'une autre fenêtre", () => {
+  const s = persistedState<string[]>(STORAGE_KEYS.folders, ["/coffre-a"]);
+  fireStorage(STORAGE_KEYS.folders, JSON.stringify(["/coffre-b"]));
+  expect(s.current).toEqual(["/coffre-a"]);
+});
+
+test("une clé par fenêtre ignore l'événement même avec onExternal", () => {
+  let calls = 0;
+  const s = persistedState<string[]>(STORAGE_KEYS.folders, ["/coffre-a"], undefined, () => { calls++; });
+  fireStorage(STORAGE_KEYS.folders, JSON.stringify(["/coffre-b"]));
+  expect(calls).toBe(0);
+  expect(s.current).toEqual(["/coffre-a"]);
+});
+
+test("une clé par fenêtre reste persistée et relue normalement", () => {
+  // Seule la RÉCEPTION est débranchée : l'écriture locale et la relecture au
+  // démarrage suivant doivent continuer de fonctionner.
+  const s = persistedState<string[]>(STORAGE_KEYS.folders, []);
+  s.current = ["/coffre-a", "/invite"];
+  const relu = persistedState<string[]>(STORAGE_KEYS.folders, []);
+  expect(relu.current).toEqual(["/coffre-a", "/invite"]);
+});
+
+test("les clés NON déclarées gardent la propagation inter-fenêtres", () => {
+  // Le garde-fou est ciblé, pas un retrait du listener : police, échelle et
+  // consorts (onExternal, phase 1.3) doivent continuer de se propager.
+  expect(CLES_PAR_FENETRE.has(STORAGE_KEYS.uiFontFamily)).toBe(false);
+  const s = persistedState<string>(STORAGE_KEYS.uiFontFamily, "init");
+  fireStorage(STORAGE_KEYS.uiFontFamily, JSON.stringify("depuis-autre-fenetre"));
+  expect(s.current).toBe("depuis-autre-fenetre");
+});
+
 // persistedScopedState : la clé est résolue paresseusement (scopedKey), le
 // listener doit donc suivre un changement de scope survenu APRÈS sa création.
 

@@ -79,3 +79,30 @@ export const STORAGE_KEYS = {
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
+
+/**
+ * Clés dont la valeur décrit l'état d'UNE fenêtre, et qu'une autre fenêtre ne
+ * doit donc JAMAIS réécrire (`persisted.svelte.ts` ignore l'événement `storage`
+ * pour elles).
+ *
+ * Le défaut que ça corrige : `folders` est non scopée par nécessité
+ * (`folders.current[0]` est la mémoire du dernier projet ouvert, cf. le
+ * commentaire de tête), et chaque fenêtre y écrit SA liste au boot. Comme
+ * `persistedState` applique les écritures venues des autres fenêtres, ouvrir un
+ * projet B pendant qu'une fenêtre est sur A **remplaçait l'arborescence
+ * affichée par A** par celle de B — sans que `rootPath` bouge. La fenêtre A
+ * présentait alors B comme son propre projet primaire, et tout clic dans cet
+ * arbre écrivait des chemins étrangers dans la session scopée de A, ses
+ * brouillons, sa clé invités, son `.azprose/session.json` et son `data.db`.
+ *
+ * La politique est une propriété de la CLÉ, pas du site d'appel : la déclarer
+ * ici, à côté du catalogue, la rend auditable d'un coup d'œil — un cinquième
+ * paramètre de `persistedState` l'aurait éparpillée sur 28 sites.
+ *
+ * ⚠️ Ne concerne QUE la réception. Ces clés restent persistées et relues
+ * normalement au démarrage : c'est la propagation à chaud qui est fautive, pas
+ * le stockage.
+ */
+export const CLES_PAR_FENETRE: ReadonlySet<string> = new Set<string>([
+  STORAGE_KEYS.folders,
+]);

@@ -1,4 +1,5 @@
 import { scopedKey } from "@/lib/session";
+import { CLES_PAR_FENETRE } from "@/lib/storage";
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -52,6 +53,12 @@ function save<T>(key: string, value: T): void {
  * Nécessaire pour les stores dont le SETTER applique un effet de bord au DOM
  * (police, échelle…) : une écriture externe ne passe pas par `current = …`, donc
  * l'effet ne serait jamais rejoué sans ce hook.
+ *
+ * ⚠️ Cette propagation est une PRÉFÉRENCE GLOBALE qui se propage : elle n'a de
+ * sens que pour ce qui doit être identique dans toutes les fenêtres. Une clé qui
+ * décrit l'état d'UNE fenêtre doit être déclarée dans `CLES_PAR_FENETRE`
+ * (`lib/storage.ts`), qui débranche le listener pour elle — voir là-bas le défaut
+ * que ça corrige.
  */
 export function persistedState<T>(
   key: string,
@@ -74,7 +81,7 @@ export function persistedState<T>(
     onExternal?.(value);
   });
 
-  if (typeof window !== "undefined") {
+  if (typeof window !== "undefined" && !CLES_PAR_FENETRE.has(key)) {
     window.addEventListener("storage", (e) => {
       if (e.key !== key) return;          // autre clé
       if (e.newValue === null) return;    // suppression : garder la valeur courante
@@ -105,6 +112,12 @@ export function persistedState<T>(
  * `onExternal` (phase 1.3) : même rôle que pour `persistedState`. La clé étant
  * résolue paresseusement (`scopedKey`), le listener la recalcule à CHAQUE
  * événement plutôt qu'à l'init — le scope peut avoir changé entre-temps.
+ *
+ * Pas de `CLES_PAR_FENETRE` ici, et ce n'est pas un oubli : la clé porte déjà la
+ * racine, or deux fenêtres de PROJET ne peuvent pas partager un coffre
+ * (`find_project_window` renvoie sur la fenêtre existante) et NAV ne construit
+ * aucun état scopé. Une clé scopée est donc de fait par fenêtre. Si l'une des
+ * deux prémisses tombe, il faudra le même garde-fou qu'au-dessus.
  */
 export function persistedScopedState<T>(key: string, initial: T, onExternal?: (v: T) => void) {
   let value = $state(load(scopedKey(key), initial));
