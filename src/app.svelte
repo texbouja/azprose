@@ -56,7 +56,9 @@ import PanelLayout from "@/components/panels/PanelLayout.svelte";
 import { slideSettings } from "@/stores/slide-settings.svelte";
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
-import { executeOxideCommand, notifyMarkdownOxideFileChanged } from "@/lib/lsp/markdown-oxide";
+import { executeOxideCommand, notifyMarkdownOxideFileChanged, notifierChangementsSurveilles, isMarkdownOxideReady } from "@/lib/lsp/markdown-oxide";
+import { CREE, SUPPRIME, type TypeChangement } from "@/lib/lsp/watched-files";
+import { pathExists } from "@/lib/files";
 import { ensureHelpInstalled, helpIndexPath, isHelpPath } from "@/lib/help-install";
 // Import STATIQUE (jamais mélangé avec du dynamique) : toc-forest est déjà
 // dans le chunk principal via LinksView → TocPanel — un dynamic import ici ne
@@ -904,8 +906,35 @@ const fo = new FileOpsManager({
 $effect(() => {
   return setupFsWatcher(rootPath, {
     bumpTreeVersion: (paths: string[]) => { fo.treeDirtyPaths = paths; fo.treeVersion++; },
+    onStructuralChange: (paths: string[]) => { void notifierOxideStructure(paths); },
   });
 });
+
+/**
+ * Traduit une rafale du watcher en `workspace/didChangeWatchedFiles`.
+ *
+ * Le type est déduit de l'EXISTENCE au moment du vidage, pas du genre
+ * d'événement rapporté par l'OS. Deux raisons : un renommage arrive en
+ * `modify: rename` sans qu'on sache lequel des deux chemins est la source, et
+ * une création suivie d'une suppression dans la même fenêtre d'anti-rebond doit
+ * conclure à la suppression. L'existence tranche les deux sans avoir à
+ * interpréter l'événement — et se corrige d'elle-même si l'OS nous ment.
+ *
+ * Passe par le watcher plutôt que par des appels dans `file-operations` : les
+ * créations de l'application y arrivent aussi, et un seul chemin couvre le
+ * geste interne comme le fichier déposé depuis l'extérieur.
+ */
+async function notifierOxideStructure(paths: string[]): Promise<void> {
+  if (!isMarkdownOxideReady() || paths.length === 0) return;
+  const changements: { path: string; type: TypeChangement }[] = await Promise.all(
+    paths.map(async (path) => ({
+      path,
+      type: (await pathExists(path)) ? CREE : SUPPRIME,
+    })),
+  );
+  notifierChangementsSurveilles(changements);
+  window.dispatchEvent(new CustomEvent("azprose:links-refresh"));
+}
 
 $effect(() => {
   if (source !== savedContent) {

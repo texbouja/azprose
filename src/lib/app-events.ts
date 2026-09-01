@@ -135,6 +135,11 @@ export interface FsWatcherDeps {
   /** Notified after a debounced structural FS change. `paths` = the changed
       paths (absolute), so consumers can invalidate only the affected folders. */
   bumpTreeVersion: (paths: string[]) => void
+  /** Chemins dont l'EXISTENCE a pu changer (création, suppression, renommage),
+   *  pour `workspace/didChangeWatchedFiles`. Séparé de `bumpTreeVersion` parce
+   *  que les deux consommateurs ne veulent pas la même chose : l'arbre veut des
+   *  dossiers à invalider, le serveur LSP veut des fichiers et leur sort. */
+  onStructuralChange?: (paths: string[]) => void
 }
 
 /** True when `p` lives under a hidden (dotfile) directory of the vault
@@ -172,19 +177,36 @@ export function setupFsWatcher(
 
   if (!rootPath) return () => {};
 
+  // Accumulés pendant la fenêtre d'anti-rebond, puis vidés d'un coup : un
+  // renommage ou une copie de dossier produit une rafale, et le serveur LSP
+  // préfère une notification portant dix changements que dix notifications —
+  // il tente un verrou NON bloquant sur son index et abandonne s'il est pris.
+  const enAttente = new Set<string>();
+
   watch(
     rootPath,
     (event) => {
-      // Skip content writes / metadata / access — they never change the names
-      // or structure the tree displays (the app's own saves land here too).
-      if (isTreeIrrelevantEvent(event.type)) return;
       // Filter hidden paths FIRST so they never cancel a pending reload
       // scheduled for a visible change.
       if (event.paths?.length && event.paths.every((p) => isHiddenPath(rootPath, p))) {
         return;
       }
+      // Skip content writes / metadata / access — they never change the names
+      // or structure the tree displays (the app's own saves land here too), et
+      // le contenu d'un fichier DÉJÀ connu du serveur est notifié à la
+      // sauvegarde par un autre chemin.
+      if (isTreeIrrelevantEvent(event.type)) return;
+
+      for (const p of event.paths ?? []) {
+        if (!isHiddenPath(rootPath, p)) enAttente.add(p);
+      }
       if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(() => { deps.bumpTreeVersion(event.paths ?? []); }, 200);
+      debounce = setTimeout(() => {
+        const chemins = [...enAttente];
+        enAttente.clear();
+        deps.bumpTreeVersion(chemins);
+        deps.onStructuralChange?.(chemins);
+      }, 200);
     },
     { recursive: true, delayMs: 200 },
   ).then((unwatch) => { cleanup = unwatch; });

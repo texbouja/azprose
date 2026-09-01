@@ -5,6 +5,13 @@ import { DEFAULT_MOXIDE_TOML, patchCalloutCompletions } from "@/lib/moxide-confi
 import { diagnosticsStore } from "@/stores/diagnostics.svelte";
 import { logStore } from "@/components/console/log.svelte";
 import { getProjectRoot } from "@/lib/session";
+import {
+  estSurveille,
+  surveillantsDeLEnregistrement,
+  MODIFIE,
+  type Surveillant,
+  type TypeChangement,
+} from "./watched-files";
 import type { Diagnostic } from "@/lib/diagnostics";
 import { exists, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { emit } from "@tauri-apps/api/event";
@@ -15,6 +22,17 @@ let _client: LSPClient | null = null;
 let _id: string | null = null;
 let _transport: TauriTransport | null = null;
 let _reqId = 0;
+
+// Surveillants de fichiers demandés par le serveur (`client/registerCapability`),
+// indexés par identifiant d'enregistrement pour pouvoir les retirer.
+// Vide = le serveur n'a rien demandé (encore) ; `estSurveille` laisse alors
+// passer tout le Markdown plutôt que de se taire.
+let _enregistrements = new Map<string, Surveillant[]>();
+let _surveillants: Surveillant[] = [];
+
+function recalculerSurveillants(): void {
+  _surveillants = [..._enregistrements.values()].flat();
+}
 
 function toSeverity(s: number): "error" | "warning" | "info" {
   if (s === 1) return "error";
@@ -108,12 +126,37 @@ export function requestMarkdownOxide<T = unknown>(
  * on the same stream, so a request sent AFTER this notification sees the new index.
  */
 export function notifyMarkdownOxideFileChanged(path: string): void {
-  if (!_transport) return;
-  const uri = "file://" + encodeURI(path.replace(/\\/g, "/"));
+  notifierChangementsSurveilles([{ path, type: MODIFIE }]);
+}
+
+/**
+ * Envoie un lot de changements de fichiers surveillés.
+ *
+ * Le type compte : `2` (Modifié) sur un fichier que le serveur ne connaît pas
+ * ne le fait pas entrer dans son index. C'est pourquoi les créations doivent
+ * porter `1` et les suppressions `3` — l'ancienne version codait `2` en dur,
+ * si bien qu'un fichier neuf n'apparaissait jamais dans la complétion.
+ *
+ * Les changements sont filtrés par les surveillants que le serveur a lui-même
+ * enregistrés : lui envoyer ce qu'il n'a pas demandé ne sert qu'à disputer son
+ * verrou d'index.
+ */
+export function notifierChangementsSurveilles(
+  changements: readonly { path: string; type: TypeChangement }[],
+): void {
+  if (!_transport || changements.length === 0) return;
+  const racine = getProjectRoot();
+  const retenus = changements.filter((c) => estSurveille(c.path, c.type, _surveillants, racine));
+  if (retenus.length === 0) return;
   const req = JSON.stringify({
     jsonrpc: "2.0",
     method: "workspace/didChangeWatchedFiles",
-    params: { changes: [{ uri, type: 2 }] }, // type 2 = Changed
+    params: {
+      changes: retenus.map((c) => ({
+        uri: "file://" + encodeURI(c.path.replace(/\\/g, "/")),
+        type: c.type,
+      })),
+    },
   });
   _transport.send(req);
 }
@@ -153,8 +196,32 @@ export function getMarkdownOxideClient(
   transport.onServerRequest((req) => {
     const { method, id, params } = req;
 
+    // Le serveur nous dit ce qu'il veut voir surveillé. Répondre « OK » sans
+    // rien enregistrer — ce que faisait cette branche — le laissait croire que
+    // le client surveillait le coffre : il ne balayait donc jamais le disque, et
+    // aucun fichier créé, renommé ou supprimé n'entrait dans son index.
     if (method === "client/registerCapability") {
-      console.log(`[markdown-oxide] ← registerCapability (ignored)`);
+      const p = params as { registrations?: Array<{ id?: string; method?: string }> } | undefined;
+      const surveillants = surveillantsDeLEnregistrement(params);
+      for (const enr of p?.registrations ?? []) {
+        if (enr?.method !== "workspace/didChangeWatchedFiles" || !enr.id) continue;
+        _enregistrements.set(enr.id, surveillants);
+      }
+      recalculerSurveillants();
+      console.log(
+        `[markdown-oxide] ← registerCapability : ${_surveillants.length} surveillant(s)`,
+        _surveillants.map((s) => s.motif),
+      );
+      return JSON.stringify({ jsonrpc: "2.0", id, result: null });
+    }
+
+    // `unregisterations` (sic) : l'orthographe est celle du protocole.
+    if (method === "client/unregisterCapability") {
+      const p = params as { unregisterations?: Array<{ id?: string }> } | undefined;
+      for (const enr of p?.unregisterations ?? []) {
+        if (enr?.id) _enregistrements.delete(enr.id);
+      }
+      recalculerSurveillants();
       return JSON.stringify({ jsonrpc: "2.0", id, result: null });
     }
 
@@ -260,6 +327,11 @@ export async function stopMarkdownOxide(): Promise<void> {
   }
   _transport = null;
   _client = null;
+  // Les enregistrements appartiennent à l'instance qui vient de mourir : les
+  // garder ferait filtrer les changements du prochain serveur avec les motifs
+  // de l'ancien, avant même qu'il ait pu enregistrer les siens.
+  _enregistrements = new Map();
+  _surveillants = [];
 }
 
 /** True once a markdown-oxide client has been created. */
