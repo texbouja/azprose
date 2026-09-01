@@ -11,6 +11,8 @@
 // — initialize → notifications/initialized → tools/list — en MCP 2025-11-25.
 // Aucun prompt n'est nécessaire pour déclencher le handshake.
 
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use axum::{
@@ -87,9 +89,12 @@ pub struct VaultFacts {
     pub colleur_name: Option<String>,
 }
 
-/// Poignée partagée entre la commande Tauri et le serveur : l'utilisateur peut
-/// changer de projet sans redémarrer, d'où le `Mutex` plutôt qu'une valeur
-/// figée à la construction.
+/// Poignée partagée entre la commande Tauri et le serveur.
+///
+/// Le `Mutex` sert à réactualiser l'instantané (préambule, programmes cochés,
+/// nom de colleur) sans redémarrer le serveur. Il ne sert PAS à changer de
+/// coffre : depuis le 2026-08-31, il y a une poignée — et un serveur — PAR
+/// COFFRE, cf. `McpState`.
 #[derive(Clone, Default)]
 pub struct VaultRoot(Arc<Mutex<VaultFacts>>);
 
@@ -1322,20 +1327,28 @@ pub struct McpEndpoint {
     pub token: String,
 }
 
+/// Un serveur MCP **par coffre**, indexé par sa racine.
+///
+/// Auparavant : un serveur unique et une `VaultRoot` unique pour tout le
+/// processus, que `mcp_start` réécrivait à chaque appel. Avec deux fenêtres
+/// ouvertes sur deux projets, la dernière à démarrer une session gagnait — et
+/// l'assistant de la première interrogeait le `data.db`, les colles et les
+/// fichiers de la SECONDE. C'était la fuite inter-projets la plus silencieuse
+/// de l'application : rien, dans l'interface, ne la trahissait.
+///
+/// Chaque serveur écoute sur son propre port éphémère et porte son propre
+/// jeton : deux fenêtres ne peuvent plus se confondre, même par accident.
+#[derive(Default)]
 pub struct McpState {
-    inner: Mutex<Option<Running>>,
-    root: VaultRoot,
+    serveurs: Mutex<HashMap<String, Running>>,
 }
 
 struct Running {
     endpoint: McpEndpoint,
     cancel: CancellationToken,
-}
-
-impl Default for McpState {
-    fn default() -> Self {
-        Self { inner: Mutex::new(None), root: VaultRoot::default() }
-    }
+    /// Poignée propre à CE coffre — réactualisée à chaque session de la fenêtre
+    /// correspondante, jamais par une autre.
+    root: VaultRoot,
 }
 
 /// Jeton d'authentification — pas de dépendance supplémentaire : l'entropie
@@ -1366,9 +1379,14 @@ async fn require_token(
     if ok { Ok(next.run(req).await) } else { Err(StatusCode::UNAUTHORIZED) }
 }
 
-/// Démarre le serveur pour `root`. Idempotent : un serveur déjà en vie est
-/// réutilisé, seule la racine est réactualisée — le front peut appeler à
-/// chaque session sans se soucier de l'état.
+/// Démarre le serveur DU COFFRE `facts.root`. Idempotent : le serveur de ce
+/// coffre, s'il est déjà en vie, est réutilisé et son instantané réactualisé —
+/// le front peut appeler à chaque session sans se soucier de l'état.
+///
+/// ⚠️ L'instantané n'est réactualisé QUE pour le coffre appelant. Une autre
+/// fenêtre, sur un autre projet, a son propre serveur et sa propre poignée :
+/// c'est l'invariant qui empêche l'assistant d'une fenêtre de lire le coffre
+/// d'une autre.
 #[tauri::command]
 pub async fn mcp_start(
     app: tauri::AppHandle,
@@ -1385,18 +1403,40 @@ pub async fn mcp_start(
             .ok()
             .map(|d| d.join("programmes").to_string_lossy().to_string());
     }
-    // L'instantané est RÉACTUALISÉ à chaque appel, y compris quand le serveur
-    // tourne déjà : le front redéclare à chaque session, l'agent voit donc
-    // toujours l'état courant du vault.
-    state.root.set(facts);
+    // Clé d'indexation : la racine du coffre. Une session SANS coffre (racine
+    // absente) partage la clé vide — elle n'a accès à aucune donnée de vault,
+    // il n'y a donc rien à cloisonner.
+    let cle = facts.root.clone().unwrap_or_default();
 
-    if let Some(running) = state.inner.lock().unwrap().as_ref() {
-        return Ok(running.endpoint.clone());
+    // Serveur déjà en vie POUR CE COFFRE : on réactualise son instantané et on
+    // rend son point d'accès. Le verrou est relâché avant tout `await`.
+    {
+        let serveurs = state.serveurs.lock().unwrap();
+        if let Some(running) = serveurs.get(&cle) {
+            running.root.set(facts);
+            return Ok(running.endpoint.clone());
+        }
     }
 
-    let (endpoint, cancel) = spawn_mcp_server(state.root.clone()).await?;
-    *state.inner.lock().unwrap() = Some(Running { endpoint: endpoint.clone(), cancel });
-    Ok(endpoint)
+    let root = VaultRoot::default();
+    root.set(facts);
+    let (endpoint, cancel) = spawn_mcp_server(root.clone()).await?;
+
+    let mut serveurs = state.serveurs.lock().unwrap();
+    match serveurs.entry(cle) {
+        Entry::Occupied(occupe) => {
+            // Une autre session du MÊME coffre nous a devancés pendant le
+            // `await` du spawn. On arrête le serveur qu'on vient de créer —
+            // sans quoi il resterait à écouter sans que personne ne connaisse
+            // son port — et on rend celui qui est déjà enregistré.
+            cancel.cancel();
+            Ok(occupe.get().endpoint.clone())
+        }
+        Entry::Vacant(libre) => {
+            libre.insert(Running { endpoint: endpoint.clone(), cancel, root });
+            Ok(endpoint)
+        }
+    }
 }
 
 /// Démarrage NU du serveur, sans état Tauri — la commande ci-dessus n'en est
@@ -1442,11 +1482,22 @@ pub async fn spawn_mcp_server(
     Ok((endpoint, cancel))
 }
 
-/// Arrête le serveur. Sans effet s'il ne tourne pas.
+/// Arrête le serveur d'un coffre, ou TOUS si `root` est absent. Sans effet sur
+/// un coffre qui n'en a pas.
 #[tauri::command]
-pub fn mcp_stop(state: State<'_, McpState>) {
-    if let Some(running) = state.inner.lock().unwrap().take() {
-        running.cancel.cancel();
+pub fn mcp_stop(state: State<'_, McpState>, root: Option<String>) {
+    let mut serveurs = state.serveurs.lock().unwrap();
+    match root {
+        Some(r) => {
+            if let Some(running) = serveurs.remove(&r) {
+                running.cancel.cancel();
+            }
+        }
+        None => {
+            for (_, running) in serveurs.drain() {
+                running.cancel.cancel();
+            }
+        }
     }
 }
 
