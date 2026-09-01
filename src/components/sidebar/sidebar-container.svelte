@@ -236,7 +236,7 @@ function stopResize(e: PointerEvent) {
 .mdv-sidebar__project-footer {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
+  padding: 2px 6px;
   border-top: 1px solid var(--border);
 }
 </style>
