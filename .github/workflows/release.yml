@@ -64,4 +64,8 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}
           releaseDraft: true
-          prerelease: false
+          # Le « c'est une bêta » vit ICI, pas dans le numéro de version : un
+          # suffixe `-beta` casse le bundle MSI (WiX n'accepte qu'un
+          # identifiant de pré-version NUMÉRIQUE) et le `0.x` de semver dit
+          # déjà « instable ». À repasser à false pour la 1.0.
+          prerelease: true

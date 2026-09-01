@@ -132,7 +132,7 @@ export function createAgentClient(options: AgentClientOptions): AgentClient {
         const result = (await transport.sendRequest("initialize", {
           protocolVersion: 1,
           clientCapabilities: options.capabilities ?? {},
-          clientInfo: { name: "AZprose", version: "0.5.0-beta" },
+          clientInfo: { name: "AZprose", version: "0.5.0" },
         })) as InitializeResult;
         started = true;
         return result;

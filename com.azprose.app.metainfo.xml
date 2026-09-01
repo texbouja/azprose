@@ -19,7 +19,7 @@
     <mimetype>text/x-typst</mimetype>
   </mimetypes>
   <releases>
-    <release version="0.5.0-beta" date="2026-09-01" type="development"/>
+    <release version="0.5.0" date="2026-09-02" type="development"/>
     <release version="0.1.0" date="2026-07-03"/>
   </releases>
   <launchable type="desktop-id">com.azprose.app.desktop</launchable>
