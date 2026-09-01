@@ -16,6 +16,7 @@
 @import "./styles/overlays/welcome.css";
 @import "./styles/overlays/drop.css";
 @import "./styles/overlays/about.css";
+@import "./styles/overlays/release-notes.css";
 @import "./styles/overlays/settings.css";
 @import "pdfjs-dist/web/pdf_viewer.css";
 @import "./styles/pdf/pdf.css";

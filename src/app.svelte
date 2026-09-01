@@ -39,6 +39,7 @@ import Toast from "@/components/overlays/Toast.svelte";
 import DropOverlay from "@/components/overlays/DropOverlay.svelte";
 import CommandPalette from "@/components/overlays/CommandPalette.svelte";
 import AboutOverlay from "@/components/overlays/AboutOverlay.svelte";
+import ReleaseNotesOverlay from "@/components/overlays/ReleaseNotesOverlay.svelte";
 import SettingsOverlay from "@/components/overlays/SettingsOverlay.svelte";
 import WelcomeOverlay from "@/components/overlays/WelcomeOverlay.svelte";
 import ProjectGate from "@/components/overlays/ProjectGate.svelte";
@@ -1894,6 +1895,7 @@ let cmds = $derived(
     {minutes}
     {buildLabel}
     onHelp={openHelp}
+    onAbout={() => overlays.setReleaseNotesOpen(true)}
   />
 
   <ContextMenu
@@ -1983,6 +1985,11 @@ let cmds = $derived(
     open={overlays.aboutOpen}
     onClose={() => overlays.setAboutOpen(false)}
     onCheckForUpdates={handleManualUpdateCheck}
+  />
+
+  <ReleaseNotesOverlay
+    open={overlays.releaseNotesOpen}
+    onClose={() => overlays.setReleaseNotesOpen(false)}
   />
 
   <SettingsOverlay

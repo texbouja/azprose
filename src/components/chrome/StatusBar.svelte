@@ -11,6 +11,7 @@
     vimMode,
     buildLabel,
     onHelp = null as (() => void) | null,
+    onAbout = null as (() => void) | null,
   }: {
     fileName?: string;
     words: number;
@@ -18,6 +19,8 @@
     vimMode?: "normal" | "insert" | "visual" | "replace" | null;
     buildLabel?: string | null;
     onHelp?: (() => void) | null;
+    /** Ouvre la modale des notes de version — bouton à DROITE de l'aide. */
+    onAbout?: (() => void) | null;
   } = $props();
 
   function vimModeLabel(mode: "normal" | "insert" | "visual" | "replace"): string {
@@ -64,6 +67,21 @@
           <circle cx="12" cy="12" r="10" />
           <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
           <path d="M12 17h.01" />
+        </svg>
+      </button>
+    {/if}
+    {#if onAbout}
+      <button
+        type="button"
+        class="mdv-statusbar__help"
+        title={t("statusbar.about")}
+        aria-label={t("statusbar.about")}
+        onclick={onAbout}
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4" />
+          <path d="M12 8h.01" />
         </svg>
       </button>
     {/if}
