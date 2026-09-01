@@ -115,20 +115,20 @@ test("onExternal n'est PAS appelé lors d'une écriture locale (déjà joué par
 
 import { STORAGE_KEYS, CLES_PAR_FENETRE } from "../src/lib/storage";
 
-test("mdview.folders est déclarée par fenêtre", () => {
-  expect(CLES_PAR_FENETRE.has(STORAGE_KEYS.folders)).toBe(true);
+test("mdview.lastProject est déclarée par fenêtre", () => {
+  expect(CLES_PAR_FENETRE.has(STORAGE_KEYS.lastProject)).toBe(true);
 });
 
 test("une clé par fenêtre IGNORE l'écriture d'une autre fenêtre", () => {
-  const s = persistedState<string[]>(STORAGE_KEYS.folders, ["/coffre-a"]);
-  fireStorage(STORAGE_KEYS.folders, JSON.stringify(["/coffre-b"]));
+  const s = persistedState<string[]>(STORAGE_KEYS.lastProject, ["/coffre-a"]);
+  fireStorage(STORAGE_KEYS.lastProject, JSON.stringify(["/coffre-b"]));
   expect(s.current).toEqual(["/coffre-a"]);
 });
 
 test("une clé par fenêtre ignore l'événement même avec onExternal", () => {
   let calls = 0;
-  const s = persistedState<string[]>(STORAGE_KEYS.folders, ["/coffre-a"], undefined, () => { calls++; });
-  fireStorage(STORAGE_KEYS.folders, JSON.stringify(["/coffre-b"]));
+  const s = persistedState<string[]>(STORAGE_KEYS.lastProject, ["/coffre-a"], undefined, () => { calls++; });
+  fireStorage(STORAGE_KEYS.lastProject, JSON.stringify(["/coffre-b"]));
   expect(calls).toBe(0);
   expect(s.current).toEqual(["/coffre-a"]);
 });
@@ -136,9 +136,9 @@ test("une clé par fenêtre ignore l'événement même avec onExternal", () => {
 test("une clé par fenêtre reste persistée et relue normalement", () => {
   // Seule la RÉCEPTION est débranchée : l'écriture locale et la relecture au
   // démarrage suivant doivent continuer de fonctionner.
-  const s = persistedState<string[]>(STORAGE_KEYS.folders, []);
+  const s = persistedState<string[]>(STORAGE_KEYS.lastProject, []);
   s.current = ["/coffre-a", "/invite"];
-  const relu = persistedState<string[]>(STORAGE_KEYS.folders, []);
+  const relu = persistedState<string[]>(STORAGE_KEYS.lastProject, []);
   expect(relu.current).toEqual(["/coffre-a", "/invite"]);
 });
 
@@ -159,6 +159,40 @@ test("persistedScopedState réagit sur la clé scopée courante", () => {
   const s = persistedScopedState<string>("t.g", "init");
   fireStorage(scopedKey("t.g"), JSON.stringify("depuis-autre-fenetre"));
   expect(s.current).toBe("depuis-autre-fenetre");
+  setSessionScope(null);
+});
+
+// F6 — la lecture INITIALE n'était pas paresseuse, contrairement à ce que
+// promettait le docstring : elle avait lieu une fois, à l'import du module.
+// D'où deux fuites entre coffres, gardées ci-dessous.
+
+test("persistedScopedState relit quand le scope change sous lui", () => {
+  setSessionScope("/vault-a");
+  localStorage.setItem(scopedKey("t.i"), JSON.stringify("valeur-de-a"));
+  const s = persistedScopedState<string>("t.i", "defaut");
+  expect(s.current).toBe("valeur-de-a");
+
+  setSessionScope("/vault-b");
+  // Rien de stocké pour B : c'est le DÉFAUT qu'on doit voir, jamais la valeur de A.
+  expect(s.current).toBe("defaut");
+  setSessionScope(null);
+});
+
+test("persistedScopedState n'écrit pas la valeur d'un coffre dans la clé d'un autre", () => {
+  // Le défaut exact : la valeur restait en mémoire au changement de coffre et
+  // partait dans la clé du nouveau à la première modification.
+  setSessionScope("/vault-a");
+  localStorage.setItem(scopedKey("t.j"), JSON.stringify(["favori-de-a"]));
+  const s = persistedScopedState<string[]>("t.j", []);
+  expect(s.current).toEqual(["favori-de-a"]);
+
+  setSessionScope("/vault-b");
+  s.update((prev) => [...prev, "favori-de-b"]);
+  expect(JSON.parse(localStorage.getItem(scopedKey("t.j"))!)).toEqual(["favori-de-b"]);
+
+  // Et le coffre A n'a pas bougé.
+  setSessionScope("/vault-a");
+  expect(JSON.parse(localStorage.getItem(scopedKey("t.j"))!)).toEqual(["favori-de-a"]);
   setSessionScope(null);
 });
 

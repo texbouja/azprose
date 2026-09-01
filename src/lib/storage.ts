@@ -12,8 +12,10 @@
 // 2. GLOBAL UI PREFERENCES (unscoped) — theme, language, fonts, layout, etc.
 //    The per-project source of truth for these lives in `.azprose/config.json`
 //    (project-config.ts); localStorage is only a fast boot cache that loadConfig
-//    overrides with the vault's own values. `folders` is unscoped by design —
-//    folders.current[0] is how the app remembers the last opened project.
+//    overrides with the vault's own values.
+//
+// Une clé non scopée n'est pas pour autant PARTAGEABLE entre fenêtres : voir
+// `CLES_PAR_FENETRE` en bas de ce fichier.
 export const STORAGE_KEYS = {
   themeMode: "mdview.theme",
   transparency: "mdview.transparency",
@@ -30,7 +32,18 @@ export const STORAGE_KEYS = {
   welcomed: "mdview.welcomed",
   lastSeenVersion: "mdview.lastSeenVersion",
   language: "mdview.language",
-  folders: "mdview.folders",
+  // Dernier projet ouvert par CETTE fenêtre — unique repli de `?root=` au
+  // démarrage. Écrite par `lib/vault.svelte.ts`, et par lui seul.
+  //
+  // Remplace `mdview.folders` (retirée le 2026-08-31), qui cumulait deux rôles
+  // inconciliables : mémoire du dernier projet ET contenu affiché de la
+  // sidebar. Comme chaque fenêtre y écrivait SA liste au boot et que les
+  // écritures se propageaient entre fenêtres, ouvrir un projet remplaçait
+  // l'arborescence d'une fenêtre ouverte sur un autre. La liste des dossiers
+  // vient désormais du périmètre du coffre (`vault.perimetre()`), qui n'est
+  // persisté nulle part globalement : la racine vient de l'URL, les invités
+  // d'une clé SCOPÉE par coffre.
+  lastProject: "mdview.lastProject",
   favorites: "mdview.favorites",
   typography: "mdview.typography",
   previewStyle: "mdview.preview.style",
@@ -85,15 +98,20 @@ export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
  * doit donc JAMAIS réécrire (`persisted.svelte.ts` ignore l'événement `storage`
  * pour elles).
  *
- * Le défaut que ça corrige : `folders` est non scopée par nécessité
- * (`folders.current[0]` est la mémoire du dernier projet ouvert, cf. le
- * commentaire de tête), et chaque fenêtre y écrit SA liste au boot. Comme
- * `persistedState` applique les écritures venues des autres fenêtres, ouvrir un
- * projet B pendant qu'une fenêtre est sur A **remplaçait l'arborescence
- * affichée par A** par celle de B — sans que `rootPath` bouge. La fenêtre A
- * présentait alors B comme son propre projet primaire, et tout clic dans cet
- * arbre écrivait des chemins étrangers dans la session scopée de A, ses
- * brouillons, sa clé invités, son `.azprose/session.json` et son `data.db`.
+ * Le défaut que ça corrige : `mdview.folders` était non scopée par nécessité
+ * (elle portait la mémoire du dernier projet ouvert) et chaque fenêtre y
+ * écrivait SA liste au boot. Comme `persistedState` applique les écritures
+ * venues des autres fenêtres, ouvrir un projet B pendant qu'une fenêtre était
+ * sur A **remplaçait l'arborescence affichée par A** par celle de B — sans que
+ * `rootPath` bouge. La fenêtre A présentait alors B comme son propre projet
+ * primaire, et tout clic dans cet arbre écrivait des chemins étrangers dans la
+ * session scopée de A, ses brouillons, sa clé invités, son
+ * `.azprose/session.json` et son `data.db`.
+ *
+ * Ce cumul de rôles a depuis été défait (`lastProject` d'un côté, le périmètre
+ * du coffre de l'autre), mais la politique reste : `lastProject` est une valeur
+ * PAR FENÊTRE, et la recevoir d'une autre ramènerait le même défaut sous une
+ * autre forme.
  *
  * La politique est une propriété de la CLÉ, pas du site d'appel : la déclarer
  * ici, à côté du catalogue, la rend auditable d'un coup d'œil — un cinquième
@@ -104,5 +122,5 @@ export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
  * le stockage.
  */
 export const CLES_PAR_FENETRE: ReadonlySet<string> = new Set<string>([
-  STORAGE_KEYS.folders,
+  STORAGE_KEYS.lastProject,
 ]);

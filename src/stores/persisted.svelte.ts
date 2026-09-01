@@ -120,7 +120,24 @@ export function persistedState<T>(
  * deux prémisses tombe, il faudra le même garde-fou qu'au-dessus.
  */
 export function persistedScopedState<T>(key: string, initial: T, onExternal?: (v: T) => void) {
-  let value = $state(load(scopedKey(key), initial));
+  // Le scope au moment de la LECTURE initiale, retenu pour le comparer plus
+  // tard. Le docstring promettait une clé « résolue paresseusement à chaque
+  // accès » : c'était vrai des écritures, faux de cette lecture-ci, qui n'a
+  // lieu qu'une fois — à l'import du module, donc éventuellement avant que le
+  // coffre soit ouvert. Deux conséquences, toutes deux corrigées par la
+  // relecture ci-dessous : la valeur pouvait être lue sous un scope VIDE, et
+  // celle d'un coffre pouvait être réécrite dans la clé d'un autre.
+  let scopeLu = scopedKey(key);
+  let value = $state(load(scopeLu, initial));
+
+  /** Relit si le scope a changé depuis la dernière lecture. */
+  function reliresiScopeChange(): void {
+    const actuel = scopedKey(key);
+    if (actuel === scopeLu) return;
+    scopeLu = actuel;
+    value = load(actuel, initial);
+    onExternal?.(value);
+  }
 
   if (typeof window !== "undefined") {
     window.addEventListener("storage", (e) => {
@@ -128,15 +145,25 @@ export function persistedScopedState<T>(key: string, initial: T, onExternal?: (v
       if (e.newValue === null) return;
       try {
         value = JSON.parse(e.newValue) as T;
+        // L'événement porte la valeur FAISANT FOI pour la clé scopée courante :
+        // le store est désormais à jour SUR CE SCOPE. Sans cette ligne, la
+        // relecture du prochain accès verrait un scope encore « ancien » et
+        // rechargerait depuis le stockage — écrasant la valeur qu'on vient de
+        // recevoir par le défaut.
+        scopeLu = e.key;
         onExternal?.(value);
       } catch { /* JSON invalide : ignorer */ }
     });
   }
 
+  // La relecture est déclenchée par l'ACCÈS, pas par un abonnement au coffre :
+  // ce module ne doit rien savoir de `vault.svelte.ts` (il est compilé seul en
+  // test). Tout accès passe par l'un de ces quatre points — un scope changé ne
+  // peut donc jamais être vu par un lecteur, ni écrasé par un écrivain.
   return {
-    get current() { return value; },
-    set current(v: T) { value = v; save(scopedKey(key), v); },
-    update(fn: (prev: T) => T) { value = fn(value); save(scopedKey(key), value); },
-    reset() { value = initial; save(scopedKey(key), initial); },
+    get current() { reliresiScopeChange(); return value; },
+    set current(v: T) { reliresiScopeChange(); value = v; save(scopedKey(key), v); },
+    update(fn: (prev: T) => T) { reliresiScopeChange(); value = fn(value); save(scopedKey(key), value); },
+    reset() { reliresiScopeChange(); value = initial; save(scopedKey(key), initial); },
   };
 }

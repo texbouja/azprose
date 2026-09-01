@@ -4,25 +4,56 @@ import { loadSession, saveSession, saveLastFile, loadLastFile } from "@/lib/sess
 import { loadProjectSession } from "@/lib/project-session";
 import type { PanelManager } from "@/lib/panel-manager";
 import { normalizeLegacyKind, tabContentKind, type LegacyTabKind } from "@/lib/panel-store";
+import { dansPerimetre } from "@/lib/paths";
 
 export interface SessionRestoreDeps {
   pm: PanelManager
-  projectRoot: string | null
   openFileInTab: (path: string, opts?: { preferDraft?: boolean; silent?: boolean; preview?: boolean; sourceType?: "latex" }) => Promise<void>
   findTabByPath: (path: string) => { id: string; panel: string } | undefined
   setSideVisible: (v: boolean) => void
-  setRootPath: (v: string | null) => void
-  setSessionScope: (v: string | null) => void
-  folders: { current: string[]; update: (fn: () => string[]) => void }
-  setProjectRoot: (v: string | null) => void
-  loadGuests: () => string[]
   handleOpenProjectByPath: (folder: string) => Promise<void>
+  /** Périmètre du coffre — INJECTÉ plutôt qu'importé : ce module est chargé par
+   *  des tests qui n'ont pas de runtime Svelte, et `vault.svelte.ts` en est un. */
+  perimetre: () => readonly string[]
+  /** Racine du coffre, pour la relecture de la session portable du disque. */
+  racine: () => string | null
+  /** Trace d'un écart (Diagnostics). Rien à l'écran — cf. `filtrerAuPerimetre`. */
+  signaler: (message: string) => void
 }
 
-export function setupSessionRestore(
-  ctx: SessionRestoreDeps,
-  urlRoot: string | null,
-): () => void {
+/**
+ * Écarte les chemins étrangers au coffre (arbitrage A : racine + invités).
+ *
+ * Nécessaire parce que la session voyage : `.azprose/session.json` est une copie
+ * PORTABLE, relue quand le localStorage scopé est vide, et elle contient des
+ * chemins ABSOLUS — un coffre copié depuis une autre machine ou dupliqué depuis
+ * un autre projet rouvrait donc les fichiers de l'original.
+ *
+ * Silencieux à l'écran (arbitrage B : si l'isolation est assez forte, le cas ne
+ * se présente pas), mais TRACÉ : un onglet écarté ici signifie que quelque chose
+ * a déjà échoué en amont, et c'est la seule trace qui le dira.
+ *
+ * Exporté pour être testé seul — c'est la règle d'appartenance de la session,
+ * elle mérite ses propres cas.
+ */
+export function filtrerAuPerimetre<T extends { path: string }>(
+  entrees: readonly T[],
+  quoi: string,
+  perimetre: readonly string[],
+  signaler: (message: string) => void,
+): T[] {
+  const gardees = entrees.filter((e) => dansPerimetre(e.path, perimetre));
+  const ecartees = entrees.length - gardees.length;
+  if (ecartees > 0) {
+    signaler(
+      `${ecartees} ${quoi} écarté(s) à la restauration : hors du périmètre du projet ` +
+        `(${perimetre.join(", ") || "aucun dossier ouvert"}).`,
+    );
+  }
+  return gardees;
+}
+
+export function setupSessionRestore(ctx: SessionRestoreDeps): () => void {
   let cancelled = false;
   let unlisteners: (() => void)[] = [];
 
@@ -42,15 +73,25 @@ export function setupSessionRestore(
         if (latest) {
           void ctx.openFileInTab(latest).catch(() => {});
         } else {
+          const rp = ctx.racine();
+          const perim = ctx.perimetre();
           let session = loadSession();
-          if (session.main.tabs.length === 0 && ctx.projectRoot) {
-            const portable = await loadProjectSession(ctx.projectRoot);
+          if (session.main.tabs.length === 0 && rp) {
+            const portable = await loadProjectSession(rp);
             if (portable && portable.main.tabs.length > 0) {
               session = { main: portable.main, side: portable.side };
               saveSession(session);
               if (portable.lastFile) saveLastFile(portable.lastFile);
             }
           }
+          // Filtrage AVANT toute ouverture : un chemin étranger ne doit pas
+          // même créer son onglet — c'est cet onglet qui, ensuite, réécrivait
+          // des chemins d'un autre coffre dans la session, les brouillons et le
+          // miroir disque de celui-ci.
+          session = {
+            main: { ...session.main, tabs: filtrerAuPerimetre(session.main.tabs, "onglet(s)", perim, ctx.signaler) },
+            side: { ...session.side, tabs: filtrerAuPerimetre(session.side.tabs, "aperçu(s)", perim, ctx.signaler) },
+          };
           if (session.main.tabs.length > 0) {
             for (const tab of session.main.tabs) {
               if (cancelled) break;
@@ -107,10 +148,15 @@ export function setupSessionRestore(
             }
           } else {
             const lastFile = loadLastFile();
-            if (lastFile) {
+            // Même garde que pour les onglets : `azp:lastfile` est scopée, mais
+            // le `lastFile` de la session PORTABLE ci-dessus vient du disque et
+            // peut donc désigner un autre coffre.
+            if (lastFile && dansPerimetre(lastFile, perim)) {
               void ctx.openFileInTab(lastFile, { preferDraft: true }).catch(() => {
                 saveLastFile(null);
               });
+            } else if (lastFile) {
+              saveLastFile(null);
             }
           }
         }
@@ -118,15 +164,11 @@ export function setupSessionRestore(
       .catch((err) => console.warn("azprose: pending open-file check failed", err));
   });
 
-  void invoke<string | null>("take_project_folder", { label: "main" }).then((dir) => {
-    if (cancelled) return;
-    if (dir && !urlRoot) {
-      ctx.setRootPath(dir);
-      ctx.setSessionScope(dir);
-      ctx.folders.update(() => [dir, ...ctx.loadGuests().filter((g) => g !== dir)]);
-      ctx.setProjectRoot(dir);
-    }
-  });
+  // Le dossier passé en ligne de commande était ici un SECOND chemin d'ouverture
+  // de coffre, concurrent de celui du démarrage : deux promesses sans ordre
+  // garanti, dont l'une pouvait poser une racine APRÈS que la session avait été
+  // lue au scope de l'autre. Il est désormais consommé AVANT le montage
+  // (`resoudreRacineInitiale`, main.ts) et n'a plus rien à faire ici.
 
   listen<string>("azprose:open-project", (event) => {
     const dir = event.payload;

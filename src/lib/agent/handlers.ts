@@ -11,7 +11,8 @@
 // DOIT renvoyer une réponse ACP valide (`outcome: cancelled`) : une absence
 // de réponse figerait l'agent, qui attend.
 
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile } from "@tauri-apps/plugin-fs";
+import { writeText } from "@/lib/files";
 import type { AgentRequest } from "./types";
 import { extractToolDiff, type ToolDiff } from "./context";
 
@@ -23,7 +24,12 @@ export interface AgentFsDeps {
 
 const diskDeps: AgentFsDeps = {
   readFile: (path) => readTextFile(path),
-  writeFile: (path, content) => writeTextFile(path, content),
+  // `writeText` et non `writeTextFile` : l'écriture de l'agent passe par la
+  // garde de périmètre (`lib/files.ts`). Un modèle qui se trompe de chemin — ou
+  // à qui on demande d'écrire ailleurs — ne doit pas pouvoir modifier le
+  // contenu d'un autre coffre depuis cette fenêtre. La permission (D12) dit
+  // « l'utilisateur accepte cette écriture », pas « n'importe où ».
+  writeFile: (path, content) => writeText(path, content),
 };
 
 export interface PermissionOption {

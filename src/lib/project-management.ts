@@ -6,20 +6,21 @@ import { pickFolder } from "@/lib/files"; // statique : @/lib/files est déjà c
 import { isImagePath, isPdfPath, basename } from "@/lib";
 import { exportMarkdownPdf } from "@/lib/pdf-export";
 import { folderRelation } from "@/lib/paths";
-import { setSessionScope, saveDraft, saveGuests, loadGuests } from "@/lib/session";
+import { saveDraft } from "@/lib/session";
+import { ouvrirCoffre, ajouterInvite, retirerDuPerimetre, racine } from "@/lib/vault.svelte";
 import type { PanelManager } from "@/lib/panel-manager";
 import type { FileOpsManager } from "@/lib/file-operations.svelte";
 
+// La racine et les dossiers invités ne figurent PLUS dans ces dépendances : ils
+// se lisent et se posent par `lib/vault.svelte.ts`, autorité unique. Les passer
+// en paramètre, c'était offrir un second chemin d'écriture — celui-là même par
+// lequel la racine changeait en cours de vie de la fenêtre.
 export interface ProjectManagementDeps {
   pm: PanelManager
   fo: Pick<FileOpsManager, "favorites">
-  rootPath: string | null
-  setRootPath: (v: string | null) => void
   sideVisible: boolean
   setSideVisible: (v: boolean) => void
   tabs: { path: string; source: string; savedContent: string }[]
-  folders: { current: string[]; update: (fn: () => string[]) => void }
-  projectRoot: string | null
   openFileInTab: (path: string, opts?: { silent?: boolean; preferDraft?: boolean; preview?: boolean; sourceType?: "latex" }) => Promise<void>
   findTabByPath: (path: string) => { id: string; panel: string } | undefined
   skipCloseConfirm: { current: boolean }
@@ -38,17 +39,12 @@ export function spawnProjectWindow(folder: string) {
   });
 }
 
-export async function handleAddFolder(ctx: ProjectManagementDeps) {
+export async function handleAddFolder(_ctx: ProjectManagementDeps) {
   const folder = await pickFolder();
-  if (folder) {
-    const next = [...ctx.folders.current];
-    if (!next.includes(folder)) {
-      next.push(folder);
-      ctx.folders.update(() => next);
-      if (!ctx.rootPath) { ctx.setRootPath(folder); setSessionScope(folder); }
-      saveGuests(ctx.folders.current.slice(1));
-    }
-  }
+  // `ajouterInvite` porte la règle « sans projet ouvert, le dossier DEVIENT le
+  // projet » et la persistance des invités (clé scopée) : plus de liste globale
+  // à recomposer ici, ni de `setSessionScope` en marge de l'autorité.
+  if (folder) ajouterInvite(folder);
 }
 
 export async function handleOpenProjectByPath(ctx: ProjectManagementDeps, folder: string) {
@@ -63,8 +59,9 @@ export async function handleOpenProjectByPath(ctx: ProjectManagementDeps, folder
     }
   }
 
-  if (ctx.rootPath) {
-    const rel = folderRelation(folder, ctx.rootPath);
+  const courante = racine();
+  if (courante) {
+    const rel = folderRelation(folder, courante);
     if (rel === "same") return;
     if (rel === "nested") {
       const ok = await confirm(ctx.t("project.warnCloseFolder"), { title: "", kind: "warning" });
@@ -76,11 +73,11 @@ export async function handleOpenProjectByPath(ctx: ProjectManagementDeps, folder
       }
       return;
     }
+    // Une fenêtre déjà ouverte sur un projet n'en change JAMAIS : un autre
+    // projet ouvre une autre fenêtre (invariant d'immuabilité, cf. vault).
     spawnProjectWindow(folder);
   } else {
-    ctx.setRootPath(folder);
-    setSessionScope(folder);
-    ctx.folders.update(() => [folder, ...loadGuests().filter((g) => g !== folder)]);
+    ouvrirCoffre(folder);
   }
 }
 
@@ -108,10 +105,10 @@ export async function handleCloseFolder(ctx: ProjectManagementDeps, path: string
     // R4 (Phase C) : fermer un éditeur épinglé emporte le viewer de sa sphère.
     ctx.pm.closeMainTab(tab.id);
   }
-  const next = ctx.folders.current.filter((f) => f !== path);
-  ctx.folders.update(() => next);
-  if (ctx.rootPath === path) ctx.setRootPath(next[0] ?? null);
-  saveGuests(ctx.folders.current.slice(1));
+  // Retirer la RACINE ferme le projet et ramène à la porte, au lieu de
+  // promouvoir un invité en racine : cette promotion re-scopait tout l'état de
+  // la fenêtre (session, brouillons, invités, base) sans que rien ne le dise.
+  retirerDuPerimetre(path);
   ctx.saveSessionNow();
 }
 

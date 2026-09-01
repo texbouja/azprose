@@ -25,7 +25,7 @@ import { notifications } from "@/stores/notifications.svelte";
 import { basename, isPdfPath } from "@/lib";
 import { readText } from "@/lib/files";
 import { extFromPath } from "@/lib/editor-languages";
-import { setRootPath } from "@/stores/root-path.svelte";
+import { ouvrirCoffre } from "@/lib/vault.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { getFileIndex } from "@/lib/vault-index";
 import { normPath } from "@/lib/panel-store";
@@ -85,7 +85,10 @@ let t = $derived(getT($language));
 
 const params = new URLSearchParams(location.search);
 const root = params.get("root");
-setRootPath(root);
+// `memoriser: false` — NAV adopte la racine pour résoudre les wikilinks de ses
+// aperçus, elle n'OUVRE pas le projet : mémoriser ici ferait rouvrir au
+// démarrage suivant un coffre que l'utilisateur n'a fait que consulter.
+if (root) ouvrirCoffre(root, { memoriser: false });
 
 // Décorations : cette fenêtre est TOUJOURS décorée par le WM, comme PROJET.
 // Le mode « décorations de l'app » (et sa propagation PROJET→NAV par

@@ -67,7 +67,8 @@ import ColleSendDialog from "@/components/colles/ColleSendDialog.svelte";
 import PrintOverlay from "@/components/overlays/PrintOverlay.svelte";
 import { extFromPath } from "@/lib/editor-languages";
 import { setOpenSheetIds } from "@/spreadsheet/open-tabs.svelte";
-import { saveSession, setSessionScope, saveLastFile, loadGuests } from "@/lib/session";
+import { saveSession, saveLastFile } from "@/lib/session";
+import { racine, perimetre, brancherSignalementCoffre } from "@/lib/vault.svelte";
 import {
   findTabByPath as findTabByPathUtil,
   saveSessionNow as saveSessionNowUtil,
@@ -87,7 +88,7 @@ import {
 } from "@/lib/app-events";
 import { generalSettings, applyFontHinting } from "@/stores/general-settings.svelte";
 import { previewSettings, printSettings, presentationSettings } from "@/stores/markdown-settings.svelte";
-import { setRootPath, getRootPath } from "@/stores/root-path.svelte";
+import { getRootPath } from "@/stores/root-path.svelte";
 import { setActivePath } from "@/stores/active-path.svelte";
 import { setScrollTarget } from "@/stores/scroll-target.svelte";
 import { setSyncLine } from "@/stores/sync-line.svelte";
@@ -160,28 +161,8 @@ import "./app.css";
 
 let t = $derived(getT($language));
 
-// A project window receives its folder synchronously through its URL (?root=<path>,
-// set by the opener) — no shared-localStorage read, no async handshake. This is the
-// fix for "the new window's sidebar shows the previous project": folders/rootPath are
-// already correct before the first render.
-const urlRoot = (() => {
-  try {
-    const r = new URLSearchParams(location.search).get("root");
-    return r ? decodeURIComponent(r) : null;
-  } catch {
-    return null;
-  }
-})();
-
 let sidebarOpen = persistedState<boolean>(STORAGE_KEYS.sidebarOpen, false);
 let sidebarWidth = persistedState<number>(STORAGE_KEYS.sidebarWidth, 240);
-let folders = persistedState<string[]>(STORAGE_KEYS.folders, []);
-// Project root = ?root= (project windows) or the last project (main window). Scope the
-// session storage to it, then rebuild folders as [projectRoot, ...scoped guests] so the
-// project comes from the URL and guests persist per project (no telescoping).
-const projectRoot = urlRoot ?? folders.current[0] ?? null;
-setSessionScope(projectRoot);
-if (projectRoot) folders.update(() => [projectRoot, ...loadGuests().filter((g) => g !== projectRoot)]);
 let typography = persistedState<TypographySettings>(STORAGE_KEYS.typography, DEFAULT_TYPOGRAPHY);
 
 let dragActive = $state(false);
@@ -190,14 +171,20 @@ let updateAvail = $state<{ version: string } | null>(null);
 let updateInstalling = $state(false);
 let updateUpToDate = $state(false);
 
-let rootPath = $state<string | null>(projectRoot);
+// La racine et les dossiers du projet ne sont plus détenus ici : ils SE LISENT
+// depuis `lib/vault.svelte.ts`, ouvert avant le montage (main.ts). Ce composant
+// portait auparavant DEUX valeurs — un `const projectRoot` figé et un `$state
+// rootPath` mobile — synchronisées par des `$effect` vers le scope de session et
+// le store de preview. Les deux pouvaient diverger, et le miroir disque suivait
+// l'une pendant que le localStorage suivait l'autre.
+let rootPath = $derived(racine());
+let folders = $derived(perimetre());
 
-// Keep session scope (and getProjectRoot()) in sync with rootPath changes
-// so LSP servers can access the project root without prop drilling.
-$effect(() => { setSessionScope(rootPath); });
-
-// Keep the rootPath store in sync for preview components (wikilink resolution).
-$effect(() => { setRootPath(rootPath); });
+// Les refus du coffre (changement de racine, écriture hors périmètre) partent
+// dans Diagnostics — jamais à l'écran (arbitrage B).
+brancherSignalementCoffre((message) =>
+  diagnosticsStore.push({ severity: "error", message, source: "coffre" }),
+);
 
 // Titre de fenêtre — "AZprose — <projet>" (règle COMMUNE avec NAV, cf.
 // window-title.ts). Seule chose qu'AZprose communique à l'OS depuis la
@@ -502,10 +489,12 @@ onMount(() => {
 
   const myLabel = getCurrentWindow().label;
   const isProjectWindow = myLabel.startsWith("azprose-project-");
-  // Folder already known from ?root= (see urlRoot) — just register this window so
-  // find_project_window can detect it. No event handshake.
-  if (isProjectWindow && urlRoot) {
-    void invoke("register_project_window", { label: myLabel, path: urlRoot });
+  // Le coffre est déjà ouvert (main.ts, avant le montage) — il ne reste qu'à
+  // déclarer cette fenêtre pour que `find_project_window` la retrouve. Pas de
+  // poignée de main : on enregistre la racine EFFECTIVE, pas la seule `?root=`,
+  // pour qu'une fenêtre ouverte par la ligne de commande soit trouvable elle aussi.
+  if (isProjectWindow && rootPath) {
+    void invoke("register_project_window", { label: myLabel, path: rootPath });
   }
 
   // Close handling for EVERY window.
@@ -592,19 +581,23 @@ onMount(() => {
   };
 });
 
+// `racine()` et non une valeur capturée : le miroir sur disque et le scope du
+// localStorage lisent désormais la MÊME source. C'est leur divergence — un
+// `const` figé d'un côté, un `$state` mobile de l'autre — qui pouvait écrire
+// les deux moitiés d'une session dans deux projets différents.
 function saveSessionNow() {
-  saveSessionNowUtil({ pm, projectRoot, onSessionChange: () => { _panelVersion++; } });
+  saveSessionNowUtil({ pm, projectRoot: racine(), onSessionChange: () => { _panelVersion++; } });
   scheduleSessionMirror();
 }
 
 // Portable session mirror (Étape 2b): debounce a write of the session to
 // <project>/.azprose/session.json alongside the scoped localStorage.
 function scheduleSessionMirror() {
-  scheduleSessionMirrorUtil({ pm, projectRoot });
+  scheduleSessionMirrorUtil({ pm, projectRoot: racine() });
 }
 
 function flushSessionMirror() {
-  flushSessionMirrorUtil({ pm, projectRoot });
+  flushSessionMirrorUtil({ pm, projectRoot: racine() });
 }
 
 function saveAllDirtyDrafts() {
@@ -1131,13 +1124,9 @@ function exitViewerFullscreen() {
 const projectManagementCtx: ProjectManagementDeps = {
   pm,
   fo,
-  get rootPath() { return rootPath; },
-  setRootPath: (v) => { rootPath = v; },
   get sideVisible() { return sideVisible; },
   setSideVisible: (v) => { sideVisible = v; pm.sideVisible = v; },
   get tabs() { return tabs; },
-  folders,
-  get projectRoot() { return projectRoot; },
   openFileInTab,
   findTabByPath: (p) => findTabByPathUtil(pm, p) as any,
   skipCloseConfirm: { get current() { return _skipCloseConfirm; }, set current(v) { _skipCloseConfirm = v; } },
@@ -1161,22 +1150,25 @@ const handleExportPdf = async () => {
   printOverlayOpen = true;
 };
 
-// Session restore, CLI open-file, CLI project-folder, single-instance open-project
+// Restauration de session, ouverture de fichier par la CLI, `open-project` en
+// instance unique. Le dossier de la ligne de commande N'EST PLUS traité ici :
+// il est consommé avant le montage (`resoudreRacineInitiale`), avec `?root=` et
+// le dernier projet — c'était le second chemin d'ouverture de coffre, et sa
+// course avec la lecture de session.
 $effect(() => {
   const sessionCtx: SessionRestoreDeps = {
     pm,
-    projectRoot,
     openFileInTab,
     findTabByPath: (p) => findTabByPathUtil(pm, p) as any,
     setSideVisible: (v) => { sideVisible = v; pm.sideVisible = v; },
-    setRootPath: (v) => { rootPath = v; },
-    setSessionScope,
-    folders,
-    setProjectRoot: (v) => { theme.setProjectRoot(v); },
-    loadGuests,
     handleOpenProjectByPath,
+    perimetre: () => perimetre(),
+    racine: () => racine(),
+    // Arbitrage B : rien à l'écran. Un onglet écarté n'est pas une information
+    // pour l'utilisateur — c'est le signe que l'isolation a échoué en amont.
+    signaler: (message) => diagnosticsStore.push({ severity: "warning", message, source: "coffre" }),
   };
-  return setupSessionRestore(sessionCtx, urlRoot);
+  return setupSessionRestore(sessionCtx);
 });
 
 $effect(() => {
@@ -1738,7 +1730,7 @@ let cmds = $derived(
     <SidebarContainer
       open={sidebarOpen.current}
       {rootPath}
-      folders={folders.current}
+      {folders}
       {activePath}
       tocRefPath={tocRefPath}
       tocRefSource={tocRefSource}

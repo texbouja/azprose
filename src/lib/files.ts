@@ -1,6 +1,44 @@
 import { open, save as dialogSave } from "@tauri-apps/plugin-dialog";
 import { readDir, readFile, readTextFile, writeTextFile, exists, stat, rename, mkdir, remove } from "@tauri-apps/plugin-fs";
 import { basename, dirname, joinPath } from "./paths-utils";
+import { dansPerimetre } from "./paths";
+
+// ── Garde de périmètre (barrière de dernier recours) ────────────────────────
+//
+// Refuse toute MUTATION visant un chemin étranger au coffre (racine + dossiers
+// invités). Les LECTURES ne sont pas gardées : lire hors du coffre est sans
+// conséquence sur le contenu, et l'aide embarquée comme les aperçus de la
+// fenêtre NAV le font légitimement.
+//
+// ⚠️ Cette garde est un FILET, pas la protection principale : celle-ci est en
+// amont (une racine immuable par fenêtre, une session filtrée au périmètre).
+// Elle ne couvre d'ailleurs pas tout — une vingtaine d'appels écrivent
+// directement via `@tauri-apps/plugin-fs` sans passer par ce module, et
+// certains le font à bon droit (miroir des préférences, catalogue de
+// fournisseurs, corpus livré : tous dans `app_data_dir()`, hors de tout coffre
+// par nature). Ce qui passe ici, c'est le CONTENU DE PROJET : arbre de
+// fichiers et sauvegarde des onglets.
+//
+// Le périmètre est INJECTÉ, pas importé : `vault.svelte.ts` est un module à
+// runes, et ce fichier est chargé par des tests qui n'ont pas de runtime
+// Svelte. Non armé (cas des tests), la garde laisse passer — c'est
+// `vault.svelte.ts` qui l'arme, à son propre chargement, donc avant toute
+// écriture possible dans l'application.
+let lirePerimetre: (() => readonly string[]) | null = null;
+
+export function brancherPerimetreCoffre(fn: () => readonly string[]): void {
+  lirePerimetre = fn;
+}
+
+/** Levé quand une mutation vise un chemin hors du coffre. */
+export const FS_HORS_PERIMETRE = "FS_HORS_PERIMETRE";
+
+function exigerDansPerimetre(chemin: string): void {
+  if (!lirePerimetre) return;
+  if (!dansPerimetre(chemin, lirePerimetre())) {
+    throw new Error(FS_HORS_PERIMETRE);
+  }
+}
 
 export { basename, dirname, joinPath };
 export { readFile } from "@tauri-apps/plugin-fs";
@@ -313,6 +351,7 @@ export async function readText(path: string): Promise<string> {
 }
 
 export async function writeText(path: string, content: string): Promise<void> {
+  exigerDansPerimetre(path);
   await writeTextFile(path, content);
 }
 
@@ -331,6 +370,10 @@ export const FS_CONFLICT = "FS_CONFLICT";
 export async function moveEntry(src: string, dstParent: string): Promise<string> {
   const target = joinPath(dstParent, basename(src));
   if (target === src) return src;
+  // Les DEUX extrémités : déplacer hors du coffre l'en sort, y déplacer depuis
+  // l'extérieur y fait entrer du contenu que rien n'a validé.
+  exigerDansPerimetre(src);
+  exigerDansPerimetre(target);
   if (await pathExists(target)) throw new Error(FS_CONFLICT);
   await rename(src, target);
   return target;
@@ -342,6 +385,7 @@ export async function renameEntry(src: string, newName: string): Promise<string>
   if (!trimmed) throw new Error("empty name");
   const target = joinPath(dirname(src), trimmed);
   if (target === src) return src;
+  exigerDansPerimetre(src);
   if (await pathExists(target)) throw new Error(FS_CONFLICT);
   await rename(src, target);
   return target;
@@ -351,6 +395,7 @@ export async function createFolder(parent: string, name: string): Promise<string
   const trimmed = name.trim();
   if (!trimmed) throw new Error("empty name");
   const target = joinPath(parent, trimmed);
+  exigerDansPerimetre(target);
   if (await pathExists(target)) throw new Error(FS_CONFLICT);
   await mkdir(target, { recursive: false });
   return target;
@@ -361,6 +406,7 @@ export async function createMarkdownFile(parent: string, name: string): Promise<
   if (!trimmed) throw new Error("empty name");
   const withExt = /\.(md|markdown|mdx)$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
   const target = joinPath(parent, withExt);
+  exigerDansPerimetre(target);
   if (await pathExists(target)) throw new Error(FS_CONFLICT);
   await writeTextFile(target, "");
   return target;
@@ -371,6 +417,7 @@ export async function createFile(parent: string, name: string): Promise<string> 
   const trimmed = name.trim();
   if (!trimmed) throw new Error("empty name");
   const target = joinPath(parent, trimmed);
+  exigerDansPerimetre(target);
   if (await pathExists(target)) throw new Error(FS_CONFLICT);
   await writeTextFile(target, "");
   return target;
@@ -378,6 +425,7 @@ export async function createFile(parent: string, name: string): Promise<string> 
 
 /** Permanently delete a file or folder (recursive for dirs). */
 export async function removeEntry(path: string, isDir: boolean): Promise<void> {
+  exigerDansPerimetre(path);
   await remove(path, isDir ? { recursive: true } : undefined);
 }
 
