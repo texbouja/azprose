@@ -618,12 +618,33 @@ pub struct LatexRootResult {
     pub method: String,
 }
 
+/// Le chemin `p` est-il DANS `dossier` (ou le dossier lui-même) ?
+///
+/// Jumeau Rust de `estSous` (`src/lib/paths.ts`) — la règle d'appartenance au
+/// coffre est la même des deux côtés de l'IPC. `starts_with` de `Path` compare
+/// déjà par COMPOSANTS, pas par octets : `/coffres/MP2` ne contient donc pas
+/// `/coffres/MP2-bis`.
+fn est_sous(p: &Path, dossier: &Path) -> bool {
+    p.starts_with(dossier)
+}
+
 /// Find the root directory by traversing upward looking for marker files.
 /// Returns the directory containing the marker, or the file's own directory.
-fn find_root_dir(start: &Path) -> (std::path::PathBuf, String) {
+///
+/// `borne` (racine du coffre) arrête la remontée : sans elle, la recherche de
+/// marqueur montait jusqu'à `/` et pouvait désigner un dossier situé AU-DESSUS
+/// du projet ouvert — un `.latexmkrc` placé dans le dossier parent commun à
+/// plusieurs coffres suffisait à faire compiler le document d'un autre.
+fn find_root_dir(start: &Path, borne: Option<&Path>) -> (std::path::PathBuf, String) {
     // Phase A — traverse up looking for project markers
     let mut cur = Some(start.to_path_buf());
     while let Some(ref dir) = cur {
+        // Ne jamais examiner un dossier hors du coffre.
+        if let Some(b) = borne {
+            if !est_sous(dir, b) {
+                break;
+            }
+        }
         // .texlabroot / texlabroot
         if dir.join(".texlabroot").exists() {
             return (dir.clone(), ".texlabroot".into());
@@ -718,8 +739,14 @@ fn has_documentclass(path: &Path) -> bool {
 /// 2. Walk from file upward to root_dir, scanning each directory for .tex files with
 ///    `\documentclass` (excluding subfiles/cpgesubdoc). Pick the highest one.
 /// 3. Fallback: return the file itself
+///
+/// `project_root` borne TOUTE la recherche au coffre ouvert. Sans lui, le
+/// balayage remontait jusqu'à `/` : un `master.tex` situé au-dessus du projet
+/// pouvait devenir la cible de « compiler », c'est-à-dire composer un document
+/// étranger au projet depuis sa fenêtre. Optionnel pour rester appelable hors
+/// contexte de coffre (l'ancien comportement, non borné, est alors conservé).
 #[tauri::command]
-pub fn latex_find_root(path: String) -> LatexRootResult {
+pub fn latex_find_root(path: String, project_root: Option<String>) -> LatexRootResult {
     let tex_path = Path::new(&path);
     let file_dir = match tex_path.parent() {
         Some(d) => d,
@@ -731,14 +758,29 @@ pub fn latex_find_root(path: String) -> LatexRootResult {
         }
     };
 
+    let borne = project_root.as_deref().map(Path::new);
+
+    // Un fichier hors du coffre n'a pas de racine à chercher : il est sa propre
+    // racine. Remonter depuis lui reviendrait à explorer l'arborescence d'un
+    // autre projet.
+    if let Some(b) = borne {
+        if !est_sous(tex_path, b) {
+            return LatexRootResult {
+                root_file: Some(path.clone()),
+                method: "hors du coffre : le fichier est sa propre racine".into(),
+            };
+        }
+    }
+
     // Phase A: find root directory via markers
-    let (root_dir, dir_method) = find_root_dir(file_dir);
+    let (root_dir, dir_method) = find_root_dir(file_dir, borne);
 
     // Phase B: walk from file's directory upward to root_dir, at each level scan for
     // .tex files with \documentclass. The highest one (closest to root) is the root.
-    // If no markers were found (root_dir == file_dir), walk all the way up to "/".
+    // Sans marqueur, la remontée s'arrête à la racine du COFFRE — et non plus à
+    // `/`, qui laissait le balayage sortir du projet.
     let effective_root = if root_dir == file_dir {
-        PathBuf::from("/")
+        borne.map(|b| b.to_path_buf()).unwrap_or_else(|| PathBuf::from("/"))
     } else {
         root_dir.clone()
     };
@@ -762,6 +804,15 @@ pub fn latex_find_root(path: String) -> LatexRootResult {
         match cur_dir.parent() {
             Some(parent) => cur_dir = parent.to_path_buf(),
             None => break,
+        }
+        // Filet : l'égalité ci-dessus suppose deux chemins écrits pareil. Si la
+        // borne s'exprime autrement (barre finale, forme relative), on sortirait
+        // du coffre sans jamais l'atteindre — d'où cette seconde condition, qui
+        // ne dépend pas d'une égalité exacte.
+        if let Some(b) = borne {
+            if !est_sous(&cur_dir, b) {
+                break;
+            }
         }
     }
 
@@ -844,6 +895,60 @@ pub fn latex_rehash_texmf(project_root: String) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La racine LaTeX ne sort JAMAIS du coffre.
+    ///
+    /// Arborescence : un `master.tex` au-dessus du projet (le piège — deux
+    /// coffres voisins sous un même parent, chacun avec son `master.tex`), et le
+    /// fichier édité dans un sous-dossier du coffre sans `\documentclass`.
+    /// Non borné, le balayage remontait jusqu'à `/` et élisait le master
+    /// ÉTRANGER : « compiler » composait alors le document d'un autre projet.
+    #[test]
+    fn la_racine_latex_ne_sort_pas_du_coffre() {
+        let base = std::env::temp_dir().join(format!("azprose-perimetre-{}", std::process::id()));
+        let coffre = base.join("coffre");
+        let chapitres = coffre.join("chapitres");
+        std::fs::create_dir_all(&chapitres).unwrap();
+        // Le master ÉTRANGER, au-dessus du coffre.
+        std::fs::write(base.join("master.tex"), "\\documentclass{azdoc}\n").unwrap();
+        // Un fragment, dans le coffre : aucune racine locale à trouver.
+        let fragment = chapitres.join("suites.tex");
+        std::fs::write(&fragment, "\\documentclass[master=../master]{azsubdoc}\n").unwrap();
+
+        let borne = coffre.to_string_lossy().to_string();
+        let res = latex_find_root(fragment.to_string_lossy().to_string(), Some(borne));
+        let racine = res.root_file.unwrap();
+        assert!(
+            !racine.contains("coffre/../master") && racine != base.join("master.tex").to_string_lossy(),
+            "la racine {racine} est sortie du coffre ({})", res.method
+        );
+        assert!(
+            Path::new(&racine).starts_with(&coffre),
+            "la racine {racine} doit rester sous le coffre ({})", res.method
+        );
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// Un fichier hors du coffre est sa propre racine : on ne remonte pas dans
+    /// l'arborescence d'un projet auquel cette fenêtre n'appartient pas.
+    #[test]
+    fn un_fichier_hors_coffre_est_sa_propre_racine() {
+        let res = latex_find_root(
+            "/ailleurs/PC1/master.tex".into(),
+            Some("/coffres/MP2".into()),
+        );
+        assert_eq!(res.root_file.as_deref(), Some("/ailleurs/PC1/master.tex"));
+    }
+
+    #[test]
+    fn est_sous_compare_par_composants() {
+        // `/coffres/MP2` ne contient pas `/coffres/MP2-bis` — le piège d'une
+        // comparaison par préfixe de chaîne.
+        assert!(est_sous(Path::new("/coffres/MP2/x.tex"), Path::new("/coffres/MP2")));
+        assert!(!est_sous(Path::new("/coffres/MP2-bis/x.tex"), Path::new("/coffres/MP2")));
+        assert!(!est_sous(Path::new("/coffres"), Path::new("/coffres/MP2")));
+    }
 
     #[test]
     fn documentclass_without_options() {

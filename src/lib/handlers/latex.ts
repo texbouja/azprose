@@ -3,6 +3,7 @@ import { extFromPath } from "@/lib/editor-languages"
 import { invoke } from "@tauri-apps/api/core"
 import { applyDetectedRoot, autoBuildIfDepChanged, clearLatexDeps, handleLatexBuild, setupLatexLogListener } from "@/latex"
 import { diagnosticsStore } from "@/stores/diagnostics.svelte" // statique : déjà eager (app.svelte) — l'import() ne découpait aucun chunk
+import { getRootPath } from "@/stores/root-path.svelte"
 
 export function createLatexHandler(context: HandlerContext): FileHandler {
   const ctx = context
@@ -63,7 +64,10 @@ export function createLatexHandler(context: HandlerContext): FileHandler {
           // `B/master.tex` laissait la racine sur A, et « compiler »
           // recompilait A. Voir `applyDetectedRoot`.
           if (p && extFromPath(p) === "tex") {
-            invoke<{ root_file: string | null; method: string }>("latex_find_root", { path: p })
+            // La racine du coffre BORNE la recherche : sans elle, la remontée
+            // allait jusqu'à `/` et un `master.tex` situé au-dessus du projet
+            // pouvait devenir la cible de « compiler ».
+            invoke<{ root_file: string | null; method: string }>("latex_find_root", { path: p, projectRoot: getRootPath() })
               .then((res: { root_file: string | null; method: string }) => {
                 // L'onglet a pu changer pendant l'aller-retour : ne rien
                 // appliquer si la réponse ne concerne plus le fichier actif.
