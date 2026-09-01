@@ -20,6 +20,7 @@
     markTranscludedBlocks,
     makeCalloutsCollapsible,
     stripAutoCalloutTitles,
+    updateCalloutIcons,
     postRenderDom,
   } from "@/markdown";
   import { getRootPath } from "@/stores/root-path.svelte";
@@ -28,6 +29,7 @@
   import { getT } from "@/lib/i18n";
   import { language } from "@/lib/i18n";
   import { collesSettings } from "@/stores/colles-settings.svelte";
+  import { calloutSettings, generateCalloutCss } from "@/stores/callout-settings.svelte";
   import { previewSettings } from "@/stores/markdown-settings.svelte";
   import { buildPreviewProseCss } from "@/lib/prose-style-css";
   import { rubriquesFor, sumMaxScore, sumNotes } from "@/colles";
@@ -92,6 +94,22 @@
     return () => el.remove();
   });
 
+  // ── Callouts « utilisateur » (réglages Callouts) ──────────────────────────
+  // Les couleurs, la numérotation et le losange des callouts définis dans les
+  // réglages sont GÉNÉRÉS (`generateCalloutCss`, scoped `.mdv-prose`) — le CSS
+  // statique de preview.css ne couvre que les types Obsidian natifs. Même
+  // injection que MarkdownPreview/SlideDeck, sous un id distinct (en mode
+  // colle, MarkdownPreview n'est pas monté). Sans elle, un `[!theorem]`
+  // s'affichait en boîte neutre, sans couleur ni numéro.
+  $effect(() => {
+    const css = generateCalloutCss(calloutSettings.current);
+    const el = document.createElement("style");
+    el.id = "mdv-colle-callout-css";
+    el.textContent = css;
+    document.head.appendChild(el);
+    return () => el.remove();
+  });
+
   // ── Mode preview de l'évaluation ─────────────────────────────────────────
   // Deux modes dans la section Évaluation : le formulaire (défaut) et un mode
   // « preview » (icône œil) qui affiche la note globale LIVE + les observations
@@ -115,10 +133,17 @@
     if (!el || evalMode !== "preview") return;
     let cancelled = false;
     const fp = filePath ?? undefined;
+    // Même pipeline callouts que l'énoncé : les observations sont du markdown
+    // à part entière, un callout y est légitime.
+    updateCalloutIcons(calloutSettings.current);
     void renderMarkdown(draft.observations || "", currentTheme, fp, getRootPath() ?? undefined)
       .then(async (result) => {
         if (cancelled) return;
-        el.innerHTML = result.html;
+        const tmp = document.createElement("div");
+        tmp.innerHTML = result.html;
+        stripAutoCalloutTitles(tmp);
+        makeCalloutsCollapsible(tmp);
+        el.innerHTML = tmp.innerHTML;
         await postRenderDom(el, { filePath, rootPath: getRootPath() ?? undefined });
         await typesetMath(el);
       })
@@ -292,6 +317,11 @@
     if (!el) return;
     let cancelled = false;
     const fp = filePath ?? undefined;
+    // Libellés des callouts AVANT le rendu (`calloutOptions.icons` est un
+    // objet partagé, muté par le module de rendu) : lire
+    // `calloutSettings.current` ici rend aussi l'effet réactif aux réglages —
+    // renommer un callout re-rend la carte.
+    updateCalloutIcons(calloutSettings.current);
     void renderMarkdown(planche.bodySource, currentTheme, fp, getRootPath() ?? undefined)
       .then(async (result) => {
         if (cancelled) return;
