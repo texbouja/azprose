@@ -1,7 +1,7 @@
 {
   "name": "azprose",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0-beta",
   "author": "Sadik Boujaida <alijouahri61@gmail.com>",
   "contributors": [
     "Anthropic Claude <claude@anthropic.com>"

@@ -1,6 +1,6 @@
 [package]
 name = "azprose"
-version = "0.1.0"
+version = "0.5.0-beta"
 description = "AZprose — éditeur de texte scientifique"
 authors = ["Sadik Boujaida <ibouja@gmail.com>", "Anthropic Claude <claude@anthropic.com>"]
 edition = "2021"
