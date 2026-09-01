@@ -9,6 +9,7 @@ import "@/styles/files/sidebar-shell.css";
 import FsView from "@/components/files/fs-view.svelte";
 import JournalView from "@/components/sidebar/journal-view.svelte";
 import LinksView from "@/components/links/LinksView.svelte";
+import ProjectSelector from "@/components/files/project-selector.svelte";
 import { sidebarView } from "@/stores/sidebar-view.svelte";
 
 let {
@@ -136,58 +137,64 @@ function stopResize(e: PointerEvent) {
   aria-hidden={!open}
 >
   <div class="mdv-sidebar__inner" style="width:{width}px">
-    <div class="mdv-sidebar__view">
-      {#if sidebarView.current === "files"}
-        <FsView
-          {rootPath}
-          {folders}
-          {activePath}
-          {onAddFolder}
-          {onNewFile}
-          {onNewFolder}
-          {onCloseFolder}
-          {onOpenProject}
-          {onProjectFromFolder}
-          {onSelectFile}
-          {onMove}
-          {onContextMenu}
-          {stagedPaths}
-          {stagedTokenLabel}
-          {onToggleStage}
-          {favorites}
-          {onToggleFavorite}
-          {onReorderFavorites}
-          {onCopyContext}
-          {onClearContext}
-          {editingPath}
-          {onSubmitRename}
-          {onCancelEdit}
-          {onRenameRequest}
-          {newEntry}
-          {onSubmitNew}
-          {onCancelNew}
-          {treeVersion}
-          {dirtyPaths}
-          {onFocusChange}
-          {pendingFocusPath}
-          {onFocusAcknowledged}
-        />
-      {:else if sidebarView.current === "journal"}
-        <JournalView
-          {rootPath}
-          {activePath}
-          {onSelectFile}
-          {treeVersion}
-          {onOpenCalendar}
-          {onDeleteEntry}
-        />
-      {:else if sidebarView.current === "links"}
-        <LinksView
-          filePath={tocRefPath}
-          source={tocRefSource}
-          rootPath={rootPath}
-        />
-      {/if}
+    <div class="mdv-sidebar__stack">
+      <div class="mdv-sidebar__view">
+        {#if sidebarView.current === "files"}
+          <FsView
+            {rootPath}
+            {folders}
+            {activePath}
+            {onAddFolder}
+            {onNewFile}
+            {onNewFolder}
+            {onCloseFolder}
+            {onSelectFile}
+            {onMove}
+            {onContextMenu}
+            {stagedPaths}
+            {stagedTokenLabel}
+            {onToggleStage}
+            {favorites}
+            {onToggleFavorite}
+            {onReorderFavorites}
+            {onCopyContext}
+            {onClearContext}
+            {editingPath}
+            {onSubmitRename}
+            {onCancelEdit}
+            {onRenameRequest}
+            {newEntry}
+            {onSubmitNew}
+            {onCancelNew}
+            {treeVersion}
+            {dirtyPaths}
+            {onFocusChange}
+            {pendingFocusPath}
+            {onFocusAcknowledged}
+          />
+        {:else if sidebarView.current === "journal"}
+          <JournalView
+            {rootPath}
+            {activePath}
+            {onSelectFile}
+            {treeVersion}
+            {onOpenCalendar}
+            {onDeleteEntry}
+          />
+        {:else if sidebarView.current === "links"}
+          <LinksView
+            filePath={tocRefPath}
+            source={tocRefSource}
+            rootPath={rootPath}
+          />
+        {/if}
+      </div>
+      <!-- Le sélecteur de projet appartient à la SIDEBAR, pas à la vue
+           Fichiers : il reste au pied du panneau quelle que soit la vue
+           active (fichiers / journal / liens). -->
+      <footer class="mdv-sidebar__project-footer">
+        <ProjectSelector {rootPath} {onOpenProject} {onProjectFromFolder} />
+      </footer>
     </div>
   </div>
 
@@ -202,3 +209,34 @@ function stopResize(e: PointerEvent) {
     aria-label="Resize sidebar"
   />
 </aside>
+
+<style>
+/* Pile PROPRE à la fenêtre PROJET : vue commutable + pied de sidebar
+ * (sélecteur de projet). `.mdv-sidebar__inner` est en `row` dans le contrat
+ * partagé (sidebar-shell.css, dupliqué par la fenêtre NAV) — on ne le touche
+ * pas : la colonne est introduite ici, d'où ce niveau supplémentaire. */
+.mdv-sidebar__stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Le `height: 100%` du contrat partagé pousserait le pied hors cadre : dans
+ * la pile, la vue prend simplement la hauteur restante. */
+.mdv-sidebar__stack > .mdv-sidebar__view {
+  height: auto;
+  min-height: 0;
+}
+
+/* Pied de sidebar — était le pied de fs-view (sidebar-content.css) tant que
+ * le sélecteur vivait dans la vue Fichiers. */
+.mdv-sidebar__project-footer {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+}
+</style>

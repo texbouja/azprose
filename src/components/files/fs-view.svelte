@@ -1,8 +1,10 @@
 <script lang="ts">
 // En-tête (partagée avec BrowseSidebar.svelte) + sections propres à cette
 // vue — contrat CSS du composant (vague 3, phase 3.1). Couvre RootFolder,
-// Favorites, SearchResults et ProjectSelector : tous des enfants exclusifs
-// de ce composant (aucun autre import ailleurs dans le dépôt).
+// Favorites et SearchResults : tous des enfants exclusifs de ce composant
+// (aucun autre import ailleurs dans le dépôt). ProjectSelector en est SORTI :
+// le sélecteur de projet est un pied de SIDEBAR (sidebar-container.svelte),
+// visible quelle que soit la vue.
 import "@/styles/files/sidebar-header.css";
 import "@/styles/files/sidebar-content.css";
 import { Button } from "@/components/primitives";
@@ -14,7 +16,6 @@ import type { NewEntry } from "./file-tree.svelte";
 import SearchResults from "./sidebar-search.svelte";
 import RootFolder from "./root-folder.svelte";
 import Favorites from "./favorites.svelte";
-import ProjectSelector from "./project-selector.svelte";
 
 let {
   rootPath,
@@ -24,8 +25,6 @@ let {
   onNewFile,
   onNewFolder,
   onCloseFolder,
-  onOpenProject,
-  onProjectFromFolder,
   onSelectFile,
   onMove,
   onContextMenu,
@@ -57,8 +56,6 @@ let {
   onNewFile?: (dir?: string) => void;
   onNewFolder?: (dir?: string) => void;
   onCloseFolder: (path: string) => void;
-  onOpenProject: (path: string) => void;
-  onProjectFromFolder: () => void;
   onSelectFile: (path: string, newTab?: boolean, viewer?: boolean) => void;
   onMove?: (src: string, dstParent: string) => void;
   onContextMenu?: (e: MouseEvent, entry: FileEntry, selection?: FileEntry[]) => void;
@@ -346,9 +343,6 @@ function onHeaderMouseDown(e: MouseEvent) {
       {/if}
     {/if}
   </div>
-  <footer class="mdv-sidebar__project-footer">
-    <ProjectSelector {rootPath} {onOpenProject} {onProjectFromFolder} />
-  </footer>
   {#if rootPath && stagedPaths.length > 0}
     {#snippet copyContextIcon()}
       <i class="wxi-copy" style="font-size:12px"></i>

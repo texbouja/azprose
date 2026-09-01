@@ -1,10 +1,12 @@
 /* Contrat CSS des sections propres à fs-view.svelte (vague 3, phase 3.1,
  * R2/R3) — recherche, état vide, pied de contexte, racines multiples et
- * favoris. Tous ces gabarits (SearchResults/RootFolder/Favorites/
- * ProjectSelector) sont des ENFANTS exclusifs de fs-view.svelte (aucun
- * autre import ailleurs dans le dépôt — vérifié) : un seul point d'import
- * suffit. .mdv-context-menu vit dans context-menu.svelte lui-même (monté
- * directement par app.svelte, PAS un descendant de fs-view — pas ici).
+ * favoris. Tous ces gabarits (SearchResults/RootFolder/Favorites) sont des
+ * ENFANTS exclusifs de fs-view.svelte (aucun autre import ailleurs dans le
+ * dépôt — vérifié) : un seul point d'import suffit. .mdv-context-menu vit
+ * dans context-menu.svelte lui-même (monté directement par app.svelte, PAS
+ * un descendant de fs-view — pas ici). .mdv-sidebar__project-footer non plus :
+ * le sélecteur de projet est un pied de SIDEBAR, ses styles sont scopés dans
+ * sidebar-container.svelte.
  */
 
 .mdv-fsview {
@@ -165,14 +167,6 @@
   font-size: 11px;
   color: var(--muted);
   font-family: var(--font-ui);
-}
-
-/* project selector footer */
-.mdv-sidebar__project-footer {
-  display: flex;
-  align-items: center;
-  padding: 6px 8px;
-  border-top: 1px solid var(--border);
 }
 
 /* context tray */
