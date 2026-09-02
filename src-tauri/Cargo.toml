@@ -28,7 +28,7 @@ dirs = "6"
 calamine = { version = "0.26", features = ["dates"] }
 chrono = "0.4"
 fontdb = "0.23"
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 tokio = { version = "1", features = ["process", "fs", "net", "rt-multi-thread"] }
 portable-pty = "0.9"
 lettre = "0.11"
