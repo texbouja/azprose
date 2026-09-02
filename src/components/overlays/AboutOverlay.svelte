@@ -18,7 +18,7 @@ let {
   onCheckForUpdates?: () => void | Promise<void>;
 } = $props();
 
-const REPO_URL = "https://github.com/azprose/azprose";
+const REPO_URL = "https://github.com/texbouja/azprose";
 const SITE_URL = "https://azprose.app";
 
 const FEATURES = [

@@ -6,9 +6,11 @@
 
 export const CHANGELOG_URL = "https://azprose.app/changelog";
 
-const WHATS_NEW_TOAST_BY_MINOR: Record<string, string> = {
-  "1.5": "Preview scrolling is smooth again, context staging stays clean, and the workspace polish continues",
-};
+// VIDE volontairement : 0.5.0 est la première release déclarée, aucune
+// précédence. L'entrée « 1.5 » qui vivait ici décrivait une version qui n'a
+// jamais existé. Ajouter une ligne `"<majeur>.<mineur>": "…"` au prochain
+// palier ; sinon le bandeau se rabat sur le libellé générique ci-dessous.
+const WHATS_NEW_TOAST_BY_MINOR: Record<string, string> = {};
 
 export function getWhatsNewToastMessage(version: string): string {
   const minor = version.split(".").slice(0, 2).join(".");
@@ -57,8 +59,8 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "0.5.0-beta",
-    date: "2026-09-01",
+    version: "0.5.0",
+    date: "2026-09-02",
     intro: "release.0_5_0.intro",
     caveat: "release.0_5_0.caveat",
     highlights: [
