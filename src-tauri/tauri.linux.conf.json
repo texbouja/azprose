@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "azprose",
+  "bundle": {
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/azprose.desktop"
+      }
+    }
+  }
+}
