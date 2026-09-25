@@ -367,6 +367,14 @@ fn open_folder(path: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // WebKitGTK sous Wayland : le rendu DMA-BUF provoque « Error 71 (Protocol
+    // error) » au lancement sur certains pilotes. Défini avant toute création de
+    // webview ; une valeur déjà présente dans l'environnement est respectée.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     let (pending_open_files, pending_project_dir) = parse_cli_args();
 
     let app = tauri::Builder::default()
